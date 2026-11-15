@@ -77,7 +77,7 @@ const calls: string[] = [];
 Object.assign(window, { settingsQACalls: calls, isTauri: true, settingsQAProbeTargets: probeTargets, settingsQASettingRequests: settingRequests, settingsQARestarts: () => restarts,
   settingsQAStoredPermissions: () => ({ browserEnabled: browser.enabled, desktopEnabled: control.enabled, desktopTarget: control.target, desktopApps: control.apps }),
   settingsQAExternalProfile: () => { profile = { ...profile, revision: "qa-latest-after-preview", model: "latest-after-preview" }; },
-  settingsQAStoredProfile: () => ({ revision: profile.revision, model: profile.model }),
+  settingsQAStoredProfile: () => ({ revision: profile.revision, model: profile.model, providers: profile.providers }),
   settingsQARuntimeBusy: (busy: boolean) => { fixtureActivityBusy = busy; },
   settingsQALaunchedWorkspaces: launchedWorkspaces,
   settingsQAReceiptFail: (fail: boolean) => { receiptFails = fail; },
@@ -137,7 +137,9 @@ mockIPC(async (cmd, raw) => {
     case "test_llm_connection": {
       const providerId = args.providerId == null ? null : String(args.providerId);
       probeTargets.push({ providerId, baseUrl: String(args.baseUrl), explicitKey: Boolean(args.apiKey) });
-      return { ok: true, status: 200, modelCount: 1, modelAvailable: null, models: [`${providerId || "default"}-model`], message: "合成验收：模型列表可达" };
+      const result = { ok: true, status: 200, modelCount: 1, modelAvailable: null, models: [`${providerId || "default"}-model`], message: "合成验收：模型列表可达" };
+      if (params.get("probe") === "defer") return new Promise(resolve => Object.assign(window, { releaseSettingsModelProbe: () => resolve(result) }));
+      return result;
     }
     case "save_llm_provider": {
       if (params.get("providerSave") === "conflict" && profile.revision === "qa-revision-1") {
@@ -146,10 +148,11 @@ mockIPC(async (cmd, raw) => {
       }
       if (args.expectedRevision && args.expectedRevision !== profile.revision) throw { code: "model_configuration_conflict", message: "本次没有写入，当前草稿仍保留" };
       if (params.get("providerSave") === "fail") throw new Error("模拟服务保存失败");
+      if (!confirmationsAllowed) throw new Error("未确认，供应商没有保存");
       const id = String(args.id).trim().toLowerCase();
-      const saved = { id, name: String(args.name).trim() || id, baseUrl: String(args.baseUrl).trim().replace(/\/+$/, ""), hasKey: true, models: [id + "-model"] };
+      const saved = { id, name: String(args.name).trim() || id, baseUrl: String(args.baseUrl).trim().replace(/\/+$/, ""), hasKey: Boolean(args.apiKey) || Boolean(profile.providers?.some(item => item.id === id && item.baseUrl === String(args.baseUrl).trim().replace(/\/+$/, "") && item.hasKey)), models: Array.isArray(args.selectedModels) ? args.selectedModels as string[] : [id + "-model"] };
       const persist = () => {
-        profile = { ...profile, providers: [...(profile.providers ?? []).filter(item => item.id !== id), saved] };
+        profile = { ...profile, revision: `${profile.revision}-provider`, providers: [...(profile.providers ?? []).filter(item => item.id !== id), saved] };
         return profile;
       };
       if (params.get("providerSave") === "defer") return new Promise(resolve => Object.assign(window, { releaseSettingsProviderSave: () => resolve(persist()) }));
@@ -163,7 +166,7 @@ mockIPC(async (cmd, raw) => {
       if (args.expectedRevision && args.expectedRevision !== profile.revision) throw { code: "model_configuration_conflict", message: "本次没有写入，当前草稿仍保留" };
       if (params.get("save") === "unchanged") return profile;
       if (params.get("save") === "fail") throw new Error("模拟保存失败，草稿仍保留");
-      if (params.get("save") === "cancel") throw new Error("操作已取消");
+      if (params.get("save") === "cancel" || !confirmationsAllowed) throw new Error("操作已取消");
       profile = {
         ...profile, revision: "qa-revision-saved", configured: true, baseUrl: String(args.baseUrl), model: String(args.model),
         fastModel: args.fastModel as string || undefined, strongModel: args.strongModel as string || undefined, roleModels: args.roleModels as Record<string, string>

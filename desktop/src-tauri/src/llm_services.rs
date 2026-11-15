@@ -140,8 +140,38 @@ pub(crate) fn probe_client() -> Result<reqwest::Client, String> {
 pub(crate) const MAX_CUSTOM_PROVIDERS: usize = 12;
 pub(crate) const RESERVED_PROVIDER_IDS: [&str; 3] = ["default", "anthropic", "cli"];
 
-/// 校验一个自定义供应商：ID 只能是小写字母开头的 `[a-z0-9_]`（会拼进环境变量名），
-/// 地址与 Key 沿用主模型服务的同一套规则（远程必须 HTTPS 且带 Key）。
+/// 显式模型清单不能被静默截断或丢项；归一化后保留主人选择的顺序。
+pub(crate) fn normalize_selected_models(models: Vec<String>) -> Result<Vec<String>, String> {
+    if models.is_empty() || models.len() > MAX_LISTED_MODELS {
+        return Err(format!("请选择 1 到 {MAX_LISTED_MODELS} 个模型"));
+    }
+    let mut selected = Vec::new();
+    for raw in models {
+        let model = raw.trim();
+        if model.is_empty()
+            || model.len() > 160
+            || model.contains(',')
+            || model.chars().any(|c| c.is_control() || c.is_whitespace())
+        {
+            return Err("模型编号无效：最长 160 字节，不能包含空白、逗号或控制字符".into());
+        }
+        if !selected.iter().any(|item| item == model) {
+            selected.push(model.to_string());
+        }
+    }
+    Ok(selected)
+}
+
+/// 显式清单不受发现结果覆盖；老配置继续跟随服务，发现失败则保留原清单。
+pub(crate) fn apply_provider_model_list(provider: &mut DesktopLlmProvider, discovered: Option<Vec<ModelInfo>>) {
+    if let Some(selected) = &provider.selected_models {
+        provider.models = selected.clone();
+    } else if let Some(models) = discovered {
+        provider.models = models.into_iter().map(|info| info.id).collect();
+    }
+}
+
+/// 校验一个自定义供应商：ID 会拼进环境变量名，远程地址必须 HTTPS 且带 Key。
 pub(crate) fn normalize_llm_provider(mut provider: DesktopLlmProvider) -> Result<DesktopLlmProvider, String> {
     provider.id = provider.id.trim().to_lowercase();
     let id_ok = provider.id.len() <= 24
@@ -181,13 +211,15 @@ pub(crate) fn normalize_llm_provider(mut provider: DesktopLlmProvider) -> Result
     })?;
     provider.base_url = checked.base_url;
     provider.api_key = checked.api_key;
-    provider.models = provider
-        .models
-        .into_iter()
-        .map(|model| model.trim().to_string())
-        .filter(|model| !model.is_empty() && model.len() <= 160 && !model.chars().any(char::is_control))
-        .take(MAX_LISTED_MODELS)
-        .collect();
+    provider.selected_models = provider.selected_models.map(normalize_selected_models).transpose()?;
+    if provider.selected_models.is_some() {
+        apply_provider_model_list(&mut provider, None);
+    } else {
+        provider.models = provider.models.into_iter()
+            .map(|model| model.trim().to_string())
+            .filter(|model| !model.is_empty() && model.len() <= 160 && !model.chars().any(char::is_control))
+            .take(MAX_LISTED_MODELS).collect();
+    }
     Ok(provider)
 }
 
@@ -212,6 +244,7 @@ pub(crate) async fn with_model_list(mut profile: DesktopLlmProfile) -> DesktopLl
             name: String::new(),
             base_url: profile.base_url.clone(),
             api_key: profile.api_key.clone(),
+            selected_models: None,
             models: Vec::new(),
         };
         if let Some(models) = fetch_provider_models(&main).await {
@@ -275,6 +308,7 @@ pub(crate) async fn upsert_member_provider(
         name: "VortoOne 会员".into(),
         base_url: format!("{RELAY_ORIGIN}/v1"),
         api_key: with_sk_prefix(key),
+        selected_models: None,
         models: Vec::new(),
     })?;
     let models = fetch_provider_models(&provider).await;
@@ -362,6 +396,7 @@ pub(crate) fn default_as_provider(profile: &DesktopLlmProfile, taken: &[DesktopL
         base_url: profile.base_url.clone(),
         api_key: profile.api_key.clone(),
         models,
+        selected_models: None,
     })
 }
 
@@ -490,6 +525,7 @@ pub(crate) async fn save_llm_provider(
     base_url: String,
     api_key: String,
     expected_revision: Option<String>,
+    selected_models: Option<Vec<String>>,
     store: State<'_, DesktopLlmProfileStore>,
 ) -> Result<DesktopLlmProfileStatus, ModelProfileMutationError> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -512,6 +548,9 @@ pub(crate) async fn save_llm_provider(
         name,
         base_url,
         api_key,
+        selected_models: selected_models.or_else(|| profile.providers.iter()
+            .find(|provider| provider.id == wanted_id && provider.base_url == wanted_base)
+            .and_then(|provider| provider.selected_models.clone())),
         models: Vec::new(),
     })?;
     let replacing = profile.providers.iter().any(|existing| existing.id == provider.id);
@@ -519,13 +558,16 @@ pub(crate) async fn save_llm_provider(
         return Err(format!("最多添加 {MAX_CUSTOM_PROVIDERS} 个供应商").into());
     }
     // 原生确认在 webview 之外：页面脚本不能悄悄把请求和 Key 指向别的地址。
+    let selection_notice = provider.selected_models.as_ref()
+        .map(|models| format!("\n\n加入模型菜单（尚未验证推理与工具调用）：\n{}", models.join("\n")))
+        .unwrap_or_default();
     let message = format!(
         "{}模型供应商：\n\n名称：{}\nID：{}\n接口地址：{}\n\n在聊天里选用它的模型时，请求会带着你填写的 Key 发到这个地址。",
         if replacing { "更新" } else { "添加" },
         provider.name,
         provider.id,
         provider.base_url
-    );
+    ) + &selection_notice;
     let dialog_app = app.clone();
     let confirmed = tauri::async_runtime::spawn_blocking(move || {
         with_main_window_parent(&dialog_app, dialog_app.dialog().message(message))
@@ -539,10 +581,11 @@ pub(crate) async fn save_llm_provider(
     if !confirmed {
         return Err("未确认，供应商没有保存".into());
     }
-    provider.models = fetch_provider_models(&provider)
-        .await
-        .map(|infos| infos.into_iter().map(|info| info.id).collect())
-        .unwrap_or_default();
+    // 显式选择不再自动发出探测；读取模型列表由主人单独点击。
+    if provider.selected_models.is_none() {
+        let discovered = fetch_provider_models(&provider).await;
+        apply_provider_model_list(&mut provider, discovered);
+    }
     profile.providers.retain(|existing| existing.id != provider.id);
     profile.providers.push(provider);
     persist_profile(&app, &store, profile).map_err(Into::into)
@@ -580,6 +623,7 @@ pub(crate) async fn refresh_llm_providers(
             name: String::new(),
             base_url: profile.base_url.clone(),
             api_key: profile.api_key.clone(),
+            selected_models: None,
             models: Vec::new(),
         };
         if let Some(models) = fetch_provider_models(&main).await {
@@ -587,8 +631,9 @@ pub(crate) async fn refresh_llm_providers(
         }
     }
     for provider in profile.providers.iter_mut() {
-        if let Some(models) = fetch_provider_models(provider).await {
-            provider.models = models.into_iter().map(|info| info.id).collect();
+        if provider.selected_models.is_none() {
+            let discovered = fetch_provider_models(provider).await;
+            apply_provider_model_list(provider, discovered);
         }
     }
     persist_profile(&app, &store, profile).map_err(Into::into)
