@@ -39,7 +39,7 @@ export const localResidentClient: LocalResidentClient = {
   connect: expected => invoke('local_resident_connect', { ...expected }),
 };
 
-function checked(value: LocalResidentStatus): LocalResidentStatus {
+export function checked(value: LocalResidentStatus): LocalResidentStatus {
   if (!value || typeof value.supported !== 'boolean' || typeof value.installed !== 'boolean'
     || !['not_installed', 'stopped', 'cleanup_required', 'starting', 'running', 'unavailable'].includes(value.state)
     || typeof value.cronEnabled !== 'boolean' || typeof value.availableVersion !== 'string') {
