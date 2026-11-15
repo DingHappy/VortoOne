@@ -1812,5 +1812,29 @@
     "methods": [
       "POST"
     ]
+  },
+  {
+    "path": "/api/staff/member-proposals",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/staff/members/{member_id}/conversation",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/staff/members/{member_id}/conversation",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/staff/members/{member_id}/tasks/{task_id}/review",
+    "methods": [
+      "POST"
+    ]
   }
 ]

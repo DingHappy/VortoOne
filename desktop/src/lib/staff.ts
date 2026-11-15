@@ -33,6 +33,7 @@ export interface StaffSnapshot {
   departments?: StaffDepartment[]; budget_settings?: StaffBudgetSettings; usage?: StaffUsage;
   standing_specialists?: Array<{ id: string; title: string; scope: string; guide: string }>;
   development_projects?: Array<{ name: string }>;
+  conversation_version?: number; owner_instance?: string; role_digests?: Record<string, string>;
 }
 export type DevelopmentProposal = { kind: 'role' | 'member'; id: string; name: string; project?: string; role?: string };
 export interface StaffClient {
@@ -42,6 +43,7 @@ export interface StaffClient {
   setStaffStatus(id: string, status: StaffMember["status"], revision: number): Promise<unknown>;
   setStaffBudgets?(settings: StaffBudgetSettings): Promise<StaffBudgetSettings>;
   proposeDevelopment?(data: DevelopmentProposal): Promise<unknown>;
+  proposeStaffMember?(data: import('../features/roles/types').MemberProposalInput): Promise<StaffProposal>;
   readStaffRecovery?: import('./staffRecovery').RecoveryClient['readStaffRecovery'];
   decideStaffRecovery?: import('./staffRecovery').RecoveryClient['decideStaffRecovery'];
 }

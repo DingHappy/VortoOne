@@ -56,6 +56,39 @@ class Status(BaseModel):
     revision: StrictInt
 
 
+class RoleMessage(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    prompt: str = Field(min_length=1, max_length=4000)
+    acceptance: list[str] = Field(default_factory=list, max_length=20)
+    delivery: Literal['review', 'notify'] = 'review'
+    member_revision: int = Field(ge=1)
+    role_revision: int = Field(ge=1)
+    instance: str = Field(min_length=1, max_length=64)
+    identity_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class RoleTaskDecision(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    verdict: Literal['accept', 'rework', 'stop']
+    note: str = Field(min_length=1, max_length=2000)
+    digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    round: int = Field(ge=1, le=3)
+    instance: str = Field(min_length=1, max_length=64)
+
+
+class MemberProposal(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    name: str = Field(min_length=1, max_length=80)
+    role: str = Field(min_length=1, max_length=64)
+    role_revision: int = Field(ge=1)
+    engine: str = Field(min_length=1, max_length=64)
+    model: str = Field(default='', max_length=160)
+    instance: str = Field(min_length=1, max_length=64)
+    role_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
 class RoutineChange(BaseModel):
     model_config = ConfigDict(extra='forbid')
     action: str
@@ -93,8 +126,13 @@ def _apply(action):
 
 @router.get('/api/staff')
 def directory():
+    from src.workflow.staff.owner_confirmation import owner_instance
+    from src.workflow.staff.approvals import digest
     approvals = StaffApprovals(os.getcwd())
-    return {**_apply(lambda: staff_directory(os.getcwd(), include_prompts=True)), 'proposals': _apply(approvals.list)}
+    value = _apply(lambda: staff_directory(os.getcwd(), include_prompts=True))
+    return {**value, 'proposals': _apply(approvals.list),
+            'conversation_version': 1, 'owner_instance': owner_instance(os.getcwd()),
+            'role_digests': {role['id']: digest(role) for role in value['roles']}}
 
 
 def _decision_owner(request: Request):
@@ -103,6 +141,34 @@ def _decision_owner(request: Request):
     authorization = request.headers.get('authorization', '')
     if not token or not authorization.startswith('Bearer ') or not ct_eq(authorization[7:].strip(), token):
         raise HTTPException(status_code=403, detail='审批需要携带主人令牌的 owner 写入路由')
+
+
+def _conversations():
+    from src.workflow.staff.conversations import StaffConversations
+    return StaffConversations(os.getcwd())
+
+
+@router.get('/api/staff/members/{member_id}/conversation', dependencies=[Depends(_decision_owner)])
+def member_conversation(member_id: str, before: str = '', limit: int = 30, request_id: str = ''):
+    return _apply(lambda: _conversations().read(member_id, before=before, limit=limit, request_id=request_id))
+
+
+@router.post('/api/staff/members/{member_id}/conversation', dependencies=[Depends(_decision_owner)])
+async def send_member_message(member_id: str, body: RoleMessage):
+    with owner_route(os.getcwd()):
+        return _apply(lambda: _conversations().submit(member_id, body.model_dump()))
+
+
+@router.post('/api/staff/members/{member_id}/tasks/{task_id}/review', dependencies=[Depends(_decision_owner)])
+async def review_member_task(member_id: str, task_id: str, body: RoleTaskDecision):
+    with owner_route(os.getcwd()):
+        return _apply(lambda: _conversations().act(member_id, task_id, body.model_dump()))
+
+
+@router.post('/api/staff/member-proposals', dependencies=[Depends(_decision_owner)])
+def propose_member(body: MemberProposal):
+    with owner_route(os.getcwd()):
+        return _apply(lambda: _conversations().propose_member(body.model_dump()))
 
 
 @router.get('/api/staff/approval-stats', dependencies=[Depends(_decision_owner)])

@@ -30,11 +30,13 @@ import { WorkspaceBar } from "./components/WorkspaceBar";
 import { roleProfileSnapshot } from "./lib/roleProfileSnapshot";
 import { RoleNavigation } from "./components/RoleNavigation";
 import { RoleProfileDialog, type RoleProfileSection } from "./components/RoleProfile";
-import { NewRoleDialog } from "./components/NewRoleDialog";
+import { RoleCreateDialog } from "./features/roles/RoleCreateDialog";
+import { RoleConversation } from "./features/roles/RoleConversation";
+import { roleDrafts } from "./features/roles/conversationController";
 import { staffCharacter, type RoleCharacter } from "./components/RoleAvatar";
 import { RoleGrants } from "./components/settings/StaffPane";
 import { ExecutionDetails } from "./components/ExecutionDetails";
-import type { StaffMember, StaffRole } from "./lib/staff";
+import type { StaffMember, StaffRole, StaffSnapshot } from "./lib/staff";
 import { COPY } from "./lib/copy.generated";
 import { ChatHistory, MessageIdentity } from "./components/ChatHistory";
 import { ConversationLocation } from "./components/ConversationLocation";
@@ -287,7 +289,7 @@ function App() {
   const [activities, setActivities] = useState<TurnActivity[]>([]);
   const [previewView, setPreviewView] = useState<PreviewView>("plan");
   // 主区复用原领域页面；切换会话时回到对话。
-  const [mainView, setMainView] = useState<"chat" | "plugins" | "artifacts" | "customize" | "management" | "team" | "department" | "assistant">("chat");
+  const [mainView, setMainView] = useState<"chat" | "plugins" | "artifacts" | "customize" | "management" | "team" | "department" | "assistant" | "role">("chat");
   const assistantPageTrigger = useRef<HTMLElement | null>(null);
   // 任务小组（ADR-014 S3）：侧栏「最近」里每个小组一条，点开在中间看群聊
   const [teamList, setTeamList] = useState<TeamSummary[]>([]);
@@ -385,7 +387,10 @@ function App() {
   const [profileDialogLease, setProfileDialogLease] = useState<SettingsTargetLease<GatewayClient> | null>(null);
   const [roleSelection, setRoleSelection] = useState<{ lease: SettingsTargetLease<GatewayClient>; name: string;
     description: string; character?: RoleCharacter; member?: StaffMember; role?: StaffRole; assistant?: ReturnType<typeof roleProfileSnapshot> } | null>(null);
-  const [newRoleRequest, setNewRoleRequest] = useState<{ lease: SettingsTargetLease<GatewayClient>; roles: StaffRole[] } | null>(null);
+  const [newRoleRequest, setNewRoleRequest] = useState<{ lease: SettingsTargetLease<GatewayClient>; registry: StaffSnapshot } | null>(null);
+  const [roleConversation, setRoleConversation] = useState<{ member: string; name: string; lease: SettingsTargetLease<GatewayClient> } | null>(null);
+  const roleDraftPool = useRef<ReturnType<typeof roleDrafts> | null>(null);
+  if (!roleDraftPool.current) roleDraftPool.current = roleDrafts();
   const [channelDialogLease, setChannelDialogLease] = useState<SettingsTargetLease<GatewayClient> | null>(null);
   const [phoneChatSid, setPhoneChatSid] = useState<string | null>(null);
   // 常驻电脑连不上时在本机聊过的会话：连回常驻电脑后列在「本机（离线时）」，见 lib/offlineChats.ts
@@ -2868,14 +2873,26 @@ function App() {
     setAvatar: setAssistantAvatar,
   });
 
-  const openRoleProfile = (memberId?: string) => {
-    const member = memberId ? departmentDirectory.value?.members.find(item => item.id === memberId) : undefined;
+  const openRoleProfile = (memberId?: string, record?: { member: StaffMember; role: StaffRole }) => {
+    const member = record?.member ?? (memberId ? departmentDirectory.value?.members.find(item => item.id === memberId) : undefined);
     if (memberId && !member) return;
-    const role = member ? departmentDirectory.value?.roles.find(item => item.id === member.role) : undefined;
+    const role = record?.role ?? (member ? departmentDirectory.value?.roles.find(item => item.id === member.role) : undefined);
     setRoleSelection({ lease: settingsTargetLease(() => ({ context: settingsTargetRef.current, client: clientRef.current })),
       name: member?.name || assistantProfile.name || "VortoOne", description: member ? role?.brief || COPY.role.unknown : COPY.characters.general,
       character: member ? staffCharacter(role) : "general", member: member ? structuredClone(member) : undefined, role: role ? structuredClone(role) : undefined,
       assistant: member ? undefined : roleProfileSnapshot(assistantProfile, assistantAvatar, assistantMemories, memoryProposals) });
+  };
+  const openRoleConversation = (memberId: string) => {
+    const member = departmentDirectory.value?.members.find(item => item.id === memberId);
+    const lease = settingsTargetLease(() => ({ context: settingsTargetRef.current, client: clientRef.current }));
+    if (!lease.current()) return;
+    setRoleConversation({ member: memberId, name: member?.name || "角色", lease });
+    setMainView("role"); setInspectorOpen(false);
+  };
+  const createRole = () => {
+    if (!departmentDirectory.value) { departmentDirectory.refresh(); setBanner("请先刷新并核对角色名录"); return; }
+    setNewRoleRequest({ lease: settingsTargetLease(() => ({ context: settingsTargetRef.current, client: clientRef.current })),
+      registry: structuredClone(departmentDirectory.value) });
   };
   const manageSelectedRole = () => {
     if (!roleSelection?.lease.current()) return;
@@ -3076,7 +3093,7 @@ function App() {
                   .map(session => ({ sid: session.sid, title: session.title || draftChats.find(draft => draft.sid === session.sid)?.title || "新的旁聊", busy: session.status === "working" })),
                 ...draftChats.filter(draft => draft.sid !== mainChatSid && !sessions.some(session => session.sid === draft.sid)),
               ]}
-              current={activeSid}
+              current={mainView === "role" ? "" : activeSid}
               page={mainView === "assistant" || mainView === "artifacts" || mainView === "customize" ? assistantPage : null}
               search={sidebarSearchOpen ? sidebarSearch("搜索聊天") : undefined}
               query={sidebarQuery}
@@ -3085,8 +3102,9 @@ function App() {
               onPage={page => navigateFromSettings(() => page === "identity" ? openRoleProfile() : openAssistantPage(page))}
               roles={<RoleNavigation name={assistantProfile.name || "VortoOne"} avatar={assistantAvatar}
                 directory={departmentDirectory.value} error={departmentDirectory.error} connected={Boolean(currentTarget.space && currentTarget.ready)}
-                onRefresh={departmentDirectory.refresh} onAssistant={() => navigateFromSettings(() => openRoleProfile())}
-                onMember={id => navigateFromSettings(() => openRoleProfile(id))} onAdd={() => navigateFromSettings(() => setNewRoleRequest({ lease: settingsTargetLease(() => ({ context: settingsTargetRef.current, client: clientRef.current })), roles: structuredClone(departmentDirectory.value?.roles ?? []) }))} />}
+                currentMember={mainView === "role" ? roleConversation?.member : undefined} currentAssistant={mainView === "chat" && activeSid === mainChatSid}
+                onRefresh={departmentDirectory.refresh} onAssistant={() => navigateFromSettings(() => { setMainView("chat"); setInspectorOpen(false); void openMainChat(); })}
+                onMember={id => navigateFromSettings(() => openRoleConversation(id))} onAdd={() => navigateFromSettings(createRole)} />}
               onSelect={(sid) => navigateFromSettings(() => { setMainView("chat"); setInspectorOpen(false); void (sid === mainChatSid ? openMainChat() : switchSession(sid)); })}
               phoneChats={phoneChats.map((chat) => ({ sid: chat.sid, title: chat.title }))}
               onOpenPhoneChat={openPhoneChat}
@@ -3194,6 +3212,11 @@ function App() {
             onChooseProject={() => void chooseRepo()}
             onOpenBrowserSettings={() => { setSettingsSection("permissions"); setSettingsOpen(true); }}
           />
+        ) : mainView === "role" && appMode === "assistant" && roleConversation ? (
+          <RoleConversation key={`${roleConversation.lease.target.readKey}:${roleConversation.member}`} memberId={roleConversation.member}
+            name={roleConversation.name} lease={roleConversation.lease} drafts={roleDraftPool.current}
+            onMain={() => { setMainView("chat"); setInspectorOpen(false); void openMainChat(); }}
+            onProfile={(member, role) => { if (roleConversation.lease.current() && member && role) openRoleProfile(member.id, { member, role }); }} />
         ) : mainView === "department" && appMode === "assistant" && activeDepartment ? (
           <DepartmentPage key={`${assistantScope}:${activeDepartment.id}`} id={activeDepartment.id} client={clientRef.current}
             getClient={() => clientRef.current} connected={connection === "connected"} onUpdated={departmentDirectory.refresh}
@@ -3869,12 +3892,11 @@ function App() {
       {roleSelection && <RoleProfileDialog name={roleSelection.name} description={roleSelection.description}
         character={roleSelection.character} avatar={roleSelection.assistant?.avatar} current={roleCurrent}
         sections={roleSections} onClose={() => setRoleSelection(null)} />}
-      {newRoleRequest && <NewRoleDialog roles={newRoleRequest.roles} current={newRoleRequest.lease.current} onClose={() => setNewRoleRequest(null)}
-        onPrepare={draft => {
+      {newRoleRequest && <RoleCreateDialog registry={newRoleRequest.registry} lease={newRoleRequest.lease} onClose={() => setNewRoleRequest(null)}
+        onRegistered={id => {
           if (!newRoleRequest.lease.current()) return;
-          setPrompt(current => current.trim() ? `${current}\n\n${draft}` : draft);
-          setNewRoleRequest(null); setMainView("chat"); setInspectorOpen(false);
-          setBanner("角色提议已放入当前对话，原有草稿保留；检查后再发送。");
+          setNewRoleRequest(null); departmentDirectory.refresh(); openRoleConversation(id);
+          setBanner("角色已登记，可以交代第一件事了。");
         }} />}
       {appMode !== "assistant" && settingsView}
       {profileDialogLease && <AssistantProfileDialog profile={assistantProfile} onClose={() => setProfileDialogLease(null)}

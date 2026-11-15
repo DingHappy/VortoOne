@@ -125,6 +125,9 @@
   --vc-workspace-sidebar-w: 280px;
   --vc-workspace-sidebar: #f4f6f8;
   --vc-workspace-bg: #ffffff;
+  --vc-role-composer-max-h: 240px;
+  --vc-role-create-w: 800px;
+  --vc-role-create-column-w: 280px;
 }
 
 @media (prefers-color-scheme: dark) {
