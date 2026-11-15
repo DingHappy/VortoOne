@@ -284,6 +284,24 @@ D04 分项记录：
   学习结果保留来源、版本和撤回记录；个人与团队空间不自动共享学习内容。
   权限和代批规则继续按 D04 执行，学习不能自行修改这些规则；实施时继续遵守现有记忆写入策略和版本启用合同。
 
+### D06 源码复用边界与待定范围
+
+- **许可约束（2026-11-15 再次确认）**：主人明确保留 Apache-2.0，希望学习并尽量利用已有模型接入实现。
+  这不构成上游代码的额外许可；学习用途本身不改变原代码的许可条件。
+- 已核对上游固定版本：`ConnectAi`、`EndpointForm` 所属应用，以及 `packages/providers`、`packages/client`、`packages/ui`
+  的相关代码受 AGPL-3.0-only 与项目 NOTICE 约束，没有发现允许将这些组件仅按 Apache 单独发布的例外。
+  依据：[上游 NOTICE](https://github.com/agentes-chat/agentes-chat/blob/50ca784dd4c83efbc7ca916a6f07faa8accfe7f6/NOTICE)、
+  [AGPL 第 5、13 节](https://www.gnu.org/licenses/agpl-3.0.en.html)。
+- **兼容当前许可的可行实现路线**：直接依赖厂商官方 SDK，由 SDK 处理协议细节；VortoOne 基于官方协议与 SDK 独立编写适配层，
+  学习上游的连接需求和交互流程。不能把上游 AGPL 组件复制、改头或逐行翻译后仅按 Apache 发布。
+  如取得覆盖相关代码和发布方式的额外授权，再另行核验。
+- 2026-11-15 核对三个官方 Python SDK 的 main 许可文件，均为 Apache-2.0：
+  [OpenAI](https://github.com/openai/openai-python/blob/main/LICENSE)、
+  [Anthropic](https://github.com/anthropics/anthropic-sdk-python/blob/main/LICENSE)、
+  [Google Gen AI](https://github.com/googleapis/python-genai/blob/main/LICENSE)。
+  实施 PR 须核验实际锁定版本及依赖的许可，保留相应版权、许可和 NOTICE；本文没有安装 SDK 或复制上游实现。
+- D06 的模型连接、执行器账号与外部资源功能范围继续确认；上述许可核对不代表这些能力已经实现。
+
 此前已选“保持 Apache-2.0，独立实现”继续作为当前前提。
 本清单没有把“所有 1:1”解释为同意导入 AGPL 源码、改许可、开放付款或修改安全规则。
 
