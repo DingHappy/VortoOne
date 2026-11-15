@@ -46,7 +46,7 @@ export function RoleConversation({ memberId, name, lease, drafts, onProfile, onM
   const send = async () => { if (canSend) { const accepted = await controller.current?.send(draft); if (accepted && current) input.current?.focus(); } };
   return <section className="role-conversation" aria-label={`与${displayName}的工作对话`}>
     <header className="role-conversation-header" data-tauri-drag-region="deep">
-      <button type="button" className="role-conversation-identity" disabled={!current || !value} onClick={() => { if (value && current) onProfile(value.member, value.role); }} aria-label={`角色资料：${displayName}`}>
+      <button type="button" data-role-profile-trigger className="role-conversation-identity" disabled={!current || !value} onClick={() => { if (value && current) onProfile(value.member, value.role); }} aria-label={`角色资料：${displayName}`}>
         <RoleAvatar character={character} /><span><strong>{displayName}</strong><small>{value?.role.title || "读取角色资料…"}</small></span>
       </button>
       <div><IconButton label="刷新角色对话" icon={<RefreshCw aria-hidden="true" />} disabled={state.reading || state.writing} onClick={() => void controller.current?.refresh()} />

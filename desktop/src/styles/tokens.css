@@ -128,6 +128,8 @@
   --vc-role-composer-max-h: 240px;
   --vc-role-create-w: 800px;
   --vc-role-create-column-w: 280px;
+  --vc-role-create-h: 640px;
+  --vc-role-field-min-w: 200px;
 }
 
 @media (prefers-color-scheme: dark) {

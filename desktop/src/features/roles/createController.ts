@@ -62,7 +62,7 @@ export function roleCreationController(options: {
       requireCurrent();
       const after = await client.readStaff(); requireCurrent();
       const saved = after.proposals.find(item => item.id === shown.id);
-      if (saved?.status !== (approve ? "approved" : "denied")) throw new Error("决定结果待核对，请到角色与权限刷新");
+      if (saved?.status !== (approve ? "approved" : "rejected")) throw new Error("决定结果待核对，请到角色与权限刷新");
       emit({ proposal: saved });
       if (approve) {
         if (!after.members.some(member => member.id === shown.snapshot.data.id)) throw new Error("批准已保存，登记结果待核对");

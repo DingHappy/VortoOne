@@ -8,8 +8,7 @@ import { desktopContext } from "../src/lib/desktopContext";
 import { settingsTargetLease, type SettingsTargetLease } from "../src/lib/settingsTarget";
 import type { StaffMember, StaffRole, StaffSnapshot } from "../src/lib/staff";
 import { RoleNavigation } from "../src/components/RoleNavigation";
-import { RoleProfileDialog } from "../src/components/RoleProfile";
-import { RoleGrants } from "../src/components/settings/StaffPane";
+import { RoleProfilePage } from "../src/components/RoleProfile";
 import { staffCharacter } from "../src/components/RoleAvatar";
 import { WorkspaceBar } from "../src/components/WorkspaceBar";
 import { PersonalSpacePicker } from "../src/components/PersonalSpacePicker";
@@ -23,6 +22,8 @@ import type { SessionSummary } from "../src/types";
 import { RoleConversation } from "../src/features/roles/RoleConversation";
 import { RoleCreateDialog } from "../src/features/roles/RoleCreateDialog";
 import { roleDrafts } from "../src/features/roles/conversationController";
+import { roleSummary } from "../src/features/roles/roleSummary";
+import { registeredRoleSections } from "../src/features/roles/profileSections";
 import "../src/styles/tokens.css";
 import "../src/styles/components.css";
 import "../src/App.css";
@@ -30,7 +31,9 @@ import "../src/daily.css";
 import "../src/styles/shell.css";
 import "./frontend-redesign.css";
 
-const settings = { baseUrl: "http://127.0.0.1:4352", token: "offline-role-owner", expectedScope: "general" as const };
+const requestedPort = typeof location === "undefined" ? "" : new URLSearchParams(location.search).get("apiPort") || "";
+const apiPort = /^\d{4,5}$/.test(requestedPort) && Number(requestedPort) <= 65535 ? requestedPort : "4352";
+const settings = { baseUrl: `http://127.0.0.1:${apiPort}`, token: "offline-role-owner", expectedScope: "general" as const };
 const client = new GatewayClient(settings);
 const fixtureAction = (action: string) => fetch(`${settings.baseUrl}/qa/${action}`, {
   method: "POST", headers: { Authorization: `Bearer ${settings.token}` },
@@ -42,7 +45,7 @@ export function PersonalRolesFixture() {
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<{ id: string; lease: SettingsTargetLease<GatewayClient> } | null>(null);
   const [adding, setAdding] = useState<SettingsTargetLease<GatewayClient> | null>(null);
-  const [profile, setProfile] = useState<{ member?: StaffMember; role?: StaffRole } | null>(null);
+  const [profile, setProfile] = useState<{ member?: StaffMember; role?: StaffRole; lease: SettingsTargetLease<GatewayClient> } | null>(null);
   const [channels, setChannels] = useState<SessionSummary[]>([]), [channel, setChannel] = useState<SessionSummary | null>(null);
   const [channelLease, setChannelLease] = useState<SettingsTargetLease<GatewayClient> | null>(null);
   const [channelError, setChannelError] = useState("");
@@ -62,7 +65,7 @@ export function PersonalRolesFixture() {
   };
   useEffect(() => { void refresh(); void refreshChannels(); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  const openMain = () => { setSelected(null); setChannel(null); };
+  const openMain = () => { setProfile(null); setSelected(null); setChannel(null); };
   const open = (id: string) => { setProfile(null); setChannel(null); setSelected({ id, lease: settingsTargetLease(() => source.current) }); };
   return <div className="app-shell vc-product-shell qa-reference-shell">
     <div className="qa-role-controls"><header className="qa-redesign-controls" hidden={params.has("capture")}>
@@ -91,9 +94,13 @@ export function PersonalRolesFixture() {
         <SidebarFooter identity={{ initial: "", name: "我的账号", detail: "离线个人空间", title: "设置与账号" }} update={null}
           onOpenSettings={() => { location.href = "/qa/settings-redesign.html?presentation=page&section=account"; }} />
       </aside>
-      {selected ? <RoleConversation key={`${selected.lease.target.readKey}:${selected.id}`} memberId={selected.id}
+      {profile ? <RoleProfilePage name={profile.member?.name || "角色"} description={roleSummary(profile.role)}
+        sourceLabel={profile.lease.target.runtimeLabel} character={staffCharacter(profile.role)} current={profile.lease.current()}
+        onClose={() => setProfile(null)} sections={profile.member
+          ? registeredRoleSections(profile.member, profile.role, profile.lease.current(), () => setNotice("正式应用会打开原角色与权限设置；此处只展示临时合成资料。"))
+          : [{ id: "settings", label: "设置", content: <p>角色资料尚未读取。</p> }]} /> : selected ? <RoleConversation key={`${selected.lease.target.readKey}:${selected.id}`} memberId={selected.id}
         name={registry?.members.find(member => member.id === selected.id)?.name || "角色"} lease={selected.lease} drafts={pool}
-        onProfile={(member, role) => setProfile({ member, role })} onMain={openMain} />
+        onProfile={(member, role) => setProfile({ member: structuredClone(member), role: structuredClone(role), lease: selected.lease })} onMain={openMain} />
         : channel ? <section className="conversation conversation-channel empty-state">
           <ConversationHeader title={channel.title} channelTopic={sessionChannel(channel)!.topic} place={null} panelOpen={false}
             waiting={0} plan={{ done: 0, total: 0 }} busy={false} onTogglePanel={() => setNotice("此预览只核对频道入口与创建，不连接聊天模型。")} onStop={() => {}} />
@@ -114,10 +121,6 @@ export function PersonalRolesFixture() {
       setChannels(previous => [row, ...previous.filter(item => item.sid !== row.sid)]);
       setChannelLease(null); setProfile(null); setSelected(null); setChannel(row);
     }} />}
-    {profile && <RoleProfileDialog name={profile.member?.name || "角色"} description={profile.role?.brief || ""}
-      character={staffCharacter(profile.role)} current={selected?.lease.current() ?? false} onClose={() => setProfile(null)}
-      sections={[{ id: "settings", label: "设置", content: <p>{profile.member?.engine} · {profile.member?.model || "沿用登记模型"}</p> },
-        { id: "access", label: "工具与权限", content: profile.role ? <RoleGrants role={profile.role} /> : null }]} />}
   </div>;
 }
 const root = typeof document === "undefined" ? null : document.getElementById("root");

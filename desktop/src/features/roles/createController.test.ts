@@ -14,7 +14,7 @@ function fixture() {
   const client: StaffClient = { readStaff: vi.fn(async () => structuredClone(registry)),
     proposeStaffMember: vi.fn(async () => structuredClone(proposal)), setStaffStatus: vi.fn(),
     decideStaff: vi.fn(async (_id, approve) => { registry = { ...registry,
-      proposals: [{ ...proposal, status: approve ? "approved" : "denied" }],
+      proposals: [{ ...proposal, status: approve ? "approved" : "rejected" }],
       members: approve ? [{ id } as StaffSnapshot["members"][number]] : [] }; }) };
   const registered = vi.fn(), publish = vi.fn();
   const controller = roleCreationController({ client, registry: structuredClone(registry), requestId,
@@ -40,7 +40,8 @@ describe("direct owner role creation", () => {
   });
   it("rejecting a proposal leaves the roster unchanged", async () => {
     const f = fixture(); await f.controller.propose(f.draft); await f.controller.decide(false);
-    expect(f.controller.state().proposal?.status).toBe("denied"); expect(f.registered).not.toHaveBeenCalled();
+    expect(f.controller.state().proposal?.status).toBe("rejected");
+    expect(f.controller.state().error).toBe(""); expect(f.registered).not.toHaveBeenCalled();
     expect(f.registry().members).toEqual([]);
   });
   it.each(["owner_instance", "role_digests"])("does not propose after %s changes", async key => {

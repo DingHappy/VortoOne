@@ -101,7 +101,12 @@ async def lose_next_receipt():
 
 
 if __name__ == '__main__':
+    import argparse
     import uvicorn
-    wrapped = CORSMiddleware(app, allow_origins=['http://127.0.0.1:4350', 'http://127.0.0.1:4353'],
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--port', type=int, default=4352)
+    parser.add_argument('--ui-port', type=int, action='append', default=[4350, 4353])
+    args = parser.parse_args()
+    wrapped = CORSMiddleware(app, allow_origins=[f'http://127.0.0.1:{port}' for port in args.ui_port],
                              allow_methods=['*'], allow_headers=['*'])
-    uvicorn.run(wrapped, host='127.0.0.1', port=4352, lifespan='off', log_level='warning')
+    uvicorn.run(wrapped, host='127.0.0.1', port=args.port, lifespan='off', log_level='warning')
