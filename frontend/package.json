@@ -1,0 +1,30 @@
+{
+  "name": "vortoone-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @agenteschat/web",
+    "build": "npm run build --workspace @agenteschat/web && npm run desktop:build",
+    "preview": "npm run preview --workspace @agenteschat/web",
+    "typecheck": "npm run typecheck --workspace @agenteschat/web && npm run typecheck --workspace @agenteschat/desktop && npm run runtime:typecheck",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "brand:generate": "node scripts/generate-brand.mjs && npm run icons --workspace @agenteschat/desktop && npm exec --workspace @agenteschat/desktop -- tauri icon app-icon.png --output src-tauri/icons",
+    "check": "npm run typecheck && npm test && npm run build",
+    "desktop:dev": "npm run dev --workspace @agenteschat/desktop -- --port 1421",
+    "desktop:build": "npm run build --workspace @agenteschat/desktop",
+    "runtime:dev": "npm run dev --workspace @agenteschat/web -- --config vite.runtime.config.ts",
+    "runtime:typecheck": "tsc -p apps/web/tsconfig.vortoone.json"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "ws": "^8.23.0"
+  }
+}

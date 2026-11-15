@@ -1,0 +1,38 @@
+{
+  "source": "../agentes-chat (local source clone)",
+  "commit": "a14b34acd2f9544cc626d8000217913180145c8c",
+  "copied": [
+    "apps/web",
+    "packages/ui",
+    "packages/client",
+    "packages/tokens",
+    "packages/i18n",
+    "packages/providers",
+    "packages/adapters/src/{error-scrub,redact}.ts",
+    "apps/desktop",
+    "packages/adapters/src/{machine-protocol,runner-control,command-policy,outbound-url}.ts"
+  ],
+  "upstream_entry": "apps/web/src/main.tsx",
+  "active_entry": "apps/web/src/desktop-main.tsx -> original apps/web/src/main.tsx",
+  "character_baseline": "apps/web/public/vortoone/source-baseline.json",
+  "runtime_mappers": [
+    "desktop/src/protocol/activities.ts",
+    "desktop/src/protocol/transcript.ts",
+    "desktop/src/types.ts (portable protocol subset)"
+  ],
+  "desktop_entry": "apps/desktop/src/main.tsx",
+  "runtime_experiment": "apps/web/runtime.html; apps/web/src/vortoone/main.tsx",
+  "desktop_ui_preview": "apps/web/desktop-preview.html (isolated upstream fixtures)",
+  "role": "desktop frontend foundation",
+  "desktop_ui": "original desktop host views plus original web application with desktop title bar",
+  "compatibility_changes": [
+    "TypeScript 5.9: explicit useQuery<Message[]> data type",
+    "Isolated desktop bundle identifier",
+    "npm scripts and development ports"
+  ],
+  "excluded_from_import": [
+    "node_modules, dist, caches, temporary QA screenshots",
+    "upstream test suites (only preview fixtures and focused local tests retained)",
+    "packages/i18n/src/locales/*.source.json (translator bookkeeping, unused by runtime)"
+  ]
+}

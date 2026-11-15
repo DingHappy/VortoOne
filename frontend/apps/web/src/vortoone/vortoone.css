@@ -1,0 +1,673 @@
+/* The imported kit and app sheets provide the visuals. These rules only compose VortoOne's runtime views. */
+.vo-shell {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--pane);
+}
+.vo-rail {
+  flex: 0 0 64px;
+  background: var(--side);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 8px;
+  border-right: 1px solid var(--line);
+}
+.vo-rail button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 5px;
+}
+.vo-rail button:hover {
+  background: var(--side-hover);
+}
+.vo-rail__line {
+  width: 26px;
+  height: 1px;
+  background: var(--line2);
+}
+.vo-rail__home {
+  font-size: 26px;
+}
+.vo-rail__theme {
+  margin-top: auto;
+  font-size: 24px;
+}
+.vo-sidebar {
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  flex: 0 0 250px;
+  width: 250px;
+  padding: 24px 14px 16px;
+}
+.vo-brand {
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 0 10px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.vo-brand strong {
+  display: block;
+  font-size: 22px;
+  letter-spacing: -1px;
+  font-weight: 750;
+}
+.vo-brand strong span {
+  color: #f88974;
+  margin-left: 5px;
+  font-size: 17px;
+}
+.vo-brand small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.vo-new {
+  justify-content: flex-start;
+  padding-inline: 10px;
+  gap: 10px;
+}
+.vo-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vo-nav .sidebar__item {
+  gap: 12px;
+}
+.vo-nav__mark {
+  width: 20px;
+  text-align: center;
+  font-size: 19px;
+  font-family: system-ui, sans-serif;
+}
+.vo-shell .sidebar__item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  min-height: 36px;
+  border-radius: 7px;
+}
+.vo-shell .sidebar__item[aria-current="page"] {
+  background: var(--side-chosen);
+  color: var(--ink);
+  font-weight: 600;
+}
+.vo-shell .sidebar__item:hover {
+  background: var(--side-hover);
+}
+.vo-recent {
+  margin-top: 9px;
+}
+.vo-recent h2 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 10px;
+  margin: 0 0 9px;
+}
+.vo-recent p {
+  padding: 0 10px;
+  font-size: 12px;
+}
+.vo-session {
+  display: flex;
+  gap: 10px;
+}
+.vo-session > span:nth-child(2) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  flex: 1;
+  font-size: 13px;
+}
+.vo-profile {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 8px;
+  border-radius: 9px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.vo-profile:hover {
+  background: var(--side-hover);
+}
+.vo-profile > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.vo-profile strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.vo-profile small {
+  color: var(--muted);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.vo-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.vo-dot[data-online="true"],
+.vo-dot[data-status="succeeded"],
+.vo-dot[data-status="completed"] {
+  background: var(--ok);
+}
+.vo-dot[data-status="running"] {
+  background: var(--agent);
+}
+.vo-dot[data-status="failed"],
+.vo-dot[data-status="blocked"] {
+  background: var(--danger);
+}
+.vo-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  background: var(--pane);
+  position: relative;
+}
+.vo-chathead {
+  min-height: 82px;
+  flex-wrap: nowrap;
+  padding: 16px 28px;
+  background: var(--pane);
+}
+.vo-chathead .channel__title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 650;
+}
+.vo-chathead__sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 3px 0 0;
+}
+.vo-chathead__status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.vo-chatbody {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+.vo-welcome {
+  max-width: 720px;
+  min-height: 100%;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 55px 32px 80px;
+  text-align: center;
+}
+.vo-welcome .ac-avatar--xl {
+  width: 120px;
+  height: 104px;
+}
+.vo-eyebrow {
+  letter-spacing: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  margin: 25px 0 12px;
+}
+.vo-welcome h2 {
+  font-size: clamp(23px, 2.4vw, 30px);
+  font-weight: 650;
+  letter-spacing: -1px;
+  margin: 0;
+  line-height: 1.5;
+}
+.vo-welcome > p:not(.vo-eyebrow) {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 12px;
+  line-height: 1.8;
+}
+.vo-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 30px;
+}
+.vo-suggestions button {
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 11px 13px;
+  background: var(--pane);
+  color: var(--ink2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.vo-suggestions button:hover {
+  background: var(--plate);
+}
+.vo-suggestions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.vo-suggestions button span {
+  color: var(--faint);
+  margin-left: 13px;
+}
+.vo-compose {
+  flex: none;
+  padding: 14px 28px 18px;
+  background: var(--pane);
+}
+.vo-compose__inner {
+  max-width: 900px;
+  margin: auto;
+}
+.vo-compose__mode {
+  display: flex;
+  gap: 5px;
+  padding: 2px;
+}
+.vo-compose__mode button {
+  font-size: 11px;
+  border: 0;
+  background: transparent;
+  padding: 4px 8px;
+  color: var(--muted);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.vo-compose__mode button[aria-pressed="true"] {
+  background: var(--plate);
+  color: var(--ink);
+}
+.vo-compose__hint {
+  text-align: center;
+  margin: 10px 0 0;
+  font-size: 10px;
+  color: var(--faint);
+}
+.vo-messages {
+  max-width: 960px;
+  padding: 26px 22px;
+  margin: auto;
+}
+.vo-messages .ac-msg {
+  margin-block: 10px;
+}
+.vo-messages .md {
+  white-space: pre-wrap;
+}
+.vo-messages .md p {
+  margin-block: 0 12px;
+}
+.vo-messages .md p:last-child {
+  margin-bottom: 0;
+}
+.vo-system {
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+  margin: 18px 0;
+}
+.vo-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  font-size: 12px;
+}
+.vo-banner > span {
+  flex: 1;
+}
+.vo-activities {
+  margin: 0 auto 22px;
+  width: calc(100% - 56px);
+  max-width: 840px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.vo-activities > summary {
+  cursor: pointer;
+  color: var(--ink2);
+}
+.vo-activities > summary span {
+  margin-left: 8px;
+  color: var(--faint);
+}
+.vo-activity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 13px;
+}
+.vo-activity > span {
+  flex: 1;
+  color: var(--ink2);
+}
+.vo-activity > small {
+  color: var(--muted);
+}
+.vo-activity > details {
+  flex: 0 0 100%;
+  margin-left: 15px;
+}
+.vo-activity summary {
+  cursor: pointer;
+}
+.vo-activity pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 11px;
+}
+.vo-confirm {
+  margin: 0 auto 24px;
+  max-width: 840px;
+  width: calc(100% - 56px);
+}
+.vo-confirm__heading {
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 12px;
+  color: var(--warn);
+}
+.vo-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.vo-confirm__actions p {
+  font-size: 12px;
+  color: var(--muted);
+}
+.vo-queue {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  padding: 6px 12px;
+}
+.vo-queue > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vo-queue > div > span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--muted);
+}
+.vo-page {
+  overflow-y: auto;
+  max-width: none;
+  padding: 34px clamp(24px, 5vw, 72px);
+}
+.vo-page > .ac-card,
+.vo-page > .vo-records,
+.vo-page > .ac-pagehead {
+  width: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+.vo-page > .ac-card {
+  margin-top: 22px;
+}
+.vo-page h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+.vo-page h2:not(:first-child) {
+  margin-top: 30px;
+}
+.vo-theme-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vo-characters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.vo-characters > button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  background: var(--pane);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.vo-characters > button[aria-pressed="true"] {
+  border-color: var(--agent);
+  background: var(--agent-soft);
+}
+.vo-records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin-top: 25px;
+}
+.vo-record__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.vo-record__heading h2 {
+  flex: 1;
+  margin: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vo-badge {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--plate);
+  border-radius: 5px;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+.vo-muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+.vo-error {
+  padding: 18px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--ink2);
+}
+.vo-connect {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--side);
+  padding: 24px;
+}
+.vo-connect__card {
+  width: min(100%, 430px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 38px;
+}
+.vo-connect__card h1 {
+  margin: 5px 0 0;
+  font-size: 28px;
+  letter-spacing: -1px;
+}
+.vo-connect__card > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.vo-login {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: left;
+  margin-top: 16px;
+}
+.vo-login input {
+  width: 100%;
+}
+.vorto-character {
+  border-radius: inherit;
+}
+.vorto-character-sticker {
+  display: inline-block;
+  overflow: hidden;
+  border-radius: 20%;
+}
+.vo-table {
+  overflow-x: auto;
+}
+.vo-table td,
+.vo-table th {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+}
+.vo-mobile-menu,
+.vo-scrim {
+  display: none;
+}
+@media (max-width: 800px) {
+  .vo-rail {
+    display: none;
+  }
+  .vo-sidebar {
+    display: none;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 41;
+    width: min(290px, 85vw);
+  }
+  .vo-shell[data-drawer] .vo-sidebar {
+    display: flex;
+  }
+  .vo-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: var(--scrim);
+    z-index: 40;
+    border: 0;
+  }
+  .vo-mobile-menu {
+    display: block;
+    position: absolute;
+    top: 20px;
+    left: 14px;
+    z-index: 10;
+    border: 0;
+    background: var(--pane);
+    color: var(--ink);
+    font-size: 22px;
+    cursor: pointer;
+  }
+  .vo-chathead {
+    padding-left: 54px;
+    padding-right: 16px;
+  }
+  .vo-chathead__status {
+    font-size: 0;
+    gap: 0;
+  }
+  .vo-chathead__sub {
+    max-width: 260px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .vo-welcome {
+    padding: 40px 22px;
+  }
+  .vo-suggestions {
+    flex-direction: column;
+    width: 100%;
+    max-width: 340px;
+    margin-top: 20px;
+  }
+  .vo-suggestions button {
+    text-align: left;
+  }
+  .vo-suggestions button span {
+    float: right;
+  }
+  .vo-compose {
+    padding: 10px 14px 14px;
+  }
+  .vo-messages {
+    padding: 18px 10px;
+  }
+  .vo-page {
+    padding: 66px 18px 24px;
+  }
+  .vo-characters {
+    gap: 8px;
+  }
+  .vo-characters > button {
+    padding: 14px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vo-chatbody {
+    scroll-behavior: auto;
+  }
+}

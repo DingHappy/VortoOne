@@ -195,6 +195,10 @@ python -m pytest tests/ -q   # 离线、结果确定，不调用真实模型
 
 欢迎提 Issue 和 PR，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。改安全内核、Web 接口或 Agent 之前，请先读 [CLAUDE.md](CLAUDE.md) 里的「安全内核」和「包布局」。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
 
+### 新 Desktop 前端基底
+
+[`frontend/`](frontend/README.md) 是复用 `agentes-chat` Desktop 界面的独立 React/TypeScript 工程，包含完整聊天界面、桌面辅助窗口和可自定义的史莱姆角色。可运行隔离数据预览并构建前端资源；当前产品入口仍是 `desktop/`，新界面尚未全面接入现有 Gateway，也未替换原生安装包。启动、验证及接口适配边界见 [前端说明](frontend/README.md)。
+
 ## 致谢
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（Agent 循环与工具设计）· [Model Context Protocol](https://modelcontextprotocol.io/)（工具接入）· [Agent Client Protocol](https://agentclientprotocol.com/)（外部框架接入）· [Tauri](https://tauri.app/)（Desktop）

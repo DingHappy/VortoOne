@@ -1,0 +1,214 @@
+.slime-lab {
+  max-width: 1200px;
+  margin: auto;
+  padding: 30px 40px 50px;
+  color: var(--ink);
+}
+.slime-lab__header,
+.slime-lab__nav,
+.slime-lab__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.slime-lab button {
+  font: inherit;
+  cursor: pointer;
+}
+.slime-lab button:focus-visible,
+.slime-lab a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+.slime-lab__nav {
+  font-size: 13px;
+}
+.slime-lab__nav a {
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+.slime-lab__nav button,
+.slime-lab__section-title button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 7px 12px;
+  border-radius: 9px;
+  color: var(--ink);
+}
+.slime-lab__intro {
+  margin: 54px 0 28px;
+}
+.slime-lab__eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.slime-lab h1 {
+  font-size: clamp(25px, 3.2vw, 36px);
+  letter-spacing: -0.045em;
+  margin: 12px 0;
+  font-weight: 600;
+}
+.slime-lab p {
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 7px 0;
+}
+.slime-lab h2 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+.slime-lab__layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.15fr);
+  gap: 24px;
+  align-items: start;
+}
+.slime-lab__stage {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  text-align: center;
+  padding: 20px 24px 24px;
+  background:
+    radial-gradient(ellipse at 50% 34%, #ffb5a122, transparent 60%),
+    var(--surface);
+  position: sticky;
+  top: 20px;
+}
+.slime-lab__live {
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.slime-lab__live > span {
+  width: 5px;
+  height: 5px;
+  background: #529872;
+  border-radius: 50%;
+}
+.slime-lab__hero {
+  display: grid;
+  place-items: center;
+  height: 270px;
+}
+.slime-lab__sizes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 22px 0 26px;
+}
+.slime-lab__presets {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.slime-lab__presets button {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  border-radius: 10px;
+  padding: 7px 1px;
+  font-size: 11px;
+}
+.slime-lab__presets button:hover {
+  background: var(--hover);
+}
+.slime-lab__controls {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 22px;
+  padding: 24px;
+  min-width: 0;
+}
+.slime-lab__section-title {
+  margin-bottom: 18px;
+}
+.slime-lab__section-title:not(:first-child) {
+  padding-top: 22px;
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.slime-lab__section-title > span {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.slime-lab__controls .newag__look-row + .newag__look-row {
+  margin-top: 19px;
+}
+.slime-lab__controls .newag__opts {
+  flex-wrap: wrap;
+}
+.slime-lab__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.slime-lab__choices button {
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+  background: var(--surface);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+.slime-lab__choices button[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: #d27e6f;
+  background: #f4a69320;
+}
+.slime-lab__stickers {
+  margin-top: 24px;
+  padding: 22px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.slime-lab__sticker {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .slime-lab {
+    padding: 20px 18px;
+  }
+  .slime-lab__intro {
+    margin-top: 38px;
+  }
+  .slime-lab__layout {
+    grid-template-columns: 1fr;
+  }
+  .slime-lab__stage {
+    position: static;
+  }
+  .slime-lab__stickers {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .slime-lab__stickers > div:first-child {
+    width: 100%;
+    text-align: center;
+  }
+  .slime-lab__nav a {
+    display: none;
+  }
+}
