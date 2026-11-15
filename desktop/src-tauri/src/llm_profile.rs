@@ -96,6 +96,9 @@ pub(crate) struct DesktopLlmProvider {
     pub(crate) api_key: String,
     #[serde(default)]
     pub(crate) models: Vec<String>,
+    /// 主人明确挑选或手填的模型清单。旧配置为 None，继续跟随服务发现。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) selected_models: Option<Vec<String>>,
 }
 
 /// 给网页层看的供应商信息：**不含 Key**。

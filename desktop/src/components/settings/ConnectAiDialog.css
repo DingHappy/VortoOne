@@ -1,0 +1,30 @@
+.connect-ai-dialog { width: min(var(--vc-connect-ai-w), calc(100vw - var(--vc-space-8))); max-height: calc(100dvh - var(--vc-space-8)); margin: auto; padding: var(--vc-space-6); color: var(--vc-text); background: var(--vc-surface); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-card); box-shadow: var(--vc-shadow-pop); overflow: auto; font: var(--vc-size-body) var(--vc-font-sans); }
+.connect-ai-dialog::backdrop { background: var(--vc-backdrop); }
+.connect-ai-dialog header, .connect-ai-dialog footer, .connect-ai-model-heading, .connect-ai-model { display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-3); }
+.connect-ai-dialog h2 { margin: var(--vc-space-1) 0 0; font-size: var(--vc-size-title); }
+.connect-ai-location, .connect-ai-help, .connect-ai-dialog dt { color: var(--vc-muted); font-size: var(--vc-size-small); }
+.connect-ai-steps { display: flex; gap: var(--vc-space-4); padding: var(--vc-space-5) 0; margin: 0; list-style: none; color: var(--vc-muted); font-size: var(--vc-size-small); border-bottom: 1px solid var(--vc-divider); }
+.connect-ai-steps li { display: inline-flex; align-items: center; gap: var(--vc-space-2); }
+.connect-ai-steps [aria-current] { color: var(--vc-text); font-weight: 600; }
+.connect-ai-dialog fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.connect-ai-body { display: grid; gap: var(--vc-space-4); padding: var(--vc-space-5) 0; }
+.connect-ai-body p { margin: 0; line-height: 1.7; }
+.connect-ai-body > label { display: grid; gap: var(--vc-space-2); font-weight: 500; }
+.connect-ai-dialog input:not([type=checkbox]):not([type=radio]), .connect-ai-dialog select { min-width: 0; width: 100%; padding: var(--vc-space-3); font: inherit; font-weight: 400; color: var(--vc-text); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-control); background: var(--vc-bg); }
+.connect-ai-methods { display: grid; grid-template-columns: 1fr 1fr; gap: var(--vc-space-3); }
+.connect-ai-methods .vc-btn { display: grid; justify-items: start; white-space: normal; text-align: left; padding: var(--vc-space-4); gap: var(--vc-space-2); height: auto; border: 1px solid var(--vc-border); }
+.connect-ai-methods [aria-pressed=true] { background: var(--vc-selected); border-color: var(--vc-text-secondary); }
+.connect-ai-methods span { color: var(--vc-muted); font-size: var(--vc-size-small); font-weight: 400; }
+.connect-ai-key, .connect-ai-manual { display: flex; align-items: center; gap: var(--vc-space-2); }
+.connect-ai-key input, .connect-ai-manual input { flex: 1; }
+.connect-ai-model-heading h3, .connect-ai-body h3 { margin: 0; font-size: var(--vc-size-body); }
+.connect-ai-models { display: grid; max-height: var(--vc-avatar-hero); overflow: auto; border-block: 1px solid var(--vc-divider); padding: var(--vc-space-1) 0; }
+.connect-ai-model { min-width: 0; padding: var(--vc-space-1) 0; }
+.connect-ai-dialog .connect-ai-model label { display: flex; flex: 1; align-items: center; gap: var(--vc-space-3); padding: var(--vc-space-2); min-width: 0; cursor: pointer; }
+.connect-ai-dialog .connect-ai-model label span { overflow-wrap: anywhere; }
+.connect-ai-dialog .connect-ai-model input { width: auto; height: auto; margin: 0; flex-shrink: 0; accent-color: var(--vc-text); }
+.connect-ai-body dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--vc-space-3) var(--vc-space-5); margin: 0; }
+.connect-ai-body dd { margin: 0; overflow-wrap: anywhere; }
+.connect-ai-error { color: var(--vc-danger-text); font-size: var(--vc-size-small); line-height: 1.7; }
+.connect-ai-dialog footer { padding-top: var(--vc-space-4); border-top: 1px solid var(--vc-divider); }
+@media (max-width: 600px) { .connect-ai-dialog { padding: var(--vc-space-4); width: calc(100vw - var(--vc-space-4)); max-height: calc(100dvh - var(--vc-space-4)); } .connect-ai-methods { grid-template-columns: 1fr; } .connect-ai-steps { gap: var(--vc-space-3); flex-wrap: wrap; } }

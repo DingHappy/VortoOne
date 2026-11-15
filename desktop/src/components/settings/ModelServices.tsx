@@ -16,11 +16,12 @@ import { ModelProfileConflict } from "./ModelProfileConflict";
 import { errorText } from "../../lib/errorText";
 import { formatTokenCount } from "../../lib/labels";
 import { defaultServiceLabel } from "../../lib/modelChoice";
-import { isLocalModelBase, PROVIDER_PRESETS, type ProviderPreset } from "../../lib/providers";
+import { isLocalModelBase } from "../../lib/providers";
 import {
   ACCOUNT_MANAGE_URL, getAccountStatus, getMembership, MEMBER_KEY_SOURCE, type VortoAccountStatus, type VortoMembership,
 } from "../../lib/vortoAccount";
 import type { DesktopLlmProfileStatus, DesktopLlmProviderStatus } from "../../types";
+import { ConnectAiDialog } from "./ConnectAiDialog";
 import { LlmConnectionCheck } from "./LlmConnectionCheck";
 
 /** 与 Rust 侧 MEMBER_PROVIDER_ID 一致：会员模型作为列表里的一个服务时的 ID。 */
@@ -28,9 +29,6 @@ export const MEMBER_PROVIDER_ID = "vortocode_member";
 
 type Draft = ProviderDraft;
 
-const EMPTY_DRAFT: Draft = { id: "", name: "", baseUrl: "", apiKey: "", editing: false };
-const LOCAL_PRESETS = PROVIDER_PRESETS.filter((preset) => !preset.requiresKey);
-const ONLINE_PRESETS = PROVIDER_PRESETS.filter((preset) => preset.requiresKey);
 
 type Props = {
   profile: DesktopLlmProfileStatus | null;
@@ -39,8 +37,6 @@ type Props = {
   /** 默认服务的详细表单是否展开（地址、模型、Key、上下文） */
   editingDefault: boolean;
   onEditDefault: (open: boolean) => void;
-  /** 还没有默认服务时，选了预设就去填默认服务的表单 */
-  onSetupDefault: (preset: ProviderPreset | null) => void;
   /** 去「常规」登录 VortoOne 账号 */
   onOpenAccount: () => void;
   onDraftStateChange?: (state: { dirty: boolean; busy: boolean; conflict?: boolean }) => void;
@@ -50,7 +46,7 @@ function host(url: string): string {
   try { return new URL(url).host; } catch { return url; }
 }
 
-export function ModelServices({ profile, onProfile, onRestartRuntime, editingDefault, onEditDefault, onSetupDefault, onOpenAccount, onDraftStateChange }: Props) {
+export function ModelServices({ profile, onProfile, onRestartRuntime, editingDefault, onEditDefault, onOpenAccount, onDraftStateChange }: Props) {
   const providers = profile?.providers ?? [];
   const hasDefault = Boolean(profile?.configured);
   const defaultIsMember = profile?.account?.keySource === MEMBER_KEY_SOURCE;
@@ -60,8 +56,10 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
   const focusEditor = useRef(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const openEditor = (next: Draft) => { draftRevision.current = profile?.revision; focusEditor.current = true; setDraft(next); };
-  // 一个服务都没有时直接摆出「添加」的几种选择，省掉一次点击
-  const [adding, setAdding] = useState(!profile?.configured && (profile?.providers?.length ?? 0) === 0);
+  const [adding, setAdding] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectionProvider, setConnectionProvider] = useState<DesktopLlmProviderStatus | undefined>();
+  const [connectionState, setConnectionState] = useState({ dirty: false, busy: false });
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -88,12 +86,12 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
 
   const draftState = draft ? providerDraftState(draft, providers) : null;
   const dirty = draftState?.dirty ?? false;
-  useEffect(() => { onDraftStateChange?.({ dirty, busy, conflict }); }, [dirty, busy, conflict, onDraftStateChange]);
+  useEffect(() => { onDraftStateChange?.({ dirty: dirty || connectionState.dirty, busy: busy || connectionState.busy, conflict }); }, [dirty, busy, conflict, connectionState, onDraftStateChange]);
 
   const applied = async (next: DesktopLlmProfileStatus, done: string) => {
     onProfile(next);
     setConflict(false);
-    setDraft(null); setShowKey(false); setAdding(false);
+    setDraft(null); setShowKey(false); setAdding(false); setConnecting(false);
     if (unchangedModelRevision(profile?.revision, next.revision)) {
       setNote(`${done}；配置内容未变化，保留当前引擎状态`);
       return;
@@ -169,16 +167,9 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
 
   const refresh = () => run(async () => {
     onProfile(await invoke<DesktopLlmProfileStatus>("refresh_llm_providers", { expectedRevision: profile?.revision ?? null }));
-    setNote("已重新查询模型列表；未能获取的服务保留原列表。");
+    setNote("已重新查询模型列表；手动选择的模型与暂时无法获取的服务保留原列表。");
   }, "刷新模型列表失败");
 
-  const choosePreset = (preset: ProviderPreset | null) => {
-    setAdding(false);
-    if (!hasDefault) { onSetupDefault(preset); return; }
-    openEditor(preset
-      ? { id: preset.id, name: preset.label, baseUrl: preset.baseUrl, apiKey: "", editing: false }
-      : { ...EMPTY_DRAFT });
-  };
 
   const canSave = Boolean(draftState?.canSave);
   const finishDraftHint = dirty ? "请先保存或取消当前服务草稿" : undefined;
@@ -224,6 +215,7 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
               <div className="model-service-actions">
                 <button onClick={() => void makeDefault(provider)} disabled={busy || dirty || provider.models.length === 0}
                   title={dirty ? finishDraftHint : provider.models.length === 0 ? "还没有模型列表：先刷新，或检查地址和 Key" : undefined}>设为默认</button>
+                {!member && <button aria-label={`配置模型 ${provider.name}`} onClick={() => void changeEditor(() => { setDraft(null); setConnectionProvider(provider); setConnecting(true); })} disabled={busy}>模型</button>}
                 {!member && <button aria-label={`编辑服务 ${provider.name}`} onClick={() => void changeEditor(() => { setAdding(false); openEditor({ id: provider.id, name: provider.name, baseUrl: provider.baseUrl, apiKey: "", editing: true }); })} disabled={busy}>编辑</button>}
                 <button onClick={() => void remove(provider)} disabled={busy || dirty} title={finishDraftHint}>{member ? "移出" : "删除"}</button>
               </div>
@@ -239,7 +231,8 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
       </ul>
 
       <div className="model-services-toolbar">
-        <button className="primary" onClick={() => void changeEditor(() => { setAdding(!adding); setDraft(null); })} disabled={busy} aria-expanded={adding}><Plus size={14} />添加模型服务</button>
+        <button className="primary" onClick={() => void changeEditor(() => { setConnectionProvider(undefined); setConnecting(true); setAdding(false); setDraft(null); })} disabled={busy} aria-haspopup="dialog"><Plus size={14} />连接 AI</button>
+        <button onClick={() => setAdding(!adding)} disabled={busy || dirty} aria-expanded={adding}>VortoOne 会员</button>
         {providers.length > 0 && <button aria-label="刷新模型列表" title="刷新各服务的模型列表" onClick={() => void refresh()} disabled={busy || dirty}><RefreshCw size={14} /></button>}
       </div>
 
@@ -253,24 +246,12 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
                 : account.status?.signedIn ? <button onClick={() => void openUrl(ACCOUNT_MANAGE_URL.replace(/\/account$/, "/membership"))}>开通会员</button>
                   : <button onClick={onOpenAccount}>去登录</button>}
           </div>
-          <div className="model-service-kind">
-            <strong>本机模型</strong>
-            <span>在这台电脑上运行，不出网（oMLX、Ollama、LM Studio 等）</span>
-            <div>{LOCAL_PRESETS.map((preset) => <button key={preset.id} onClick={() => choosePreset(preset)}>{preset.label}</button>)}</div>
-          </div>
-          <div className="model-service-kind">
-            <strong>线上服务</strong>
-            <span>用你自己在各家申请的 Key</span>
-            <div>{ONLINE_PRESETS.map((preset) => <button key={preset.id} onClick={() => choosePreset(preset)}>{preset.label}</button>)}</div>
-          </div>
-          <div className="model-service-kind">
-            <strong>自定义</strong>
-            <span>任何 OpenAI 兼容接口（/v1/chat/completions）</span>
-            <div><button onClick={() => choosePreset(null)}>填写地址</button></div>
-          </div>
+
         </div>
       )}
 
+      {connecting && <ConnectAiDialog profile={profile} provider={connectionProvider} onSaved={applied} onClose={() => setConnecting(false)}
+        onConflict={() => setConflict(true)} onStateChange={setConnectionState} />}
       {conflict && <ModelProfileConflict onUseLatest={next => {
         onProfile(next); setDraft(null); setConflict(false); setNote(""); setShowKey(false); setAdding(false);
       }} onBusyChange={next => { busyRef.current = next; setBusy(next); }} />}
