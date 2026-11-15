@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.npm-cache/
+.env.local
+qa-artifacts/
+*.tsbuildinfo
+
+# Upstream translator bookkeeping; runtime locale JSON remains versioned.
+packages/i18n/src/locales/*.source.json
+
+# The Python repository ignores lib/ globally; these are frontend source files.
+!**/src/lib/
+!**/src/lib/**

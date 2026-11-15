@@ -1,0 +1,15 @@
+{
+  "name": "@agenteschat/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./error-scrub": "./src/error-scrub.ts",
+    "./redact": "./src/redact.ts",
+    "./machine-protocol": "./src/machine-protocol.ts",
+    "./runner-control": "./src/runner-control.ts"
+  },
+  "dependencies": {
+    "@sentry/core": "10.76.2"
+  }
+}
