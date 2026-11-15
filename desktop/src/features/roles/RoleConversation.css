@@ -16,23 +16,10 @@
 .role-conversation-notice { color: var(--vc-text-secondary); }
 .role-task { padding: var(--vc-space-4) 0 var(--vc-space-6); }
 .role-task + .role-task { border-top: 1px solid var(--vc-divider); }
-.role-message { display: grid; grid-template-columns: var(--vc-avatar-message) minmax(0, 1fr); align-items: start; gap: var(--vc-space-3); }
-.role-message + .role-message { margin-top: var(--vc-space-6); }
-.role-message-owner { display: flex; justify-content: flex-end; }
-.role-message-owner > div { max-width: calc(100% - var(--vc-space-8)); padding: var(--vc-space-2) var(--vc-space-3); border-radius: var(--vc-radius-bubble); background: var(--vc-fill); }
-.role-message header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--vc-space-3); min-height: var(--vc-space-6); }
-.role-message header strong { font-size: var(--vc-size-body); font-weight: var(--vc-weight-strong); }
-.role-message time, .role-task-state { color: var(--vc-muted); font-size: var(--vc-size-caption); }
-.role-message p { margin: var(--vc-space-2) 0; line-height: 1.7; overflow-wrap: anywhere; }
-.role-message-owner p { white-space: pre-wrap; font-size: var(--vc-size-chat); }
-.role-message-owner p { margin: 0; }
-.role-message-content { min-width: 0; font-size: var(--vc-size-chat); }
-.role-message-pending { color: var(--vc-muted); }
 .role-task-state[data-state="running"] { color: var(--vc-accent); }
 .role-task-state[data-state="failed"], .role-task-error { color: var(--vc-danger-text); }
 .role-task-state[data-state="accepted"] { color: var(--vc-done-text); }
 .role-task-process { margin: var(--vc-space-3) 0; color: var(--vc-muted); font-size: var(--vc-size-small); }
-.role-task-process > summary { width: fit-content; padding: var(--vc-space-2) 0; cursor: pointer; }
 .role-task-process ol { padding-left: var(--vc-space-5); }
 .role-task-process li { padding-left: var(--vc-space-2); margin: var(--vc-space-3) 0; }
 .role-task-process li p { white-space: pre-wrap; color: var(--vc-text-secondary); }

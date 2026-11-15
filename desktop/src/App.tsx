@@ -38,7 +38,7 @@ import { RoleGrants } from "./components/settings/StaffPane";
 import { ExecutionDetails } from "./components/ExecutionDetails";
 import type { StaffMember, StaffRole, StaffSnapshot } from "./lib/staff";
 import { COPY } from "./lib/copy.generated";
-import { ChatHistory, MessageIdentity } from "./components/ChatHistory";
+import { ChatHistory, StreamingMessage } from "./components/ChatHistory";
 import { ConversationLocation } from "./components/ConversationLocation";
 import { useConversationLocation } from "./hooks/useConversationLocation";
 import { useStickToBottom } from "./hooks/useStickToBottom";
@@ -3330,9 +3330,12 @@ function App() {
 
             {orphanActivities.length > 0 && <TurnTimeline items={orphanActivities} active={busy && !activeTurnRid} />}
 
-            {streaming && (
-              <article className="message assistant streaming">
-                {appMode === "assistant" ? <MessageIdentity role="assistant" name={assistantProfile.name || "VortoOne"} avatar={assistantAvatar} /> : <div className="message-author">VortoOne <span>正在回复</span></div>}
+            {streaming && (appMode === "assistant"
+              ? <StreamingMessage name={assistantProfile.name || "VortoOne"} avatar={assistantAvatar} text={streaming} rid={streamingRid}
+                  grouped={Boolean(streamingRid && activityGroups.has(streamingRid)
+                    && !messages.some(message => message.role === "assistant" && message.rid === streamingRid))} />
+              : <article className="message assistant streaming">
+                <div className="message-author">VortoOne <span>正在回复</span></div>
                 <div className="message-body"><MarkdownMessage text={streaming} /><i className="cursor" data-rid={streamingRid} /></div>
               </article>
             )}
