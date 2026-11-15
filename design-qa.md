@@ -33,6 +33,15 @@
 2. [P2，已修] 初次主人消息靠左，和角色交付混在同一列；官方 Message own 为靠右气泡。
    初次图 `/private/tmp/vortoone-role-result-light.png`；独立实现靠右的中性气泡，
    身份与时间保留给辅助阅读。修正后见 `conversation-light.png` 与最终角色区聚焦图。
+   [P1，已修] 收尾发现正式入口有 React StrictMode，旧 memo 控制器会在 effect 重放时被提前 dispose。
+   用真实组件、同版本 React 渲染器与虚拟定时器离线复现：修前读取/提议次数均为 0；
+   改为每次 effect 建立独立控制器并逐一清理后，两项都为 1。QA 入口也启用 StrictMode。
+   日志为本机 `/private/tmp/vortoone-role-strict-red.log` / `vortoone-role-strict-final.log`。
+   可复现脚本为 `desktop/qa/role-effects.mjs`：从 desktop 执行
+   `node qa/role-effects.mjs <同版本-react-test-renderer/index.js-绝对路径>`。
+   工具单独安装到临时目录，并让它的 react 解析到 Desktop 同一份 React；没有新增产品依赖。
+   这是额外的组件生命周期检查，渲染测试工具有弃用提示。
+   上述浏览器截图在此生命周期修正前捕获，布局没有更改；修正后没有重复浏览器截图。
 3. 字体：沿用既有 Inter / Noto Sans SC / PingFang 回退；正文 15、身份 14、状态 12，
    使用 canonical token。官方组件参考正文更紧凑；本批保留中文阅读字号，标题、正文和操作层级可辨认。
 4. 间距：紧凑侧栏、身份顶栏、居中单栏、右侧主人气泡和底部固定输入区。

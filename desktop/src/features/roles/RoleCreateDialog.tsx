@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, X } from "lucide-react";
 import type { GatewayClient } from "../../gateway";
 import type { StaffSnapshot } from "../../lib/staff";
@@ -21,9 +21,14 @@ export function RoleCreateDialog({ registry, lease, onRegistered, onClose }: {
   const [reviewing, setReviewing] = useState(false);
   const [state, setState] = useState<RoleCreationState>({ busy: false, error: "", proposal: null });
   const role = registry.roles.find(item => item.id === draft.role), current = lease.current();
-  const controller = useMemo(() => lease.client ? roleCreationController({ client: lease.client, registry, requestId: requestId.current,
-    current: lease.current, publish: setState, registered: id => callback.current(id) }) : null, [lease, registry]);
-  useEffect(() => () => controller?.dispose(), [controller]);
+  const controller = useRef<ReturnType<typeof roleCreationController> | null>(null);
+  useEffect(() => {
+    if (!lease.client) return;
+    const session = roleCreationController({ client: lease.client, registry, requestId: requestId.current,
+      current: lease.current, publish: setState, registered: id => callback.current(id) });
+    controller.current = session;
+    return () => { session.dispose(); if (controller.current === session) controller.current = null; };
+  }, [lease, registry]);
   const available = registry.conversation_version === 1 && !!registry.owner_instance;
   const change = (patch: Partial<RoleCreationDraft>) => { if (!state.proposal && !state.busy) setDraft(previous => ({ ...previous, ...patch })); };
   const canProceed = current && available && !!draft.name.trim() && !!role && role.enabled && roleEngines(role).includes(draft.engine);
@@ -33,7 +38,7 @@ export function RoleCreateDialog({ registry, lease, onRegistered, onClose }: {
       <p>{state.proposal ? "批准前不会登记或派活。" : "选择一份已登记的分工，让它帮你处理事情。"}</p></div>
       <IconButton label="关闭添加角色" icon={<X aria-hidden="true" />} disabled={state.busy} onClick={onClose} /></header>
     <form onSubmit={event => { event.preventDefault(); if (!canProceed || state.busy || state.proposal) return;
-      if (!reviewing) setReviewing(true); else void controller?.propose(draft); }}>
+      if (!reviewing) setReviewing(true); else void controller.current?.propose(draft); }}>
       <div className="role-create-body"><div className="role-create-identity"><RoleAvatar character={staffCharacter(role)} size="portrait" />
         <h3>{draft.name.trim() || "你的新角色"}</h3><p>{roleSummary(role)}</p>
         {role && <details><summary>查看岗位的工具与权限</summary><RoleGrants role={role} /></details>}
@@ -59,9 +64,9 @@ export function RoleCreateDialog({ registry, lease, onRegistered, onClose }: {
       {state.error && <p className="role-create-warning" role="alert">{state.error}</p>}
       {state.proposal && <p className="role-create-receipt" role="status">{state.proposal.status === "approved" ? "这项提议已批准，角色已经登记。" : state.proposal.status === "denied" ? "这项提议已拒绝。" : "提议已保存。请核对分工、权限和模型，再决定是否批准。关闭窗口后可在角色与权限继续核对。"}</p>}
       <footer>{reviewing && !state.proposal ? <Button icon={<ArrowLeft aria-hidden="true" />} disabled={state.busy} onClick={() => setReviewing(false)}>返回修改</Button> : <Button disabled={state.busy} onClick={onClose}>关闭</Button>}
-        {state.proposal?.status === "pending" ? <div><Button disabled={!current || state.busy} onClick={() => void controller?.decide(false)}>拒绝提议</Button>
-          <Button variant="primary" icon={<Check aria-hidden="true" />} disabled={!current || state.busy} onClick={() => void controller?.decide(true)}>{state.busy ? "正在保存…" : "批准并添加角色"}</Button></div>
-          : state.proposal?.status === "approved" ? <Button variant="primary" disabled={!current || state.busy} onClick={() => void controller?.decide(true)}>打开已登记角色</Button>
+        {state.proposal?.status === "pending" ? <div><Button disabled={!current || state.busy} onClick={() => void controller.current?.decide(false)}>拒绝提议</Button>
+          <Button variant="primary" icon={<Check aria-hidden="true" />} disabled={!current || state.busy} onClick={() => void controller.current?.decide(true)}>{state.busy ? "正在保存…" : "批准并添加角色"}</Button></div>
+          : state.proposal?.status === "approved" ? <Button variant="primary" disabled={!current || state.busy} onClick={() => void controller.current?.decide(true)}>打开已登记角色</Button>
           : !state.proposal && <Button type="submit" variant="primary" disabled={!canProceed || state.busy}>{state.busy ? "正在保存提议…" : reviewing ? "保存提议，继续核对" : "下一步"}</Button>}
       </footer>
     </form>

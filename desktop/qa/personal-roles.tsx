@@ -1,7 +1,7 @@
 /** Production components and HTTP client, real temporary owner APIs and task pool.
  * Start role-conversation-server.py first. This fixture never calls a model.
  */
-import { useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GatewayClient } from "../src/gateway";
 import { desktopContext } from "../src/lib/desktopContext";
@@ -88,4 +88,4 @@ function Fixture() {
         { id: "access", label: "工具与权限", content: profile.role ? <RoleGrants role={profile.role} /> : null }]} />}
   </div>;
 }
-createRoot(document.getElementById("root")!).render(<Fixture />);
+createRoot(document.getElementById("root")!).render(<StrictMode><Fixture /></StrictMode>);
