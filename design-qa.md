@@ -17,6 +17,7 @@
 - 实现截图：[浅色会话](docs/design/personal-roles/conversation-light.png)、[深色会话](docs/design/personal-roles/conversation-dark.png)、
   [空状态](docs/design/personal-roles/empty.png)、[创建](docs/design/personal-roles/create.png)、
   [400 宽深色核对](docs/design/personal-roles/create-narrow-dark.png)。
+- 频道补回后的浏览器截图：[频道与角色](docs/design/personal-roles/channels-restored.png)，实际 1716×907 CSS/PNG。
 - 完整实现视口 1240×900 CSS，输出 1240×900 PNG；窄窗口 400×900 CSS，输出 400×900 PNG。
   浏览器实际 DPR=2，捕获使用 CSS 像素归一化，没有放大旧图片。
   宿主浏览器锁定窗口尺寸，因此用真实 iframe 设置子页面视口，再按子页面原始 CSS 范围捕获。
@@ -55,6 +56,13 @@
 最终复看完整浅/深色、聚焦消息区和窄窗口，未发现本批范围内仍需修复的 P0/P1/P2。
 这些结果不代表全应用相对上游的差异清单已清零。
 
+后续修正：[P1，已修] 主人指出频道分组消失。正式 App 保留原频道接入，问题是角色预览漏传
+`channels` 和创建回调，导致整个分组隐藏。预览补接原 GatewayClient 的频道列表/创建 API 与共同创建弹层；
+空列表仍显示分组和创建入口，读取失败单独提示，原角色入口保留。回归测试
+`personalRolesPreview.test.tsx` 在实际预览组件修正前失败、修正后通过，断言渲染行为而非源码。
+浏览器实际创建“产品想法”，刷新后记录仍在，打开后切到研究角色再切回正常。
+频道保存于临时空间，没有发聊天消息或调用模型；正式频道功能和权限没有修改。
+
 ## 实际走通的交互
 
 - 创建“资料助手”：下一步只核对；保存只产生待批提议；第二次明确批准才登记并打开空会话。
@@ -74,10 +82,10 @@
 ## 自动检查
 
 - `./scripts/ci-local.sh` 完整模式最终退出 0：Python 7300 passed、30 条 canary passed；
-  Desktop TypeScript、1688 条 Vitest、Rust 205 条与 cargo check、文档/合同检查通过。
+  Desktop TypeScript、1689 条 Vitest、Rust 205 条与 cargo check、文档/合同检查通过。
 - 跳过不算通过：Python 11 条（缺 textual / tool_sandbox 各 1；需显式启用的模型/浏览器 live 共 9）；
   Rust 2 条 ignored（真实账号登录、真实远端 Desktop）。没有声称运行这些外部场景。
-- 新增后端 26 条、前端 28 条。断言真实行为：身份、权限字段拒绝、重复请求、摘要/轮次/实例、审计失败、
+- 新增后端 26 条、前端 29 条。断言真实行为：身份、权限字段拒绝、重复请求、摘要/轮次/实例、审计失败、
   旧空间与迟到回包、提议批准、草稿隔离、交付状态和分页。不检查源码字符串。
 - `vite build` 通过；保留现有大 chunk 提示。没有原生安装、真实模型、手机真机或线上服务验收。
 
