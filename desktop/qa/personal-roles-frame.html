@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>角色界面固定视口验收</title><style>html,body{margin:0;background:#eee}iframe{display:block;border:0}</style></head><body><script>
+const params=new URLSearchParams(location.search), frame=document.createElement('iframe');
+frame.title='角色验收视口';
+frame.width=['400','960','1240'].includes(params.get('width'))?params.get('width'):'1240';
+frame.height=params.get('height')==='852'?'852':'900';
+frame.src=params.get('view')==='reference'?'http://127.0.0.1:4354/':'/qa/personal-roles.html?capture&theme='+ (params.get('theme')==='dark'?'dark':'light');
+document.body.append(frame);
+</script></body></html>

@@ -1,0 +1,66 @@
+.role-conversation { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--vc-workspace-bg); color: var(--vc-text); }
+.role-conversation-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--vc-space-4); min-height: calc(var(--vc-workspace-bar-h) + var(--vc-space-4)); padding: var(--vc-space-3) var(--vc-space-6); border-bottom: 1px solid var(--vc-divider); }
+.role-conversation-header > div { display: flex; gap: var(--vc-space-1); }
+.role-conversation-identity { display: flex; align-items: center; gap: var(--vc-space-3); min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.role-conversation-identity > span:last-child { display: grid; min-width: 0; }
+.role-conversation-identity strong { font-size: var(--vc-size-body); font-weight: var(--vc-weight-strong); overflow-wrap: anywhere; }
+.role-conversation-identity small { color: var(--vc-muted); font-size: var(--vc-size-caption); }
+.role-conversation-log { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
+.role-conversation-reading { max-width: var(--vc-workspace-chat-w); padding: var(--vc-space-6) var(--vc-space-5); margin: auto; }
+.role-conversation-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: min(45vh, var(--vc-workspace-search-w)); gap: var(--vc-space-3); text-align: center; }
+.role-conversation-empty h1 { margin: var(--vc-space-2) 0 0; font-size: var(--vc-size-title); font-weight: var(--vc-weight-strong); }
+.role-conversation-empty p { max-width: var(--vc-workspace-search-w); margin: 0; line-height: 1.7; }
+.role-conversation-empty small { color: var(--vc-muted); font-size: var(--vc-size-small); }
+.role-conversation-warning { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vc-space-3); flex: none; padding: var(--vc-space-3) var(--vc-space-6); border-bottom: 1px solid var(--vc-border); background: var(--vc-fill); font-size: var(--vc-size-small); overflow-wrap: anywhere; }
+.role-conversation-note, .role-conversation-notice, .role-composer-policy { color: var(--vc-muted); font-size: var(--vc-size-caption); line-height: 1.6; margin: var(--vc-space-2) 0; overflow-wrap: anywhere; }
+.role-conversation-notice { color: var(--vc-text-secondary); }
+.role-task { padding: var(--vc-space-4) 0 var(--vc-space-6); }
+.role-task + .role-task { border-top: 1px solid var(--vc-divider); }
+.role-message { display: grid; grid-template-columns: var(--vc-avatar-message) minmax(0, 1fr); align-items: start; gap: var(--vc-space-3); }
+.role-message + .role-message { margin-top: var(--vc-space-6); }
+.role-message-owner { display: flex; justify-content: flex-end; }
+.role-message-owner > div { max-width: calc(100% - var(--vc-space-8)); padding: var(--vc-space-2) var(--vc-space-3); border-radius: var(--vc-radius-bubble); background: var(--vc-fill); }
+.role-message header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--vc-space-3); min-height: var(--vc-space-6); }
+.role-message header strong { font-size: var(--vc-size-body); font-weight: var(--vc-weight-strong); }
+.role-message time, .role-task-state { color: var(--vc-muted); font-size: var(--vc-size-caption); }
+.role-message p { margin: var(--vc-space-2) 0; line-height: 1.7; overflow-wrap: anywhere; }
+.role-message-owner p { white-space: pre-wrap; font-size: var(--vc-size-chat); }
+.role-message-owner p { margin: 0; }
+.role-message-content { min-width: 0; font-size: var(--vc-size-chat); }
+.role-message-pending { color: var(--vc-muted); }
+.role-task-state[data-state="running"] { color: var(--vc-accent); }
+.role-task-state[data-state="failed"], .role-task-error { color: var(--vc-danger-text); }
+.role-task-state[data-state="accepted"] { color: var(--vc-done-text); }
+.role-task-process { margin: var(--vc-space-3) 0; color: var(--vc-muted); font-size: var(--vc-size-small); }
+.role-task-process > summary { width: fit-content; padding: var(--vc-space-2) 0; cursor: pointer; }
+.role-task-process ol { padding-left: var(--vc-space-5); }
+.role-task-process li { padding-left: var(--vc-space-2); margin: var(--vc-space-3) 0; }
+.role-task-process li p { white-space: pre-wrap; color: var(--vc-text-secondary); }
+.role-task-process small { font-size: var(--vc-size-caption); }
+.role-task-criteria { padding: var(--vc-space-3); background: var(--vc-fill); border-radius: var(--vc-radius-control); color: var(--vc-text-secondary); }
+.role-task-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--vc-space-2); margin-top: var(--vc-space-3); }
+.role-task-actions svg, .role-task-accepted svg { width: var(--vc-space-4); height: var(--vc-space-4); }
+.role-task-accepted { display: inline-flex; align-items: center; gap: var(--vc-space-2); color: var(--vc-muted); font-size: var(--vc-size-caption); }
+.role-conversation-compose { flex: none; padding: 0 var(--vc-space-4) var(--vc-space-3); }
+.role-conversation-compose-inner { max-width: var(--vc-workspace-chat-w); margin: auto; }
+.role-composer { padding: var(--vc-space-3); background: var(--vc-surface); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-input); box-shadow: var(--vc-shadow-input); }
+.role-composer > textarea { display: block; width: 100%; resize: vertical; min-height: var(--vc-control-h-lg); max-height: var(--vc-role-composer-max-h); background: transparent; color: var(--vc-text); border: 0; padding: var(--vc-space-1) var(--vc-space-2); font: inherit; line-height: 1.6; }
+.role-composer > textarea:focus { outline: none; }
+.role-composer:focus-within { border-color: var(--vc-text-secondary); }
+.role-composer footer { display: flex; align-items: center; gap: var(--vc-space-3); }
+.role-composer footer > small { color: var(--vc-muted); font-size: var(--vc-size-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-composer-send { margin-left: auto; flex: none; display: grid; place-items: center; width: var(--vc-control-h); height: var(--vc-control-h); padding: var(--vc-space-2); border: 0; border-radius: var(--vc-radius-control); background: var(--vc-ink); color: var(--vc-on-ink); cursor: pointer; }
+.role-composer-send:disabled { background: var(--vc-fill); color: var(--vc-muted); cursor: default; }
+.role-composer-send svg { width: var(--vc-space-5); height: var(--vc-space-5); }
+.role-composer-policy { text-align: center; }
+.role-composer-options { display: grid; gap: var(--vc-space-3); padding: var(--vc-space-3) var(--vc-space-2); margin: var(--vc-space-2) 0; border-top: 1px solid var(--vc-divider); }
+.role-composer-options label, .role-decision-body label { display: grid; gap: var(--vc-space-2); font-size: var(--vc-size-small); }
+.role-composer-options textarea, .role-composer-options select, .role-decision-body textarea { width: 100%; padding: var(--vc-space-2) var(--vc-space-3); background: var(--vc-surface); color: var(--vc-text); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-control); font: inherit; }
+.role-decision-dialog { width: min(calc(100% - var(--vc-space-6)), var(--vc-connect-ai-w)); max-height: calc(100% - var(--vc-space-6)); padding: 0; background: var(--vc-workspace-bg); color: var(--vc-text); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-input); box-shadow: var(--vc-shadow-pop); }
+.role-decision-dialog::backdrop { background: var(--vc-backdrop); }
+.role-decision-dialog form { display: flex; flex-direction: column; max-height: calc(100dvh - var(--vc-space-6)); }
+.role-decision-dialog header, .role-decision-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-3); padding: var(--vc-space-5); }
+.role-decision-dialog h2 { margin: 0; font-size: var(--vc-size-title); }
+.role-decision-body { overflow: auto; padding: 0 var(--vc-space-5); line-height: 1.7; }
+.role-decision-request { white-space: pre-wrap; color: var(--vc-muted); }
+.role-conversation button:focus-visible, .role-decision-dialog button:focus-visible { outline: 2px solid var(--vc-focus-ring); outline-offset: var(--vc-space-1); }

@@ -1,0 +1,34 @@
+.role-create-dialog { width: min(calc(100% - var(--vc-space-6)), var(--vc-role-create-w)); max-width: none; max-height: calc(100% - var(--vc-space-6)); padding: 0; color: var(--vc-text); background: var(--vc-workspace-bg); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-input); box-shadow: var(--vc-shadow-pop); font-family: var(--vc-font-sans); }
+.role-create-dialog::backdrop { background: var(--vc-backdrop); }
+.role-create-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; padding: var(--vc-space-6) var(--vc-space-6) 0; gap: var(--vc-space-4); }
+.role-create-dialog h2 { margin: 0; font-size: var(--vc-size-title); font-weight: var(--vc-weight-strong); }
+.role-create-dialog header p { margin: var(--vc-space-2) 0; color: var(--vc-muted); font-size: var(--vc-size-small); }
+.role-create-dialog form { display: flex; flex-direction: column; min-height: 0; }
+.role-create-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--vc-role-create-column-w)), 1fr)); gap: var(--vc-space-6); padding: var(--vc-space-6); }
+.role-create-identity { display: flex; flex-direction: column; align-items: center; padding: var(--vc-space-5); border-radius: var(--vc-radius-card); background: var(--vc-fill); text-align: center; min-width: 0; }
+.role-create-identity h3 { margin: var(--vc-space-4) 0 var(--vc-space-2); font-size: var(--vc-size-title); overflow-wrap: anywhere; }
+.role-create-identity p { margin: var(--vc-space-2) 0; color: var(--vc-muted); font-size: var(--vc-size-body); line-height: 1.7; overflow-wrap: anywhere; }
+.role-create-identity details { margin-top: var(--vc-space-5); text-align: left; width: 100%; font-size: var(--vc-size-small); }
+.role-create-identity summary { cursor: pointer; }
+.role-create-fields { display: grid; align-content: start; min-width: 0; gap: var(--vc-space-5); }
+.role-create-fields > label { display: grid; gap: var(--vc-space-2); font-size: var(--vc-size-small); }
+.role-create-fields input:not([type="radio"]), .role-create-fields select { width: 100%; min-height: var(--vc-control-h-lg); padding: var(--vc-space-2) var(--vc-space-3); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-control); background: var(--vc-surface); color: var(--vc-text); font: inherit; }
+.role-create-fields fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.role-create-fields legend { font-size: var(--vc-size-small); margin-bottom: var(--vc-space-2); }
+.role-create-roles { display: grid; gap: var(--vc-space-2); }
+.role-create-choice { display: flex; align-items: flex-start; gap: var(--vc-space-3); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-control); padding: var(--vc-space-3); cursor: pointer; }
+.role-create-choice:has(input:checked) { background: var(--vc-selected); border-color: var(--vc-text-secondary); }
+.role-create-choice > span { display: grid; gap: var(--vc-space-1); min-width: 0; }
+.role-create-choice strong { font-size: var(--vc-size-body); font-weight: var(--vc-weight-medium); }
+.role-create-choice small { font-size: var(--vc-size-caption); line-height: 1.6; color: var(--vc-muted); overflow-wrap: anywhere; }
+.role-create-review dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--vc-space-4); margin: 0; font-size: var(--vc-size-body); }
+.role-create-review dt { color: var(--vc-muted); }
+.role-create-review dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.role-create-review p { font-size: var(--vc-size-small); line-height: 1.7; margin-top: var(--vc-space-6); color: var(--vc-muted); }
+.role-create-warning, .role-create-receipt { margin: 0 var(--vc-space-6) var(--vc-space-4); font-size: var(--vc-size-small); line-height: 1.6; overflow-wrap: anywhere; }
+.role-create-warning { color: var(--vc-danger-text); }
+.role-create-receipt { color: var(--vc-text-secondary); }
+.role-create-dialog footer, .role-create-dialog footer > div { display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-3); }
+.role-create-dialog footer { flex-wrap: wrap; padding: var(--vc-space-5) var(--vc-space-6); border-top: 1px solid var(--vc-divider); }
+.role-create-dialog button svg { width: var(--vc-space-4); height: var(--vc-space-4); }
+.role-create-dialog button:focus-visible, .role-create-dialog input:focus-visible, .role-create-dialog select:focus-visible { outline: 2px solid var(--vc-focus-ring); outline-offset: var(--vc-space-1); }

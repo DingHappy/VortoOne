@@ -20,6 +20,7 @@ export default defineConfig({
       sessionCapabilities: new URL("session-capabilities.html", import.meta.url).pathname,
       iconDetails: new URL("icon-details.html", import.meta.url).pathname,
       replies: new URL("replies.html", import.meta.url).pathname,
+      personalRoles: new URL("personal-roles.html", import.meta.url).pathname,
       ownerAttention: new URL("owner-attention.html", import.meta.url).pathname,
       chatReading: new URL("chat-reading.html", import.meta.url).pathname,
       mcp: new URL("mcp.html", import.meta.url).pathname,

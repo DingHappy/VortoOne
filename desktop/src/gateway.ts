@@ -402,6 +402,22 @@ export class GatewayClient {
   }
 
   readStaff(): Promise<StaffSnapshot> { return this.request("/api/staff"); }
+
+  readRoleConversation(member: string, before = "", requestId = ""): Promise<import('./features/roles/types').RoleConversationSnapshot> {
+    const query = new URLSearchParams();
+    if (before) query.set("before", before);
+    if (requestId) query.set("request_id", requestId);
+    return this.request(`/api/staff/members/${encodeURIComponent(member)}/conversation${query.size ? `?${query}` : ""}`);
+  }
+  sendRoleMessage(member: string, input: import('./features/roles/types').RoleMessage): Promise<{ task: import('./features/roles/types').RoleTask; replayed: boolean }> {
+    return this.request(`/api/staff/members/${encodeURIComponent(member)}/conversation`, { method: 'POST', body: JSON.stringify(input) });
+  }
+  decideRoleTask(member: string, task: string, input: import('./features/roles/types').RoleTaskDecision): Promise<{ task: import('./features/roles/types').RoleTask; stop_requested?: boolean }> {
+    return this.request(`/api/staff/members/${encodeURIComponent(member)}/tasks/${encodeURIComponent(task)}/review`, { method: 'POST', body: JSON.stringify(input) });
+  }
+  proposeStaffMember(data: import('./features/roles/types').MemberProposalInput): Promise<import('./lib/staff').StaffProposal> {
+    return this.request('/api/staff/member-proposals', { method: 'POST', body: JSON.stringify(data) });
+  }
   readApprovalStats(days = 7): Promise<unknown> { return this.request(`/api/staff/approval-stats?days=${days}`); }
   readStaffRecovery(): Promise<import('./lib/staffRecovery').RecoverySnapshot> { return this.request('/api/staff/recovery'); }
   decideStaffRecovery(selected: import('./lib/staffRecovery').RecoverySelection[], action: import('./lib/staffRecovery').RecoveryAction, instance: string): ReturnType<import('./lib/staffRecovery').RecoveryClient['decideStaffRecovery']> {
