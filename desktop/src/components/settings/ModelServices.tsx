@@ -6,7 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Eye, EyeOff, Plus, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { providerDraftState, type ProviderDraft } from "../../lib/providerDraft";
 import { confirmAction } from "../../lib/confirm";
@@ -23,6 +23,7 @@ import {
 import type { DesktopLlmProfileStatus, DesktopLlmProviderStatus } from "../../types";
 import { ConnectAiDialog } from "./ConnectAiDialog";
 import { LlmConnectionCheck } from "./LlmConnectionCheck";
+import "./ModelServices.css";
 
 /** 与 Rust 侧 MEMBER_PROVIDER_ID 一致：会员模型作为列表里的一个服务时的 ID。 */
 export const MEMBER_PROVIDER_ID = "vortocode_member";
@@ -47,6 +48,7 @@ function host(url: string): string {
 }
 
 export function ModelServices({ profile, onProfile, onRestartRuntime, editingDefault, onEditDefault, onOpenAccount, onDraftStateChange }: Props) {
+  const chooserId = useId();
   const providers = profile?.providers ?? [];
   const hasDefault = Boolean(profile?.configured);
   const defaultIsMember = profile?.account?.keySource === MEMBER_KEY_SOURCE;
@@ -60,9 +62,15 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
   const [connecting, setConnecting] = useState(false);
   const [connectionProvider, setConnectionProvider] = useState<DesktopLlmProviderStatus | undefined>();
   const [connectionState, setConnectionState] = useState({ dirty: false, busy: false });
+  const chooser = useRef<HTMLDivElement>(null), focusChooser = useRef(false);
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  useEffect(() => {
+    if (!adding || busy || !focusChooser.current) return;
+    const first = chooser.current?.querySelector<HTMLButtonElement>('button:not(:disabled)');
+    if (first) { focusChooser.current = false; first.focus(); }
+  });
   // The containing settings fieldset also follows busy state; wait until both have unlocked.
   useEffect(() => {
     const input = nameInput.current;
@@ -178,6 +186,14 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
 
   return (
     <section className="model-services" aria-label="模型服务">
+      <div className="model-services-heading"><h3>模型服务</h3>
+        <div className="model-services-toolbar">
+          <button className="primary" onClick={() => void changeEditor(() => { setConnectionProvider(undefined); setConnecting(true); setAdding(false); setDraft(null); })} disabled={busy} aria-haspopup="dialog"><Plus size={14} />连接 AI</button>
+          <button onClick={() => void changeEditor(() => { focusChooser.current = !adding; setAdding(!adding); setDraft(null); })} disabled={busy}
+            aria-expanded={adding} aria-controls={adding ? chooserId : undefined}>VortoOne 会员</button>
+          {providers.length > 0 && <button aria-label="刷新模型列表" title="刷新各服务的模型列表" onClick={() => void refresh()} disabled={busy || dirty}><RefreshCw size={14} /></button>}
+        </div>
+      </div>
       <p className="model-services-intro">
         输入框的模型菜单里，所有服务的模型都能直接选；「默认」服务用于新对话、自动调度和后台任务。
       </p>
@@ -230,14 +246,8 @@ export function ModelServices({ profile, onProfile, onRestartRuntime, editingDef
         )}
       </ul>
 
-      <div className="model-services-toolbar">
-        <button className="primary" onClick={() => void changeEditor(() => { setConnectionProvider(undefined); setConnecting(true); setAdding(false); setDraft(null); })} disabled={busy} aria-haspopup="dialog"><Plus size={14} />连接 AI</button>
-        <button onClick={() => setAdding(!adding)} disabled={busy || dirty} aria-expanded={adding}>VortoOne 会员</button>
-        {providers.length > 0 && <button aria-label="刷新模型列表" title="刷新各服务的模型列表" onClick={() => void refresh()} disabled={busy || dirty}><RefreshCw size={14} /></button>}
-      </div>
-
       {adding && (
-        <div className="model-service-chooser" role="group" aria-label="选择要添加的服务">
+        <div ref={chooser} id={chooserId} className="model-service-chooser" role="group" aria-label="选择要添加的服务">
           <div className="model-service-kind">
             <strong>VortoOne 会员</strong>
             <span>登录账号即可使用，不用填地址和 Key</span>

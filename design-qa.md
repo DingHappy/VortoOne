@@ -61,6 +61,10 @@
 `desktop/qa/design-qa-conversation-surfaces.md`，截图仍在 `docs/design/conversation-surfaces/`。
 原始记录对应该 PR 旧提交；整合后的门禁与合并检查单独更新在 PR 说明，不把旧截图作为新组合版本的完整验收。
 
+整合 #889 时继续保留“连接 AI”向导、原生保存确认和草稿保护；模型列表采用新的分组行与状态反馈，
+会员入口仍单独可达。资料库及例行工作接入本地查询/筛选。原始验收归档为
+`desktop/qa/design-qa-settings-collections.md`，截图仍在 `docs/design/settings-collections/`。
+
 后续修正：[P1，已修] 主人指出频道分组消失。正式 App 保留原频道接入，问题是角色预览漏传
 `channels` 和创建回调，导致整个分组隐藏。预览补接原 GatewayClient 的频道列表/创建 API 与共同创建弹层；
 空列表仍显示分组和创建入口，读取失败单独提示，原角色入口保留。回归测试
