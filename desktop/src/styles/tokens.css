@@ -110,6 +110,7 @@
   --vc-page-pad: 32px;
   --vc-setup-max-w: 1040px;
   --vc-settings-nav-w: 224px;
+  --vc-connect-ai-w: 640px;
 
   /* 个人空间与角色形象 */
   --vc-avatar-message: 40px;

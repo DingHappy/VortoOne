@@ -19,10 +19,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { loadTelemetrySettings, PRIVACY_URL, saveTelemetrySettings, type TelemetrySettings } from "../lib/telemetry";
 import { restartSavedSetting } from "../lib/settingsApply";
 import type { ModelSaveKind } from "../lib/modelProfileSave";
-import { applyModelPreset, modelSettingsState } from "../lib/modelSettings";
+import { modelSettingsState } from "../lib/modelSettings";
 
 import { contextWindowSourceLabel, formatTokenCount } from "../lib/labels";
-import { isLocalModelBase, PROVIDER_PRESETS } from "../lib/providers";
+import { isLocalModelBase } from "../lib/providers";
 import type { StaffClient } from "../lib/staff";
 import { StaffPane } from "./settings/StaffPane";
 import { ConfigPane } from "./settings/ConfigPane";
@@ -307,16 +307,10 @@ export function SettingsModal({
     }
   };
   const draft = { baseUrl: llmBaseInput, model: llmModelInput, apiKey: llmKeyInput, fastModel: llmFastInput, strongModel: llmStrongInput, roleModels: llmRolesInput };
-  // 默认服务的详细表单：点「编辑」，或还没有服务时在「添加模型服务」里选了预设，才展开
+  // 默认服务的详细表单仍用于编辑；新增连接由连接向导处理。
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [editingDefault, setEditingDefault] = useState(false);
   const modelState = modelSettingsState(llmProfile, draft);
-  const choosePreset = (preset: typeof PROVIDER_PRESETS[number]) => {
-    const next = applyModelPreset(draft, preset);
-    if (next === draft) return;
-    onLlmBaseChange(next.baseUrl); onLlmModelChange(next.model); onLlmKeyChange(next.apiKey);
-    setShowKey(false); setModelOptions([]);
-  };
   const searchResults = useMemo(() => searchSettings(query), [query]);
   const currentPage = SETTINGS_SECTIONS.find(item => item.id === section)!;
   const modelDirty = Boolean(llmProfile && (llmProfile.configured ? modelState.dirty
@@ -448,11 +442,6 @@ export function SettingsModal({
             {(!modelUnavailable || llmProfile) && <fieldset className="settings-model-fields" disabled={saving || modelUnavailable}>
               <div id="setting-services" className={anchorClass("services")} tabIndex={-1}><fieldset className="settings-model-fields" disabled={modelDirty || saving}><ModelServices onDraftStateChange={draftCallbacks.provider} profile={llmProfile} onProfile={onLlmProfileChange} onRestartRuntime={onRestartRuntime}
                 editingDefault={editingDefault} onEditDefault={setEditingDefault}
-                onSetupDefault={(preset) => {
-                  if (preset) choosePreset(preset);
-                  else { onLlmBaseChange(""); onLlmModelChange(""); onLlmKeyChange(""); setModelOptions([]); }
-                  setEditingDefault(true);
-                }}
                 onOpenAccount={() => navigate("account")} /></fieldset>{modelDirty && <p className="settings-card-note">保存或还原默认模型草稿后，可继续管理其他模型服务。</p>}</div>
               {editingDefault && (
                 <section className={`llm-profile-card ${llmProfile?.configured ? "configured" : "unconfigured"}`} aria-label="默认服务设置">

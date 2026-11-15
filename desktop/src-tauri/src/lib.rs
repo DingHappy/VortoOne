@@ -1964,7 +1964,7 @@ mod promote_tests {
                 name: "DeepSeek".into(),
                 base_url: "https://api.deepseek.com/v1".into(),
                 api_key: "sk-ds".into(),
-                models: vec!["deepseek-chat".into(), "deepseek-reasoner".into()],
+                selected_models: None, models: vec!["deepseek-chat".into(), "deepseek-reasoner".into()],
             }],
             account: None,
             signed_out: false,
@@ -1994,7 +1994,7 @@ mod promote_tests {
         let mut profile = local_default();
         profile.providers.push(DesktopLlmProvider {
             id: MEMBER_PROVIDER_ID.into(), name: "VortoOne 会员".into(),
-            base_url: format!("{RELAY_ORIGIN}/v1"), api_key: "sk-m".into(), models: vec!["m".into()],
+            base_url: format!("{RELAY_ORIGIN}/v1"), api_key: "sk-m".into(), selected_models: None, models: vec!["m".into()],
         });
         assert!(promote_provider(profile.clone(), MEMBER_PROVIDER_ID).is_err());
         profile.providers[0].models.clear();
@@ -2064,9 +2064,9 @@ mod tests {
         let mut profile = default_llm_profile();
         profile.api_key = "test-default-key".into();
         let member = DesktopLlmProvider { id: MEMBER_PROVIDER_ID.into(), name: "VortoOne 会员".into(),
-            base_url: RELAY_BASE_URL.into(), api_key: "sk-test-member".into(), models: vec![RELAY_DEFAULT_MODEL.into(), "other-member-model".into()] };
+            base_url: RELAY_BASE_URL.into(), api_key: "sk-test-member".into(), selected_models: None, models: vec![RELAY_DEFAULT_MODEL.into(), "other-member-model".into()] };
         let other = DesktopLlmProvider { id: "other".into(), name: "Other".into(), base_url: "https://other.example.test/v1".into(),
-            api_key: "test-other-key".into(), models: vec!["other-model".into()] };
+            api_key: "test-other-key".into(), selected_models: None, models: vec!["other-model".into()] };
         profile.providers = vec![member.clone(), other];
         let saved = store.commit(&path, &initial.revision, Some(profile)).unwrap();
         let before = std::fs::read(&path).unwrap();
@@ -2297,13 +2297,70 @@ mod tests {
         assert_eq!(env.get(OsStr::new("VORTOONE_ENABLE_BROWSER_CONTROL")), Some(&None));
     }
 
+    #[test]
+    fn selected_provider_models_survive_normalization_and_old_data_stays_readable() {
+        let mut raw = serde_json::to_value(sample_provider("custom")).unwrap();
+        raw["models"] = serde_json::json!(["discovered"]);
+        raw["selectedModels"] = serde_json::json!(["manual/model", "manual/model", "  other  "]);
+        let provider: DesktopLlmProvider = serde_json::from_value(raw.clone()).unwrap();
+        let provider = normalize_llm_provider(provider).unwrap();
+        assert_eq!(provider.models, vec!["manual/model", "other"]);
+        raw.as_object_mut().unwrap().remove("selectedModels");
+        let old: DesktopLlmProvider = serde_json::from_value(raw).unwrap();
+        assert_eq!(normalize_llm_provider(old).unwrap().models, vec!["discovered"]);
+    }
+
+    #[test]
+    fn invalid_explicit_provider_models_are_rejected_instead_of_silently_dropped() {
+        for models in [serde_json::json!([]), serde_json::json!(["bad,model"]),
+            serde_json::json!(["bad\nmodel"]), serde_json::json!([" "]),
+            serde_json::json!(vec!["model"; MAX_LISTED_MODELS + 1])] {
+            let mut raw = serde_json::to_value(sample_provider("custom")).unwrap();
+            raw["selectedModels"] = models;
+            let provider: DesktopLlmProvider = serde_json::from_value(raw).unwrap();
+            assert!(normalize_llm_provider(provider).is_err());
+        }
+    }
+
+    #[test]
+    fn explicit_models_survive_refresh_and_profile_round_trip() {
+        let mut raw = serde_json::to_value(sample_provider("custom")).unwrap();
+        raw["selectedModels"] = serde_json::json!(["manual/model", "other"]);
+        let provider: DesktopLlmProvider = serde_json::from_value(raw).unwrap();
+        let mut provider = normalize_llm_provider(provider).unwrap();
+        apply_provider_model_list(&mut provider, Some(vec![ModelInfo { id: "newly-listed".into(), ..Default::default() }]));
+        assert_eq!(provider.models, vec!["manual/model", "other"]);
+        apply_provider_model_list(&mut provider, None);
+        assert_eq!(provider.models, vec!["manual/model", "other"]);
+        let mut profile = sample_llm_profile();
+        profile.providers.push(provider);
+        let root = temp_workspace("explicit-provider-models");
+        let path = root.join("profile.json");
+        save_llm_profile_file(&path, &profile).unwrap();
+        let loaded = read_llm_profile_file(&path).unwrap().unwrap();
+        assert_eq!(loaded.providers[0].selected_models, Some(vec!["manual/model".into(), "other".into()]));
+        let status = serde_json::to_value(desktop_llm_profile_status(Some(&loaded))).unwrap();
+        assert_eq!(status["providers"][0]["models"], serde_json::json!(["manual/model", "other"]));
+        assert!(status["providers"][0].get("apiKey").is_none());
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_provider_models_still_follow_successful_discovery() {
+        let mut provider = normalize_llm_provider(sample_provider("legacy")).unwrap();
+        apply_provider_model_list(&mut provider, Some(vec![ModelInfo { id: "newly-listed".into(), ..Default::default() }]));
+        assert_eq!(provider.models, vec!["newly-listed"]);
+        apply_provider_model_list(&mut provider, None);
+        assert_eq!(provider.models, vec!["newly-listed"]);
+    }
+
     fn sample_provider(id: &str) -> DesktopLlmProvider {
         DesktopLlmProvider {
             id: id.into(),
             name: String::new(),
             base_url: "https://api.example.com/v1/".into(),
             api_key: " key ".into(),
-            models: vec!["m1".into(), "  ".into(), "bad\u{7}".into()],
+            selected_models: None, models: vec!["m1".into(), "  ".into(), "bad\u{7}".into()],
         }
     }
 
@@ -2314,7 +2371,7 @@ mod tests {
         profile.providers = vec![DesktopLlmProvider {
             id: "cloud".into(), name: "Cloud".into(),
             base_url: "https://cloud.example.test/v1".into(),
-            api_key: "synthetic-cloud-key".into(), models: vec!["m".into()],
+            api_key: "synthetic-cloud-key".into(), selected_models: None, models: vec!["m".into()],
         }];
         profile
     }
@@ -2325,7 +2382,7 @@ mod tests {
         profile.providers.push(DesktopLlmProvider {
             id: "other".into(), name: "Other".into(),
             base_url: profile.providers[0].base_url.clone(),
-            api_key: "synthetic-other-key".into(), models: vec!["m".into()],
+            api_key: "synthetic-other-key".into(), selected_models: None, models: vec!["m".into()],
         });
         let base = profile.providers[0].base_url.as_str();
         assert_eq!(saved_connection_probe_key(Some(&profile), Some("cloud"), base), Some("synthetic-cloud-key"));
@@ -4341,7 +4398,7 @@ mod tests {
         profile.providers.push(DesktopLlmProvider {
             id: "worker".into(), name: "Worker".into(),
             base_url: "https://worker.example.test/v1".into(), api_key: "synthetic-worker-key".into(),
-            models: vec!["small:tag".into()],
+            selected_models: None, models: vec!["small:tag".into()],
         });
         profile.role_models = HashMap::from([
             ("research".into(), "worker:small:tag".into()),
