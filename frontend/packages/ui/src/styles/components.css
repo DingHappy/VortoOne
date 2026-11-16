@@ -6635,7 +6635,7 @@ html:not([data-pointer]) .ac-hint:focus-visible {
   border-radius: 30%;
 }
 .ac-avatar--framed.ac-avatar--agent {
-  background: color-mix(in srgb, var(--av-top, var(--agent)) 14%, var(--raised));
+  background: var(--raised);
 }
 .ac-avatar--framed::before {
   content: "";
@@ -10500,6 +10500,7 @@ html:not([data-pointer]) .ac-filter__option:focus-visible {
 }
 .ac-empty__agent .ac-sticker {
   position: relative;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.24));
 }
 .ac-empty--page .ac-empty__title {
   margin-bottom: var(--space-1);

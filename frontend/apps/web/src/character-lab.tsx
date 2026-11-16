@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import {
@@ -6,6 +6,7 @@ import {
   AgentSticker,
   Logo,
   normalizeAppearance,
+  characterBackdrop,
   switchTheme,
   type AgentAppearance,
   type AgentState,
@@ -114,7 +115,15 @@ function CharacterLab() {
         <p>选一个颜色，换个表情，再戴上一点喜欢的东西。</p>
       </div>
       <div className="slime-lab__layout">
-        <section className="slime-lab__stage" aria-label="史莱姆实时预览">
+        <section
+          className="slime-lab__stage"
+          aria-label="史莱姆实时预览"
+          style={
+            {
+              "--slime-stage-tone": characterBackdrop(shown.color, dark)[1],
+            } as CSSProperties
+          }
+        >
           <div className="slime-lab__live">
             <span /> 实时预览
           </div>

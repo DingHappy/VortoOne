@@ -74,7 +74,14 @@
   text-align: center;
   padding: 20px 24px 24px;
   background:
-    radial-gradient(ellipse at 50% 34%, #ffb5a122, transparent 60%),
+    radial-gradient(
+      ellipse at 50% 34%,
+      var(
+        --slime-stage-tone,
+        color-mix(in srgb, var(--ink-muted) 7%, transparent)
+      ),
+      transparent 60%
+    ),
     var(--surface);
   position: sticky;
   top: 20px;
