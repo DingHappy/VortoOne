@@ -121,6 +121,7 @@ def agents(root: str) -> List[Dict[str, Any]]:
     }]
     staff = _staff(root)
     titles = {str(role.get("id")): str(role.get("title") or role.get("id")) for role in staff.get("roles") or []}
+    briefs = {str(role.get("id")): str(role.get("brief") or "") for role in staff.get("roles") or []}
     for member in staff.get("members") or []:
         if member.get("status") == "retired":
             continue
@@ -130,7 +131,8 @@ def agents(root: str) -> List[Dict[str, Any]]:
         rows.append({
             "id": member_agent_id(root, member_id), "name": str(member.get("name") or member_id),
             "handle": member_id, "role": titles.get(str(member.get("role")), str(member.get("role") or "")),
-            "instructions": "", "model": str(member.get("model") or ""), "ownerUserId": owner,
+            "instructions": briefs.get(str(member.get("role")), ""),    # 岗位登记的职责说明
+            "model": str(member.get("model") or ""), "ownerUserId": owner,
             "hasCredential": model_connected(), "createdAt": created, "audienceMode": "everyone",
             "canTalk": member.get("status", "active") == "active", "seesDetails": True,
         })
@@ -535,3 +537,66 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None) -> Opti
     wanted = version if version in {int(v.get("v", 0)) for v in store.versions(artifact_id)} else shown["version"]
     return {**shown, "shownVersion": wanted, "content": {"kind": "html", "html": html},
             "versioned": len(store.versions(artifact_id)) > 1}
+
+
+# ── 角色资料页 ────────────────────────────────────────────────────────────────
+
+def _member_of(root: str, agent_id: str) -> Optional[Dict[str, Any]]:
+    return next((m for m in _staff(root).get("members") or []
+                 if member_agent_id(root, str(m.get("id"))) == agent_id), None)
+
+
+def agent_brain(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
+    """这个角色用什么思考。这里只有「模型」一种，换模型与账号不在这个界面做，所以全部只读。"""
+    ready = model_connected()
+    return {"agentId": agent["id"], "brain": "model", "model": agent["model"] or None,
+            "effectiveModel": agent["model"] or None, "fallback": False, "extraUsage": False, "computer": None,
+            "options": [{"kind": "model", "available": ready, "models": [], "defaultModel": None}],
+            "machines": [], "canEdit": False, "account": None, "effort": None, "speed": "standard",
+            "accounts": [], "canManageAccounts": False, "accountsSupported": False, "onlyOwner": False,
+            "canUsePlans": False, "ownSignIn": False, "ownUsage": {}}
+
+
+def agent_access(root: str, agent_id: str) -> Dict[str, Any]:
+    """专员能用的工具，来自它岗位的授权登记（只读）。主助理的工具由会话装配与能力档案决定，
+    不在登记表里，这里不列。"""
+    member = _member_of(root, agent_id)
+    if member is None:
+        return {"all": False, "builtins": [], "connectors": []}
+    role = next((r for r in _staff(root).get("roles") or [] if r.get("id") == member.get("role")), None) or {}
+    grants = role.get("grants") or {}
+    read_only = set(grants.get("operations") or []) <= {"read"}
+    scope = f"role:{role.get('id') or ''}"
+    tools = [{"name": str(name), "label": str(name), "description": "", "readOnly": read_only,
+              "connectionId": None, "scope": scope, "sensitive": not read_only, "state": "inherited"}
+             for name in grants.get("tools") or []]
+    if not tools:
+        return {"all": False, "builtins": [], "connectors": []}
+    return {"all": False, "connectors": [],
+            "builtins": [{"scope": scope, "label": f"岗位「{role.get('title') or role.get('id')}」的授权",
+                          "state": "granted", "tools": tools}]}
+
+
+# ── 通知 ─────────────────────────────────────────────────────────────────────
+
+def notifications(root: str, *, filter_name: str = "", limit: int = 50) -> Dict[str, Any]:
+    """后台通知台账（定时作业结果、巡视发现等）整理成界面的通知，新的在前。
+
+    台账不记「读没读」，所以这些通知一律按已读列出：只进「全部」，不计未读数、不进「等我处理」，
+    免得界面上挂一个永远消不掉的红点。真正要主人处理的事在审批里。"""
+    from src.scheduling.notices import load_notices
+    agent = main_agent_id(root)
+    items = []
+    for row in load_notices(root, max(1, min(int(limit), 100))):
+        text, stamp = str(row.get("text") or ""), _iso(row.get("ts"))
+        if not text:
+            continue
+        key = hashlib.sha256(f"{row.get('ts')}\0{row.get('source')}\0{text}".encode("utf-8", "surrogatepass"))
+        items.append({"id": _id("notice", key.hexdigest()), "kind": "agent_reply", "waiting": False,
+                      "actors": [{"type": "agent", "id": agent}], "count": 1,
+                      "source": {"channelId": dm_channel_id(agent)}, "latest": {"text": text},
+                      "readAt": stamp, "doneAt": None, "snoozedUntil": None, "createdAt": stamp,
+                      "updatedAt": stamp})
+    counts = {"all": len(items), "mentions": 0, "waiting": 0, "unread": 0, "reactions": 0}
+    shown = items if filter_name in {"", "all"} else []
+    return {"items": shown, "counts": counts, "nextCursor": None}

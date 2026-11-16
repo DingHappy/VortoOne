@@ -381,8 +381,6 @@ _EMPTY: Dict[str, Any] = {
     "/unread-tasks": {"tasks": []},
     "/unread-threads": {"count": 0},
     "/notifications/count": {"unread": 0, "waiting": 0},
-    "/notifications": {"items": [], "nextCursor": None,
-                       "counts": {"all": 0, "mentions": 0, "waiting": 0, "unread": 0, "reactions": 0}},
     "/waiting": {"items": [], "count": 0},
     "/missions": {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}},
     "/machines": {"machines": []},
@@ -392,6 +390,11 @@ _EMPTY: Dict[str, Any] = {
     "/issues": {"issues": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
+    "/connectors": {"connections": []},
+    "/connectors/custom": {"servers": []},
+    "/credentials": {"credentials": []},
+    "/mail/accounts": {"accounts": []},
+    "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
     "/team-memories": {"memories": []},
     "/skill-settings": {"agentsImprove": False},
     "/wiki/pages": {"pages": []},
@@ -437,6 +440,12 @@ async def agent_memories(org_id: str, agent_id: str):
 async def all_memories(org_id: str):
     root = _root(org_id)
     return _listing(lambda: {"memories": views.memories(root, views.main_agent_id(root))})
+
+
+@router.get(_ORG + "/notifications")
+async def notifications(org_id: str, filter: str = "", limit: int = 50):  # noqa: A002 —— 界面的查询参数名
+    root = _root(org_id)
+    return _listing(lambda: views.notifications(root, filter_name=filter, limit=limit))
 
 
 @router.get(_ORG + "/routines")
@@ -506,6 +515,52 @@ async def agent_detail(org_id: str, agent_id: str):
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
     return views.agent_detail(agent)
+
+
+@router.get("/api/app/connectors/catalog")
+async def connector_catalog():
+    """可接入的外部服务目录。连接在别处管理（MCP 配置与助理插件），这里还没有可列的目录。"""
+    return {"connectors": [], "builtinScopes": []}
+
+
+def _agent(org_id: str, agent_id: str):
+    return next((a for a in views.agents(_root(org_id)) if a["id"] == agent_id), None)
+
+
+@router.get(_ORG + "/agents/{agent_id}/brain")
+async def agent_brain(org_id: str, agent_id: str):
+    agent = _agent(org_id, agent_id)
+    if agent is None:
+        return _error(404, "not_found", "没有这个角色")
+    return views.agent_brain(_root(org_id), agent)
+
+
+@router.get(_ORG + "/agents/{agent_id}/access")
+async def agent_access(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return views.agent_access(_root(org_id), agent_id)
+
+
+@router.get(_ORG + "/agents/{agent_id}/computer")
+async def agent_computer(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"target": {"kind": "none"}}
+
+
+@router.get(_ORG + "/agents/{agent_id}/repositories")
+async def agent_repositories(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"repositories": []}
+
+
+@router.get(_ORG + "/agents/{agent_id}/holds")
+async def agent_holds(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"holds": [], "canStop": False}
 
 
 @router.get(_ORG + "/agents/{agent_id}/desktop")
