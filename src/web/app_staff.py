@@ -14,15 +14,33 @@ from src.gateway import app_protocol as F
 from src.web import app_views as views
 
 
-def owner_proof(connection) -> bool:
-    """与 routers/staff.py 的专员对话路由同一条规矩：读写专员对话要显式携带主人令牌（Bearer 头）。
+def _same_origin(connection) -> bool:
+    """请求是不是从我们自己的页面发出的。浏览器给跨站请求和所有长连接握手都带 Origin，页面脚本改不了它：
+    带了就必须与本服务的地址一致。没带 Origin 的只放行普通读取（同源 GET 浏览器可以不带；跨站读取拿不到
+    应答），写入和长连接握手没带一律不算。"""
+    from urllib.parse import urlsplit
+    origin = connection.headers.get("origin", "")
+    if not origin:
+        return connection.scope.get("type") == "http" and connection.scope.get("method") == "GET"
+    served = {connection.headers.get("host", "").lower(), connection.headers.get("x-forwarded-host", "").lower()}
+    return urlsplit(origin).netloc.lower() in served - {""}
 
-    登录 Cookie 不算——那条规矩由 test_staff_conversations.py 钉住，这里不另开一条更松的路。
+
+def owner_proof(connection) -> bool:
+    """读写专员对话要有主人证明：显式的主人令牌（Bearer 头），或登录 Cookie 加同源。
+
+    2026-11-16 主人定：新版界面只有登录 Cookie（它本身就是出示主人令牌换来的），专员也都是主人自己的，
+    所以这组界面接口认 Cookie；Bearer 原本多挡的「别的网站借用登录状态」改由来源检查挡。
+    routers/staff.py 的旧接口仍只认 Bearer（test_staff_conversations.py 钉住），这里不动它。
     没配置主人令牌时一律不通过。connection 可以是 HTTP 请求或 WebSocket 握手。"""
-    from src.web.auth import ct_eq, get_api_token
+    from src.web.auth import SESSION_COOKIE, ct_eq, get_api_token
     token = get_api_token()
+    if not token:
+        return False
     authorization = connection.headers.get("authorization", "")
-    return bool(token) and authorization.startswith("Bearer ") and ct_eq(authorization[7:].strip(), token)
+    if authorization.startswith("Bearer ") and ct_eq(authorization[7:].strip(), token):
+        return True
+    return ct_eq(connection.cookies.get(SESSION_COOKIE, "").strip(), token) and _same_origin(connection)
 
 
 def _conversations(root: str):

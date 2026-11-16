@@ -61,19 +61,52 @@ async def test_a_message_becomes_one_staff_task_and_its_result_comes_back(home):
     assert client.get(f"{base}/channels/{channel}/active-runs").json() == {"runs": []}
 
 
-@pytest.mark.parametrize("credentials", ["none", "cookie", "wrong"])
-def test_staff_conversations_need_the_explicit_owner_bearer(home, credentials):
+@pytest.mark.parametrize("credentials", ["none", "wrong", "cookie-other-site", "cookie-no-origin", "wrong-cookie"])
+def test_staff_conversations_need_owner_proof(home, credentials):
     from src.web.auth import SESSION_COOKIE
     client, base, channel, pool = (home[k] for k in ("client", "base", "channel", "pool"))
     client.headers.pop("Authorization")
-    if credentials == "cookie":
+    if credentials.startswith("cookie"):
         client.cookies.set(SESSION_COOKIE, TOKEN)
+    if credentials == "cookie-other-site":
+        client.headers["Origin"] = "https://elsewhere.example"
+    if credentials == "wrong-cookie":
+        client.cookies.set(SESSION_COOKIE, "nope")
+        client.headers["Origin"] = "http://testserver"
     if credentials == "wrong":
         client.headers["Authorization"] = "Bearer wrong"
     sent = client.post(f"{base}/channels/{channel}/messages", json={"body": "读一下"})
-    read = client.get(f"{base}/channels/{channel}/messages")
-    assert sent.status_code in {401, 403} and read.status_code in {401, 403}
-    assert not pool.jobs
+    assert sent.status_code in {401, 403} and not pool.jobs
+    if credentials != "cookie-no-origin":       # 同源 GET 浏览器可以不带 Origin：读取放行，写入不放行
+        assert client.get(f"{base}/channels/{channel}/messages").status_code in {401, 403}
+
+
+def test_the_signed_in_page_can_talk_to_a_staff_member(home):
+    """新版界面只有登录 Cookie：从我们自己的页面发出的请求算主人证明，长连接订阅也一样。"""
+    from src.web.auth import SESSION_COOKIE
+    client, base, channel, pool = (home[k] for k in ("client", "base", "channel", "pool"))
+    client.headers.pop("Authorization")
+    client.cookies.set(SESSION_COOKIE, TOKEN)
+    assert client.get(f"{base}/channels/{channel}/messages").status_code == 200
+    client.headers["Origin"] = "http://testserver"
+    sent = client.post(f"{base}/channels/{channel}/messages", json={"body": "读一下"})
+    assert sent.status_code == 200 and len(pool.jobs) == 1
+
+    org = base.rsplit("/", 1)[1]
+    with client.websocket_connect(f"/api/ws?orgId={org}") as socket:
+        assert socket.receive_json()["type"] == "ready"
+        socket.send_json({"type": "subscribe", "channelId": channel})
+        assert socket.receive_json() == {"type": "subscribed", "channelId": channel}
+    client.headers["Origin"] = "https://elsewhere.example"
+    with client.websocket_connect(f"/api/ws?orgId={org}") as socket:
+        assert socket.receive_json()["type"] == "ready"
+        socket.send_json({"type": "subscribe", "channelId": channel})
+        assert socket.receive_json()["code"] == "owner_proof_required"
+    client.headers.pop("Origin")
+    with client.websocket_connect(f"/api/ws?orgId={org}") as socket:     # 握手没带 Origin 的不是浏览器页面
+        assert socket.receive_json()["type"] == "ready"
+        socket.send_json({"type": "subscribe", "channelId": channel})
+        assert socket.receive_json()["code"] == "owner_proof_required"
 
 
 def test_a_message_cannot_carry_authority(home):

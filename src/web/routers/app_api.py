@@ -191,7 +191,7 @@ def _member_channel(org_id: str, channel_id: str) -> tuple[str, str] | None:
     return (root, member_id) if member_id else None
 
 
-_NEEDS_OWNER = "专员对话需要携带主人令牌（Authorization: Bearer）"
+_NEEDS_OWNER = "专员对话需要主人证明：先登录，并从本服务自己的页面发起"
 
 
 def _staff_read(action):
