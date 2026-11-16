@@ -118,6 +118,9 @@ for _router in (
 ):
     app.include_router(_router)
 _install_app_errors(app)
+# 最后注册 = 最外层：静态界面文件与界面自己的页面地址不含数据，先于鉴权应答；其余请求原样往里走
+from src.web.app_ui import app_ui_middleware as _app_ui_middleware
+app.middleware("http")(_app_ui_middleware)
 
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
