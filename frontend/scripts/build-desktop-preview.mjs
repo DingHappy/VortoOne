@@ -14,7 +14,7 @@ for (const args of [
     "--mode",
     "desktop-preview",
   ],
-  ["run", "desktop:build"],
+  ["run", "build", "--workspace", "@agenteschat/desktop", "--", "--mode", "desktop-preview"],
 ])
   execFileSync(npm, args, { cwd: root, stdio: "inherit" });
 

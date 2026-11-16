@@ -1,5 +1,7 @@
 # VortoOne Desktop 前端基底
 
+独立的 `VortoOne Dev` 桌面安装版与公开稳定版的管理方式见 [桌面版本管理](DESKTOP_CHANNELS.md)。开发版当前为本地界面预览，使用示例数据。
+
 以 `agentes-chat` 的完整 Desktop 产品为基底：桌面主窗口保留原来的首页、频道、Agent、线程、任务、Drive、团队与右侧详情；独立窗口沿用原来的首次连接、托盘面板、偏好设置和 notch。角色使用已有 VortoOne 素材。
 
 上一版自组的简化聊天界面移为 runtime 接口实验页，不再作为默认入口。

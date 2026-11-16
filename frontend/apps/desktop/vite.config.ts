@@ -4,7 +4,10 @@ import { defineConfig } from "vite";
 // The desktop app's web view (ADR 0036). `bun run dev` serves it in a normal browser against the fake
 // runner (src/dev/fake-runner.ts); inside Tauri the same bundle talks to the real runners through the
 // Rust shell. `tauri build` runs `vite build` and loads `dist/` from the app bundle (never a remote page).
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: {
+    __VORTO_ISOLATED_PREVIEW__: JSON.stringify(mode === "desktop-preview"),
+  },
   plugins: [react()],
   // Tauri expects a fixed port in development and relative asset paths in the bundle.
   server: { host: "127.0.0.1", port: 1421, strictPort: true },
@@ -18,4 +21,4 @@ export default defineConfig({
     // and it opens without the rest.
     rollupOptions: { input: { main: "index.html", cover: "cover.html" } },
   },
-});
+}));
