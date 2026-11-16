@@ -42,7 +42,9 @@ SESSION_COOKIE = "vortocode_session"
 # 鉴权豁免：页面 HTML 外壳（本身不含数据，数据走各自需鉴权的 API）、API 文档、健康检查、
 # 登录/状态端点（必须能在鉴权前访问，否则没法登录）。
 # 浏览器对话台与 PWA 已于 2026-10-17 退役；剩下的页面只有服务首页 / 与流水线审批台 /review。
-_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static")
+# /api/auth/handover/<一次性交接码>：Desktop 外壳换登录用，凭码本身校验（routers/app_api.py）；
+# 发码的 POST /api/auth/handover 不在此列，仍要主人令牌。
+_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static", "/api/auth/handover/")
 _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",

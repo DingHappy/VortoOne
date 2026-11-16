@@ -5,9 +5,24 @@
 | 公开稳定版 | VortoOne.app | com.vorto.vortoone | 现有可用桌面 App | 原有正式版自动更新 |
 | 开发版 | VortoOne Dev.app | com.vorto.vortoone.dev | 新桌面布局与史莱姆界面验收 | 独立安装包、GitHub 发布草稿 |
 
-两个 App 可并排安装。开发版的 WebKit 数据按独立应用标识保存；本阶段仅打包内存示例数据和假宿主，不读取正式版账号、项目或运行状态，不启动 runner/runtime，也不配置自动更新。辅助窗口在 native 环境中继续使用假宿主。
+两个 App 可并排安装。开发版的 WebKit 数据按独立应用标识保存；默认使用内存示例数据和假宿主，不读取正式版账号、项目或运行状态，不配置自动更新。只有在本机放了 `backend.json` 时才会启动一个本机后端（见下一节）。辅助窗口在 native 环境中继续使用假宿主。
 
 开发版菜单「开发版」可打开主界面、史莱姆外观、偏好设置预览、版本管理，以及系统浏览器中的 GitHub 发布管理。正式版下载入口指向现有公开稳定版。
+
+## 开发版连接本机后端
+
+开发版默认仍是示例数据。要让它用真实后端，在开发版的配置目录（macOS：`~/Library/Application Support/com.vorto.vortoone.dev/`）放一个 `backend.json`：
+
+```json
+{ "python": "/绝对路径/python", "source": "/绝对路径/VortoOne 源码", "env_file": "/绝对路径/模型凭据.env" }
+```
+
+- `python` 要装好了源码的依赖；`source` 是仓库根目录；`env_file` 可省。
+- `env_file` 里只有 `OPENAI_*`、`VORTOONE_MODEL*`、`VORTOONE_LLM_*` 会带给后端，其余行忽略。
+- 有这个文件时，App 启动会在本机回环地址上起一个后端（私人助理范围，不开 IM、定时与巡视），主窗口打开它并自动登录；没有时行为与原来一样。菜单「开发版 → 连接本机后端」可以重连。
+- 主人令牌每次启动现生成，只在 App 进程和后端里；窗口拿到的是一次性的交接码，不是令牌。
+- 数据在开发版自己的目录（`…/com.vorto.vortoone.dev/home`），不读正式版的账号、项目或运行状态；后端日志在同目录的 `backend.log`。
+- 开发版不带 Python 运行时，所以这只适合有源码的开发机。随包带运行时属于做正式版时的工作。
 
 ## 本机管理
 

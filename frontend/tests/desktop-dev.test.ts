@@ -49,9 +49,14 @@ test("development packaging rejects stable identities, stable versions and runti
     { version: stable.version },
     { plugins: { updater: {} } },
     { bundle: { resources: ["runtime"] } },
+    { bundle: { resources: { "../../web/dist": "web", "../runtime": "runtime" } } },
+    { bundle: { resources: { "../../../src": "web" } } },
     { bundle: { externalBin: ["runner"] } },
   ])
     assert.throws(() => checkDevConfig({ ...config, ...patch }, stable));
+  // 界面文件是唯一允许随包的资源；不带也可以
+  assert.deepEqual(config.bundle.resources, { "../../web/dist": "web" });
+  checkDevConfig({ ...config, bundle: {} }, stable);
 });
 test("development release notes identify fixtures, the stable version and the exact source", () => {
   const notes = devReleaseNotes({

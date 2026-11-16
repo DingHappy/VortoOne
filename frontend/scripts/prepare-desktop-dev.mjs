@@ -15,11 +15,17 @@ const stable = JSON.parse(
   ),
 );
 checkDevConfig(config, stable);
-if (!process.argv.includes("--skip-build"))
+if (!process.argv.includes("--skip-build")) {
   execFileSync("npm", ["run", "build:preview"], {
     cwd: root,
     stdio: "inherit",
   });
+  // 连本机后端时由后端提供的界面（随包资源 web/）
+  execFileSync("npm", ["run", "build", "--workspace", "@agenteschat/web"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+}
 const output = new URL("../apps/desktop-dev/dist/", import.meta.url);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
@@ -37,7 +43,7 @@ const info = {
   productName: config.productName,
   identifier: config.identifier,
   commit,
-  data: "in-memory fixtures",
+  data: "in-memory fixtures; a local backend when backend.json is configured",
   updates: "manual-development-draft",
   stable: {
     version: stable.version,
@@ -58,7 +64,7 @@ await writeFile(
   `<!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VortoOne Dev · 版本管理</title>
 <link rel="stylesheet" href="version-manager.css"><main><h1>版本管理</h1><p>稳定使用与开发验收，分别管理。</p>
 <section><h2>公开稳定版</h2><strong>VortoOne ${escape(stable.version)}</strong><p>已发布的正式桌面 App，继续使用现有自动更新。</p><p>应用：VortoOne.app</p></section>
-<section><h2>当前开发版</h2><strong>VortoOne Dev ${escape(config.version)}</strong><p>界面预览 · 示例数据 · 尚未连接正式后端</p><p>应用：VortoOne Dev.app</p><p>通过独立开发安装包更新；发布草稿由你管理。</p></section>
+<section><h2>当前开发版</h2><strong>VortoOne Dev ${escape(config.version)}</strong><p>界面预览 · 默认示例数据 · 配置后可连接本机后端</p><p>应用：VortoOne Dev.app</p><p>通过独立开发安装包更新；发布草稿由你管理。</p></section>
 <p>在菜单「开发版」中打开公开稳定版下载或 GitHub 发布管理。</p><details><summary>构建信息</summary><p>提交：${escape(commit)}</p><p>应用标识：${escape(config.identifier)}</p></details></main></html>`,
 );
 await writeFile(
