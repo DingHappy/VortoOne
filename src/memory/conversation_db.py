@@ -470,6 +470,15 @@ class SessionStore:
             )
             return cursor.rowcount > 0
     
+    def move_memory(self, memory_id: str, source: str, target: str) -> bool:
+        """把一条记忆从一个分区挪到另一个分区（id、内容、时间不变）。返回是否确实挪了。"""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            cursor = conn.execute(
+                "UPDATE memories SET session_id = ? WHERE session_id = ? AND id = ?",
+                (target, source, memory_id)
+            )
+            return cursor.rowcount > 0
+
     def get_session_summary(self, session_id: str) -> Dict[str, Any]:
         """获取会话摘要"""
         with sqlite3.connect(str(self.db_path)) as conn:

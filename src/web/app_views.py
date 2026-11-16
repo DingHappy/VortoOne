@@ -422,20 +422,34 @@ def member_dm(root: str, member_id: str) -> Dict[str, Any]:
 
 # ── 记忆、例行工作、技能、制品：现有记录的只读整理 ─────────────────────────────
 
+def _memory(agent_id: str, row: Dict[str, Any], archived: bool) -> Dict[str, Any]:
+    created = _iso(row.get("created_at"))
+    return {"id": str(row["id"]), "agentId": agent_id, "kind": "fact", "text": str(row.get("content") or ""),
+            "source": "", "uses": 0, "lastUsedAt": None, "pinned": False, "archived": archived,
+            "lowTrust": False, "verified": True, "supersedes": None, "editedByUserId": None,
+            "updatedAt": created, "removable": False}
+
+
 def memories(root: str, agent_id: str) -> List[Dict[str, Any]]:
-    """主助理记住的关于主人的事。记忆库不分类型也不记使用次数：类型统一报「事实」，次数为 0。
-    专员没有自己的长期记忆。"""
+    """主助理记住的关于主人的事，连同主人归档的（归档的助理读不到）。记忆库不分类型也不记使用次数：
+    类型统一报「事实」，次数为 0。专员没有自己的长期记忆。"""
     if agent_id != main_agent_id(root):
         return []
     from src.memory import assistant_profile
-    rows = []
-    for row in assistant_profile.list_memories(root):
-        created = _iso(row.get("created_at"))
-        rows.append({"id": str(row["id"]), "agentId": agent_id, "kind": "fact", "text": str(row.get("content") or ""),
-                     "source": "", "uses": 0, "lastUsedAt": None, "pinned": False, "archived": False,
-                     "lowTrust": False, "verified": True, "supersedes": None, "editedByUserId": None,
-                     "updatedAt": created, "removable": False})
-    return rows
+    return ([_memory(agent_id, row, False) for row in assistant_profile.list_memories(root)]
+            + [_memory(agent_id, row, True) for row in assistant_profile.list_archived_memories(root)])
+
+
+def set_memory_archived(root: str, memory_id: str, archived: bool) -> Optional[Dict[str, Any]]:
+    """归档或恢复；没有这条（或它已经在目标一侧之外）返回 None。"""
+    from src.memory import assistant_profile
+    agent = main_agent_id(root)
+    current = next((m for m in memories(root, agent) if m["id"] == memory_id), None)
+    if current is None:
+        return None
+    if current["archived"] != archived and not assistant_profile.archive_memory(root, memory_id, archived):
+        return None
+    return {**current, "archived": archived}
 
 
 def _trigger(expression: str, timezone_name: str) -> Dict[str, Any]:
@@ -478,7 +492,7 @@ def routines(root: str) -> List[Dict[str, Any]]:
             "pausedReason": None, "failuresInRow": 0, "state": "active" if item["enabled"] else "paused",
             "waitingFor": None, "brain": {"kind": "model", "machineName": None},
             "health": {"ok": 0, "silent": 0, "failed": 0, "skipped": 0, "missed": 0, "total": 0},
-            "canSeeDetails": True, "canManage": False, "lastRun": None, "recentRuns": [],
+            "canSeeDetails": True, "canManage": owner_connection(), "lastRun": None, "recentRuns": [],
             "usage": {"runs": 0, "tokens": 0, "costNanoUsd": 0, "billedTo": "api"}, "ownActions": [],
         })
     history = routine_history(root)
@@ -490,23 +504,88 @@ def routines(root: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def skills(root: str) -> List[Dict[str, Any]]:
-    """主人的个人技能（只加载指令，不增加工具权限）。enabled 是主人核对过当前版本后才为真。"""
+def owner_connection() -> bool:
+    """例行工作的启停与删除只在设了主人令牌的服务上开放（与 /api/staff/routines 的写入同一条规矩）。"""
+    from src.web.auth import get_api_token
+    return bool(get_api_token())
+
+
+def control_routine(root: str, routine_id: str, *, enabled: Optional[bool] = None,
+                    retire: bool = False) -> Optional[Dict[str, Any]]:
+    """启用、停用或删除一条例行工作。界面合同不带版本号：以服务端此刻的版本提交，同时有人改过则由
+    登记处拒绝（ValueError）。启用时登记处照常核对成员与岗位绑定。返回改后的那一条；删除后返回 None。"""
+    from src.workflow.staff.routines import Routines
+    registry = Routines(root)
+    item = next((x for x in registry.list() if x["id"] == routine_id and not x["retired"]), None)
+    if item is None:
+        raise LookupError(routine_id)
+    registry.control(routine_id, item["revision"], enabled=enabled, retire=retire)
+    return None if retire else next((row for row in routines(root) if row["id"] == routine_id), None)
+
+
+_SHOWN_SKILLS: Dict[tuple, str] = {}   # (家, 技能) → 最近一次给界面看过的版本；启用只认这个版本
+
+
+def _skill(root: str, item: Dict[str, Any], created: str) -> Dict[str, Any]:
+    revision = item.get("revision")
+    return {"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
+            "description": str(item.get("description") or ""),
+            "version": revision if type(revision) is int else 1, "source": "manual", "sourceUrl": None,
+            "defaultForNewAgents": False, "metadata": {}, "origin": "person",
+            "ownerUserId": owner_id(root), "createdAt": created, "updatedAt": created,
+            "enabled": bool(item.get("enabled"))}
+
+
+def _personal_skills(root: str):
     from src.gateway.workspace_scope import GENERAL, current_workspace_scope
     from src.workflow.workbench.personal_skills import PersonalSkills
-    if current_workspace_scope() != GENERAL:
+    return PersonalSkills(root) if current_workspace_scope() == GENERAL else None
+
+
+def skills(root: str) -> List[Dict[str, Any]]:
+    """主人的个人技能（只加载指令，不增加工具权限）。enabled 是主人核对过当前版本后才为真。"""
+    store = _personal_skills(root)
+    if store is None:
         return []
     created = _home_created(root)
-    rows = []
-    for item in PersonalSkills(root).list()["items"]:
-        revision = item.get("revision")
-        rows.append({"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
-                     "description": str(item.get("description") or ""),
-                     "version": revision if type(revision) is int else 1, "source": "manual", "sourceUrl": None,
-                     "defaultForNewAgents": False, "metadata": {}, "origin": "person",
-                     "ownerUserId": owner_id(root), "createdAt": created, "updatedAt": created,
-                     "enabled": bool(item.get("enabled"))})
-    return rows
+    return [_skill(root, item, created) for item in store.list()["items"]]
+
+
+def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
+    """一条技能的正文。看过正文才算核对：这里记下给界面看的是哪个版本，启用时只认它。"""
+    store = _personal_skills(root)
+    if store is None:
+        return None
+    try:
+        item = store.get(skill_id, preview=True)
+    except (OSError, ValueError):
+        return None
+    _SHOWN_SKILLS[(root, skill_id)] = str(item["revision"])
+    row = _skill(root, item, _home_created(root))
+    return {**{k: v for k, v in row.items() if k != "enabled"}, "body": item["instructions"], "files": [],
+            "pending": None, "changes": []}
+
+
+def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
+    """把主助理启用的个人技能改成 wanted。停用随时可以；启用只认主人在界面上看过正文的那个版本——
+    没看过、或看过之后内容变了，都拒绝（SkillConflict），要主人重新打开核对。"""
+    from src.workflow.workbench.personal_skills import SkillConflict
+    store = _personal_skills(root)
+    if store is None:
+        raise ValueError("个人技能仅在私人助理范围管理")
+    items = {str(item["id"]): item for item in store.list()["items"]}
+    unknown = [skill_id for skill_id in wanted if skill_id not in items]
+    if unknown:
+        raise LookupError(unknown[0])
+    for skill_id, item in items.items():
+        enable = skill_id in wanted
+        if enable == bool(item.get("enabled")):
+            continue
+        revision = str(item["revision"])
+        if enable and _SHOWN_SKILLS.get((root, skill_id)) != revision:
+            raise SkillConflict("启用前请先打开这条技能核对正文")
+        store.set_enabled(skill_id, enabled=enable, revision=revision)
+    return skills(root)
 
 
 def _artifact(root: str, meta: Dict[str, Any]) -> Dict[str, Any]:

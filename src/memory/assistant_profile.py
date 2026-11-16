@@ -140,6 +140,31 @@ def list_memories(root: str, limit: int = 200) -> List[Dict[str, Any]]:
              "created_at": str(row.get("created_at") or "")} for row in rows[:limit]]
 
 
+ARCHIVED = "__archived__"   # 归档区：不进系统提示，也不被 recall 检索到（两处都只读 __longterm__）
+
+
+def list_archived_memories(root: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """主人归档的记忆，最新的在前。助理读不到它们，直到主人恢复。"""
+    if not _db_path(root).exists():
+        return []
+    from src.memory.conversation_db import SessionStore
+
+    rows = SessionStore(str(_db_path(root))).get_memories(ARCHIVED)
+    rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+    return [{"id": str(row.get("id")), "content": str(row.get("content") or ""),
+             "created_at": str(row.get("created_at") or "")} for row in rows[:limit]]
+
+
+def archive_memory(root: str, memory_id: str, archived: bool) -> bool:
+    """归档或恢复一条记忆：只在两个分区间挪动，内容不变。恢复的只能是此前确认过、被主人归档的那一条。"""
+    if not _db_path(root).exists():
+        return False
+    from src.memory.conversation_db import SessionStore
+
+    source, target = ("__longterm__", ARCHIVED) if archived else (ARCHIVED, "__longterm__")
+    return SessionStore(str(_db_path(root))).move_memory(str(memory_id), source, target)
+
+
 def delete_memory(root: str, memory_id: str) -> bool:
     if not _db_path(root).exists():
         return False
