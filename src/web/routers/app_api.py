@@ -385,8 +385,6 @@ _EMPTY: Dict[str, Any] = {
     "/missions": {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}},
     "/machines": {"machines": []},
     "/machines/outages": {"outages": [], "targets": []},
-    "/runs": {"runs": []},
-    "/usage": {"usage": []},
     "/issues": {"issues": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
@@ -446,6 +444,18 @@ async def all_memories(org_id: str):
 async def notifications(org_id: str, filter: str = "", limit: int = 50):  # noqa: A002 —— 界面的查询参数名
     root = _root(org_id)
     return _listing(lambda: views.notifications(root, filter_name=filter, limit=limit))
+
+
+@router.get(_ORG + "/runs")
+async def runs(org_id: str, agentId: str = "", limit: int = 50):  # noqa: N803 —— 界面的查询参数名
+    root = _root(org_id)
+    return _listing(lambda: {"runs": views.runs(root, agent_id=agentId, limit=limit)})
+
+
+@router.get(_ORG + "/usage")
+async def usage(org_id: str):
+    root = _root(org_id)
+    return _listing(lambda: {"usage": views.usage(root)})
 
 
 @router.get(_ORG + "/routines")
@@ -514,7 +524,7 @@ async def agent_detail(org_id: str, agent_id: str):
     agent = next((a for a in views.agents(_root(org_id)) if a["id"] == agent_id), None)
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
-    return views.agent_detail(agent)
+    return views.agent_detail(_root(org_id), agent)
 
 
 @router.get("/api/app/connectors/catalog")

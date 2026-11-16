@@ -332,14 +332,13 @@ def channel_members(root: str) -> List[Dict[str, str]]:
     return [{"type": "person", "id": owner_id(root)}, {"type": "agent", "id": main_agent_id(root)}]
 
 
-def agent_detail(agent: Dict[str, Any]) -> Dict[str, Any]:
-    """角色资料页。用量与运行次数这一批还没接到现有账本，界面合同要求数字，这里是占位的 0，
-    不代表真实用量；接入 StaffBudgets 与执行记录后替换。"""
+def agent_detail(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
+    """角色资料页。本月的 token 与件数来自账本和台账；预算比例没有对应的月度预算，固定为 0。"""
     return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
                                            "ownerUserId", "createdAt", "audienceMode", "canTalk",
                                            "seesDetails")},
-            "credentialId": None, "budgetUsedPercent": 0, "tokensThisMonth": 0, "runsThisMonth": 0,
-            "failuresThisMonth": 0, "runsByDay": [], "pendingApprovals": 0, "channels": []}
+            "credentialId": None, "budgetUsedPercent": 0, **agent_activity(root, agent["id"]),
+            "pendingApprovals": 0, "channels": []}
 
 
 # ── 与专员的私聊：现有派活记录的另一种看法 ────────────────────────────────────
@@ -455,7 +454,7 @@ def _trigger(expression: str, timezone_name: str) -> Dict[str, Any]:
 
 
 def routines(root: str) -> List[Dict[str, Any]]:
-    """已登记、未删除的例行工作。运行历史与健康统计还没接到任务台账：给空的历史和全 0 的统计。"""
+    """已登记、未删除的例行工作，带上任务台账里它最近的运行。"""
     from datetime import timezone as tz
     from src.scheduling.routine_schedule import RoutineSchedule
     from src.workflow.staff.routines import Routines
@@ -482,6 +481,12 @@ def routines(root: str) -> List[Dict[str, Any]]:
             "canSeeDetails": True, "canManage": False, "lastRun": None, "recentRuns": [],
             "usage": {"runs": 0, "tokens": 0, "costNanoUsd": 0, "billedTo": "api"}, "ownActions": [],
         })
+    history = routine_history(root)
+    for row in rows:
+        past = history.get(row["id"])
+        if past:
+            row.update(past)
+            row["usage"]["runs"] = past["health"]["total"]
     return rows
 
 
@@ -600,3 +605,119 @@ def notifications(root: str, *, filter_name: str = "", limit: int = 50) -> Dict[
     counts = {"all": len(items), "mentions": 0, "waiting": 0, "unread": 0, "reactions": 0}
     shown = items if filter_name in {"", "all"} else []
     return {"items": shown, "counts": counts, "nextCursor": None}
+
+
+# ── 运行记录与用量：来自任务台账和模型用量账本 ────────────────────────────────
+
+_RUN_STATUS = {"queued": "queued", "running": "running", "blocked": "running", "done": "done"}
+
+
+def _staff_tasks(root: str) -> List[Any]:
+    """专员名下的任务，新的在前。台账读不全时照样返回读到的部分——这里只做展示，不据此下结论。"""
+    from src.workflow.tasks.tasks import TaskLedger
+    tasks = [task for task in TaskLedger(root).list(limit=500)
+             if (task.collaboration or {}).get("dispatch", {}).get("source") == "staff"
+             and (task.collaboration or {}).get("dispatch", {}).get("member")]
+    return sorted(tasks, key=lambda task: (task.created, task.id), reverse=True)
+
+
+def _task_run(root: str, task: Any) -> Dict[str, Any]:
+    dispatch = task.collaboration["dispatch"]
+    agent = member_agent_id(root, str(dispatch["member"]))
+    active = task.status in ACTIVE_TASK
+    return {"id": task.id, "agentId": agent, "channelId": dm_channel_id(agent),
+            "threadId": message_id(task.id, "user"), "trigger": "routine" if dispatch.get("routine") else "mention",
+            "status": _RUN_STATUS.get(task.status, "failed"), "error": str(task.error or "") or None,
+            "what": str(task.prompt or "")[:300], "turns": int(task.collaboration.get("round") or 1),
+            "inputTokens": 0, "outputTokens": 0,     # 账本按天按专员记，不到单件任务
+            "createdAt": _iso(task.created), "finishedAt": None if active else _iso(task.updated or task.created)}
+
+
+def runs(root: str, *, agent_id: str = "", limit: int = 50) -> List[Dict[str, Any]]:
+    """专员做过的事。主助理的回合不在任务台账里，这里不列。"""
+    rows = [_task_run(root, task) for task in _staff_tasks(root)]
+    if agent_id:
+        rows = [row for row in rows if row["agentId"] == agent_id]
+    return rows[:max(1, min(int(limit), 200))]
+
+
+def _month_days() -> List[Any]:
+    from datetime import date, timedelta
+    today = date.today()          # 与用量账本记账用的同一个「今天」（本机日期）
+    return [date(today.year, today.month, 1) + timedelta(days=offset) for offset in range(today.day)]
+
+
+def month_usage(root: str) -> Dict[str, Dict[str, int]]:
+    """本月每个角色的模型调用：专员按账本里的来源归到本人；其余（主要聊天、定时与巡视）归主助理。"""
+    from src.llm.usage_ledger import day_usage
+    members = {str(m.get("id")): member_agent_id(root, str(m.get("id"))) for m in _staff(root).get("members") or []}
+    main = main_agent_id(root)
+    totals: Dict[str, Dict[str, int]] = {}
+    for day in _month_days():
+        for source, bucket in day_usage(day).items():
+            parts = str(source).split(":")
+            agent = members.get(parts[3]) if parts[0] == "staff" and len(parts) == 5 else None
+            if parts[0] == "staff" and agent is None:
+                continue                      # 已不在名册里的专员：不混进别人名下
+            row = totals.setdefault(agent or main, {"calls": 0, "input": 0, "output": 0})
+            row["calls"] += int(bucket.get("calls", 0) or 0)
+            row["input"] += int(bucket.get("prompt", 0) or 0)
+            row["output"] += int(bucket.get("completion", 0) or 0)
+    return totals
+
+
+def usage(root: str) -> List[Dict[str, Any]]:
+    """用量页。账本只记 token，没有价格，费用一栏是占位的 0，不代表没花钱。"""
+    totals = month_usage(root)
+    return [{"agentId": agent["id"], "handle": agent["handle"], "calls": totals[agent["id"]]["calls"],
+             "inputTokens": totals[agent["id"]]["input"], "outputTokens": totals[agent["id"]]["output"],
+             "costUsd": 0} for agent in agents(root) if agent["id"] in totals]
+
+
+def agent_activity(root: str, agent_id: str) -> Dict[str, Any]:
+    """角色资料页的本月数字：token 来自用量账本，件数来自任务台账（只有专员有）。"""
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    mine = [run for run in runs(root, agent_id=agent_id, limit=200) if run["createdAt"].startswith(month)]
+    by_day: Dict[int, Dict[str, int]] = {}
+    for run in mine:
+        row = by_day.setdefault(int(run["createdAt"][8:10]), {"runs": 0, "failed": 0})
+        row["runs"] += 1
+        row["failed"] += run["status"] == "failed"
+    used = month_usage(root).get(agent_id, {"input": 0, "output": 0})
+    return {"tokensThisMonth": used["input"] + used["output"], "runsThisMonth": len(mine),
+            "failuresThisMonth": sum(run["status"] == "failed" for run in mine),
+            "runsByDay": [{"day": day, **row} for day, row in sorted(by_day.items())]}
+
+
+_ROUTINE_RUN = {"queued": "queued", "running": "running", "blocked": "waiting", "done": "reported"}
+
+
+def routine_history(root: str) -> Dict[str, Dict[str, Any]]:
+    """每项例行工作最近的运行：任务台账里带着它标记的那些任务。"""
+    history: Dict[str, List[Dict[str, Any]]] = {}
+    for task in _staff_tasks(root):
+        routine = task.collaboration["dispatch"].get("routine") or {}
+        if not routine.get("id"):
+            continue
+        active = task.status in ACTIVE_TASK
+        agent = member_agent_id(root, str(task.collaboration["dispatch"]["member"]))
+        history.setdefault(str(routine["id"]), []).append({
+            "id": task.id, "at": _iso(task.created), "status": _ROUTINE_RUN.get(task.status, "failed"),
+            "code": None, "summary": str(task.result or task.error or "")[:200], "brain": "model",
+            "link": {"channelId": dm_channel_id(agent), "threadId": None,
+                     "messageId": message_id(task.id, "user" if active else "assistant")},
+            "finishedAt": None if active else _iso(task.updated or task.created)})
+    out = {}
+    for routine_id, rows in history.items():
+        finished = [row for row in rows if row["finishedAt"]]
+        streak = 0
+        for row in finished:
+            if row["status"] != "failed":
+                break
+            streak += 1
+        out[routine_id] = {
+            "lastRun": rows[0], "recentRuns": rows[:10], "failuresInRow": streak,
+            "health": {"ok": sum(row["status"] == "reported" for row in finished), "silent": 0,
+                       "failed": sum(row["status"] == "failed" for row in finished), "skipped": 0, "missed": 0,
+                       "total": len(finished)}}
+    return out
