@@ -109,7 +109,7 @@ def test_writes_that_are_not_wired_yet_do_not_pretend_to_succeed(client):
     assert response.status_code in {404, 405}
 
 
-def test_staff_members_are_listed_but_not_talkable_yet(client, home, monkeypatch):
+def test_staff_members_are_listed_and_paused_ones_are_not_talkable(client, home, monkeypatch):
     from src.web import app_views as views
     monkeypatch.setattr(views, "_staff", lambda root: {
         "roles": [{"id": "web-researcher", "title": "研究员"}],
@@ -121,8 +121,9 @@ def test_staff_members_are_listed_but_not_talkable_yet(client, home, monkeypatch
     statuses = {s["agentId"]: s["presence"] for s in
                 client.get(f"/api/app/organizations/{org}/agent-status").json()["agents"]}
     assert statuses[agents[1]["id"]] == "offline" and statuses[agents[0]["id"]] == "online"
-    refused = client.post(f"/api/app/organizations/{org}/dms", json={"agentId": agents[1]["id"]})
-    assert refused.status_code == 404
+    opened = client.post(f"/api/app/organizations/{org}/dms", json={"agentId": agents[1]["id"]})
+    assert opened.status_code == 200 and opened.json()["dm"]["with"]["name"] == "安"
+    assert client.post(f"/api/app/organizations/{org}/dms", json={"agentId": "unknown"}).status_code == 404
 
 
 def test_ai_status_follows_the_model_credential(client, monkeypatch):

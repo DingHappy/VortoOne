@@ -10,6 +10,7 @@ src/web/app_views.py 对现有记录的只读整理。本文件是第一批：�
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any, Dict
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
+from src.web import app_staff
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 
 router = APIRouter(tags=["app"])
@@ -167,9 +169,13 @@ class _OpenDm(BaseModel):
 @router.post(_ORG + "/dms")
 async def open_dm(org_id: str, body: _OpenDm):
     root = _root(org_id)
-    if body.agentId != views.main_agent_id(root):
-        return _error(404, "not_found", "目前只能和主助理私聊")
-    dm = views.main_dm(root)
+    if body.agentId == views.main_agent_id(root):
+        dm = views.main_dm(root)
+    else:
+        member_id = views.member_for_channel(root, views.dm_channel_id(body.agentId))
+        if member_id is None:
+            return _error(404, "not_found", "没有这个角色")
+        dm = views.member_dm(root, member_id)
     return {"channelId": dm["channelId"], "dm": dm}
 
 
@@ -178,18 +184,46 @@ def _main_channel(org_id: str, channel_id: str) -> str | None:
     return root if views.is_main_dm(root, channel_id) else None
 
 
+def _member_channel(org_id: str, channel_id: str) -> tuple[str, str] | None:
+    """这个对话是不是与某位专员的私聊；是则返回 (家, 专员)。"""
+    root = _root(org_id)
+    member_id = views.member_for_channel(root, channel_id)
+    return (root, member_id) if member_id else None
+
+
+_NEEDS_OWNER = "专员对话需要携带主人令牌（Authorization: Bearer）"
+
+
+def _staff_read(action):
+    try:
+        return action()
+    except (ValueError, OSError) as error:
+        return _error(409, "staff_unavailable", str(error))
+
+
 @router.get(_ORG + "/channels/{channel_id}/members")
 async def channel_members(org_id: str, channel_id: str):
     root = _main_channel(org_id, channel_id)
+    member = _member_channel(org_id, channel_id) if root is None else None
+    if member:
+        return {"members": [{"type": "person", "id": views.owner_id(member[0])},
+                            {"type": "agent", "id": views.member_agent_id(*member)}]}
     if root is None:
         return _error(404, "not_found", "没有这个对话")
     return {"members": views.channel_members(root)}
 
 
 @router.get(_ORG + "/channels/{channel_id}/messages")
-async def channel_messages(org_id: str, channel_id: str, before: str = "", limit: int = 100,
+async def channel_messages(org_id: str, channel_id: str, request: Request, before: str = "", limit: int = 100,
                            threadId: str = ""):  # noqa: N803 —— 界面的查询参数名
     root = _main_channel(org_id, channel_id)
+    member = _member_channel(org_id, channel_id) if root is None else None
+    if member:
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        if threadId:
+            return {"messages": []}
+        return _staff_read(lambda: {"messages": views.member_messages(*member, before=before, limit=limit)})
     if root is None:
         return _error(404, "not_found", "没有这个对话")
     if threadId:
@@ -208,11 +242,12 @@ class _Post(BaseModel):
 
 
 @router.post(_ORG + "/channels/{channel_id}/messages")
-async def post_message(org_id: str, channel_id: str, body: _Post):
+async def post_message(org_id: str, channel_id: str, body: _Post, request: Request):
     """主人在私聊里发一条：交给主要聊天开一个回合（前面还有回合就排队）。应答是这条消息本身，
     助理的回复之后经实时连接或下一次读取出现。"""
     root = _main_channel(org_id, channel_id)
-    if root is None:
+    member = _member_channel(org_id, channel_id) if root is None else None
+    if root is None and member is None:
         return _error(404, "not_found", "没有这个对话")
     text = body.body.strip()
     if not text:
@@ -221,15 +256,27 @@ async def post_message(org_id: str, channel_id: str, body: _Post):
         return _error(413, "message_too_long", "消息太长")
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
+    client_id = (body.clientId or "")[:120] or None
+    if member:
+        if len(text) > 4000:
+            return _error(413, "message_too_long", "交给专员的一件事最多 4000 字")
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        return await asyncio.to_thread(_staff_read, lambda: app_staff.send(member[0], member[1], text, client_id))
     try:
-        return await (await main_chat_bridge(root)).post(text, (body.clientId or "")[:120] or None)
+        return await (await main_chat_bridge(root)).post(text, client_id)
     except NoModel:
         return _error(409, "no_ai", "还没有连接模型，没法回复")
 
 
 @router.get(_ORG + "/channels/{channel_id}/active-runs")
-async def channel_active_runs(org_id: str, channel_id: str):
+async def channel_active_runs(org_id: str, channel_id: str, request: Request):
     root = _main_channel(org_id, channel_id)
+    member = _member_channel(org_id, channel_id) if root is None else None
+    if member:
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        return _staff_read(lambda: {"runs": views.member_runs(*member)})
     if root is None:
         return _error(404, "not_found", "没有这个对话")
     bridge = existing_bridge(root)
@@ -243,9 +290,18 @@ async def active_runs(org_id: str):
 
 
 @router.post(_ORG + "/runs/{run_id}/cancel", status_code=204)
-async def cancel_run(org_id: str, run_id: str):
-    """「停止」：中断主要聊天当前的回合（与现有 Desktop 的停止同一条路径）。"""
-    bridge = existing_bridge(_root(org_id))
+async def cancel_run(org_id: str, run_id: str, request: Request):
+    """「停止」：主要聊天的回合走现有 Desktop 的停止路径；专员手上的事走主人的停止决定。"""
+    root = _root(org_id)
+    if run_id.startswith("task-"):
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        try:
+            stopped = app_staff.stop(root, run_id)
+        except (ValueError, OSError) as error:
+            return _error(409, "staff_unavailable", str(error))
+        return Response(status_code=204) if stopped else _error(409, "run_finished", "这件事已经不在进行")
+    bridge = existing_bridge(root)
     if bridge is None or not await bridge.stop(run_id):
         return _error(409, "run_finished", "这一轮已经结束")
     return Response(status_code=204)
@@ -302,14 +358,14 @@ async def refuse(org_id: str, approval_id: str, body: _Approve):
 
 @router.get(_ORG + "/channels/{channel_id}/pins")
 async def channel_pins(org_id: str, channel_id: str):
-    if _main_channel(org_id, channel_id) is None:
+    if _main_channel(org_id, channel_id) is None and _member_channel(org_id, channel_id) is None:
         return _error(404, "not_found", "没有这个对话")
     return {"pins": []}
 
 
 @router.get(_ORG + "/channels/{channel_id}/threads")
 async def channel_threads(org_id: str, channel_id: str):
-    if _main_channel(org_id, channel_id) is None:
+    if _main_channel(org_id, channel_id) is None and _member_channel(org_id, channel_id) is None:
         return _error(404, "not_found", "没有这个对话")
     return {"threads": [], "nextCursor": None}
 
@@ -436,6 +492,7 @@ async def app_socket(websocket: WebSocket):
     await websocket.accept()
     await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=views.owner_id(root)))
     bridge = None
+    watches: Dict[str, asyncio.Task] = {}
     try:
         while True:
             try:
@@ -451,15 +508,28 @@ async def app_socket(websocket: WebSocket):
                     bridge = await main_chat_bridge(root)
                     bridge.subscribe(websocket)
                     await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
+                elif views.member_for_channel(root, channel) and not app_staff.owner_proof(websocket):
+                    await websocket.send_json(
+                        F.make_app_frame(F.ERROR, code="owner_proof_required", channelId=channel))
+                elif views.member_for_channel(root, channel):
+                    if channel not in watches:
+                        watches[channel] = asyncio.create_task(
+                            app_staff.watch(websocket, root, views.member_for_channel(root, channel)))
+                    await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
                 else:
                     await websocket.send_json(F.make_app_frame(F.ERROR, code="not_found", channelId=channel))
             elif kind == "unsubscribe":
                 channel = str(frame.get("channelId") or "")
                 if bridge is not None and views.is_main_dm(root, channel):
                     bridge.unsubscribe(websocket)
+                watch = watches.pop(channel, None)
+                if watch is not None:
+                    watch.cancel()
                 await websocket.send_json(F.make_app_frame(F.UNSUBSCRIBED, channelId=channel))
     except WebSocketDisconnect:
         return
     finally:
+        for watch in watches.values():
+            watch.cancel()
         if bridge is not None:
             bridge.unsubscribe(websocket)

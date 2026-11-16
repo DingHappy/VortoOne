@@ -109,7 +109,7 @@ def _staff(root: str) -> Dict[str, Any]:
 
 
 def agents(root: str) -> List[Dict[str, Any]]:
-    """主助理加未退役的专员。专员的对话还没接进这套界面，所以 canTalk 为假。"""
+    """主助理加未退役的专员。暂停中的专员不能对话。"""
     profile = _profile(root)
     owner = owner_id(root)
     created = _home_created(root)
@@ -132,7 +132,7 @@ def agents(root: str) -> List[Dict[str, Any]]:
             "handle": member_id, "role": titles.get(str(member.get("role")), str(member.get("role") or "")),
             "instructions": "", "model": str(member.get("model") or ""), "ownerUserId": owner,
             "hasCredential": model_connected(), "createdAt": created, "audienceMode": "everyone",
-            "canTalk": False, "seesDetails": True,
+            "canTalk": member.get("status", "active") == "active", "seesDetails": True,
         })
     return rows
 
@@ -338,3 +338,82 @@ def agent_detail(agent: Dict[str, Any]) -> Dict[str, Any]:
                                            "seesDetails")},
             "credentialId": None, "budgetUsedPercent": 0, "tokensThisMonth": 0, "runsThisMonth": 0,
             "failuresThisMonth": 0, "runsByDay": [], "pendingApprovals": 0, "channels": []}
+
+
+# ── 与专员的私聊：现有派活记录的另一种看法 ────────────────────────────────────
+# 主人在这里发的每一条，都是交给这位专员的一件事（StaffConversations.submit）；
+# 没有第二份对话记录，读到的消息全部由任务台账整理出来。
+
+ACTIVE_TASK = {"queued", "running", "blocked"}
+
+
+def member_for_channel(root: str, channel_id: str) -> Optional[str]:
+    for member in _staff(root).get("members") or []:
+        member_id = str(member.get("id") or "")
+        if member_id and member.get("status") != "retired" \
+                and dm_channel_id(member_agent_id(root, member_id)) == channel_id:
+            return member_id
+    return None
+
+
+def member_conversation(root: str, member_id: str) -> Dict[str, Any]:
+    from src.workflow.staff.conversations import StaffConversations
+    return StaffConversations(root).read(member_id, limit=50)
+
+
+def _member_message(root: str, member_id: str, mid: str, *, from_owner: bool, body: str, created: str,
+                    task_id: str, **extra: Any) -> Dict[str, Any]:
+    agent = member_agent_id(root, member_id)
+    return {"id": mid, "channelId": dm_channel_id(agent), "threadId": None,
+            "author": {"type": "person" if from_owner else "agent", "id": owner_id(root) if from_owner else agent},
+            "body": body, "mentionedAgentIds": [], "agentRunId": None if from_owner else task_id,
+            "createdAt": created, **extra}
+
+
+def member_owner_message(root: str, member_id: str, task: Dict[str, Any],
+                         client_id: Optional[str] = None) -> Dict[str, Any]:
+    extra = {"clientId": client_id} if client_id else {}
+    return _member_message(root, member_id, message_id(task["id"], "user"), from_owner=True,
+                           body=str(task.get("prompt") or ""), created=_iso(task.get("created")),
+                           task_id=task["id"], **extra)
+
+
+def member_messages(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None, *,
+                    before: str = "", limit: int = 100) -> List[Dict[str, Any]]:
+    """每件事两条：主人交代的话；做完（或没做成）后专员交回的结果。进行中的只有前一条。"""
+    conversation = conversation or member_conversation(root, member_id)
+    rows: List[Dict[str, Any]] = []
+    for task in reversed(conversation["tasks"]):          # 台账给的是新的在前
+        rows.append(member_owner_message(root, member_id, task))
+        status = str(task.get("status") or "")
+        if status in ACTIVE_TASK:
+            continue
+        if status == "done":
+            body = str(task.get("result") or "").strip() or "已完成，没有交回文字说明。"
+        else:
+            reason = str(task.get("error") or "").strip()
+            body = "这件事没有完成" + (f"：{reason}" if reason else f"（状态：{status or '未知'}）。")
+        rows.append(_member_message(root, member_id, message_id(task["id"], "assistant"), from_owner=False,
+                                    body=body, created=_iso(task.get("updated") or task.get("created")),
+                                    task_id=task["id"]))
+    if before:
+        cutoff = _iso(before)
+        rows = [row for row in rows if row["createdAt"] < cutoff]
+    return rows[-max(1, min(int(limit), 400)):]
+
+
+def member_runs(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    conversation = conversation or member_conversation(root, member_id)
+    agent = member_agent_id(root, member_id)
+    return [{"runId": task["id"], "agentId": agent, "channelId": dm_channel_id(agent),
+             "threadId": message_id(task["id"], "user"), "triggerMessageId": message_id(task["id"], "user"),
+             "status": "running" if task.get("status") == "running" else "queued",
+             "startedAt": _iso(task.get("created")), "createdAt": _iso(task.get("created"))}
+            for task in conversation["tasks"] if task.get("status") in ACTIVE_TASK]
+
+
+def member_dm(root: str, member_id: str) -> Dict[str, Any]:
+    agent = next(a for a in agents(root) if a["id"] == member_agent_id(root, member_id))
+    return {"channelId": dm_channel_id(agent["id"]),
+            "with": {"type": "agent", "id": agent["id"], "name": agent["name"], "handle": agent["handle"]},
+            "openedAt": agent["createdAt"], "lastMessage": None, "unread": 0}
