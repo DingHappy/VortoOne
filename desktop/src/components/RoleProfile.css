@@ -14,6 +14,14 @@
 .vc-role-row:focus-visible, .vc-role-add:focus-visible { outline: 2px solid var(--vc-focus-ring); outline-offset: var(--vc-space-1); }
 .vc-role-profile-dialog { width: min(calc(100% - var(--vc-space-8)), var(--vc-role-profile-w)); height: calc(100% - var(--vc-space-8)); max-width: none; max-height: none; margin: var(--vc-space-4) var(--vc-space-4) var(--vc-space-4) auto; padding: var(--vc-space-6); color: var(--vc-text); background: var(--vc-workspace-bg); border: 1px solid var(--vc-border); border-radius: var(--vc-radius-input); box-shadow: var(--vc-shadow-pop); font-family: var(--vc-font-sans); overflow: auto; }
 .vc-role-profile-dialog::backdrop { background: var(--vc-backdrop); }
+.vc-role-profile-page { flex: 1; min-width: 0; min-height: 0; overflow: auto; background: var(--vc-workspace-bg); }
+.vc-role-profile-page-body { box-sizing: border-box; max-width: var(--vc-role-profile-w); margin: 0 auto; padding: var(--vc-space-6) var(--vc-page-pad); }
+.vc-role-profile-page nav { display: flex; align-items: center; gap: var(--vc-space-4); margin-bottom: var(--vc-space-8); font-size: var(--vc-size-small); color: var(--vc-muted); }
+.vc-role-profile-back { display: inline-flex; align-items: center; gap: var(--vc-space-2); min-height: var(--vc-control-h); padding: var(--vc-space-1) var(--vc-space-2); border: 0; border-radius: var(--vc-radius-control); background: transparent; color: var(--vc-text); font: inherit; cursor: pointer; }
+.vc-role-profile-back svg { width: var(--vc-icon); height: var(--vc-icon); }
+.vc-role-profile-back:hover { background: var(--vc-hover); }
+.vc-role-profile-back:focus-visible { outline: 2px solid var(--vc-focus-ring); outline-offset: var(--vc-space-1); }
+.vc-role-profile-heading small { display: block; margin-top: var(--vc-space-2); color: var(--vc-muted); font-size: var(--vc-size-small); overflow-wrap: anywhere; }
 .vc-role-profile-heading { display: flex; align-items: center; gap: var(--vc-space-5); padding-bottom: var(--vc-space-6); }
 .vc-role-profile-heading > div { flex: 1; min-width: 0; }
 .vc-role-profile-heading h1 { font-size: var(--vc-size-greeting); font-weight: var(--vc-weight-strong); margin: 0 0 var(--vc-space-2); overflow-wrap: anywhere; }
@@ -30,5 +38,6 @@
 .vc-role-profile-warning { color: var(--vc-danger-text); padding: var(--vc-space-3); background: var(--vc-danger-bg); border-radius: var(--vc-radius-control); font-size: var(--vc-size-small); line-height: 1.7; }
 .vc-role-profile-task { display: grid; gap: var(--vc-space-2); padding: var(--vc-space-4) 0; border-bottom: 1px solid var(--vc-border); font-size: var(--vc-size-body); }
 .vc-role-profile-task > span { color: var(--vc-muted); font-size: var(--vc-size-small); }
-.vc-role-profile-dialog [role="tabpanel"][hidden] { display: none; }
+.vc-role-profile-dialog [role="tabpanel"][hidden], .vc-role-profile-page [role="tabpanel"][hidden] { display: none; }
+@media (max-width: 760px) { .vc-role-profile-page-body { padding: var(--vc-space-4); } .vc-role-profile-page .vc-role-profile-heading { flex-direction: column; align-items: flex-start; } .vc-role-profile-page .vc-role-profile-heading h1 { font-size: var(--vc-size-title); } }
 @media (max-width: 760px) { .vc-role-profile-dialog { padding: var(--vc-space-4); } .vc-role-profile-heading .vc-role-avatar { width: var(--vc-avatar-message); height: var(--vc-avatar-message); } .vc-role-profile-heading h1 { font-size: var(--vc-size-title); } }

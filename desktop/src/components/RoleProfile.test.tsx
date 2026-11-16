@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { RoleProfileView } from "./RoleProfile";
+import { RoleProfilePage, RoleProfileView } from "./RoleProfile";
 import { roleProfileSnapshot } from "../lib/roleProfileSnapshot";
 import { settingsTargetLease } from "../lib/settingsTarget";
 import { desktopContext } from "../lib/desktopContext";
@@ -43,4 +43,22 @@ it("freezes display data so an old role dialog never adopts another space's new 
   memories[0].content = "B 的记忆";
   expect(frozen.profile.name).toBe("空间 A");
   expect(frozen.memories[0].content).toBe("A 的记忆");
+});
+
+it("opens the same profile as a labelled page, with a return action and the original source", () => {
+  const html = renderToStaticMarkup(<RoleProfilePage name="资料助手" description="只读公开资料" character="research"
+    sourceLabel="原个人空间" sections={sections} current onClose={() => {}} />);
+  expect(html).toContain('aria-label="角色资料：资料助手"');
+  expect(html).not.toContain("<dialog");
+  expect(html).toContain("返回</button>");
+  expect(html).toContain("原个人空间");
+  expect(html.match(/role="tab"/g)).toHaveLength(3);
+  expect(html).not.toContain("关闭角色资料");
+});
+
+it("keeps the page return available after invalidation while disabling the old profile's controls", () => {
+  const html = renderToStaticMarkup(<RoleProfilePage name="原角色" description="原资料" sections={sections} current={false} onClose={() => {}} />);
+  expect(html).toContain("运行端或连接已变化");
+  expect(html.match(/<fieldset disabled=""/g)).toHaveLength(3);
+  expect(html).toMatch(/<button type="button" class="vc-role-profile-back">/);
 });

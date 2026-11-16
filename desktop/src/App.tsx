@@ -29,13 +29,13 @@ import { resolveMainChat } from "./lib/mainChat";
 import { WorkspaceBar } from "./components/WorkspaceBar";
 import { roleProfileSnapshot } from "./lib/roleProfileSnapshot";
 import { RoleNavigation } from "./components/RoleNavigation";
-import { RoleProfileDialog, type RoleProfileSection } from "./components/RoleProfile";
+import { RoleProfileDialog, RoleProfilePage, type RoleProfileSection } from "./components/RoleProfile";
+import { roleSummary } from "./features/roles/roleSummary";
+import { registeredRoleSections } from "./features/roles/profileSections";
 import { RoleCreateDialog } from "./features/roles/RoleCreateDialog";
 import { RoleConversation } from "./features/roles/RoleConversation";
 import { roleDrafts } from "./features/roles/conversationController";
 import { staffCharacter, type RoleCharacter } from "./components/RoleAvatar";
-import { RoleGrants } from "./components/settings/StaffPane";
-import { ExecutionDetails } from "./components/ExecutionDetails";
 import type { StaffMember, StaffRole, StaffSnapshot } from "./lib/staff";
 import { COPY } from "./lib/copy.generated";
 import { ChatHistory, MessageIdentity } from "./components/ChatHistory";
@@ -289,7 +289,8 @@ function App() {
   const [activities, setActivities] = useState<TurnActivity[]>([]);
   const [previewView, setPreviewView] = useState<PreviewView>("plan");
   // 主区复用原领域页面；切换会话时回到对话。
-  const [mainView, setMainView] = useState<"chat" | "plugins" | "artifacts" | "customize" | "management" | "team" | "department" | "assistant" | "role">("chat");
+  const [mainView, setMainView] = useState<"chat" | "plugins" | "artifacts" | "customize" | "management" | "team" | "department" | "assistant" | "role" | "role-profile">("chat");
+  const roleReturnView = useRef(mainView);
   const assistantPageTrigger = useRef<HTMLElement | null>(null);
   // 任务小组（ADR-014 S3）：侧栏「最近」里每个小组一条，点开在中间看群聊
   const [teamList, setTeamList] = useState<TeamSummary[]>([]);
@@ -2878,10 +2879,15 @@ function App() {
     if (memberId && !member) return;
     const role = record?.role ?? (member ? departmentDirectory.value?.roles.find(item => item.id === member.role) : undefined);
     setRoleSelection({ lease: settingsTargetLease(() => ({ context: settingsTargetRef.current, client: clientRef.current })),
-      name: member?.name || assistantProfile.name || "VortoOne", description: member ? role?.brief || COPY.role.unknown : COPY.characters.general,
+      name: member?.name || assistantProfile.name || "VortoOne", description: member ? role ? roleSummary(role) : COPY.role.unknown : COPY.characters.general,
       character: member ? staffCharacter(role) : "general", member: member ? structuredClone(member) : undefined, role: role ? structuredClone(role) : undefined,
       assistant: member ? undefined : roleProfileSnapshot(assistantProfile, assistantAvatar, assistantMemories, memoryProposals) });
+    if (appMode === "assistant") {
+      if (mainView !== "role-profile") roleReturnView.current = mainView;
+      setMainView("role-profile"); setInspectorOpen(false);
+    }
   };
+  const closeRoleProfile = () => { setRoleSelection(null); if (mainView === "role-profile") setMainView(roleReturnView.current); };
   const openRoleConversation = (memberId: string) => {
     const member = departmentDirectory.value?.members.find(item => item.id === memberId);
     const lease = settingsTargetLease(() => ({ context: settingsTargetRef.current, client: clientRef.current }));
@@ -2896,37 +2902,22 @@ function App() {
   };
   const manageSelectedRole = () => {
     if (!roleSelection?.lease.current()) return;
-    setRoleSelection(null); setSettingsSection("staff"); setSettingsOpen(true);
+    closeRoleProfile(); setSettingsSection("staff"); setSettingsOpen(true);
   };
   const roleCurrent = Boolean(roleSelection?.lease.current());
-  const roleSections: RoleProfileSection[] = roleSelection ? roleSelection.member ? [
-    { id: "settings", label: COPY.role.settings, content: <>
-      <PreferenceGroup title="角色资料"><PreferenceRow title="名字">{roleSelection.name}</PreferenceRow>
-        <PreferenceRow title="权限方案">{roleSelection.role?.title || COPY.role.unknown}</PreferenceRow>
-        <PreferenceRow title="状态">{roleCurrent ? ({ active: COPY.role.active, paused: COPY.role.paused, retired: COPY.role.retired }[roleSelection.member.status] || COPY.role.unverified) : COPY.role.unverified}</PreferenceRow>
-        <PreferenceRow title="执行者">{roleSelection.member.engine}</PreferenceRow>
-        <PreferenceRow title="模型">{roleSelection.member.model || "沿用登记配置"}</PreferenceRow></PreferenceGroup>
-      <Button onClick={manageSelectedRole}>{COPY.role.manage}</Button>
-      <p>接活时核对已批准的权限方案、部门和额度；从总助手安排任务。</p>
-    </> },
-    { id: "access", label: COPY.role.access, content: <>{roleSelection.role ? <RoleGrants role={roleSelection.role} /> : <p>{COPY.role.unknown}</p>}
-      <Button onClick={manageSelectedRole}>核对权限与待批提议</Button></> },
-    { id: "activity", label: COPY.role.activity, content: <>{!roleSelection.member.recent_tasks.length && <p>还没有工作记录。</p>}
-      {roleSelection.member.recent_tasks.map(task => <article className="vc-role-profile-task" key={task.id}>
-        <strong>{task.prompt || task.id}</strong><span>任务状态：{({ queued: "待开始", running: "在忙", blocked: "等回答", done: "已交回", failed: "失败", interrupted: "中断", cancelled: "已取消" } as Record<string, string>)[task.status] ?? "状态待核对"} · 核对状态：{task.review === "accepted" ? task.delivery === "review" ? "主人已验收" : "已核对汇报" : ({ pending: "待核对", rework_requested: "待返工", not_submitted: "尚未交付" } as Record<string, string>)[task.review] ?? "审查待核对"}</span>
-        <ExecutionDetails taskId={task.id} value={task.execution} current={roleCurrent} /></article>)}</> },
-  ] : [
+  const roleSections: RoleProfileSection[] = roleSelection ? roleSelection.member
+    ? registeredRoleSections(roleSelection.member, roleSelection.role, roleCurrent, manageSelectedRole) : [
     { id: "settings", label: COPY.role.settings, content: <>
       <PreferenceGroup title="角色资料"><PreferenceRow title="名字">{roleSelection.assistant?.profile.name || "VortoOne"}</PreferenceRow>
         <PreferenceRow title="性格与说话方式">{roleSelection.assistant?.profile.soul || "还没填写"}</PreferenceRow>
         <PreferenceRow title="关于你">{roleSelection.assistant?.profile.about_you || "还没填写"}</PreferenceRow></PreferenceGroup>
-      <div className="settings-card-actions"><Button onClick={() => { if (!roleSelection.lease.current()) return; setRoleSelection(null); openProfileDialog(); }}>编辑资料</Button>
-        <Button onClick={() => { if (!roleSelection.lease.current()) return; setRoleSelection(null); void openMainChat(); }}>打开主要聊天</Button></div>
+      <div className="settings-card-actions"><Button onClick={() => { if (!roleSelection.lease.current()) return; closeRoleProfile(); openProfileDialog(); }}>编辑资料</Button>
+        <Button onClick={() => { if (!roleSelection.lease.current()) return; closeRoleProfile(); setMainView("chat"); void openMainChat(); }}>打开主要聊天</Button></div>
     </> },
     { id: "access", label: COPY.role.access, content: <><PreferenceGroup title="工具与权限">
       <PreferenceRow title="当前运行端">{roleSelection.lease.target.runtimeLabel}</PreferenceRow>
       <PreferenceRow title="操作确认" description="工具调用仍按会话权限、污点和主人确认规则检查。">由原确认门判断</PreferenceRow></PreferenceGroup>
-      <Button onClick={() => { if (!roleSelection.lease.current()) return; setRoleSelection(null); sessionResources.refresh(); setCapabilitiesOpen(true); }}>查看此对话的能力与连接</Button>
+      <Button onClick={() => { if (!roleSelection.lease.current()) return; closeRoleProfile(); sessionResources.refresh(); setCapabilitiesOpen(true); }}>查看此对话的能力与连接</Button>
     </> },
     { id: "memory", label: COPY.role.memory, content: <>
       <AssistantMemories memories={roleSelection.assistant?.memories ?? []} onDelete={memory => { if (roleSelection.lease.current()) void panelActions.deleteMemory(memory); }} />
@@ -3095,7 +3086,7 @@ function App() {
                   .map(session => ({ sid: session.sid, title: session.title || draftChats.find(draft => draft.sid === session.sid)?.title || "新的旁聊", busy: session.status === "working" })),
                 ...draftChats.filter(draft => draft.sid !== mainChatSid && !sessions.some(session => session.sid === draft.sid)),
               ]}
-              current={mainView === "role" ? "" : activeSid}
+              current={mainView === "role" || mainView === "role-profile" ? "" : activeSid}
               page={mainView === "assistant" || mainView === "artifacts" || mainView === "customize" ? assistantPage : null}
               search={sidebarSearchOpen ? sidebarSearch("搜索聊天") : undefined}
               query={sidebarQuery}
@@ -3104,7 +3095,8 @@ function App() {
               onPage={page => navigateFromSettings(() => page === "identity" ? openRoleProfile() : openAssistantPage(page))}
               roles={<RoleNavigation name={assistantProfile.name || "VortoOne"} avatar={assistantAvatar}
                 directory={departmentDirectory.value} error={departmentDirectory.error} connected={Boolean(currentTarget.space && currentTarget.ready)}
-                currentMember={mainView === "role" ? roleConversation?.member : undefined} currentAssistant={mainView === "chat" && activeSid === mainChatSid}
+                currentMember={mainView === "role-profile" ? roleSelection?.member?.id : mainView === "role" ? roleConversation?.member : undefined}
+                currentAssistant={mainView === "role-profile" ? !!roleSelection?.assistant : mainView === "chat" && activeSid === mainChatSid}
                 onRefresh={departmentDirectory.refresh} onAssistant={() => navigateFromSettings(() => { setMainView("chat"); setInspectorOpen(false); void openMainChat(); })}
                 onMember={id => navigateFromSettings(() => openRoleConversation(id))} onAdd={() => navigateFromSettings(createRole)} />}
               onSelect={(sid) => navigateFromSettings(() => { setMainView("chat"); setInspectorOpen(false); void (sid === mainChatSid ? openMainChat() : switchSession(sid)); })}
@@ -3191,7 +3183,12 @@ function App() {
           />
         </aside>
 
-        {appMode === "assistant" && settingsOpen ? settingsView : mainView === "plugins" ? (
+        {appMode === "assistant" && settingsOpen ? settingsView : mainView === "role-profile" && roleSelection && appMode === "assistant" ? (
+          <RoleProfilePage key={`${roleSelection.lease.target.readKey}:${roleSelection.member?.id || "assistant"}`}
+            name={roleSelection.name} description={roleSelection.description} character={roleSelection.character}
+            avatar={roleSelection.assistant?.avatar} sourceLabel={roleSelection.lease.target.runtimeLabel}
+            current={roleCurrent} sections={roleSections} onClose={closeRoleProfile} />
+        ) : mainView === "plugins" ? (
           <PluginsPage
             activeScope={activeScope}
             mcpServers={<McpServersCard key={`mcp-${pluginsRevision}`} client={clientRef.current} connection={connection} />}
@@ -3893,7 +3890,7 @@ function App() {
             if (!connected) setBanner("频道已保存，连接尚未完成。请从原空间的频道列表重新打开。");
           }).catch(error => setBanner(errorText(error, "频道已保存，连接失败。请从原空间的频道列表重新打开。")));
         }} />}
-      {roleSelection && <RoleProfileDialog name={roleSelection.name} description={roleSelection.description}
+      {roleSelection && appMode !== "assistant" && <RoleProfileDialog name={roleSelection.name} description={roleSelection.description}
         character={roleSelection.character} avatar={roleSelection.assistant?.avatar} current={roleCurrent}
         sections={roleSections} onClose={() => setRoleSelection(null)} />}
       {newRoleRequest && <RoleCreateDialog registry={newRoleRequest.registry} lease={newRoleRequest.lease} onClose={() => setNewRoleRequest(null)}

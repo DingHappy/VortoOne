@@ -30,7 +30,7 @@ export function ConversationHeader({ title, roleIdentity, channelTopic, place, p
   return (
     // 窗口没有标题栏：顶栏的空白处用来拖动窗口
     <div className="conversation-header" data-tauri-drag-region="deep">
-      {roleIdentity ? <button type="button" className="vc-conversation-role" aria-haspopup="dialog" aria-label={`角色资料：${roleIdentity.name}`} onClick={roleIdentity.onOpen}>
+      {roleIdentity ? <button type="button" data-role-profile-trigger className="vc-conversation-role" aria-label={`角色资料：${roleIdentity.name}`} onClick={roleIdentity.onOpen}>
         <RoleAvatar character="general" avatar={roleIdentity.avatar} /><span><strong>{roleIdentity.name}</strong><small>{title}</small></span>
       </button> : <div>
         <div className="conversation-channel-name">{channelTopic !== undefined && <Hash aria-label="频道" />}<strong title={title}>{title}</strong></div>
