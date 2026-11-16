@@ -480,6 +480,76 @@ async def agent_skills(org_id: str, agent_id: str):
     return _listing(lambda: {"skills": views.skills(root) if agent_id == views.main_agent_id(root) else []})
 
 
+# ── 写入：记忆归档、例行工作启停与删除、技能启停 ─────────────────────────────
+# 每一项都交给现有的登记处去改，规矩（版本核对、绑定核对、范围）在那里；这里只把界面的写法对上。
+
+@router.patch(_ORG + "/memories/{memory_id}")
+async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any]):
+    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。"""
+    root = _root(org_id)
+    if set(body) != {"archived"} or type(body["archived"]) is not bool:
+        return _error(400, "unsupported", "这里只能归档或恢复记忆")
+    try:
+        memory = await asyncio.to_thread(views.set_memory_archived, root, memory_id, body["archived"])
+    except (ValueError, OSError) as error:
+        return _error(409, "unavailable", str(error))
+    return memory if memory is not None else _error(404, "not_found", "没有这条记忆")
+
+
+def _routine_write(root: str, routine_id: str, **change):
+    if not views.owner_connection():
+        return _error(403, "forbidden", "例行工作的启停与删除需要已认证的主人连接")
+    try:
+        return views.control_routine(root, routine_id, **change)
+    except LookupError:
+        return _error(404, "not_found", "没有这条例行工作")
+    except (ValueError, OSError) as error:
+        return _error(409, "conflict", str(error))
+
+
+@router.patch(_ORG + "/routines/{routine_id}")
+async def patch_routine(org_id: str, routine_id: str, body: Dict[str, Any]):
+    """只接启用与停用。改名、改排期、改交代的话要经主助理提议、主人批准，不能从这里直接改。"""
+    root = _root(org_id)
+    if set(body) != {"active"} or type(body["active"]) is not bool:
+        return _error(400, "unsupported", "这里只能启用或停用；其它修改请交给助理提议")
+    return await asyncio.to_thread(_routine_write, root, routine_id, enabled=body["active"])
+
+
+@router.delete(_ORG + "/routines/{routine_id}")
+async def delete_routine(org_id: str, routine_id: str):
+    root = _root(org_id)
+    result = await asyncio.to_thread(_routine_write, root, routine_id, retire=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.get(_ORG + "/skills/{skill_id}")
+async def skill(org_id: str, skill_id: str):
+    root = _root(org_id)
+    detail = await asyncio.to_thread(views.skill_detail, root, skill_id)
+    return detail if detail is not None else _error(404, "not_found", "没有这条技能")
+
+
+@router.put(_ORG + "/agents/{agent_id}/skills")
+async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any]):
+    """主助理启用哪些个人技能。专员按岗位装配，不在这里改。"""
+    from src.workflow.workbench.personal_skills import SkillConflict
+    root = _root(org_id)
+    if agent_id != views.main_agent_id(root):
+        return _error(404 if not _known_agent(org_id, agent_id) else 400, "unsupported", "专员的技能按岗位装配")
+    wanted = body.get("skills")
+    if set(body) != {"skills"} or not isinstance(wanted, list) or not all(isinstance(x, str) for x in wanted):
+        return _error(400, "invalid", "需要技能 id 列表")
+    try:
+        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted)}
+    except LookupError:
+        return _error(404, "not_found", "没有这条技能")
+    except SkillConflict as error:
+        return _error(409, "conflict", str(error))
+    except (ValueError, OSError):
+        return _error(409, "unavailable", "个人技能无法处理，请检查格式、版本和存储权限")
+
+
 @router.get(_ORG + "/artifacts")
 async def artifacts(org_id: str, q: str = "", kind: str = "", kinds: str = ""):
     root = _root(org_id)

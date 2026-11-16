@@ -2314,5 +2314,35 @@
     "methods": [
       "GET"
     ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/memories/{memory_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/skills",
+    "methods": [
+      "PUT"
+    ]
   }
 ]
