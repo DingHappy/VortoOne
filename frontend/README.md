@@ -16,7 +16,17 @@ npm run dev
 - 英文对照：将 `lang` 改为 `en`。
 - 完整 UI 的服务连接入口：<http://127.0.0.1:5174/>，默认代理到本机已有的原版服务 `http://127.0.0.1:4310`，沿用原始登录与 API 合同。
 
-预览直接装配原来的 `routeTree`、`AppProviders`、`Sidebar`、`DesktopTitleBar`、`HomePage` 和 `ChannelPage`，使用上游已有的内存 fixtures。页面中的成员、任务、连接和审批均为隔离示例数据，不会调用真实模型或提交业务操作。fixtures 入口只允许开发模式。
+预览直接装配原来的 `routeTree`、`AppProviders`、`Sidebar`、`DesktopTitleBar`、`HomePage` 和 `ChannelPage`，使用上游已有的内存 fixtures。页面中的成员、任务、连接和审批均为隔离示例数据，不会调用真实模型或提交业务操作。fixtures 入口只允许开发模式或明确的独立预览构建。
+
+## 部署独立预览
+
+```sh
+npm run build:preview
+```
+
+将 `apps/web/dist-preview/` 整个目录交给静态服务器，根路径是完整桌面主界面；`/character-lab.html` 是角色编辑页；`/windows/?window=prefs&scenario=selfhost&lang=zh-Hans&bare=1` 是偏好设置预览。主界面使用 `?lang=zh-Hans` 切换中文，`version.json` 记录构建提交。
+
+该命令使用专门的 `desktop-preview` 构建模式，打包内存数据与假宿主，不代理任何后端，也不包含 native 执行器。默认 `npm run build` 继续输出原有应用，不会启用此预览入口。发布应从干净的 main 构建；资源使用相对路径，可以托管在独立端口或现有 HTTPS 入口的独立路径下。
 
 另开终端查看独立桌面窗口：
 

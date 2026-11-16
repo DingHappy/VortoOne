@@ -41,3 +41,5 @@ jobs:
           git diff --exit-code -- packages/ui/src/agent/material-data.js
       - name: Check types, offline tests and both frontend builds
         run: npm run check
+      - name: Build isolated static desktop preview
+        run: npm run build:preview
