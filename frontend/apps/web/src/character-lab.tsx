@@ -96,7 +96,7 @@ function CharacterLab() {
       <header className="slime-lab__header">
         <Logo size={25} />
         <div className="slime-lab__nav">
-          <a href="/desktop-preview.html?lang=zh-Hans">返回桌面预览 ↗</a>
+          <a href="./desktop-preview.html?lang=zh-Hans">返回桌面预览 ↗</a>
           <button
             type="button"
             onClick={() => {
