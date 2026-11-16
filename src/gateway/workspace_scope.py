@@ -65,6 +65,8 @@ _GENERAL_HTTP_PREFIXES = (
     "/api/voice/",              # 小智语音端点：只读今日事项/任务单 + 记一张待确认提议，专用令牌（routers/voice.py）
     "/api/artifacts",
     "/artifact/",
+    "/api/instance",            # 新版 Desktop 界面登录前读的服务信息
+    "/api/app/",                # 新版 Desktop 界面的接口：名册、主要聊天、专员派活、记忆/例行/技能/制品的整理，不碰项目文件、Shell 或 Git
     "/api/decisions",
     "/api/runtime-inbox",
     "/api/audit",

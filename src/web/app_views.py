@@ -12,7 +12,7 @@ import hashlib
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
 
@@ -417,3 +417,121 @@ def member_dm(root: str, member_id: str) -> Dict[str, Any]:
     return {"channelId": dm_channel_id(agent["id"]),
             "with": {"type": "agent", "id": agent["id"], "name": agent["name"], "handle": agent["handle"]},
             "openedAt": agent["createdAt"], "lastMessage": None, "unread": 0}
+
+
+# ── 记忆、例行工作、技能、制品：现有记录的只读整理 ─────────────────────────────
+
+def memories(root: str, agent_id: str) -> List[Dict[str, Any]]:
+    """主助理记住的关于主人的事。记忆库不分类型也不记使用次数：类型统一报「事实」，次数为 0。
+    专员没有自己的长期记忆。"""
+    if agent_id != main_agent_id(root):
+        return []
+    from src.memory import assistant_profile
+    rows = []
+    for row in assistant_profile.list_memories(root):
+        created = _iso(row.get("created_at"))
+        rows.append({"id": str(row["id"]), "agentId": agent_id, "kind": "fact", "text": str(row.get("content") or ""),
+                     "source": "", "uses": 0, "lastUsedAt": None, "pinned": False, "archived": False,
+                     "lowTrust": False, "verified": True, "supersedes": None, "editedByUserId": None,
+                     "updatedAt": created, "removable": False})
+    return rows
+
+
+def _trigger(expression: str, timezone_name: str) -> Dict[str, Any]:
+    """后端的排期写法：`once <时间>`、`at HH:MM`、`every …` 或 cron。说明文字就用原写法，不另编一句。"""
+    if expression.startswith("once "):
+        return {"type": "once", "at": _iso(expression[5:].strip()), "timezone": timezone_name,
+                "description": expression}
+    cron = expression
+    if expression.startswith("at ") and ":" in expression:
+        hour, _, minute = expression[3:].strip().partition(":")
+        cron = f"{int(minute)} {int(hour)} * * *" if hour.isdigit() and minute.isdigit() else ""
+    elif expression.startswith("every "):
+        cron = ""
+    return {"type": "schedule", "phrase": expression, "rule": None, "cron": cron, "timezone": timezone_name,
+            "description": expression}
+
+
+def routines(root: str) -> List[Dict[str, Any]]:
+    """已登记、未删除的例行工作。运行历史与健康统计还没接到任务台账：给空的历史和全 0 的统计。"""
+    from datetime import timezone as tz
+    from src.scheduling.routine_schedule import RoutineSchedule
+    from src.workflow.staff.routines import Routines
+    rows = []
+    for item in Routines(root).list():
+        if item["retired"]:
+            continue
+        try:
+            upcoming = RoutineSchedule(item["schedule"], item["timezone"]).next(
+                datetime.now(tz.utc), item["state"]["cursor"]) if item["enabled"] else None
+        except (ValueError, KeyError, TypeError):
+            upcoming = None
+        agent = member_agent_id(root, str(item["member"]))
+        rows.append({
+            "id": item["id"], "name": item["name"], "agentId": agent, "prompt": item["prompt"],
+            "target": {"type": "conversation", "channelId": dm_channel_id(agent), "threadId": None},
+            "trigger": _trigger(str(item["schedule"]), str(item["timezone"])),
+            "active": bool(item["enabled"]), "nextRunAt": _iso(upcoming.timestamp()) if upcoming else None,
+            "createdAt": _iso(item.get("created_at")), "access": "read",
+            "report": "always" if item.get("delivery") == "notify" else "when_new",
+            "pausedReason": None, "failuresInRow": 0, "state": "active" if item["enabled"] else "paused",
+            "waitingFor": None, "brain": {"kind": "model", "machineName": None},
+            "health": {"ok": 0, "silent": 0, "failed": 0, "skipped": 0, "missed": 0, "total": 0},
+            "canSeeDetails": True, "canManage": False, "lastRun": None, "recentRuns": [],
+            "usage": {"runs": 0, "tokens": 0, "costNanoUsd": 0, "billedTo": "api"}, "ownActions": [],
+        })
+    return rows
+
+
+def skills(root: str) -> List[Dict[str, Any]]:
+    """主人的个人技能（只加载指令，不增加工具权限）。enabled 是主人核对过当前版本后才为真。"""
+    from src.gateway.workspace_scope import GENERAL, current_workspace_scope
+    from src.workflow.workbench.personal_skills import PersonalSkills
+    if current_workspace_scope() != GENERAL:
+        return []
+    created = _home_created(root)
+    rows = []
+    for item in PersonalSkills(root).list()["items"]:
+        revision = item.get("revision")
+        rows.append({"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
+                     "description": str(item.get("description") or ""),
+                     "version": revision if type(revision) is int else 1, "source": "manual", "sourceUrl": None,
+                     "defaultForNewAgents": False, "metadata": {}, "origin": "person",
+                     "ownerUserId": owner_id(root), "createdAt": created, "updatedAt": created,
+                     "enabled": bool(item.get("enabled"))})
+    return rows
+
+
+def _artifact(root: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+    agent = {"type": "agent", "id": main_agent_id(root)}
+    return {"id": str(meta["id"]), "kind": "html", "title": str(meta.get("title") or meta["id"]),
+            "version": int(meta.get("pinned") or meta.get("version") or 1),
+            "channelId": dm_channel_id(main_agent_id(root)), "threadId": None, "createdBy": agent,
+            "updatedBy": agent, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
+            "canEdit": False, "canDelete": False, "canShare": False,
+            "untrusted": True,       # 制品是助理写的页面：界面按不可信内容隔离展示
+            "audience": {"kind": "workspace"}, "sharing": {"mode": "conversation", "userIds": [], "roleIds": []}}
+
+
+def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None) -> Dict[str, Any]:
+    from src.agents.tools.artifacts import ArtifactStore
+    if kinds is not None and "html" not in kinds:
+        return {"artifacts": [], "nextCursor": None, "counts": {}}
+    needle = query.strip().lower()
+    rows = [_artifact(root, meta) for meta in ArtifactStore(root).list() if isinstance(meta, dict) and meta.get("id")]
+    if needle:
+        rows = [row for row in rows if needle in row["title"].lower()]
+    return {"artifacts": rows, "nextCursor": None, "counts": {"html": len(rows)} if rows else {}}
+
+
+def artifact(root: str, artifact_id: str, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    from src.agents.tools.artifacts import ArtifactStore
+    store = ArtifactStore(root)
+    meta = store.meta(artifact_id)
+    html = store.html(artifact_id, version) if meta else None
+    if not meta or html is None:
+        return None
+    shown = _artifact(root, meta)
+    wanted = version if version in {int(v.get("v", 0)) for v in store.versions(artifact_id)} else shown["version"]
+    return {**shown, "shownVersion": wanted, "content": {"kind": "html", "html": html},
+            "versioned": len(store.versions(artifact_id)) > 1}
