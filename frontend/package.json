@@ -18,6 +18,12 @@
     "check": "npm run typecheck && npm test && npm run build",
     "desktop:dev": "npm run dev --workspace @agenteschat/desktop -- --port 1421",
     "desktop:build": "npm run build --workspace @agenteschat/desktop",
+    "desktop-dev:bundle": "node scripts/desktop-dev.mjs bundle",
+    "desktop-dev:install": "node scripts/desktop-dev.mjs install",
+    "desktop-dev:status": "node scripts/desktop-dev.mjs status",
+    "desktop-dev:version": "node scripts/desktop-dev.mjs version",
+    "desktop-dev:manage": "node scripts/desktop-dev.mjs manage",
+    "desktop-dev:draft": "node scripts/desktop-dev.mjs draft",
     "runtime:dev": "npm run dev --workspace @agenteschat/web -- --config vite.runtime.config.ts",
     "runtime:typecheck": "tsc -p apps/web/tsconfig.vortoone.json"
   },

@@ -21,7 +21,7 @@ import { WindowError, WindowView } from "./WindowView";
 const params = new URLSearchParams(window.location.search);
 const asked = params.get("window");
 const scenario = params.get("scenario");
-const fakeHost = inTauri()
+const fakeHost = inTauri() && !__VORTO_ISOLATED_PREVIEW__
   ? null
   : createFakeHost(
       (WINDOW_NAMES as readonly string[]).includes(asked ?? "") ? (asked as WindowName) : "popover",

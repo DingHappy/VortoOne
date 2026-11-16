@@ -1,0 +1,16 @@
+[package]
+name = "vortoone-desktop-dev"
+version = "0.3.0-dev.1"
+description = "VortoOne independent desktop development preview"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = [] }
+tauri-plugin-opener = "=2.5.4"
+
+[profile.release]
+strip = true

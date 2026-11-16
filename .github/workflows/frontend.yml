@@ -43,3 +43,22 @@ jobs:
         run: npm run check
       - name: Build isolated static desktop preview
         run: npm run build:preview
+
+  desktop-dev:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare packaged UI fixtures
+        run: node scripts/prepare-desktop-dev.mjs
+      - name: Check development native host and navigation boundaries
+        run: cargo test --locked --manifest-path apps/desktop-dev/src-tauri/Cargo.toml
