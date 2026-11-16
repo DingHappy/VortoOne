@@ -256,15 +256,18 @@ def main_messages(root: str, *, before: str = "", limit: int = 100) -> List[Dict
     """主要聊天的记录，按时间从早到晚；排在队列里还没开始的输入接在最后。before 是界面翻页用的时间。"""
     view = _main_view(root)
     items = view["transcript"]
+    from src.gateway.transcript_order import transcript_sequences
+    sequences = transcript_sequences(items)
     rows = [_message(root, mid, from_owner=item.get("role") == "user", body=str(item.get("text") or ""),
-                     created=_iso(item.get("at")), run_id=str(item.get("rid") or "") or None)
-            for item, mid in zip(items, _message_ids(items))]
+                     created=_iso(item.get("at")), run_id=str(item.get("rid") or "") or None, sequence=sequence)
+            for item, mid, sequence in zip(items, _message_ids(items), sequences)]
     known = {row["id"] for row in rows}
     for queued in view.get("queued") or []:
         rid = str(queued.get("rid") or queued.get("id") or "")
         if rid and message_id(rid, "user") not in known:
             rows.append(_message(root, message_id(rid, "user"), from_owner=True,
-                                 body=str(queued.get("text") or ""), created=_iso(queued.get("created_at"))))
+                                 body=str(queued.get("text") or ""), created=_iso(queued.get("created_at")),
+                                 sequence=(rows[-1]["sequence"] + 1 if rows else 1)))
     if before:
         cutoff = _iso(before)
         rows = [row for row in rows if row["createdAt"] < cutoff]

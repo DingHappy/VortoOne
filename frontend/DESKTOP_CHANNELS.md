@@ -18,7 +18,7 @@
 ```
 
 - `python` 要装好了源码的依赖；`source` 是仓库根目录；`env_file` 可省。
-- `env_file` 里只有 `OPENAI_*`、`VORTOONE_MODEL*`、`VORTOONE_LLM_*` 会带给后端，其余行忽略。
+- `env_file` 中的 `OPENAI_*`、`VORTOONE_MODEL*`、`VORTOONE_LLM_*`，以及现有的 `DEFAULT_MODEL`、`LLM_MODEL_CHEAP`、`LLM_MODEL_BALANCED`、`LLM_MODEL_POWERFUL` 会带给后端，其余行忽略。
 - 有这个文件时，App 启动会在本机回环地址上起一个后端（私人助理范围，不开 IM、定时与巡视），主窗口打开它并自动登录；没有时行为与原来一样。菜单「开发版 → 连接本机后端」可以重连。
 - 主人令牌每次启动现生成，只在 App 进程和后端里；窗口拿到的是一次性的交接码，不是令牌。
 - 数据在开发版自己的目录（`…/com.vorto.vortoone.dev/home`），不读正式版的账号、项目或运行状态；后端日志在同目录的 `backend.log`。
@@ -30,7 +30,7 @@
 
 ```sh
 npm run desktop-dev:status  # 查看两个 App 的安装版本
-npm run desktop-dev:version -- 0.3.0-dev.3 # 统一递增开发版版本号（下一版时使用）
+npm run desktop-dev:version -- 0.3.0-dev.4 # 统一递增开发版版本号（下一版时使用）
 npm run desktop-dev:bundle # 从干净且已合并的 main 构建 Apple Silicon macOS 开发安装包
 npm run desktop-dev:install # 校验并安装到 /Applications/VortoOne Dev.app
 npm run desktop-dev:manage # 打开 GitHub Release 管理

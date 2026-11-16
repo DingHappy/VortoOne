@@ -1,6 +1,6 @@
 [package]
 name = "vortoone-desktop-dev"
-version = "0.3.0-dev.2"
+version = "0.3.0-dev.3"
 description = "VortoOne independent desktop development preview"
 edition = "2021"
 publish = false
