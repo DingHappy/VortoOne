@@ -189,50 +189,122 @@ def settings(root: str) -> Dict[str, Any]:
 
 # ── 私聊与消息 ────────────────────────────────────────────────────────────────
 
-def _main_transcript(root: str) -> List[Dict[str, Any]]:
-    from src.gateway.main_conversation import main_chat_key
-    from src.gateway.session_store import load_session
+def main_chat_key(root: str) -> Optional[str]:
+    from src.gateway.main_conversation import main_chat_key as registered
+    return registered(root)
+
+
+def _main_view(root: str) -> Dict[str, Any]:
+    """主要聊天的记录与排队中的输入。会话在内存里就读内存（回合进行中存盘会落后），否则读存盘。"""
     key = main_chat_key(root)
     if not key:
-        return []
+        return {"transcript": [], "queued": []}
+    from src.web.routers.realtime import live_session_view
+    live = live_session_view(key)
+    if live is not None:
+        return live
+    from src.gateway.session_store import load_session
     data = load_session(root, key) or {}
-    return [item for item in data.get("transcript") or [] if isinstance(item, dict)]
+    return {"transcript": [item for item in data.get("transcript") or [] if isinstance(item, dict)],
+            "queued": [item for item in data.get("prompt_queue") or [] if isinstance(item, dict)]}
+
+
+def message_id(rid: str, role: str, ordinal: int = 0) -> str:
+    """带回合号的消息：id 只由回合、角色和回合内序号决定，发消息时就能给出，之后读到的还是它。"""
+    return _id("message", "turn", rid, role, str(ordinal))
 
 
 def _message_ids(items: List[Dict[str, Any]]) -> List[str]:
-    """对话记录本身没有消息标识：用回合、角色、时间和同组内的序号推出一个。
-
-    记录从前面裁剪时，留下的消息 id 不变（除非被裁的正好是同一回合同一秒的前一条）。
-    这是读取侧的推导；服务端存储给每条消息一个真正的标识之后应改用那个。"""
+    """对话记录本身没有消息标识，这里推出一个。有回合号的按回合推；
+    更早没有回合号的记录按角色、时间、内容和同组序号推。记录从前面裁剪时留下的消息 id 不变
+    （除非被裁的正好是同一回合的前一条）。服务端存储给每条消息真正的标识后应改用那个。"""
     seen: Dict[tuple, int] = {}
     ids = []
     for item in items:
-        group = (str(item.get("rid") or ""), str(item.get("role") or ""), str(item.get("at") or ""))
-        ordinal = seen.get(group, 0)
+        rid, role = str(item.get("rid") or ""), str(item.get("role") or "")
+        if rid:
+            group: tuple = (rid, role)
+            ordinal = seen.get(group, 0)
+            ids.append(message_id(rid, role, ordinal))
+        else:
+            text = hashlib.sha256(str(item.get("text") or "").encode("utf-8", "surrogatepass")).hexdigest()[:16]
+            group = (role, str(item.get("at") or ""), text)
+            ordinal = seen.get(group, 0)
+            ids.append(_id("message", *group, str(ordinal)))
         seen[group] = ordinal + 1
-        text = hashlib.sha256(str(item.get("text") or "").encode("utf-8", "surrogatepass")).hexdigest()[:16]
-        ids.append(_id("message", *group, str(ordinal), text))
     return ids
 
 
+def _message(root: str, message_id_value: str, *, from_owner: bool, body: str, created: str,
+             run_id: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
+    agent = main_agent_id(root)
+    return {"id": message_id_value, "channelId": dm_channel_id(agent), "threadId": None,
+            "author": {"type": "person" if from_owner else "agent", "id": owner_id(root) if from_owner else agent},
+            "body": body, "mentionedAgentIds": [], "agentRunId": None if from_owner else run_id,
+            "createdAt": created, **extra}
+
+
+def owner_message(root: str, rid: str, body: str, *, client_id: Optional[str] = None) -> Dict[str, Any]:
+    """主人刚发出的一条：回合还没开始记录时先用它应答，id 与之后记录里读到的一致。"""
+    extra = {"clientId": client_id} if client_id else {}
+    return _message(root, message_id(rid, "user"), from_owner=True, body=body, created=now_iso(), **extra)
+
+
 def main_messages(root: str, *, before: str = "", limit: int = 100) -> List[Dict[str, Any]]:
-    """主要聊天的记录，按时间从早到晚；before 是界面翻页用的时间。"""
-    channel = dm_channel_id(main_agent_id(root))
-    owner, agent = owner_id(root), main_agent_id(root)
-    items = _main_transcript(root)
-    rows = []
-    for item, message_id in zip(items, _message_ids(items)):
-        is_owner = item.get("role") == "user"
-        rows.append({
-            "id": message_id, "channelId": channel, "threadId": None,
-            "author": {"type": "person" if is_owner else "agent", "id": owner if is_owner else agent},
-            "body": str(item.get("text") or ""), "mentionedAgentIds": [], "agentRunId": None,
-            "createdAt": _iso(item.get("at")),
-        })
+    """主要聊天的记录，按时间从早到晚；排在队列里还没开始的输入接在最后。before 是界面翻页用的时间。"""
+    view = _main_view(root)
+    items = view["transcript"]
+    rows = [_message(root, mid, from_owner=item.get("role") == "user", body=str(item.get("text") or ""),
+                     created=_iso(item.get("at")), run_id=str(item.get("rid") or "") or None)
+            for item, mid in zip(items, _message_ids(items))]
+    known = {row["id"] for row in rows}
+    for queued in view.get("queued") or []:
+        rid = str(queued.get("rid") or queued.get("id") or "")
+        if rid and message_id(rid, "user") not in known:
+            rows.append(_message(root, message_id(rid, "user"), from_owner=True,
+                                 body=str(queued.get("text") or ""), created=_iso(queued.get("created_at"))))
     if before:
         cutoff = _iso(before)
         rows = [row for row in rows if row["createdAt"] < cutoff]
     return rows[-max(1, min(int(limit), 400)):]
+
+
+# ── 确认 → 审批 ───────────────────────────────────────────────────────────────
+
+def approval_card_id(confirm_id: str) -> str:
+    return _id("approval-card", confirm_id)
+
+
+def approval_card(root: str, pending: Dict[str, Any]) -> Dict[str, Any]:
+    """对话里承载这次审批的那条消息：正文为空，界面按 meta.approvalId 画卡片。只在等待期间存在。"""
+    return _message(root, approval_card_id(str(pending["id"])), from_owner=False, body="",
+                    created=_iso(pending.get("created")), run_id=pending.get("rid"),
+                    meta={"approvalId": str(pending["id"])})
+
+
+CONFIRM_SECONDS = 300  # 与 routers/realtime._make_ws_confirm 的等待上限一致
+
+
+def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
+             decided: bool = False) -> Dict[str, Any]:
+    """内核发出的一次确认，整理成界面的审批。外部内容的警示放进正文，不只藏在标记里。"""
+    from datetime import timedelta
+    text = str(pending.get("text") or "")
+    created = _iso(pending.get("created"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(seconds=CONFIRM_SECONDS)
+    detail = text
+    if pending.get("tainted"):
+        detail = "⚠️ 本回合读取过外部内容（网页、搜索或外部工具），请确认这是你自己要做的事。\n\n" + text
+    title = next((line.strip() for line in text.splitlines() if line.strip()), "需要你确认")[:120]
+    return {"id": str(pending["id"]), "runId": pending.get("rid"), "agentId": main_agent_id(root),
+            "channelId": dm_channel_id(main_agent_id(root)), "threadId": None,
+            "messageId": approval_card_id(str(pending["id"])),
+            "tool": str(pending.get("operation_kind") or ""), "scope": str(pending.get("operation_kind") or ""),
+            "title": title, "detail": detail, "params": {}, "status": status,
+            "expiresAt": _iso(expires.timestamp()), "createdAt": created,
+            "decidedByUserId": owner_id(root) if decided else None,
+            "decidedAt": now_iso() if status != "pending" else None, "reason": None,
+            "canDecide": status == "pending"}
 
 
 def main_dm(root: str) -> Dict[str, Any]:

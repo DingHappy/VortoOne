@@ -9,8 +9,10 @@ def home(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     for name in ("VORTOONE_API_TOKEN", "VORTOCODE_API_TOKEN", "AUTODEV_API_TOKEN", "OPENAI_API_KEY"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("VORTOONE_STATE_DIR", str(tmp_path / "state"))
-    return tmp_path
+    from src.web import app_bridge
+    app_bridge.reset_bridges()
+    yield tmp_path
+    app_bridge.reset_bridges()
 
 
 @pytest.fixture
@@ -103,7 +105,7 @@ def test_unknown_conversation_is_not_found(client):
 def test_writes_that_are_not_wired_yet_do_not_pretend_to_succeed(client):
     org = _org(client)
     channel = client.get(f"/api/app/organizations/{org}/dms").json()["dms"][0]["channelId"]
-    response = client.post(f"/api/app/organizations/{org}/channels/{channel}/messages", json={"body": "在吗"})
+    response = client.post(f"/api/app/organizations/{org}/channels/{channel}/read", json={})
     assert response.status_code in {404, 405}
 
 

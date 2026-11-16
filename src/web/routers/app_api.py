@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
+from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 
 router = APIRouter(tags=["app"])
 
@@ -193,7 +194,110 @@ async def channel_messages(org_id: str, channel_id: str, before: str = "", limit
         return _error(404, "not_found", "没有这个对话")
     if threadId:
         return {"messages": []}
-    return {"messages": views.main_messages(root, before=before, limit=limit)}
+    messages = views.main_messages(root, before=before, limit=limit)
+    bridge = existing_bridge(root)
+    if bridge is not None and not before:
+        messages += [views.approval_card(root, item) for item in reversed(bridge.pending_confirmations())]
+    return {"messages": messages}
+
+
+class _Post(BaseModel):
+    body: str = ""
+    clientId: str | None = None
+    threadId: str | None = None
+
+
+@router.post(_ORG + "/channels/{channel_id}/messages")
+async def post_message(org_id: str, channel_id: str, body: _Post):
+    """主人在私聊里发一条：交给主要聊天开一个回合（前面还有回合就排队）。应答是这条消息本身，
+    助理的回复之后经实时连接或下一次读取出现。"""
+    root = _main_channel(org_id, channel_id)
+    if root is None:
+        return _error(404, "not_found", "没有这个对话")
+    text = body.body.strip()
+    if not text:
+        return _error(400, "empty_message", "消息不能为空")
+    if len(text) > 20000:
+        return _error(413, "message_too_long", "消息太长")
+    if body.threadId:
+        return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
+    try:
+        return await (await main_chat_bridge(root)).post(text, (body.clientId or "")[:120] or None)
+    except NoModel:
+        return _error(409, "no_ai", "还没有连接模型，没法回复")
+
+
+@router.get(_ORG + "/channels/{channel_id}/active-runs")
+async def channel_active_runs(org_id: str, channel_id: str):
+    root = _main_channel(org_id, channel_id)
+    if root is None:
+        return _error(404, "not_found", "没有这个对话")
+    bridge = existing_bridge(root)
+    return {"runs": bridge.active_runs() if bridge else []}
+
+
+@router.get(_ORG + "/active-runs")
+async def active_runs(org_id: str):
+    bridge = existing_bridge(_root(org_id))
+    return {"runs": bridge.active_runs() if bridge else []}
+
+
+@router.post(_ORG + "/runs/{run_id}/cancel", status_code=204)
+async def cancel_run(org_id: str, run_id: str):
+    """「停止」：中断主要聊天当前的回合（与现有 Desktop 的停止同一条路径）。"""
+    bridge = existing_bridge(_root(org_id))
+    if bridge is None or not await bridge.stop(run_id):
+        return _error(409, "run_finished", "这一轮已经结束")
+    return Response(status_code=204)
+
+
+# ── 审批：内核发出的确认 ──────────────────────────────────────────────────────
+
+@router.get(_ORG + "/approvals")
+async def approvals(org_id: str, status: str = ""):
+    root = _root(org_id)
+    bridge = existing_bridge(root)
+    if bridge is None or status not in {"", "pending"}:
+        return {"approvals": []}
+    return {"approvals": [views.approval(root, item) for item in bridge.pending_confirmations()]}
+
+
+@router.get(_ORG + "/approvals/{approval_id}")
+async def approval(org_id: str, approval_id: str):
+    root = _root(org_id)
+    bridge = existing_bridge(root)
+    pending = bridge.pending(approval_id) if bridge else None
+    if pending is None:
+        return _error(404, "not_found", "这个确认已经不在等待")
+    return views.approval(root, pending)
+
+
+async def _decide(org_id: str, approval_id: str, approve: bool):
+    root = _root(org_id)
+    bridge = existing_bridge(root)
+    decided = await bridge.decide(approval_id, approve) if bridge else None
+    if decided is None:
+        return _error(409, "approval_decided", "这个确认已经不在等待")
+    return decided
+
+
+class _Approve(BaseModel):
+    reason: str | None = None
+    always: bool = False
+    via: str | None = None
+
+
+@router.post(_ORG + "/approvals/{approval_id}/approve")
+async def approve(org_id: str, approval_id: str, body: _Approve):
+    if body.always:
+        # 「以后都允许」在这里没有对应的授权：不把一次批准悄悄扩大成常设放行。
+        return _error(400, "always_unsupported", "这里只能批准这一次")
+    return await _decide(org_id, approval_id, True)
+
+
+@router.post(_ORG + "/approvals/{approval_id}/refuse")
+async def refuse(org_id: str, approval_id: str, body: _Approve):
+    return await _decide(org_id, approval_id, False)
 
 
 @router.get(_ORG + "/channels/{channel_id}/pins")
@@ -227,12 +331,10 @@ _EMPTY: Dict[str, Any] = {
     "/missions": {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}},
     "/machines": {"machines": []},
     "/machines/outages": {"outages": [], "targets": []},
-    "/active-runs": {"runs": []},
     "/runs": {"runs": []},
     "/usage": {"usage": []},
     "/issues": {"issues": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
-    "/approvals": {"approvals": []},
     "/routines": {"routines": []},
     "/wiki/pages": {"pages": []},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
@@ -324,8 +426,8 @@ async def agent_scopes(org_id: str, agent_id: str):
 
 @router.websocket("/api/ws")
 async def app_socket(websocket: WebSocket):
-    """每个空间一条连接。这一批只完成握手、心跳和订阅应答；还不推送任何事件，
-    界面的内容以 HTTP 读取为准（它本来就在重连和订阅确认后重新读取）。"""
+    """每个空间一条连接。订阅与主助理的私聊后，经桥收到这段会话的消息、运行状态和审批事件；
+    实时只是尽力而为，界面在重连和订阅确认后会重新读取，内容以读取为准。"""
     from src.web.auth import ws_token_ok
     root = os.getcwd()
     if not ws_token_ok(websocket) or websocket.query_params.get("orgId") != views.home_id(root):
@@ -333,6 +435,7 @@ async def app_socket(websocket: WebSocket):
         return
     await websocket.accept()
     await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=views.owner_id(root)))
+    bridge = None
     try:
         while True:
             try:
@@ -345,11 +448,18 @@ async def app_socket(websocket: WebSocket):
             elif kind == "subscribe":
                 channel = str(frame.get("channelId") or "")
                 if views.is_main_dm(root, channel):
+                    bridge = await main_chat_bridge(root)
+                    bridge.subscribe(websocket)
                     await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
                 else:
                     await websocket.send_json(F.make_app_frame(F.ERROR, code="not_found", channelId=channel))
             elif kind == "unsubscribe":
-                await websocket.send_json(
-                    F.make_app_frame(F.UNSUBSCRIBED, channelId=str(frame.get("channelId") or "")))
+                channel = str(frame.get("channelId") or "")
+                if bridge is not None and views.is_main_dm(root, channel):
+                    bridge.unsubscribe(websocket)
+                await websocket.send_json(F.make_app_frame(F.UNSUBSCRIBED, channelId=channel))
     except WebSocketDisconnect:
         return
+    finally:
+        if bridge is not None:
+            bridge.unsubscribe(websocket)

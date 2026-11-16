@@ -2158,5 +2158,41 @@
   {
     "path": "/api/ws",
     "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/refuse",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/active-runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/messages",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/runs/{run_id}/cancel",
+    "methods": [
+      "POST"
+    ]
   }
 ]

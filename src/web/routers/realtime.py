@@ -1720,3 +1720,29 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
         _persist_session(websocket)           # 回合收尾存盘（含中断）：跨服务器重启不丢对话
         _schedule_turn_digest(key, rid)       # 后台写工作记录摘要（助理模式的动态流）
         await _advance_prompt_queue(websocket, reason=stop_reason)
+
+
+# ── 新版界面连接的接入点（src/web/app_bridge.py 使用）────────────────────────────
+# 桥接对象在这里就是又一个附着在同一段会话上的客户端：只需要 query_params["sid"] 和 send_json。
+# 回合、排队、确认与事件广播全部走上面的同一套路径，不另开执行入口。
+
+async def attach_client(client) -> None:
+    """让一个客户端开始接收这段会话之后的事件（不回放历史）。"""
+    _get_session(client)
+    await _attach_session_subscriber(client, await _session_event_cursor(_session_key(client)))
+
+
+async def client_message(client, message: Dict[str, Any]) -> None:
+    await handle_websocket_message(client, message)
+
+
+def live_session_view(key: str) -> Optional[Dict[str, Any]]:
+    """内存里这段会话的对话记录与排队中的输入；会话不在内存时返回 None（调用方改读存盘）。"""
+    from src.gateway.session_actor import public_prompt_item
+    sess = _SESSIONS.get(key)
+    if sess is None:
+        return None
+    return {"transcript": [dict(item) for item in sess.get("transcript") or [] if isinstance(item, dict)],
+            "queued": [public_prompt_item(item, index)
+                       for index, item in enumerate(sess.get("prompt_queue") or []) if isinstance(item, dict)],
+            "busy": _ACTORS.busy(key)}
