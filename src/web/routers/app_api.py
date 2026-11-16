@@ -391,7 +391,9 @@ _EMPTY: Dict[str, Any] = {
     "/usage": {"usage": []},
     "/issues": {"issues": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
-    "/routines": {"routines": []},
+    "/proposals": {"proposals": []},
+    "/team-memories": {"memories": []},
+    "/skill-settings": {"agentsImprove": False},
     "/wiki/pages": {"pages": []},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
     "/me/sidebar": {"items": {}},
@@ -412,6 +414,64 @@ def _register_empty(path: str, payload: Any) -> None:
 
 for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
+
+
+# ── 记忆、例行工作、技能、制品 ────────────────────────────────────────────────
+
+def _listing(build):
+    """读取现有登记；登记损坏时如实报错，不当成空表。"""
+    try:
+        return build()
+    except (ValueError, OSError) as error:
+        return _error(409, "unavailable", str(error))
+
+
+@router.get(_ORG + "/agents/{agent_id}/memories")
+async def agent_memories(org_id: str, agent_id: str):
+    if not _known_agent(org_id, agent_id):
+        return _error(404, "not_found", "没有这个角色")
+    return _listing(lambda: {"memories": views.memories(_root(org_id), agent_id)})
+
+
+@router.get(_ORG + "/memories")
+async def all_memories(org_id: str):
+    root = _root(org_id)
+    return _listing(lambda: {"memories": views.memories(root, views.main_agent_id(root))})
+
+
+@router.get(_ORG + "/routines")
+async def routines(org_id: str):
+    root = _root(org_id)
+    return _listing(lambda: {"routines": views.routines(root)})
+
+
+@router.get(_ORG + "/skills")
+async def skills(org_id: str):
+    root = _root(org_id)
+    return _listing(lambda: {"skills": [{k: v for k, v in skill.items() if k != "enabled"}
+                                        for skill in views.skills(root)]})
+
+
+@router.get(_ORG + "/agents/{agent_id}/skills")
+async def agent_skills(org_id: str, agent_id: str):
+    """个人技能只给主助理用；专员按岗位装配，不在这里。"""
+    if not _known_agent(org_id, agent_id):
+        return _error(404, "not_found", "没有这个角色")
+    root = _root(org_id)
+    return _listing(lambda: {"skills": views.skills(root) if agent_id == views.main_agent_id(root) else []})
+
+
+@router.get(_ORG + "/artifacts")
+async def artifacts(org_id: str, q: str = "", kind: str = "", kinds: str = ""):
+    root = _root(org_id)
+    wanted = {value for value in [kind, *kinds.split(",")] if value} or None
+    return _listing(lambda: views.artifacts(root, query=q, kinds=wanted))
+
+
+@router.get(_ORG + "/artifacts/{artifact_id}")
+async def artifact(org_id: str, artifact_id: str, version: int | None = None):
+    found = views.artifact(_root(org_id), artifact_id, version)
+    return found if found is not None else _error(404, "not_found", "没有这个制品")
 
 
 @router.get(_ORG + "/dashboards/home")
