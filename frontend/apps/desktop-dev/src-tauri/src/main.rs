@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backend;
+
 use tauri::{
     menu::{Menu, SubmenuBuilder},
     webview::NewWindowResponse,
@@ -39,12 +41,81 @@ fn show(
     Ok(())
 }
 
+const LIVE: &str = "live";
+
+/// 连接真实后端：读配置、启动后端、换一次登录、打开主窗口。没有配置文件时什么也不做（保持界面预览）。
+/// 在后台线程里跑：后端冷启动要几秒到几十秒，不能卡住界面。
+fn connect(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        if let Err(error) = connect_now(&app) {
+            eprintln!("连接后端失败: {error}");
+            let message = format!("VortoOne Dev · 没有连上后端：{error}");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&message);
+            }
+        }
+    });
+}
+
+fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let Ok(text) = std::fs::read_to_string(config_dir.join(backend::CONFIG_FILE)) else {
+        return Ok(());
+    };
+    let config = backend::parse_config(&text)?;
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let ui = app.path().resource_dir().map_err(|e| e.to_string())?.join("web");
+    std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
+    app.state::<backend::Backend>().stop();
+    let (child, port, token) = backend::start(&config, &data.join("home"), &ui, &data.join("backend.log"))?;
+    if let Ok(mut slot) = app.state::<backend::Backend>().0.lock() {
+        *slot = Some(child);
+    }
+    let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        if let Some(old) = handle.get_webview_window(LIVE) {
+            let _ = old.destroy();
+        }
+        let built = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
+            .title("VortoOne Dev")
+            .inner_size(1440.0, 960.0)
+            .min_inner_size(900.0, 600.0)
+            .center()
+            // 窗口只在后端自己的地址里走；外部链接交给系统浏览器
+            .on_navigation(move |target| {
+                if backend::own_page(target, port) {
+                    return true;
+                }
+                if matches!(target.scheme(), "https" | "http") {
+                    let _ = tauri_plugin_opener::open_url(target.as_str(), None::<&str>);
+                }
+                false
+            })
+            .on_new_window(|_, _| NewWindowResponse::Deny)
+            .build();
+        match built {
+            // 连上了：预览窗口让位（菜单里仍可打开）
+            Ok(_) => {
+                if let Some(preview) = handle.get_webview_window("main") {
+                    let _ = preview.close();
+                }
+            }
+            Err(error) => eprintln!("无法打开主窗口: {error}"),
+        }
+    })
+    .map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
+        .manage(backend::Backend::default())
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
             let preview = SubmenuBuilder::new(app, "开发版")
-                .text("desktop", "桌面界面")
+                .text("connect", "连接本机后端")
+                .separator()
+                .text("desktop", "桌面界面（示例数据）")
                 .text("characters", "史莱姆外观")
                 .text("preferences", "偏好设置预览")
                 .separator()
@@ -62,10 +133,15 @@ fn main() {
                 1440.0,
                 960.0,
             )?;
+            connect(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| {
             let result = match event.id().as_ref() {
+                "connect" => {
+                    connect(app.clone());
+                    return;
+                }
                 "desktop" => show(
                     app,
                     "main",
@@ -115,8 +191,14 @@ fn main() {
                 eprintln!("无法打开开发版窗口: {error}");
             }
         })
-        .run(tauri::generate_context!())
-        .expect("VortoOne Dev failed to start");
+        .build(tauri::generate_context!())
+        .expect("VortoOne Dev failed to start")
+        .run(|app, event| {
+            // 退出时带走后端；被强杀时由后端看监护进程 pid 自己退出
+            if let tauri::RunEvent::Exit = event {
+                app.state::<backend::Backend>().stop();
+            }
+        });
 }
 
 #[cfg(test)]

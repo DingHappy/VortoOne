@@ -91,6 +91,57 @@ async def sign_in(body: _SignIn, request: Request, response: Response):
     return {"redirect": False, "token": None, "user": views.me(os.getcwd())["user"]}
 
 
+# ── 外壳交接登录 ──────────────────────────────────────────────────────────────
+# Desktop 外壳自己保管主人令牌，页面不该拿到它。外壳先用令牌换一个只能用一次、很快过期的交接码，
+# 再让窗口打开带交接码的地址；服务端核对后种下登录 Cookie 并跳回首页。
+
+_HANDOVER_SECONDS = 60
+_HANDOVERS: Dict[str, float] = {}        # 交接码的摘要 → 过期时刻（单进程内存；重启即全部作废）
+
+
+def _handover_key(code: str) -> str:
+    import hashlib
+    return hashlib.sha256(code.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+@router.post("/api/auth/handover")
+async def handover_start(request: Request):
+    """只认显式的 Bearer 主人令牌：已登录的页面不能替别的窗口再造登录。"""
+    import secrets
+    import time
+    from src.web.auth import ct_eq, get_api_token
+    token = get_api_token()
+    authorization = request.headers.get("authorization", "")
+    if not token or not authorization.startswith("Bearer ") or not ct_eq(authorization[7:].strip(), token):
+        return _error(403, "forbidden", "交接登录需要主人令牌")
+    now = time.monotonic()
+    for key in [key for key, expires in _HANDOVERS.items() if expires <= now]:
+        _HANDOVERS.pop(key, None)
+    if len(_HANDOVERS) >= 32:
+        return _error(429, "too_many", "等待中的交接登录太多，请稍后再试")
+    code = secrets.token_urlsafe(32)
+    _HANDOVERS[_handover_key(code)] = now + _HANDOVER_SECONDS
+    return {"code": code, "expiresIn": _HANDOVER_SECONDS}
+
+
+@router.get("/api/auth/handover/{code}")
+async def handover_finish(code: str, request: Request):
+    """用掉交接码：对了就登录并跳回首页；错的、过期的、用过的一律回登录页，不说明是哪一种。"""
+    import time
+    from fastapi.responses import RedirectResponse
+    from src.web.auth import SESSION_COOKIE, get_api_token
+    expires = _HANDOVERS.pop(_handover_key(code), None)
+    token = get_api_token()
+    if expires is None or expires <= time.monotonic() or not token:
+        return RedirectResponse("/login", status_code=303)
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax",
+                        secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
 @router.post("/api/auth/sign-out")
 async def sign_out(response: Response):
     from src.web.routers.auth_routes import logout
