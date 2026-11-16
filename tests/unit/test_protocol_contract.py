@@ -265,7 +265,9 @@ def _scan_ws_sends(path: Path):
         elif isinstance(arg, ast.Call):
             cfn = arg.func
             cname = cfn.attr if isinstance(cfn, ast.Attribute) else getattr(cfn, "id", None)
-            if cname != "make_event":            # make_event 已被出站严格校验兜住；其余调用不透明
+            # make_event 已被出站严格校验兜住；make_app_frame 是新版界面那条连接（/api/ws）的同款
+            # 校验构造器（src/gateway/app_protocol.py，行为见 test_app_api.py）。其余调用不透明。
+            if cname not in ("make_event", "make_app_frame"):
                 opaque.append(f"{path.name}:{node.lineno}")
         else:
             opaque.append(f"{path.name}:{node.lineno}")

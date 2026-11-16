@@ -46,6 +46,8 @@ _EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static")
 _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",
+                 # 新版 Desktop 界面在登录前要读的服务信息与登录入口（routers/app_api.py）：不含任何数据
+                 "/api/instance", "/api/app/auth-config", "/api/auth/sign-in/email", "/api/auth/sign-out",
                  # 小智语音端点用自己的专用令牌（routers/voice.py），不收也不放行主 API 令牌
                  "/api/voice/mcp",
                  # 运维心跳报到与运维消息同样只认自己的专用令牌（routers/ops_heartbeat.py）
