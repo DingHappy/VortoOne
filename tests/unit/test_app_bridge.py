@@ -70,9 +70,21 @@ async def app_home(tmp_path, monkeypatch):
         bridge.subscribe(socket)
         yield {"http": http, "base": f"/api/app/organizations/{org}", "channel": channel, "agent": agent,
                "socket": socket, "bridge": bridge}
-        for task in list(realtime._WS_AGENT_TASKS.values()):
-            task.cancel()
-        await asyncio.sleep(0)
+        # 会话表是进程级的：替身助理留在里面，会被之后遍历在线会话的测试碰到。
+        # 先清掉排队的输入（否则停掉当前回合后队列会接着开下一轮），再停回合、摘订阅、删会话。
+        for session in realtime._SESSIONS.values():
+            if session.get("agent") is agent:
+                session["prompt_queue"] = []
+        for _ in range(20):
+            tasks = [task for task in realtime._WS_AGENT_TASKS.values() if not task.done()]
+            if not tasks:
+                break
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await realtime._detach_session_subscriber(bridge)
+        for key in [key for key, session in realtime._SESSIONS.items() if session.get("agent") is agent]:
+            realtime._SESSIONS.pop(key, None)
     app_bridge.reset_bridges()
 
 
