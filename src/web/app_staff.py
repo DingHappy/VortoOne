@@ -32,7 +32,10 @@ def owner_proof(connection) -> bool:
     2026-11-16 主人定：新版界面只有登录 Cookie（它本身就是出示主人令牌换来的），专员也都是主人自己的，
     所以这组界面接口认 Cookie；Bearer 原本多挡的「别的网站借用登录状态」改由来源检查挡。
     routers/staff.py 的旧接口仍只认 Bearer（test_staff_conversations.py 钉住），这里不动它。
-    没配置主人令牌时一律不通过。connection 可以是 HTTP 请求或 WebSocket 握手。"""
+    没配置主人令牌时一律不通过。connection 可以是 HTTP 请求或 WebSocket 握手。
+
+    「持有登录 Cookie 就是主人」只在家里只有主人一个人时成立。接入成员（HOME_AND_MEMBERS_DESIGN 7.4、8）
+    之后登录要分清是谁，这里得改成「是主人，或在这位专员的受众里」，回合权限按发起人封顶——不能沿用本判断。"""
     from src.web.auth import SESSION_COOKIE, ct_eq, get_api_token
     token = get_api_token()
     if not token:
