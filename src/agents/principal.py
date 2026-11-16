@@ -25,7 +25,7 @@ SYSTEM = "system"
 _KINDS = frozenset({OWNER, MEMBER, SYSTEM})
 
 # 与 trust.py 的操作类别同名；这里不导入它，免得判定函数的含义跟着别处的表变
-READ, WRITE, EXECUTE = "read", "write", "execute"
+READ, WRITE, EXECUTE, INTERNAL = "read", "write", "execute", "internal"
 ALLOWABLE = frozenset({WRITE, EXECUTE})      # 所有者能对成员放行的只有这两类
 
 
@@ -52,18 +52,25 @@ class Principal:
 
 NOBODY = Principal()
 
-_current: contextvars.ContextVar[Principal] = contextvars.ContextVar("vortoone_principal", default=NOBODY)
+_current: contextvars.ContextVar[tuple] = contextvars.ContextVar("vortoone_principal", default=(NOBODY, frozenset()))
 
 
 def current_principal() -> Principal:
-    return _current.get()
+    return _current.get()[0]
 
 
-def set_principal(principal: Principal) -> contextvars.Token:
-    """回合开始时由宿主调用一次；返回的 token 交给 ``reset_principal`` 在回合结束时还原。"""
+def current_member_allowance() -> FrozenSet[str]:
+    """所有者对当前角色登记的「成员放行」。只在成员回合里有意义；没申报就是空。"""
+    return _current.get()[1]
+
+
+def set_principal(principal: Principal, *, member_allowed: Iterable[str] = ()) -> contextvars.Token:
+    """回合开始时由宿主调用一次；返回的 token 交给 ``reset_principal`` 在回合结束时还原。
+
+    member_allowed 与发起人一起申报、一起失效：它是「这个角色对成员放行了哪几类」，由上层查好传入。"""
     if not isinstance(principal, Principal):
         raise TypeError("发起人必须是 Principal")
-    return _current.set(principal)
+    return _current.set((principal, frozenset(str(kind) for kind in member_allowed or ())))
 
 
 def reset_principal(token: contextvars.Token) -> None:
@@ -125,14 +132,18 @@ def pre_authorized_for(principal: Principal, kind: str, *, owner_pre_authorized:
 
     - 所有者、系统回合：原样用现有的预授权（档位、始终允许、--yes），本函数不改变它。
     - 成员：主人给自己的预授权不借给他。只认所有者对这个角色登记的「成员放行」，且只对写与执行
-      生效；读由有效权限直接决定，不经这里。污点回合一律不算（decide 里污点本来也一票否决，
+      生效；读直接放行（读不读得到由有效权限决定）。污点回合一律不算（decide 里污点本来也一票否决，
       这里再挡一次，是为了调用方单独用本函数时也不出错）。
     """
     if not principal.is_member:
         return owner_pre_authorized
-    if tainted or kind not in ALLOWABLE:
+    if tainted:
         return False
-    return kind in _set(member_allowed)
+    if kind == READ:           # 读不读得到由有效权限决定（工具本身给不给），到了这里就不再问
+        return True
+    if kind == INTERNAL:       # 任务内部协作：由宿主按任务范围检查，与是谁发起无关，沿用现有判定
+        return owner_pre_authorized
+    return kind in ALLOWABLE and kind in _set(member_allowed)
 
 
 def may_approve(approver: Principal, initiator: Principal, *, holds_approval: bool = False) -> bool:

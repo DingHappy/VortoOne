@@ -2344,5 +2344,17 @@
     "methods": [
       "PUT"
     ]
+  },
+  {
+    "path": "/api/auth/handover",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/handover/{code}",
+    "methods": [
+      "GET"
+    ]
   }
 ]

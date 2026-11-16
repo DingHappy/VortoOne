@@ -157,7 +157,12 @@ def make_confirm_gate(
         task_authorized = _task_authorized and kind in {"write", "execute"}
         protective = (_protective_authorized and can_ask_human and capability_profile != "unattended"
                       and kind in {"write", "execute"})
-        verdict = decide(tainted=tainted, pre_authorized=not force_prompt and (protective or task_authorized or scoped or pre_authorized(_level(), kind)),
+        # 发起人这一维（ADR-019）：主人给自己的档位与 --yes 不借给成员；成员只认所有者对该角色登记的放行。
+        # 所有者和没有真人发起的回合原样通过，所以这里对现有入口没有变化。
+        from src.agents.principal import current_member_allowance, current_principal, pre_authorized_for
+        standing = pre_authorized_for(current_principal(), kind or "write", owner_pre_authorized=pre_authorized(_level(), kind),
+                                      member_allowed=current_member_allowance(), tainted=tainted)
+        verdict = decide(tainted=tainted, pre_authorized=not force_prompt and (protective or task_authorized or scoped or standing),
                          can_ask_human=can_ask_human)
         from src.agents.confirmation_context import approval_context, presenting_approval, record_approval_outcome
         source = "preauthorized" if verdict == ALLOW else "system" if verdict == DENY or ask_human is None else "user"
