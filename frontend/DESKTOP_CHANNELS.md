@@ -15,7 +15,7 @@
 
 ```sh
 npm run desktop-dev:status  # 查看两个 App 的安装版本
-npm run desktop-dev:version -- 0.3.0-dev.2 # 统一递增开发版版本号（下一版时使用）
+npm run desktop-dev:version -- 0.3.0-dev.3 # 统一递增开发版版本号（下一版时使用）
 npm run desktop-dev:bundle # 从干净且已合并的 main 构建 Apple Silicon macOS 开发安装包
 npm run desktop-dev:install # 校验并安装到 /Applications/VortoOne Dev.app
 npm run desktop-dev:manage # 打开 GitHub Release 管理

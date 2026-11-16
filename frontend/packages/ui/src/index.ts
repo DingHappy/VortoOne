@@ -570,3 +570,4 @@ export {
   type WidgetOrganize,
 } from "./widgets/WidgetCard";
 export { WidgetGlyph } from "./widgets/WidgetGlyph";
+export { characterBackdrop } from "./sky/contrast";
