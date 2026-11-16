@@ -148,6 +148,9 @@ class MemoryWritePolicy:
             return MemoryWriteDecision("reject", "", ("empty",))
         if len(content) > MAX_MEMORY_CONTENT:
             return MemoryWriteDecision("reject", "", ("too_long",))
+        from src.agents.principal import current_principal, may_write_owner_memory
+        if not may_write_owner_memory(current_principal()):   # 成员的发言不进主人的个人记忆（ADR-019）
+            return MemoryWriteDecision("reject", "", ("member_initiated",))
 
         redacted, secret_reasons = redact_secret_like(content)
         if secret_reasons:

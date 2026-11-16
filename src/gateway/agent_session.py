@@ -400,8 +400,12 @@ def build_session(repo_root: str, *, kind: str, confirm=None, on_progress=None,
             kwargs["hook_system"] = hooks
     # 富客户端的结构化动作不经过模型，但仍必须复用这一份确认门判定。
     # 只暴露已经过 make_confirm_gate 包装的实例，端不能传裸 yes/no 回调绕过污点规则。
-    return MainAgent(tools, confirm_gate=gated_confirm,
-                     supervised=bool(allow_local_files and kind == "web"), **kwargs)
+    agent = MainAgent(tools, confirm_gate=gated_confirm,
+                      supervised=bool(allow_local_files and kind == "web"), **kwargs)
+    if kind in {"cli", "web"}:      # 本机命令行与 Desktop/App 的会话：发起人是所有者。IM 不在此列（入口不可信）
+        from src.agents.principal import OWNER, Principal
+        agent.principal = Principal(OWNER, "owner", str(repo_root))
+    return agent
 
 
 def capability_update_note(saved_tools, current_tools, saved_fp=None, current_fp=None) -> str | None:

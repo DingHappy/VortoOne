@@ -517,6 +517,9 @@ class MainAgent:
         # 置位后每个回合在 reset_taint() 之后立刻重新打污点（见 run_turn），
         # 因为污点是回合作用域的——在 run_turn 外面调 mark_tainted() 会被回合开头的 reset 抹掉。
         self._untrusted_input = bool(untrusted_input)
+        # 这位 agent 的回合由谁发起（ADR-019）。宿主装配后设定；None = 没申报，按没有真人发起。
+        self.principal = None
+        self.member_allowed: tuple = ()
         self._confirm_gate = confirm_gate
         self._supervised = bool(supervised)
         from src.agents.mcp_session import McpAttachment
@@ -1701,6 +1704,9 @@ class MainAgent:
         self._turn_memory_context = ""
         from src.agents.taint import mark_channel_untrusted, mark_tainted, reset_taint
         reset_taint()                       # 回合作用域污点：每回合从"未摄入外部内容"开始（D0）
+        # 发起人也是回合作用域：每回合重新申报，免得同一上下文里上一回合的身份留到这一回合
+        from src.agents.principal import NOBODY, set_principal
+        set_principal(self.principal or NOBODY, member_allowed=self.member_allowed)
         # 端级不可信入口（IM）：用户输入自身就是外部内容，**每回合无条件重新打污点**。
         # 必须在这里、reset 之后打——装配时打一次会被下一个回合的 reset 抹掉（污点是回合作用域的）。
         # 用 channel 档而非 external：拦截强度完全一样，但别把"你自己打了句话"说成"读过网页"。
