@@ -1,6 +1,6 @@
 [package]
 name = "vortoone-desktop-dev"
-version = "0.3.0-dev.3"
+version = "0.3.0-dev.4"
 description = "VortoOne independent desktop development preview"
 edition = "2021"
 publish = false
@@ -9,6 +9,7 @@ publish = false
 tauri-build = { version = "=2.7.4", features = [] }
 
 [dependencies]
+dotenvy = "=0.15.7"
 tauri = { version = "=2.12.5", features = [] }
 tauri-plugin-opener = "=2.5.4"
 

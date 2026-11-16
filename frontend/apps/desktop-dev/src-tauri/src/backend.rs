@@ -80,18 +80,9 @@ pub fn parse_config(text: &str) -> Result<Config, String> {
 
 /// 环境文件里允许带给后端的几项（`KEY=VALUE`，可带引号；其余行忽略）。
 pub fn allowed_env(text: &str) -> Vec<(String, String)> {
-    text.lines()
-        .filter_map(|line| {
-            let line = line.trim().strip_prefix("export ").unwrap_or(line.trim());
-            let (key, value) = line.split_once('=')?;
-            let key = key.trim();
-            let model_setting = ENV_PREFIXES.iter().any(|p| key.starts_with(p)) || MODEL_NAMES.contains(&key);
-            if line.starts_with('#') || !model_setting || key == "VORTOONE_API_TOKEN" {
-                return None;
-            }
-            let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
-            Some((key.to_string(), value.to_string()))
-        })
+    dotenvy::from_read_iter(text.as_bytes())
+        .filter_map(Result::ok)
+        .filter(|(key, _)| ENV_PREFIXES.iter().any(|p| key.starts_with(p)) || MODEL_NAMES.contains(&key.as_str()))
         .collect()
 }
 
@@ -229,6 +220,15 @@ mod tests {
                 ("LLM_MODEL_POWERFUL".to_string(), "large".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn dotenv_comments_do_not_become_part_of_the_model_url() {
+        assert_eq!(allowed_env("OPENAI_API_BASE=http://example.test/v1   # gateway\nOPENAI_API_KEY=\"key#part\" # note\nDEFAULT_MODEL='chosen model' # note\n"), vec![
+            ("OPENAI_API_BASE".into(), "http://example.test/v1".into()),
+            ("OPENAI_API_KEY".into(), "key#part".into()),
+            ("DEFAULT_MODEL".into(), "chosen model".into()),
+        ]);
     }
 
     #[test]
