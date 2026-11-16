@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @agenteschat/web",
     "build": "npm run build --workspace @agenteschat/web && npm run desktop:build",
+    "build:preview": "node scripts/build-desktop-preview.mjs",
     "preview": "npm run preview --workspace @agenteschat/web",
     "typecheck": "npm run typecheck --workspace @agenteschat/web && npm run typecheck --workspace @agenteschat/desktop && npm run runtime:typecheck",
     "test": "node --import tsx --test tests/*.test.ts",

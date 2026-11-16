@@ -10,6 +10,8 @@ declare module "@tanstack/react-query" {
 }
 
 declare global {
+  /** Enabled only by the dedicated static preview build, never the application build. */
+  const __VORTO_DESKTOP_PREVIEW__: boolean;
   interface Window {
     /** index.html's boot fallback: one reload, then a box over the boot sky. Nothing once React replaced the sky. */
     __agentesBootFailed?: () => void;

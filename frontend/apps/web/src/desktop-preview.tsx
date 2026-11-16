@@ -1,3 +1,5 @@
-if (!import.meta.env.DEV)
-  throw new Error("Desktop UI fixtures are available only in development.");
+if (!import.meta.env.DEV && !__VORTO_DESKTOP_PREVIEW__)
+  throw new Error(
+    "Desktop UI fixtures require development or an explicit preview build.",
+  );
 await import("./desktop-preview-app");
