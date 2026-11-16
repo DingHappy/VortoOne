@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { cx } from "../cx";
-import { drawSprite, redrawSkies, type SkyOptions, startSky } from "../sky/engine";
+import { characterGlow } from "../sky/contrast";
+import {
+  drawSprite,
+  redrawSkies,
+  type SkyOptions,
+  startSky,
+} from "../sky/engine";
 import { glowTones, pixelOf, spriteTone } from "../sky/tones";
 import type { AgentColor } from "./AgentLook";
 
@@ -10,7 +16,13 @@ import type { AgentColor } from "./AgentLook";
  * frame, so changing them (a color, how many agents work) needs no restart.
  * Decorative: a presentation canvas with nothing to read.
  */
-export function PixelSky({ options, className }: { options: SkyOptions; className?: string }) {
+export function PixelSky({
+  options,
+  className,
+}: {
+  options: SkyOptions;
+  className?: string;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
   const opts = useRef(options);
   opts.current = options;
@@ -46,27 +58,43 @@ export function SkyGlow({
 
 const WHITE = pixelOf("#ffffff");
 
-export function glowOptions(color: AgentColor, surface = "--bg", bare = false): SkyOptions {
+export function glowOptions(
+  color: AgentColor,
+  surface = "--bg",
+  bare = false,
+): SkyOptions {
   const body = pixelOf(spriteTone(color));
   return {
     pixel: 4,
     surface,
     seeThrough: bare,
-    palette: (bg) => glowTones(color, bg),
+    palette: (bg) => (bare ? characterGlow(color, bg) : glowTones(color, bg)),
     light: 0,
     base: (u, v, t) => {
       const dx = (u - 0.5) * 2.1;
       const dy = (v - 0.58) * 1.4;
       // Zero at the edges, so the glow meets the surface without a seam.
       const edge = Math.min(1, u * 5, (1 - u) * 5, v * 5, (1 - v) * 5);
-      return edge * Math.exp(-(dx * dx + dy * dy) / 0.18) * (0.9 + 0.06 * Math.sin(t * 0.8));
+      return (
+        edge *
+        Math.exp(-(dx * dx + dy * dy) / 0.18) *
+        (0.9 + 0.06 * Math.sin(t * 0.8))
+      );
     },
     after: bare
       ? undefined
       : (f) => {
           const k = 2;
           const y = Math.round(f.h * 0.5 - 9 + Math.sin(f.t * 1.6) * 2);
-          drawSprite(f, Math.round(f.w / 2 - 9), y, k, body, WHITE, f.t % 4.2 > 4.04);
+          drawSprite(
+            f,
+            Math.round(f.w / 2 - 9),
+            y,
+            k,
+            body,
+            WHITE,
+            f.t % 4.2 > 4.04,
+          );
         },
   };
 }
