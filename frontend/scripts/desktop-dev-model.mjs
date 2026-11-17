@@ -5,7 +5,7 @@ import { join } from "node:path";
 export const DEV_ID = "com.vorto.vortoone.dev";
 export const DEV_NAME = "VortoOne Dev";
 export const RELEASES = "https://github.com/DingHappy/VortoOne/releases";
-/** The only resources the development app may carry: the built web UI, served by a local backend. */
+/** Base UI resources. The trusted bundle command adds the pinned onedir backend and its notices at build time. */
 export const UI_RESOURCES = { "../../web/dist": "web" };
 
 const DEV_VERSION =
@@ -42,7 +42,7 @@ export function checkDevConfig(config, stable) {
   )
     throw new Error("Development and stable apps must remain separate");
   developmentVersion(config.version);
-  // 开发版可以带界面文件（连本机后端时由后端提供给主窗口），但不带更新器、执行程序或 Python 运行时。
+  // 配置不能随意指定执行程序；只有打包脚本可以加入经锁文件与来源校验的内置后端。
   const resources = JSON.stringify(config.bundle?.resources ?? null);
   if (
     config.plugins?.updater ||
@@ -50,7 +50,7 @@ export function checkDevConfig(config, stable) {
     (resources !== "null" && resources !== JSON.stringify(UI_RESOURCES))
   )
     throw new Error(
-      "Development app may bundle the UI files only: no updater, runner or runtime",
+      "Base development config accepts the UI only; the bundle command owns runtime resources",
     );
   return config;
 }
@@ -80,7 +80,7 @@ export function devReleaseNotes({ version, commit, stableVersion }) {
   return (
     `VortoOne Dev ${version}\n\n独立的桌面界面开发版，可与公开稳定版并排安装。\n\n` +
     `- 新桌面布局与史莱姆颜色、眼型、表情和配饰。\n- 本地打包资源，包含桌面、角色编辑、偏好设置预览和版本管理。\n` +
-    `- 默认使用示例数据，尚未连接正式后端；在本机配置 backend.json 后可连接本机源码后端（开发用）。\n\n公开稳定版继续使用 ${stableVersion}。开发版安装包名为 VortoOne Dev，应用标识为 ${DEV_ID}。\n\n` +
+    `- 内置独立 Python 后端，安装后默认连接真实本机数据，无需源码、系统 Python 或 backend.json。\n- 首次启动可在模型连接窗口填写服务地址、模型名和 API Key。示例数据界面仍可从菜单单独打开。\n\n公开稳定版继续使用 ${stableVersion}。开发版安装包名为 VortoOne Dev，应用标识为 ${DEV_ID}。\n\n` +
     `源码提交：${commit}\n\n本版本由维护者保留为草稿；需要提供给测试者时，可在 GitHub Release 中发布为预发布。正式用户继续使用公开稳定版更新通道。\n`
   );
 }
