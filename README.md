@@ -1,11 +1,10 @@
 <div align="center">
 
-<img src="desktop/app-icon.svg" alt="VortoOne 应用标志" width="96" height="96">
-
 <h1>
+  <img src="desktop/app-icon.svg" alt="VortoOne 应用标志" width="96" height="96" align="middle">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="design/vortoone-wordmark-dark.svg">
-    <img src="design/vortoone-wordmark.svg" alt="VortoOne" width="330">
+    <img src="design/vortoone-wordmark.svg" alt="VortoOne" width="330" align="middle">
   </picture>
 </h1>
 
