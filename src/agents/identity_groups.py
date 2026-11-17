@@ -159,6 +159,33 @@ def may_grant(actor_held: Iterable[str], post_id: str, posts: Mapping[str, Post]
             and posts[post_id].items <= mine and _top(actor_held, order) < _top(target_held, order))
 
 
+def may_reorder(actor_held: Iterable[str], before: Sequence[str], after: Sequence[str],
+                posts: Mapping[str, Post], *, owner: bool = False) -> bool:
+    """能不能把身份组的先后从 before 改成 after。
+
+    只能是同一批身份组换位置，「所有人」留在最后。除所有者外要有「管理身份组」，而且自己最高身份组
+    及其之前的那一段必须原样不动——只能调整排在自己之后的身份组，不能把谁挪到自己前面。"""
+    if sorted(before) != sorted(after) or len(set(after)) != len(after):
+        return False
+    if EVERYONE not in after or after[-1] != EVERYONE:
+        return False
+    if owner:
+        return True
+    if "space.manage_posts" not in permissions_of(actor_held, posts):
+        return False
+    fixed = _top(actor_held, before) + 1
+    return list(before[:fixed]) == list(after[:fixed])
+
+
+def may_remove_member(actor_held: Iterable[str], target_held: Iterable[str], posts: Mapping[str, Post],
+                      order: Sequence[str], *, owner: bool = False) -> bool:
+    """能不能把一个成员移出空间：要有「管理成员」，对方最高的身份组要排在自己之后。所有者不在此列。"""
+    if owner:
+        return True
+    return ("space.manage_members" in permissions_of(actor_held, posts)
+            and _top(actor_held, order) < _top(target_held, order))
+
+
 def invite_posts(actor_held: Iterable[str], wanted: Iterable[str], posts: Mapping[str, Post],
                  order: Sequence[str], *, owner: bool = False) -> List[str]:
     """发邀请时核对：邀请带的身份组必须都是邀请人授予得了的。返回可带上的身份组；有一个不行就抛错。"""
