@@ -583,7 +583,7 @@ export const EARLY_ACCESS_OTHER_EMAIL = "EARLY_ACCESS_OTHER_EMAIL";
 export const ACCOUNT_NOT_LINKED = "account_not_linked";
 
 /** Where a restriction on agentes.chat Cloud is contested. */
-export const LEGAL_EMAIL = "legal@agentes.chat";
+export const LEGAL_EMAIL = "";
 
 /** The reason agentes.chat Cloud's automatic hold is set with: it reads as the review line, never "on hold: review". */
 const REVIEW_REASON = "review";
@@ -626,7 +626,7 @@ export function restrictionLine(
   code: string | null | undefined,
   facts?: RestrictionFacts | null,
 ): string | null {
-  const cloud = facts?.cloud === true || facts?.cloud === "true";
+  const cloud = Boolean(LEGAL_EMAIL) && (facts?.cloud === true || facts?.cloud === "true");
   const reason = typeof facts?.reason === "string" ? facts.reason.trim() : "";
   const kind = facts?.kind;
   const email = { email: LEGAL_EMAIL };

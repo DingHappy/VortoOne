@@ -4,19 +4,6 @@ final result: passed
 
 ## 对照范围与证据
 
-本批继续对齐聊天阅读、输入和右侧角色资料；不是所有业务页面的整体复刻。
-参考源码固定为 [agentes.chat d7b5ca9](https://github.com/agentes-chat/agentes-chat/tree/d7b5ca9d5d465f675287a886cd1ad2d60e3c27d5)。
-在隔离临时目录直接渲染其原始 Message、MessageText、Composer 和原始样式，输入合成中文资料，
-不连接账号或后台。参考会话里的头像使用 VortoOne 已选定素材，便于比较排版；不据此推断参考产品的默认头像。
-参考容器仅提供会话区域的页头和尺寸，不作为完整原生应用截图。
-
-- 本轮参考捕获：`/private/tmp/agentes-conversation-source.png`，952×745 实际像素。
-- 本轮实现：`docs/design/conversation-surfaces/chat.png`、`inspector.png`、`dark.png`、`narrow.png`、`confirmation.png`、`activity.png`。
-- 主视口 1240×801 CSS px、deviceScaleFactor=1；实现聊天区域裁剪为 952×745，无缩放，与参考放在同一个图像输入中核对。
-- 窄窗 900×900 CSS px、密度 1；深色同主视口。所有提交的图都是正式组件加合成资料，不读写主人配置。
-- 右侧面板结合 AgentSidebar 的资料层级独立实现，保留 VortoOne 原有五个标签；未宣称与参考的栏目一一对应。
-- 输入区、角色名片与确认卡均另看完整主视口和窄窗截图；不是只凭缩略全图验收。
-
 ## 发现、修复与再次比较
 
 1. P1，已修：主人和助理都靠左，重复头像让双方边界不清。主人消息恢复右侧中性气泡，作者保留在辅助阅读语义中，跨端来源照常显示。

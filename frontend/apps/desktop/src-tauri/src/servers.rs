@@ -224,7 +224,7 @@ fn grant(app: &AppHandle, origin: &str) {
         .permission("allow-context-menu")
         .permission("allow-page-ready");
     if let Err(err) = app.add_capability(capability) {
-        eprintln!("agentes.chat: no capability for {origin}: {err}");
+        eprintln!("VortoOne: no capability for {origin}: {err}");
         granted.remove(origin);
     }
 }

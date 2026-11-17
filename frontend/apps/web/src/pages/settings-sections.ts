@@ -12,7 +12,6 @@ import type { IconName } from "@agenteschat/ui";
 export type SettingsSection =
   | "account"
   | "notifications"
-  | "download"
   | "approvals"
   | "apps"
   | "general"
@@ -46,8 +45,6 @@ export const SETTINGS_SECTIONS: {
   { id: "account", icon: "person", allowed: () => true },
   // What reaches my devices as a notification here (ADR 0071 §8).
   { id: "notifications", icon: "bell", allowed: () => true },
-  // The desktop app for this computer and the phone apps, for everyone: a tab of Your account.
-  { id: "download", icon: "download", allowed: () => true },
   // Who approves for me, and whom I approve for (ADR 0139).
   { id: "approvals", icon: "approve", allowed: () => true },
   // AI apps (ADR 0119): each person connects their own, in this workspace.
@@ -95,6 +92,8 @@ export const isSettingsSection = (v: unknown): v is SettingsSection => SETTINGS_
  * still open, on the section that holds them now.
  */
 export const MOVED_SETTINGS_SECTIONS: Readonly<Record<string, SettingsSection>> = {
+  // The upstream app promotion is gone; saved links return to Your account.
+  download: "account",
   computers: "devices",
   keys: "usage",
 };

@@ -1,4 +1,4 @@
-//! The server here ("Run agentes.chat on this computer", ADR 0066): agentes.chat's native server (ADR 0060 §2,
+//! The server here ("Run VortoOne on this computer", ADR 0066): VortoOne's native server (ADR 0060 §2,
 //! one program with its database built in) as a child of the app, in `~/.agentes`. The app carries the
 //! server's files (`server/` and `web/` among its resources) and runs them with its own runner binary acting as
 //! Bun (`BUN_BE_BUN=1`), so nothing downloads and the server moves with the app's updates: on the first start
@@ -226,8 +226,8 @@ fn write_env(folder: &Folder, entries: &[(&str, String)]) -> io::Result<()> {
     write_private(&folder.env(), next.as_bytes(), true)
 }
 
-const ENV_HEADER: &str = "# agentes.chat on this computer, run by the agentes.chat app. Help:\n\
-# https://agentes.chat/docs/run-on-your-computer. AGENTES_SECRET encrypts the keys stored in the database: it\n\
+const ENV_HEADER: &str = "# VortoOne on this computer, run by the VortoOne app. Help:\n\
+# http://localhost:3000/docs/run-on-your-computer. AGENTES_SECRET encrypts the keys stored in the database: it\n\
 # travels with the folder in a backup, and changing it makes them unreadable.\n";
 
 /// The port the server takes and the address it answers at.
@@ -283,7 +283,7 @@ fn write_private(path: &Path, bytes: &[u8], replace: bool) -> io::Result<()> {
     }
 }
 
-/// What the person chose in "Run agentes.chat on this computer".
+/// What the person chose in "Run VortoOne on this computer".
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Choice {
@@ -2458,7 +2458,7 @@ fn diagnostics(app: &AppHandle) -> String {
         })
         .unwrap_or_default();
     format!(
-        "agentes.chat app {} ({} {})\nserver here: {:?}, version {}, at {}, reach {}, usage statistics {}\n\n{}\n\n{}",
+        "VortoOne app {} ({} {})\nserver here: {:?}, version {}, at {}, reach {}, usage statistics {}\n\n{}\n\n{}",
         app.package_info().version,
         std::env::consts::OS,
         std::env::consts::ARCH,
@@ -2501,8 +2501,8 @@ pub fn files_moving(launching: bool, pid: Option<u32>, phase: Option<Phase>) -> 
 pub fn erased_folder(home: &Path, date: &str, taken: impl Fn(&Path) -> bool) -> Option<PathBuf> {
     (1..100)
         .map(|n| match n {
-            1 => home.join(format!("agentes.chat erased {date}")),
-            n => home.join(format!("agentes.chat erased {date} {n}")),
+            1 => home.join(format!("VortoOne erased {date}")),
+            n => home.join(format!("VortoOne erased {date} {n}")),
         })
         .find(|p| !taken(p))
 }
@@ -3144,13 +3144,13 @@ mod tests {
     #[test]
     fn an_erased_folder_is_named_with_the_day_and_a_number_when_that_name_is_taken() {
         let home = Path::new("/home/ana");
-        let first = home.join("agentes.chat erased 2026-11-14");
+        let first = home.join("VortoOne erased 2026-11-14");
         assert_eq!(erased_folder(home, "2026-11-14", |_| false), Some(first.clone()));
-        let second = home.join("agentes.chat erased 2026-11-14 2");
+        let second = home.join("VortoOne erased 2026-11-14 2");
         assert_eq!(erased_folder(home, "2026-11-14", |p| p == first), Some(second.clone()));
         assert_eq!(
             erased_folder(home, "2026-11-14", |p| p == first || p == second),
-            Some(home.join("agentes.chat erased 2026-11-14 3"))
+            Some(home.join("VortoOne erased 2026-11-14 3"))
         );
         assert_eq!(erased_folder(home, "2026-11-14", |_| true), None);
     }
@@ -3162,7 +3162,7 @@ mod tests {
         fs::create_dir_all(data.join("db")).unwrap();
         fs::write(data.join("owner-key"), "k").unwrap();
         let to = move_away(&data, &home, "2026-11-14").unwrap();
-        assert_eq!(to, home.join("agentes.chat erased 2026-11-14"));
+        assert_eq!(to, home.join("VortoOne erased 2026-11-14"));
         assert!(!data.exists());
         assert_eq!(fs::read_to_string(to.join("owner-key")).unwrap(), "k");
         assert!(to.join("db").is_dir());
@@ -3170,11 +3170,11 @@ mod tests {
         fs::create_dir_all(&data).unwrap();
         fs::write(data.join("owner-key"), "k2").unwrap();
         let again = move_away(&data, &home, "2026-11-14").unwrap();
-        assert_eq!(again, home.join("agentes.chat erased 2026-11-14 2"));
+        assert_eq!(again, home.join("VortoOne erased 2026-11-14 2"));
         assert_eq!(fs::read_to_string(to.join("owner-key")).unwrap(), "k");
         // No folder to move: an error, and nothing made.
         assert!(move_away(&data, &home, "2026-11-15").is_err());
-        assert!(!home.join("agentes.chat erased 2026-11-15").exists());
+        assert!(!home.join("VortoOne erased 2026-11-15").exists());
         let _ = fs::remove_dir_all(&home);
     }
 

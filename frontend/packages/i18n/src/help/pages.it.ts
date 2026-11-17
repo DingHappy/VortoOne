@@ -4,188 +4,23 @@ import type { HelpDocument } from "./types";
 /** The help pages in it: a page not here shows in English. */
 export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
   "run-on-your-computer": {
-    title: "Usa agentes.chat sul tuo computer",
-    summary:
-      "L’app agentes.chat può anche far girare agentes.chat stesso, su un Mac, un PC o un computer Linux, per te o per un piccolo team.",
-    sections: [
-      {
-        id: "download",
-        heading: "Scarica l'app",
-        blocks: [
-          "[Scarica l'app di agentes.chat](/download) per il tuo Mac, PC o computer Linux e aprila. Scegli **Sul tuo server**, premi **Continua sul mio server** e poi **Esegui agentes.chat su questo computer**.",
-        ],
-      },
-      {
-        id: "how",
-        heading: "Come funziona",
-        blocks: [
-          "Gira dentro l’app, con un database già incluso, e tiene tutto in una sola cartella di questo computer, `.agentes` nella tua cartella personale. Nient’altro da installare: niente Docker, nessun database da configurare.",
-          "Parte con l’app e si ferma quando la chiudi. Prima di chiudere l’app ti chiede conferma, perché nessuno può usare agentes.chat finché non la riapri. Per fermarlo per un po’ senza chiudere l’app, fai clic sull’icona di agentes.chat vicino all’orologio e scegli **Ferma** nel menu **⋯** della sua scheda.",
-        ],
-      },
-      {
-        id: "who",
-        heading: "Per chi è",
-        blocks: [
-          "Per te o per un piccolo team. Un Mac mini, un PC in più o un portatile che resta acceso sono una buona casa: preparalo come in [Tienilo acceso](#keep-on). Su un Mac o un PC, l’app è il modo di far girare agentes.chat senza Docker.",
-          "Per un team più grande, vedi [Quale configurazione scegliere](/help/install-on-a-server#choose). I tuoi dati potranno spostarsi su un server in seguito.",
-        ],
-      },
-      {
-        id: "keep-on",
-        heading: "Tienilo acceso",
-        blocks: [
-          "Su un computer che usano anche altri, preparalo una volta. **Tienilo acceso**, in **Preferenze\u00a0›\u00a0Server**, mostra cosa manca ancora e apre le impostazioni giuste:",
-          {
-            list: [
-              "**Apri all’accesso** si attiva da solo dopo la configurazione.",
-              "Su un Mac, attiva **Login automatico** in **Impostazioni di Sistema › Utenti e gruppi**, così l’app si apre dopo un riavvio. FileVault disattiva il login automatico.",
-              "Su un Mac, attiva **Avvia automaticamente dopo un’interruzione di corrente** in **Impostazioni di Sistema › Energia**.",
-              "Un Mac resta sveglio mentre il server gira e **Raggiungilo dal telefono e dai colleghi** è attivo. Su Windows e Linux, disattiva lo stop nelle impostazioni di alimentazione del sistema.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "agents",
-        heading: "Anche i tuoi agenti lavorano qui",
-        blocks: [
-          "I tuoi agenti lavorano anche su questo computer, in cartelle tutte loro, con un browser, e con Claude Code o Codex se sono installati qui.",
-          "Qui gli agenti girano come te. I **Comandi** sono attivi fin dall’inizio, e con loro gli agenti di ogni spazio di lavoro che usa questo computer possono raggiungere tutto ciò che contiene, anche i dati del server. Disattivali in **Preferenze\u00a0›\u00a0Strumenti**. Vedi [Cosa possono raggiungere gli agenti](/help/computers#reach).",
-        ],
-      },
-      {
-        id: "another-workspace",
-        heading: "Prestalo anche a un altro spazio di lavoro",
-        blocks: [
-          "Gli spazi di lavoro del server che fai girare qui usano questo computer da soli. Per farlo usare anche a uno spazio di lavoro altrove, come uno su agentes.chat Cloud, premi **Aggiungi uno spazio di lavoro…** in fondo alla prima scheda di **Preferenze\u00a0›\u00a0Generali**, oppure **Aggiungi un server…** in **Preferenze\u00a0›\u00a0Server**. Accedi a quello spazio di lavoro e premi **Consenti** quando l’app lo chiede.",
-          "Ogni spazio di lavoro ha qui i suoi agenti e le sue cartelle. Anche per lui i **Comandi** sono attivi fin dall’inizio. Disattivali nella domanda dell’app prima di premere **Consenti**, o più tardi in **Preferenze\u00a0›\u00a0Strumenti**, dove ogni spazio di lavoro ha il suo interruttore e l’app chiede conferma prima di riattivarne uno.",
-        ],
-      },
-      {
-        id: "reach",
-        heading: "Dal telefono e dal tuo team",
-        blocks: [
-          "**Raggiungilo dal telefono e dai colleghi** mette agentes.chat su Tailscale, una rete privata per i tuoi dispositivi: il tuo telefono e le persone che inviti ci entrano, e nessun altro può raggiungere agentes.chat. Tailscale è gratuito: https://tailscale.com/download. Con l’opzione spenta, agentes.chat funziona solo su questo computer.",
-          "Se questo computer condivide già qualcos’altro sulla porta 443 di Tailscale, agentes.chat usa la 8443, e il suo indirizzo finisce con `:8443`.",
-        ],
-      },
-      {
-        id: "password",
-        heading: "Accedere da altri dispositivi",
-        blocks: [
-          "Il proprietario parte senza password: l’app ti fa accedere su questo computer. Per accedere da un browser su un altro computer, aggiungine una in **Impostazioni\u00a0›\u00a0Il tuo account**. Finché non lo fai, **Preferenze\u00a0›\u00a0Server** te lo ricorda, e **Aggiungi una password** apre quella pagina. L’app per il telefono si collega scansionando il codice QR sotto **Sul telefono**, in **Preferenze\u00a0›\u00a0Server**. Serve **Raggiungilo dal telefono e dai colleghi** attivo.",
-          "Quando il proprietario elimina il suo account, in **Impostazioni\u00a0›\u00a0Il tuo account**, l’account sparisce per sempre 7 giorni dopo, e gli spazi di lavoro in cui c’era solo lui se ne vanno con esso. Fino ad allora, accedi e premi **Ripristina account** per recuperarlo. Quando non c’è più, se non resta nessun account, l’app apre la finestra di benvenuto per creare un nuovo proprietario. Se altre persone hanno ancora un account, ognuna accede con la propria email.",
-        ],
-      },
-      {
-        id: "updates",
-        heading: "Aggiornamenti",
-        blocks: [
-          "L’app cerca gli aggiornamenti da sola. Con **Installa gli aggiornamenti da solo, di notte** attivo, in **Preferenze\u00a0›\u00a0Aggiornamenti**, li installa tra le 3:00 e le 5:00 mentre l’app è aperta. È attivo fin dall’inizio quando il server gira qui. Altrimenti premi **Aggiorna e riapri**. Il server e tutti gli agenti si riavviano con lei. Prima il database viene copiato, e se la nuova versione non risponde entro 3 minuti, l’app torna da sola alla versione precedente e ai suoi dati.",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "Backup",
-        blocks: [
-          "Con **Fai un backup ogni notte** attivo (app 0.8.1 e successive), in **Preferenze\u00a0›\u00a0Server**, l’app salva ogni notte alle 3:00 il database, i file e `.env` in `.agentes/backups`, nella tua cartella personale. Un computer che dormiva a quell’ora fa il backup appena si risveglia. **Fai il backup ora** fa lo stesso subito. Ogni backup ferma il server per un momento, e restano i due più recenti.",
-          "**Copia in** mette anche ogni nuovo backup in una cartella che scegli, come una chiavetta USB o iCloud Drive, dove restano i due più recenti. Contengono le tue chiavi: tienili privati. **Ripristina…** riporta agentes.chat a un backup: messaggi, file e impostazioni. Si ferma per un minuto, e quello che c’era prima resta nella cartella dei backup.",
-        ],
-      },
-      {
-        id: "uninstall",
-        heading: "Ricominciare o disinstallare",
-        blocks: [
-          "Tutto ciò che agentes.chat tiene su questo computer sta in cartelle della tua cartella personale, non dentro l’app. Quindi spostare l’app nel Cestino non ne elimina niente, e non ferma agentes.chat se è in funzione.",
-          "Per ricominciare, premi **Cancella e ricomincia da capo…** in **Preferenze\u00a0›\u00a0Server**. agentes.chat si ferma qui e tutto ciò che contiene viene spostato in una nuova cartella della tua cartella personale, chiamata `agentes.chat erased` con la data del giorno, dove resta finché non la elimini. Ciò che i suoi agenti tenevano su questo computer, come i loro browser e accessi, viene eliminato da `.agentes-runner`. I suoi spazi di lavoro spariscono per tutti quelli che li usano. Poi si apre la finestra di benvenuto e lo configuri di nuovo con un nuovo account proprietario. I file degli agenti, in `agentes` nella tua cartella personale, restano dove sono.",
-          "Per riaverlo più tardi, esci dall’app, sposta altrove una cartella `.agentes` più recente, se c’è, rinomina la cartella `agentes.chat erased` in `.agentes`, poi apri l’app e configuralo di nuovo su questo computer. Riparte con i suoi spazi di lavoro e il suo proprietario com’erano. Ciò che i suoi agenti tenevano su questo computer non torna, quindi devono accedere di nuovo.",
-          "Per togliere del tutto agentes.chat da questo computer:",
-          {
-            list: [
-              "Disattiva **Apri all'accesso** in **Preferenze\u00a0›\u00a0Generali**.",
-              "Esci dall’app. Chiudere la finestra non basta. Su un Mac, fai clic sulla sua icona nel Dock e scegli **Esci da agentes.chat** nel menu agentes.chat, in alto sullo schermo, oppure premi ⌘Q. Su Windows e Linux, fai clic sull’icona di agentes.chat vicino all’orologio e scegli **Esci da agentes.chat**. Se chiede **Uscire da agentes.chat?**, premi **Esci**.",
-              "Elimina l’app. Su un Mac, spostala nel Cestino. Su Windows e Linux, disinstallala come qualsiasi altra app.",
-              "Elimina queste cartelle della tua cartella personale. Contengono i tuoi dati, e una volta eliminati non tornano, quindi tieni prima un backup altrove se potresti volerli: `.agentes` (messaggi, file, account, impostazioni e backup), ogni cartella `agentes.chat erased`, `.agentes-runner` (ciò che gli agenti tengono su questo computer, come i loro browser e accessi) e `agentes` (i file degli agenti). Le cartelle il cui nome inizia con un punto sono nascoste. Su un Mac, apri la tua cartella personale nel Finder e premi ⇧⌘. (Maiuscole, Comando e il tasto del punto) per mostrarle.",
-              "Elimina le cartelle dell’app stessa. Contengono solo le sue impostazioni, gli accessi della sua finestra e i suoi log. Su un Mac: tutto ciò il cui nome inizia con `chat.agentes.desktop` nelle cartelle Application Support, Caches, HTTPStorages, Logs, Preferences e WebKit di `~/Library`, e `agentes.chat.plist` in `~/Library/LaunchAgents`. Su Windows: `%APPDATA%\\chat.agentes.desktop` e `%LOCALAPPDATA%\\chat.agentes.desktop`. Su Linux: `~/.config/chat.agentes.desktop` e `~/.local/share/chat.agentes.desktop`. Su un Mac, per aprire una di queste cartelle, premi ⇧⌘G nel Finder e scrivi il suo percorso, per esempio `~/Library/Caches`.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "ai-programs",
-        heading: "Claude Code e Codex",
-        blocks: [
-          "L’app trova Claude Code e Codex tramite il `PATH` della tua shell di login, più le cartelle solite come `~/.local/bin`, `/opt/homebrew/bin` e `/usr/local/bin`. Se **Preferenze\u00a0›\u00a0Strumenti** dice **Non trovato**, mostra la riga che lo installa. Eseguila nel Terminale, poi premi **Controlla di nuovo**.",
-        ],
-      },
-      {
-        id: "moving",
-        heading: "Passare a un server",
-        blocks: [
-          {
-            list: ["Chiudi l’app, poi esporta il database con la copia del server che l’app ha con sé. Su un Mac:"],
-          },
-          {
-            code: "BUN_BE_BUN=1 /Applications/agentes.chat.app/Contents/MacOS/agentes-runner \\\n  ~/.agentes/app/current/server/native.js db dump --data ~/.agentes --out agentes.sql",
-          },
-          {
-            list: [
-              "[Installa agentes.chat su un server](/help/install-on-a-server), ma non avviarlo ancora. Nel suo `.env` metti l’`AGENTES_SECRET` di `~/.agentes/.env`, poi avvia solo il database: `docker compose up -d postgres`.",
-              "Carica il dump: `docker compose exec -T postgres psql -U agentes -d agentes -v ON_ERROR_STOP=1 < agentes.sql`.",
-              "Avvialo con `docker compose up -d`, copiaci dentro `~/.agentes/files` come mostra la guida completa, e accedi come prima.",
-            ],
-          },
-        ],
-      },
-    ],
-  },
+  "title": "Usa VortoOne sul tuo computer",
+  "summary": "Usa il pacchetto di installazione e le istruzioni di connessione della versione attuale di VortoOne Desktop. Questa versione non offre un servizio cloud ospitato né un installer del server con un solo comando.",
+  "sections": []
+},
   "workspace-computer": {
-    title: "Il computer dello spazio di lavoro",
-    summary: "Ogni spazio di lavoro ha un computer tutto suo, sempre acceso, dove lavorano i suoi agenti.",
-    sections: [
-      {
-        id: "what",
-        heading: "Cos’è",
-        blocks: [
-          "Un computer solo per questo spazio di lavoro, sempre acceso. Ogni agente ha un suo utente, con la sua cartella, il suo schermo, il suo browser e i suoi file. Dalla pagina di un agente puoi guardarlo lavorare, e prendere il controllo quando serve.",
-        ],
-      },
-      {
-        id: "own",
-        heading: "I tuoi computer e telefoni",
-        blocks: [
-          "Gli agenti possono lavorare anche su computer e telefoni che porti tu: un Mac o un PC con l’app agentes.chat, un server, un telefono Android o un iPhone. Vedi [I tuoi computer e telefoni](/help/computers).",
-        ],
-      },
-      {
-        id: "plans",
-        heading: "I tuoi piani IA",
-        blocks: [
-          "I tuoi agenti possono ragionare con il tuo piano IA, come Claude, ChatGPT, GLM o Kimi, con l’accesso fatto su questo computer: nessuna chiave API necessaria. L’account resta su questo computer, e agentes.chat non vede mai né la password né l’accesso.",
-          "I piani AI Pro e Ultra di Google qui non funzionano: i termini di Google non ne permettono l’uso in altri prodotti. Una chiave API di Gemini sì.",
-        ],
-      },
-      {
-        id: "size",
-        heading: "Le sue dimensioni",
-        blocks: ["CPU, memoria e disco sono in **Impostazioni › Dispositivi**."],
-      },
-      {
-        id: "trouble",
-        heading: "Se smette di rispondere",
-        blocks: ["Di solito torna entro pochi minuti, e ci stiamo già lavorando: tu non devi fare nulla."],
-      },
-    ],
-  },
+  "title": "Il computer dello spazio di lavoro",
+  "summary": "Usa il pacchetto di installazione e le istruzioni di connessione della versione attuale di VortoOne Desktop. Questa versione non offre un servizio cloud ospitato né un installer del server con un solo comando.",
+  "sections": []
+},
   computers: {
     title: "I tuoi computer e telefoni",
     summary:
-      "Porta un Mac, un PC, un computer Linux, un server o un telefono, e i tuoi agenti ci lavorano. Su agentes.chat Cloud come su un server tutto tuo.",
+      "Porta un Mac, un PC, un computer Linux, un server o un telefono, e i tuoi agenti ci lavorano. Su VortoOne Cloud come su un server tutto tuo.",
     sections: [
       {
         id: "app",
-        heading: "Dall’app agentes.chat",
+        heading: "Dall’app VortoOne",
         blocks: [
           "Installa l’app sul computer, aprila e accedi al tuo spazio di lavoro. Ti chiede **Lasciare che gli agenti di <workspace> usino questo Mac?** (questo PC su Windows, questo computer su Linux). Scegli chi può usarlo e premi **Consenti**. Tutto qui.",
           "Hai già fatto l’accesso? Apri **Preferenze\u00a0›\u00a0Generali** e premi **Consenti** nella riga dello spazio di lavoro, nella prima scheda. Non c’è? Premi **Aggiungi uno spazio di lavoro…** in fondo a quella scheda e accedi.",
@@ -224,14 +59,14 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "open",
         heading: "Mentre l’app è aperta",
         blocks: [
-          "Gli agenti lavorano su un computer solo mentre l’app gira lì e il computer è sveglio. Quando l’app lo chiede, lascia spuntato **Tienilo pronto: apri agentes.chat all'accesso**. Un computer spento o in stop mostra **Offline**, e gli agenti aspettano che torni.",
+          "Gli agenti lavorano su un computer solo mentre l’app gira lì e il computer è sveglio. Quando l’app lo chiede, lascia spuntato **Tienilo pronto: apri VortoOne all'accesso**. Un computer spento o in stop mostra **Offline**, e gli agenti aspettano che torni.",
         ],
       },
       {
         id: "pausing",
         heading: "Mettere in pausa e scollegare",
         blocks: [
-          "Sul computer, l’icona di agentes.chat vicino all’orologio mette in pausa gli agenti di tutti gli spazi di lavoro, o di uno solo. In **Preferenze\u00a0›\u00a0Generali**, l’interruttore di ogni spazio di lavoro mette in pausa solo quello, e **Esci**, nel suo menu **⋯**, lo scollega. In pausa non parte niente di nuovo, e quello che era in corso finisce. Scollegando, le cartelle degli agenti restano sul disco.",
+          "Sul computer, l’icona di VortoOne vicino all’orologio mette in pausa gli agenti di tutti gli spazi di lavoro, o di uno solo. In **Preferenze\u00a0›\u00a0Generali**, l’interruttore di ogni spazio di lavoro mette in pausa solo quello, e **Esci**, nel suo menu **⋯**, lo scollega. In pausa non parte niente di nuovo, e quello che era in corso finisce. Scollegando, le cartelle degli agenti restano sul disco.",
           "Dal sito, **Rimuovi** nella pagina del dispositivo lo scollega.",
         ],
       },
@@ -239,7 +74,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "organizations",
         heading: "Più spazi di lavoro, un solo computer",
         blocks: [
-          "Accedi a ogni spazio di lavoro nella stessa app e premi **Consenti** per ognuno. Spazi di lavoro su agentes.chat Cloud e sui tuoi server possono condividere un computer (app 0.6.1 e successive). Ognuno ha lì i suoi agenti e le sue cartelle, e scollegarne uno non tocca gli altri.",
+          "Accedi a ogni spazio di lavoro nella stessa app e premi **Consenti** per ognuno. Spazi di lavoro su VortoOne Cloud e sui tuoi server possono condividere un computer (app 0.6.1 e successive). Ognuno ha lì i suoi agenti e le sue cartelle, e scollegarne uno non tocca gli altri.",
           "Un server che l’app fa girare su questo computer è già collegato e non serve altro. Per prestare quel computer anche a uno spazio di lavoro altrove, vedi [Prestalo anche a un altro spazio di lavoro](/help/run-on-your-computer#another-workspace).",
           "Usi l’app su un portatile solo come finestra sul tuo spazio di lavoro? Quando chiede di lasciare che gli agenti usino il portatile, **Non ora** la lascia una semplice finestra.",
           "Un server connesso con la riga del terminale lavora per un solo workspace. Connetterlo da un altro workspace passa il server a quello, e il primo non lo raggiunge più. Per più workspace su un computer, usa l'app.",
@@ -270,10 +105,10 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
               "i tuoi file e i tuoi accessi",
               "le cartelle degli altri agenti, anche di altri spazi di lavoro, e gli accessi salvati nei loro browser",
               "il token che collega questo computer",
-              "su un computer che fa girare anche agentes.chat, il suo database e le sue chiavi in `.agentes`",
+              "su un computer che fa girare anche VortoOne, il suo database e le sue chiavi in `.agentes`",
             ],
           },
-          "agentes.chat rifiuta i comandi che nominano le sue chiavi, i token e gli accessi salvati, ma è una regola, non un muro. I **Comandi** sono attivi fin dall’inizio. Disattivali nella domanda dell’app prima di premere **Consenti**, o più tardi in **Preferenze\u00a0›\u00a0Strumenti**, dove ogni spazio di lavoro ha il suo interruttore (app 0.8.1 e successive) e l’app chiede conferma prima di riattivarne uno. Claude Code e Codex eseguono i propri comandi nella cartella dell’agente, con le proprie regole, anche con i comandi disattivati.",
+          "VortoOne rifiuta i comandi che nominano le sue chiavi, i token e gli accessi salvati, ma è una regola, non un muro. I **Comandi** sono attivi fin dall’inizio. Disattivali nella domanda dell’app prima di premere **Consenti**, o più tardi in **Preferenze\u00a0›\u00a0Strumenti**, dove ogni spazio di lavoro ha il suo interruttore (app 0.8.1 e successive) e l’app chiede conferma prima di riattivarne uno. Claude Code e Codex eseguono i propri comandi nella cartella dell’agente, con le proprie regole, anche con i comandi disattivati.",
           "Per un vero muro, usa un server Linux. Su Debian 13, installato con `--system`, ogni agente è un utente a sé. Su Ubuntu, gli agenti condividono un solo utente, `agentes`: vedono le cartelle degli altri, non le tue né quelle del server. Oppure dai agli agenti un computer tutto loro.",
         ],
       },
@@ -282,7 +117,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
   import: {
     title: "Porta i tuoi agenti",
     summary:
-      "Porta qui agenti da un’altra app, o da un altro spazio di lavoro agentes.chat, con istruzioni, skill, routine e memoria.",
+      "Porta qui agenti da un’altra app, o da un altro spazio di lavoro VortoOne, con istruzioni, skill, routine e memoria.",
     sections: [
       {
         id: "comes",
@@ -472,7 +307,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
   },
   "who-answers": {
     title: "Chi risponde a un messaggio",
-    summary: "Una menzione sceglie l’agente. Senza menzione, agentes.chat sceglie per te, in questo ordine.",
+    summary: "Una menzione sceglie l’agente. Senza menzione, VortoOne sceglie per te, in questo ordine.",
     sections: [
       {
         id: "order",
@@ -494,7 +329,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "jev",
         heading: "Jev",
         blocks: [
-          "Quando è agentes.chat a ospitare il tuo spazio di lavoro, Jev è incluso. Su un server che gestisci tu, usa la chiave TypeSafe del proprietario, circa 0,0001 US$ a messaggio: [Configura Jev](/help/jev#setup).",
+          "Quando è VortoOne a ospitare il tuo spazio di lavoro, Jev è incluso. Su un server che gestisci tu, usa la chiave TypeSafe del proprietario, circa 0,0001 US$ a messaggio: [Configura Jev](/help/jev#setup).",
         ],
       },
       {
@@ -553,7 +388,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
               "Apri https://console.typesafe.ai e accedi con Google o con la tua email. Un nuovo account si crea allo stesso modo.",
               "Aggiungi credito nella console. Jev è prepagato.",
               "Apri https://console.typesafe.ai/keys, crea una chiave e copiala subito.",
-              "In agentes.chat, apri **Impostazioni › IA e consumi** e incollala sotto **Jev**. La vede solo chi ha configurato questo server.",
+              "In VortoOne, apri **Impostazioni › IA e consumi** e incollala sotto **Jev**. La vede solo chi ha configurato questo server.",
             ],
           },
           "Su un server che gestisci con Docker, puoi invece mettere la chiave in `.env` come `TYPESAFE_API_KEY`. Questa ha la precedenza su quella in Impostazioni.",
@@ -611,14 +446,14 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
   "apps-de-ia": {
     title: "App IA",
     summary:
-      "Chiedi attività agli agenti di agentes.chat da Claude, Cursor o un’altra app MCP, senza uscirne, e ricevi la risposta lì.",
+      "Chiedi attività agli agenti di VortoOne da Claude, Cursor o un’altra app MCP, senza uscirne, e ricevi la risposta lì.",
     sections: [
       {
         id: "what",
         heading: "Come funziona",
         blocks: [
-          "agentes.chat è un server MCP. Incolli il suo indirizzo nella tua app IA, accedi con il tuo account e scegli uno spazio di lavoro. Da lì in poi, l’app può elencare agenti e canali, mandare un’attività a un agente a nome tuo, aspettare la risposta e leggere le attività recenti.",
-          "Per esempio, nel mezzo di una scena in Unity o Blender, chiedi a Claude: “Chiedi all’agente marketing un testo per il lancio”. Il messaggio compare in agentes.chat come tuo, con l’etichetta **via Claude**, e la risposta dell’agente torna a Claude.",
+          "VortoOne è un server MCP. Incolli il suo indirizzo nella tua app IA, accedi con il tuo account e scegli uno spazio di lavoro. Da lì in poi, l’app può elencare agenti e canali, mandare un’attività a un agente a nome tuo, aspettare la risposta e leggere le attività recenti.",
+          "Per esempio, nel mezzo di una scena in Unity o Blender, chiedi a Claude: “Chiedi all’agente marketing un testo per il lancio”. Il messaggio compare in VortoOne come tuo, con l’etichetta **via Claude**, e la risposta dell’agente torna a Claude.",
           "L’indirizzo è in **Impostazioni › App IA**. Finisce con `/mcp`.",
         ],
       },
@@ -628,14 +463,14 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
         blocks: [
           {
             list: [
-              "**Claude** (claude.ai, Claude Desktop e telefono): in **Personalizza › Connettori** (Customize › Connectors), fai clic su **+ Aggiungi**, poi su **Aggiungi connettore personalizzato** (Add custom connector), chiamalo agentes.chat, incolla l’indirizzo e fai clic su **Continua**. Scegli **Accedi ora** (Sign in now), fai clic su **Aggiungi** e autorizza. Nei piani Team ed Enterprise, il Proprietario dell’organizzazione Claude aggiunge il connettore in Impostazioni dell’organizzazione › Connettori, e ogni persona fa clic su **Connetti** in Personalizza › Connettori. Il piano gratuito di Claude ha posto per un connettore personalizzato.",
+              "**Claude** (claude.ai, Claude Desktop e telefono): in **Personalizza › Connettori** (Customize › Connectors), fai clic su **+ Aggiungi**, poi su **Aggiungi connettore personalizzato** (Add custom connector), chiamalo VortoOne, incolla l’indirizzo e fai clic su **Continua**. Scegli **Accedi ora** (Sign in now), fai clic su **Aggiungi** e autorizza. Nei piani Team ed Enterprise, il Proprietario dell’organizzazione Claude aggiunge il connettore in Impostazioni dell’organizzazione › Connettori, e ogni persona fa clic su **Connetti** in Personalizza › Connettori. Il piano gratuito di Claude ha posto per un connettore personalizzato.",
               "**Claude Code:** esegui `claude mcp add --transport http --scope user agentes <indirizzo>`, poi scrivi `/mcp`, scegli agentes e **Authenticate**. Solo per la cartella attuale, togli `--scope user`.",
               "**Cursor:** **Aggiungi a Cursor** in **Impostazioni › App IA**, oppure l’indirizzo in `~/.cursor/mcp.json`. Cursor ti chiede di accedere la prima volta che lo usi.",
               '**VS Code:** **Aggiungi a VS Code**, oppure l’indirizzo in `.vscode/mcp.json` con `"type": "http"`.',
               "**Altre app:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains e altre hanno ciascuna i propri passaggi in **Collega un'app**, con il tuo indirizzo già inserito.",
             ],
           },
-          "Quando accedi, agentes.chat mostra quale app ha chiesto l’accesso e dove torna. Continua solo se hai appena avviato tu il collegamento.",
+          "Quando accedi, VortoOne mostra quale app ha chiesto l’accesso e dove torna. Continua solo se hai appena avviato tu il collegamento.",
         ],
       },
       {
@@ -652,7 +487,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
               "`list_recent_tasks`: le attività che hai mandato dalle app e quello che gli agenti stanno facendo ora.",
             ],
           },
-          "L’app agisce a nome tuo e vede solo quello che vedi tu. Non approva mai le azioni degli agenti: quando un agente si ferma per chiedere un’approvazione, la risposta lo dice con un link, e una persona decide in agentes.chat. Non cambia nemmeno impostazioni, membri o permessi.",
+          "L’app agisce a nome tuo e vede solo quello che vedi tu. Non approva mai le azioni degli agenti: quando un agente si ferma per chiedere un’approvazione, la risposta lo dice con un link, e una persona decide in VortoOne. Non cambia nemmeno impostazioni, membri o permessi.",
         ],
       },
       {
@@ -688,7 +523,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "safety",
         heading: "Testo scritto da altri",
         blocks: [
-          "Le risposte contengono testo scritto da agenti e persone in agentes.chat. L’app riceve quel testo segnato come contenuto, non come istruzioni, ma un testo può comunque provare a convincere l’app a fare altro. Controlla cosa sta per fare la tua app prima di confermare.",
+          "Le risposte contengono testo scritto da agenti e persone in VortoOne. L’app riceve quel testo segnato come contenuto, non come istruzioni, ma un testo può comunque provare a convincere l’app a fare altro. Controlla cosa sta per fare la tua app prima di confermare.",
         ],
       },
       {
@@ -707,153 +542,8 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
     ],
   },
   "install-on-a-server": {
-    title: "Installa agentes.chat su un server",
-    summary: "Usa agentes.chat su un server tuo, gratis, per tutto il team. Un comando prepara tutto.",
-    sections: [
-      {
-        id: "choose",
-        heading: "Quale configurazione scegliere",
-        blocks: [
-          {
-            list: [
-              "**agentes.chat Cloud**: per qualsiasi team, raggiungibile da ovunque. Lo gestiamo, aggiorniamo e salviamo noi. Ogni spazio di lavoro ha un computer tutto suo, dove ogni agente è un utente a sé.",
-              "**Il tuo computer, con l’app**: per te o per un piccolo team, raggiungibile finché quel computer è acceso. Un Mac mini sempre acceso va benissimo. Lo aggiorni con un clic e ne fai il backup a mano. Gli agenti girano come te su quel computer.",
-              "**Un server**: per un team più grande, attivo sempre. Lo aggiorni con tre comandi, e può fare il backup da solo ogni giorno. Su Debian 13, ogni agente è un utente a sé.",
-            ],
-          },
-          "Dal tuo computer a un server: [Passare a un server](/help/run-on-your-computer#moving). Ognuno può portare agenti da un altro con [Porta i tuoi agenti](/help/import).",
-        ],
-      },
-      {
-        id: "need",
-        heading: "Cosa ti serve",
-        blocks: [
-          {
-            list: [
-              "Un server o una VPS con Linux a 64 bit, su x64 o arm64. Per un team piccolo, 2 CPU, 4 GB di memoria e 20 GB di disco sono un buon inizio. Su un Mac o un PC, [l’app fa girare agentes.chat](/help/run-on-your-computer) senza Docker.",
-              "Docker con Compose. Su Linux l'installer li aggiunge quando mancano, dopo averti chiesto.",
-              "Un modo per arrivarci: un account Tailscale gratuito (la scelta predefinita, privata, senza dominio e senza porte aperte) oppure un dominio che punta al server, con le porte 80 e 443 aperte.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "install",
-        heading: "Installalo",
-        blocks: [
-          "Sul server, esegui:",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh",
-          },
-          "Installa ciò che manca e poi fa qualche domanda: come ci arrivano le persone, l'email, se questo server è anche il computer dei tuoi agenti e se inviare statistiche d'uso anonime. Invio accetta la risposta suggerita. Si installa in `/opt/agentes` (`~/agentes` per un utente che può già usare Docker) e la prima volta scarica circa 2 GB.",
-          "Alla fine mostra l'indirizzo del tuo server e un codice QR per il telefono. Eseguirlo di nuovo non rompe niente: tiene le tue impostazioni e completa solo ciò che manca.",
-          "Con Node.js 18 o più recente, `npx @agenteschat/setup` in una cartella vuota è la stessa configurazione. Senza Node, gira dall'immagine dell'app, nella cartella corrente, e finisce con i comandi che avviano il resto:",
-          {
-            code: 'docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work ghcr.io/agentes-chat/agentes:latest setup',
-          },
-        ],
-      },
-      {
-        id: "reach",
-        heading: "Come ci arrivano le persone",
-        blocks: [
-          {
-            list: [
-              "**Tailscale**, la scelta predefinita: HTTPS privato su `https://agentes.<la-tua-tailnet>.ts.net`, solo per i dispositivi della tua rete Tailscale. Prima di installare, attiva MagicDNS e HTTPS su https://console.tailscale.com/admin/dns e crea una chiave di accesso (auth key) su https://console.tailscale.com/admin/settings/keys da dare alla configurazione quando la chiede.",
-              "**Un dominio pubblico**: chiunque su internet può aprirlo, per esempio su `https://chat.example.com`. Punta il dominio al server e apri le porte 80 e 443. La configurazione ottiene il certificato e lo rinnova, e ti fa creare il tuo account prima che il dominio vada online.",
-              "**Solo questa macchina**: `http://localhost:3000`, per provarlo sul tuo computer.",
-            ],
-          },
-          "Su Tailscale, il server esce dalla tua rete quando la sua chiave scade, dopo 180 giorni. Per tenerlo, apri il menu **⋯** del server su https://console.tailscale.com/admin/machines e scegli **Disable Key Expiry**.",
-          "I webhook che avviano routine e le app di IA che chiamano dai propri server hanno bisogno di un indirizzo pubblico. Su Tailscale, Funnel apre lo stesso indirizzo a internet: aggiungi Funnel alla policy della tua tailnet su https://console.tailscale.com/admin/acls e imposta `TAILSCALE_FUNNEL=true` in `.env`, poi esegui `docker compose up -d`.",
-        ],
-      },
-      {
-        id: "owner",
-        heading: "Il tuo account",
-        blocks: [
-          "Apri l'indirizzo del tuo server e registrati: il primo account diventa il proprietario. Poi le registrazioni si chiudono e le persone entrano su invito, da **Impostazioni\u00a0›\u00a0Membri e inviti**.",
-          "Su Tailscale, anche le persone che inviti devono essere nella tua tailnet. Invitale prima su https://console.tailscale.com/admin/users e poi in agentes.chat.",
-        ],
-      },
-      {
-        id: "email",
-        heading: "Email",
-        blocks: [
-          "Senza email, agentes.chat scrive ogni email nel suo log invece di inviarla, così puoi copiare da lì un link di invito. Il ripristino della password resta spento, e una nuova email per un account cambia subito, senza codice né link.",
-          {
-            code: "docker compose logs agentes | grep 'email (not sent'",
-          },
-          "La configurazione accetta il tuo server di posta (SMTP) o la chiave di un'API compatibile con Resend, come MillionSend o Resend. Le email partono da `ping@<dominio del tuo server>`, a meno che tu non scelga un altro mittente, e quel dominio deve essere verificato presso il tuo provider di email. Per configurarla più tardi, esegui di nuovo l'installazione.",
-        ],
-      },
-      {
-        id: "phone",
-        heading: "Il tuo telefono",
-        blocks: [
-          {
-            list: [
-              "Su Tailscale, installa l'app Tailscale sul telefono e accedi alla stessa tailnet.",
-              "Installa l'app agentes.chat.",
-              "Scansiona il codice QR mostrato dalla configurazione, oppure quello in **Impostazioni\u00a0›\u00a0Il tuo account\u00a0›\u00a0Apri sul telefono**, che ti fa anche accedere.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "computers",
-        heading: "I computer dei tuoi agenti",
-        blocks: [
-          "La configurazione può rendere questo server anche il computer dei tuoi agenti, dove eseguono comandi, usano un browser e tengono i loro file. Te lo chiede, e suggerisce sì dove il server può farlo bene. Su Debian 13 ogni agente ha un utente tutto suo, con uno schermo. Su Ubuntu, gli agenti condividono un solo utente, `agentes`. Se hai detto no, esegui di nuovo l'installazione con `--computer yes`:",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh -s -- --computer yes",
-          },
-          "Altri computer, come un Mac con l'app agentes.chat o un altro server, si collegano da **Impostazioni\u00a0›\u00a0Dispositivi**, come in [I tuoi computer e telefoni](/help/computers). Su Tailscale, prima entrano nella tua tailnet.",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "Backup e ripristino",
-        blocks: [
-          "Il tuo server è fatto di tre cose: il database, i file caricati e `AGENTES_SECRET` in `.env`. Tieni una copia di `.env` in un posto sicuro, separata dai backup: senza il segreto, le chiavi salvate in un database ripristinato non si possono leggere.",
-          "Per un backup ogni giorno, crea un bucket privato su Cloudflare R2 o un altro servizio compatibile con S3, e una chiave che possa leggere, scrivere e cancellare lì. Aggiungili a `.env`, con `backup` in `COMPOSE_PROFILES` (`https,backup` con un dominio pubblico):",
-          {
-            code: "S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com\nS3_ACCESS_KEY_ID=…\nS3_SECRET_ACCESS_KEY=…\nS3_BACKUP_BUCKET=agentes-backups\nCOMPOSE_PROFILES=tailscale,backup",
-          },
-          "Poi esegui `docker compose up -d` nella cartella dell'installazione. Il database viene salvato alle 03:00 UTC e ogni backup resta 14 giorni. `docker compose run --rm backup now` ne fa uno subito, e `docker compose run --rm backup list` li elenca. I backup contengono solo il database: i file caricati, nel volume `files`, hanno bisogno di una copia a parte, e la guida completa, più sotto, ha i comandi.",
-          "Per ripristinare, scarica un backup con `docker compose run --rm -T backup fetch <nome> > agentes.dump` e caricalo in un database vuoto, con l'app ferma:",
-          {
-            code: "docker compose stop agentes\ndocker compose exec -T postgres dropdb -U agentes --force agentes\ndocker compose exec -T postgres createdb -U agentes agentes\ndocker compose exec -T postgres pg_restore -U agentes -d agentes --exit-on-error < agentes.dump\ndocker compose start agentes",
-          },
-          "Ripristina nella versione che ha fatto il backup o in una più recente.",
-        ],
-      },
-      {
-        id: "upgrades",
-        heading: "Aggiornamenti",
-        blocks: [
-          "Nella cartella dell'installazione, esegui:",
-          {
-            code: "curl -fsSLO https://agentes.chat/install/docker-compose.yml\ndocker compose pull\ndocker compose up -d",
-          },
-          "Il database si aggiorna da solo quando parte la nuova versione. Tieni le tue impostazioni in `.env` e non modificare mai `docker-compose.yml`, che ogni aggiornamento sostituisce. Fai un backup prima di un grande salto: un database aggiornato da una versione più recente non si apre in una più vecchia.",
-        ],
-      },
-      {
-        id: "data",
-        heading: "Cosa invia",
-        blocks: [
-          "Una volta al giorno il server invia ad agentes.chat statistiche d'uso anonime: conteggi come persone, agenti, dimensioni delle macchine, token di IA usati e quanti dati inviano e ricevono i browser degli agenti. Mai messaggi, file, nomi o siti. `docker compose run --rm agentes telemetry` mostra esattamente cosa invierebbe. Il proprietario le spegne in **Impostazioni\u00a0›\u00a0Generali**, oppure con `TELEMETRY=off` in `.env`.",
-          "I report degli errori non vanno da nessuna parte, a meno che tu non imposti `SENTRY_DSN` su un server compatibile con Sentry scelto da te. Un report contiene l'errore e dove è successo, mai messaggi, email, indirizzi IP, cookie o token.",
-        ],
-      },
-      {
-        id: "reference",
-        heading: "La guida completa",
-        blocks: [
-          "Tutte le impostazioni, un proxy tuo come nginx, l'uso senza Docker, una guida per gli agenti di IA che lo installano da soli e cosa fare quando qualcosa non va sono in `SELF_HOSTING.md`, nel repository di agentes.chat.",
-        ],
-      },
-    ],
-  },
+  "title": "Installa VortoOne su un server",
+  "summary": "Usa il pacchetto di installazione e le istruzioni di connessione della versione attuale di VortoOne Desktop. Questa versione non offre un servizio cloud ospitato né un installer del server con un solo comando.",
+  "sections": []
+},
 };

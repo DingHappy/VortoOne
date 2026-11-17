@@ -13,7 +13,7 @@ import { quoteExcerpt, replyOf } from "./reply";
 import { isRoutineCall, routineReplyOf } from "./routines";
 import { voiceOf } from "./voice";
 
-type Timed = { createdAt: string; id: string; local?: Message["local"] };
+type Timed = Pick<Message, "createdAt" | "id" | "local" | "sequence">;
 
 /**
  * A message on its way (`local: "pending"`) was sent just now: after everything the server has, whatever the two
@@ -24,7 +24,9 @@ const sending = (m: Timed) => (m.local === "pending" ? 1 : 0);
 
 const byTime = (a: Timed, b: Timed) =>
   sending(a) - sending(b) ||
-  (a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt < b.createdAt ? -1 : 1);
+  (a.createdAt === b.createdAt
+    ? (a.sequence ?? Infinity) - (b.sequence ?? Infinity) || a.id.localeCompare(b.id)
+    : a.createdAt < b.createdAt ? -1 : 1);
 
 /**
  * How far before its post a message's `createdAt` can be (replies were once placed where their streamed words first
@@ -57,6 +59,10 @@ export function landedAfter(m: Pick<Message, "id" | "createdAt">, at: number) {
 
 /** Adds (or replaces) a message in a list, keeping it ordered and without duplicates. */
 export function upsertMessage(list: Message[] | undefined, message: Message): Message[] {
+  // A send receipt can arrive after the live record. Its temporary echo must not replace that record's position.
+  const current = list?.find((m) => m.id === message.id);
+  if (message.sequence === undefined && current?.sequence !== undefined)
+    message = { ...message, sequence: current.sequence, createdAt: current.createdAt };
   const rest = (list ?? []).filter((m) => m.id !== message.id);
   return [...rest, message].sort(byTime);
 }
@@ -154,8 +160,8 @@ export function buildTimeline(messages: Message[], approvals: Approval[], runs: 
     })),
   ].sort((a, b) =>
     byTime(
-      { createdAt: a.at, id: a.id, local: a.item.kind === "message" ? a.item.message.local : undefined },
-      { createdAt: b.at, id: b.id, local: b.item.kind === "message" ? b.item.message.local : undefined },
+      a.item.kind === "message" ? a.item.message : { createdAt: a.at, id: a.id },
+      b.item.kind === "message" ? b.item.message : { createdAt: b.at, id: b.id },
     ),
   );
 
