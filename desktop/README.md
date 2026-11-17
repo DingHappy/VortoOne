@@ -68,6 +68,10 @@ npm run release:verify -- --mode preview
 
 也可以用 `npm run bundle:preview` 一次完成 sidecar smoke、DMG、app、GUI smoke 和 preview 发布证据。
 
+桌面稳定版和 VortoOne Dev 共用 [SVG 原稿](app-icon.svg) 和由 [1024 px PNG](app-icon.png) 生成的图标。更新 PNG 后，在 `desktop/` 下运行 `npm run icons:generate`。
+
+[VortoOne 像素字标 SVG](../design/vortoone-wordmark.svg) 可独立使用。
+
 ### macOS 稳定开发签名
 
 **优先用 Apple 签发、带 Team ID 的证书**（`Developer ID Application: …`）。模型服务配置已改存本机
