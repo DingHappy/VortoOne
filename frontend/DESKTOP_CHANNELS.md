@@ -1,9 +1,11 @@
 # 桌面版本管理
 
-| 通道 | 应用 | 标识 | 当前用途 | 更新方式 |
+截至 2026-11-17，当前已交付版本如下；源码 main 可以领先安装包，构建提交以 `desktop-dev.json` 或 App 的版本管理页为准。
+
+| 通道 | 应用与版本 | 标识 | 当前用途 | 更新方式 |
 | --- | --- | --- | --- | --- |
-| 公开稳定版 | VortoOne.app | com.vorto.vortoone | 现有可用桌面 App | 原有正式版自动更新 |
-| 开发版 | VortoOne Dev.app | com.vorto.vortoone.dev | 新桌面布局与史莱姆界面验收 | 独立安装包、GitHub 发布草稿 |
+| 公开稳定版 | VortoOne.app · 0.2.64 | com.vorto.vortoone | 现有可用桌面 App | 原有正式版自动更新 |
+| 开发版 | VortoOne Dev.app · 0.3.0-dev.7 | com.vorto.vortoone.dev | 新桌面布局、史莱姆与真实本机工作区 | 独立 DMG 手动更新、GitHub 发布草稿 |
 
 两个 App 可并排安装。开发版的 WebKit 数据按独立应用标识保存；安装包自带经锁文件与来源校验的 Python 后端，默认启动真实本机服务，不读取正式版账号、项目或运行状态，不配置自动更新。示例界面和偏好设置预览仍可从开发版菜单单独打开。
 
@@ -11,7 +13,9 @@
 
 ## 独立安装与模型连接
 
-从 `0.3.0-dev.5` 起，安装包包含前端、冻结的 Python 后端及其第三方声明。用户机器无需源码、Python、Node、Rust 或 `backend.json`。应用优先运行随包后端，升级时保留开发版自己的数据。
+当前开发安装包包含前端、冻结的 Python 后端及其第三方声明。用户机器无需源码、Python、Node、Rust 或 `backend.json`。应用优先运行随包后端，升级时保留开发版自己的数据。
+
+手动更新时，等待当前任务结束并退出 Dev，打开新版 `VortoOne_Dev_<版本>_aarch64.dmg`，把 VortoOne Dev 拖入「应用程序」并选择替换。该操作只替换 App；聊天和模型配置保存在独立应用数据目录中。Dev 暂无应用内自动更新，公开稳定版的自动更新不会安装 Dev 包。
 
 第一次打开会显示「连接模型」窗口，填写兼容 OpenAI 的服务地址、模型名和 API Key（本地服务可留空）。之后从「开发版 → 模型连接…」修改。API Key 不回传到页面，配置只保存在本机，Unix 上文件权限为 `0600`；保存会重新连接，保留聊天记录。旧开发版显式指定的模型配置继续读取，修改后写入开发版自己的 `model.env`，不改原环境文件。
 
@@ -39,7 +43,7 @@
 
 ```sh
 npm run desktop-dev:status  # 查看两个 App 的安装版本
-npm run desktop-dev:version -- 0.3.0-dev.7 # 统一递增开发版版本号（下一版时使用）
+npm run desktop-dev:version -- 0.3.0-dev.8 # 统一递增开发版版本号（下一版时使用）
 npm run desktop-dev:bundle # 从干净且已合并的 main 构建 Apple Silicon macOS 开发安装包
 npm run desktop-dev:install # 校验并安装到 /Applications/VortoOne Dev.app
 npm run desktop-dev:check-installed # 全新临时数据、无源码/Python 路径验证随包后端和登录，不调用模型
@@ -49,6 +53,10 @@ npm run desktop-dev:draft  # 将已校验的开发包和校验和上传为发布
 
 首次构建需要 Node、Rust、Xcode 工具和已有的 Developer ID Application 签名身份。打包复用 `desktop/scripts/build-sidecar.mjs` 的固定 CPython 来源与依赖锁，逐个签名后端 Mach-O，再签整个 App，并执行全新数据目录的独立启动验收。脚本默认签名但不向 Apple 提交公证；对外公开分发前仍需公证与对应验收。
 
+Dev7 成品来自提交 [`28d5e294`](https://github.com/DingHappy/VortoOne/commit/28d5e29436985458a72a8a362bc7dd93cefc7f9d)，已额外完成 Apple 公证、票据附加、Gatekeeper、新图标核对、独立启动以及覆盖安装后聊天记录保留的验收。上述结果只针对该成品，重新构建仍需重新执行签名、公证和安装验收。
+
+后续合入 main 的 [AI 应用 MCP 接入](../docs/AI_APPS.md) 尚未进入上述 Dev7 成品。其后端接口和原生授权窗口需要新的构建与验收；合并源码不会自动更新已安装的 App。
+
 安装只会替换开发版的固定路径；已有开发版会先备份再替换，失败时恢复。先退出正在运行的开发版，再执行安装。正式版继续在原来的应用路径。
 
 ## 管理发布
@@ -56,5 +64,7 @@ npm run desktop-dev:draft  # 将已校验的开发包和校验和上传为发布
 开发版使用 `0.3.0-dev.N` 版本号，GitHub tag 为 `v0.3.0-dev.N`。用 `desktop-dev:version` 同步更新配置、Rust 包和锁文件中的版本；命令只接受递增的开发版本号。先走 PR 合并，再构建。
 
 `desktop-dev:draft` 固定创建 Draft + Pre-release，附件包括独立 DMG、`desktop-dev.json` 和 SHA256 校验和。你在 GitHub Releases 中可编辑说明、删除草稿或发布为预发布，供测试者手动安装。开发版不提供正式版自动更新清单，公开稳定版仍由原有 `desktop/` 发版流程管理。
+
+草稿只向有仓库写权限的协作者显示，普通访客看不到安装包；在公开仓库中发布为 Pre-release 后，访客即可下载。`dev` 版本号本身不提供访问限制，已合入公开 main 的源码始终可见。
 
 公开稳定版保留现有可用版本。独立运行和真实桌面验收在开发通道完成后，再核对正式标识、升级保数据、公证与更新清单；不通过修改 Release 标签来替代这些交付步骤。

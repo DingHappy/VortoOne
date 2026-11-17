@@ -1,6 +1,6 @@
 # VortoOne Desktop
 
-VortoOne Desktop 是当前默认产品与首要分发入口，也是现有 Gateway 的本机 Agent 工作台；它不包含第二套 Agent runtime。它通过冻结的三端协议连接 `vc server`，复用 CLI/TUI/Web 已有的会话、权限门、任务与通知能力。CLI 保留为高级与自动化入口，Web 留作后续团队/托管入口。
+本目录维护 VortoOne 公开稳定版的 Tauri/React 桌面工作台与正式发布流程，调用随包 Python runtime，复用现有会话、权限门、任务与通知能力。新桌面布局与史莱姆界面由独立的 [VortoOne Dev](../frontend/README.md) 安装包交付，通道和数据目录见 [桌面版本管理](../frontend/DESKTOP_CHANNELS.md)。
 
 ## 当前能力
 
@@ -45,6 +45,8 @@ npm run dev:app
 添加项目。直接 `npm run tauri dev` 仍沿用正式标识：正式版开着时它会被单实例保护直接退出，
 关着时则读写正式版的配置目录。
 
+此处旧桌面源码调试所用的 `com.vorto.vortoone.dev` 与独立 VortoOne Dev 安装版相同。调试本目录前先退出已安装的 Dev，避免两种宿主并行使用同一开发标识。
+
 也可以先在浏览器壳中验证静态界面：
 
 ```bash
@@ -70,7 +72,7 @@ npm run release:verify -- --mode preview
 
 桌面稳定版和 VortoOne Dev 共用 [SVG 原稿](app-icon.svg) 和由 [1024 px PNG](app-icon.png) 生成的图标。更新 PNG 后，在 `desktop/` 下运行 `npm run icons:generate`。
 
-[VortoOne 像素字标 SVG](../design/vortoone-wordmark.svg) 可独立使用。
+[VortoOne 像素字标 SVG](../design/vortoone-wordmark.svg) 可独立使用；[深色背景版本](../design/vortoone-wordmark-dark.svg) 仅调整文字填色，保留相同字形和珊瑚橙装饰。README 用 `<picture>` 根据主题选择字标。
 
 ### macOS 稳定开发签名
 
