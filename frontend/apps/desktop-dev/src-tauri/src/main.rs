@@ -407,11 +407,17 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("VortoOne Dev failed to start")
-        .run(|app, event| {
+        .run(|app, event| match event {
             // 退出时带走后端；被强杀时由后端看监护进程 pid 自己退出
-            if let tauri::RunEvent::Exit = event {
-                app.state::<backend::Backend>().stop();
+            tauri::RunEvent::Exit => app.state::<backend::Backend>().stop(),
+            // 点了 vortoone:// 链接（Info.plist 登记了这个协议；冷启动时也走这里）
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                for url in urls {
+                    shell::receive_link(app, url.as_str());
+                }
             }
+            _ => {}
         });
 }
 

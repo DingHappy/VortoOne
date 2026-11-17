@@ -25,6 +25,8 @@ const KEEP_BACKUPS: usize = 2;
 pub struct ShellState {
     phase: Mutex<String>,
     welcome_mode: Mutex<Option<String>>,
+    /// 别处交来、还没被欢迎窗口取走的连接链接（只留最新的一个）
+    link: Mutex<Option<String>>,
     installing: AtomicBool,
     cancel: AtomicBool,
 }
@@ -610,10 +612,43 @@ pub fn discover(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<V
     Ok(found)
 }
 
+// ── 连接链接（vortoone://connect）────────────────────────────────────────────
+// 外壳只收、只转交：链接原样交给欢迎窗口，由它解析、核对那个服务、用大字显示地址并等人确认。
+// 链接本身不能配对电脑、启动服务或安装任何东西（HOME_AND_MEMBERS_DESIGN 第 4 节）。
+
+const LINK_MAX: usize = 2048;
+
+/// 收不收这个链接：只收 `vortoone://connect`，2 KB 以内，没有空白和控制字符。别的一律丢掉不提示。
+pub fn accepted_link(raw: &str) -> Option<String> {
+    let text = raw.trim();
+    if text.is_empty() || text.len() > LINK_MAX || text.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return None;
+    }
+    let lower = text.to_ascii_lowercase();
+    let rest = lower.strip_prefix("vortoone://")?;
+    let after = rest.strip_prefix('/').unwrap_or(rest).strip_prefix("connect")?;
+    matches!(after.chars().next(), None | Some('?') | Some('/') | Some('#')).then(|| text.to_string())
+}
+
+/// 系统交来一个链接（点了链接、扫了码）：留着，打开欢迎窗口，告诉它来取。
+pub fn receive_link(app: &tauri::AppHandle, raw: &str) {
+    let Some(link) = accepted_link(raw) else { return };
+    if let Ok(mut slot) = app.state::<ShellState>().link.lock() {
+        *slot = Some(link);
+    }
+    if let Err(error) = open_window(app, "welcome") {
+        eprintln!("无法打开欢迎窗口: {error}");
+    }
+    let _ = app.emit("link://pending", ());
+}
+
 #[tauri::command]
-pub fn link_take(window: tauri::WebviewWindow) -> Result<Option<String>, String> {
+pub fn link_take(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<Option<String>, String> {
     check(&window)?;
-    Ok(None)
+    if window.label() != "welcome" {
+        return Ok(None);                  // 只交给欢迎窗口
+    }
+    Ok(app.state::<ShellState>().link.lock().ok().and_then(|mut link| link.take()))
 }
 
 #[tauri::command]
@@ -882,6 +917,19 @@ mod tests {
         for (label, url) in [("live", "tauri://localhost/shell/index.html"), ("welcome", "http://127.0.0.1:4321/shell/index.html"),
                              ("welcome", "tauri://localhost/model-settings.html"), ("prefs", "https://evil.example/shell/index.html")] {
             assert!(!trusted(label, &url.parse().unwrap()), "{label} {url}");
+        }
+    }
+
+    #[test]
+    fn only_connect_links_are_taken() {
+        for ok in ["vortoone://connect?server=https%3A%2F%2Fbox.tail1.ts.net#token=abc",
+                   "VortoOne:///connect", "vortoone://connect/?server=x"] {
+            assert_eq!(accepted_link(ok).as_deref(), Some(ok), "{ok}");
+        }
+        let long = format!("vortoone://connect?server=x&pad={}", "a".repeat(LINK_MAX));
+        for no in ["vortoone://pair?server=x&link=ABCD-EFGH", "vortoone://connectx?server=x", "agenteschat://connect?server=x",
+                   "https://box.example/connect", "vortoone://connect?server=x y", "vortoone://connect?server=\u{7}x", "", long.as_str()] {
+            assert_eq!(accepted_link(no), None, "{no}");
         }
     }
 
