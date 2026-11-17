@@ -205,9 +205,17 @@ def ai_status(root: str) -> Dict[str, Any]:
     return {"any": ready, "apiKey": ready, "agents": [{"agentId": a["id"], **state} for a in agents(root)]}
 
 
+def _owner_card(root: str) -> Dict[str, str]:
+    """所有者显示的名字和邮箱：认领时填的；只用令牌的老家照旧叫「我」、没有邮箱。"""
+    from src.workflow.members.owner_account import OwnerAccount
+    found = OwnerAccount(root).profile()
+    return {"name": (found or {}).get("name") or OWNER_NAME, "email": (found or {}).get("email") or ""}
+
+
 def me(root: str) -> Dict[str, Any]:
+    card = _owner_card(root)
     return {
-        "user": {"id": owner_id(root), "name": OWNER_NAME, "email": "", "image": None,
+        "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
                  "locale": "zh-Hans", "localeAuto": False},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS)}],
@@ -215,7 +223,8 @@ def me(root: str) -> Dict[str, Any]:
 
 
 def person(root: str) -> Dict[str, Any]:
-    return {"userId": owner_id(root), "name": OWNER_NAME, "email": "", "image": None, "role": "owner",
+    card = _owner_card(root)
+    return {"userId": owner_id(root), "name": card["name"], "email": card["email"], "image": None, "role": "owner",
             "joinedAt": _home_created(root), "handle": "owner", "timezone": _timezone(root)}
 
 

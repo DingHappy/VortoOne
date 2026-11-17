@@ -170,12 +170,18 @@ def main():
     p = sub.add_parser("home-import", help="搬家：把搬家包导入到当前目录的家（先停掉服务）")
     p.add_argument("package")
     p.add_argument("--replace", action="store_true", help="这里已有数据时替换；原来的挪到旁边留着")
+    p = sub.add_parser("owner-claim", help="开一个一次性的所有者认领链接（24 小时内有效，只能用一次）")
+    p.add_argument("--url", default="", help="这个家对外的地址；不给就用 VORTOONE_PUBLIC_URL，再不行用本机地址")
+    p.add_argument("--reset", action="store_true", help="忘了所有者密码：去掉现在的密码，重新认领")
 
     args = parser.parse_args()
 
     if args.command in {"home-export", "home-import"}:
         from src.runtime_entry import run_home_move
         raise SystemExit(run_home_move(args))
+    if args.command == "owner-claim":
+        from src.runtime_entry import run_owner_claim
+        raise SystemExit(run_owner_claim(args))
 
     # 无命令：给友好总览，而不是报错
     if not args.command:
