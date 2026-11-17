@@ -15497,7 +15497,7 @@
       },
       "claudeCode": {
         "step1": "Jalankan di terminal:",
-        "step2": "Di Claude Code, ketik <code>/mcp</code>, pilih agentes, lalu Authenticate.",
+        "step2": "Di Claude Code, ketik <code>/mcp</code>, pilih vortoone, lalu Authenticate.",
         "scope": "Berfungsi di semua folder. Untuk folder saat ini saja, hapus <code>--scope user</code>."
       },
       "cursor": {
@@ -15619,7 +15619,7 @@
       "language": "Bahasa",
       "error": {
         "app_desconhecido": "Kami tidak mengenali aplikasi ini",
-        "app_desconhecidoText": "Aplikasi menyimpan pendaftaran yang sudah tidak berlaku. Hapus koneksi yang tersimpan lalu hubungkan lagi. Di Claude Code, ketik /mcp, pilih agentes, lalu Clear authentication. Di Cursor, keluar dari server agentes di Settings › MCP.",
+        "app_desconhecidoText": "Aplikasi menyimpan pendaftaran yang sudah tidak berlaku. Hapus koneksi yang tersimpan lalu hubungkan lagi. Di Claude Code, ketik /mcp, pilih vortoone, lalu Clear authentication. Di Cursor, keluar dari server vortoone di Settings › MCP.",
         "endereco_de_retorno": "Alamat kembali tidak terdaftar",
         "endereco_de_retornoText": "Aplikasi ini meminta kembali ke alamat yang tidak didaftarkannya. Demi keamanan, kami berhenti di sini.",
         "pedido_invalido": "Kami tidak bisa memakai permintaan ini",

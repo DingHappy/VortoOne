@@ -16447,7 +16447,7 @@
       },
       "claudeCode": {
         "step1": "Ejecuta en la terminal:",
-        "step2": "En Claude Code, escribe <code>/mcp</code>, elige agentes y Authenticate.",
+        "step2": "En Claude Code, escribe <code>/mcp</code>, elige vortoone y Authenticate.",
         "scope": "Funciona en todas las carpetas. Solo para la carpeta actual, quita <code>--scope user</code>."
       },
       "cursor": {
@@ -16569,7 +16569,7 @@
       "language": "Idioma",
       "error": {
         "app_desconhecido": "No reconocemos esta app",
-        "app_desconhecidoText": "La app guardó un registro que ya no es válido. Borra su conexión guardada y vuelve a conectar. En Claude Code, escribe /mcp, elige agentes y Clear authentication. En Cursor, cierra sesión del servidor agentes en Settings › MCP.",
+        "app_desconhecidoText": "La app guardó un registro que ya no es válido. Borra su conexión guardada y vuelve a conectar. En Claude Code, escribe /mcp, elige vortoone y Clear authentication. En Cursor, cierra sesión del servidor vortoone en Settings › MCP.",
         "endereco_de_retorno": "Dirección de retorno no registrada",
         "endereco_de_retornoText": "Esta app pidió volver a una dirección que no registró. Por seguridad, nos detuvimos aquí.",
         "pedido_invalido": "No pudimos usar esta solicitud",

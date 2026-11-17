@@ -15935,7 +15935,7 @@
       },
       "claudeCode": {
         "step1": "Terminalde çalıştırın:",
-        "step2": "Claude Code'da <code>/mcp</code> yazın, agentes'i seçin ve Authenticate'e tıklayın.",
+        "step2": "Claude Code'da <code>/mcp</code> yazın, vortoone'i seçin ve Authenticate'e tıklayın.",
         "scope": "Her klasörde çalışır. Yalnızca geçerli klasör için <code>--scope user</code> kısmını çıkarın."
       },
       "cursor": {
@@ -16057,7 +16057,7 @@
       "language": "Dil",
       "error": {
         "app_desconhecido": "Bu uygulamayı tanımıyoruz",
-        "app_desconhecidoText": "Uygulama artık geçerli olmayan bir kaydı saklamış. Kayıtlı bağlantısını temizleyip yeniden bağlanın. Claude Code'da /mcp yazın, agentes'i seçin ve Clear authentication'a tıklayın. Cursor'da Settings › MCP bölümünden agentes sunucusundan çıkış yapın.",
+        "app_desconhecidoText": "Uygulama artık geçerli olmayan bir kaydı saklamış. Kayıtlı bağlantısını temizleyip yeniden bağlanın. Claude Code'da /mcp yazın, vortoone'i seçin ve Clear authentication'a tıklayın. Cursor'da Settings › MCP bölümünden vortoone sunucusundan çıkış yapın.",
         "endereco_de_retorno": "Dönüş adresi kayıtlı değil",
         "endereco_de_retornoText": "Bu uygulama kaydetmediği bir adrese dönmek istedi. Güvenlik için burada durduk.",
         "pedido_invalido": "Bu isteği kullanamadık",

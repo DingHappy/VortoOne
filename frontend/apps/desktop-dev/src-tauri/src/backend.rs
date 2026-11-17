@@ -91,6 +91,41 @@ fn free_port() -> Result<u16, String> {
     Ok(listener.local_addr().map_err(|e| e.to_string())?.port())
 }
 
+/// 上次用的端口还空着就接着用：AI 应用里配好的地址（`http://127.0.0.1:<端口>/mcp`）重启后照样能连。
+/// 被占了才换一个新的，并记下来。
+fn stable_port(remember: &Path) -> Result<u16, String> {
+    let saved = fs::read_to_string(remember).ok().and_then(|text| text.trim().parse::<u16>().ok());
+    if let Some(port) = saved.filter(|port| *port >= 1024) {
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Ok(port);
+        }
+    }
+    let port = free_port()?;
+    let _ = fs::write(remember, port.to_string());
+    Ok(port)
+}
+
+/// 本机 AI 应用刚发起、还没答复的授权请求（`GET /api/app/authorize-requests`，只认主人令牌）。
+/// 主人在系统浏览器里登录不了，外壳拿到后在自己已登录的窗口里打开确认页。
+pub fn consent_requests(port: u16, token: &str) -> Vec<String> {
+    let Ok((200, body)) = request(port, "GET", "/api/app/authorize-requests", Some(token)) else {
+        return Vec::new();
+    };
+    request_ids(&body)
+}
+
+pub fn request_ids(body: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else { return Vec::new(); };
+    value["requests"].as_array().map(|rows| {
+        rows.iter().filter_map(|row| row["id"].as_str()).filter(|id| good_code(id)).map(str::to_string).collect()
+    }).unwrap_or_default()
+}
+
+/// 确认页的地址：后端自己的 `/autorizar?req=<请求>`。
+pub fn consent_url(port: u16, id: &str) -> String {
+    format!("{}/autorizar?req={id}", origin(port))
+}
+
 fn new_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
     fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes)).map_err(|e| e.to_string())?;
@@ -163,7 +198,7 @@ fn start_with(home: &Path, ui: &Path, log: &Path, build: impl FnOnce(u16, &str) 
         return Err("安装包里没有界面文件".into());
     }
     fs::create_dir_all(home).map_err(|e| e.to_string())?;
-    let (port, token) = (free_port()?, new_token()?);
+    let (port, token) = (stable_port(&home.with_file_name("backend.port"))?, new_token()?);
     let output = fs::File::create(log).map_err(|e| e.to_string())?;
     let mut child = build(port, &token)
         .stdout(output.try_clone().map_err(|e| e.to_string())?)
@@ -252,6 +287,29 @@ pub fn own_page(url: &tauri::Url, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consent_ids_are_checked_before_use() {
+        let body = r#"{"requests":[{"id":"bpU2NUKEFzaHW_jxST7ozAvyjX1g_p1T"},{"id":"../x"},{"id":"short"},{"x":1}]}"#;
+        assert_eq!(request_ids(body), vec!["bpU2NUKEFzaHW_jxST7ozAvyjX1g_p1T".to_string()]);
+        assert!(request_ids("not json").is_empty());
+        assert_eq!(consent_url(4321, "abc"), "http://127.0.0.1:4321/autorizar?req=abc");
+    }
+
+    #[test]
+    fn the_port_is_kept_while_it_is_free() {
+        let dir = std::env::temp_dir().join(format!("vortoone-port-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let remember = dir.join("backend.port");
+        let first = stable_port(&remember).unwrap();
+        assert_eq!(stable_port(&remember).unwrap(), first);
+        let held = TcpListener::bind(("127.0.0.1", first)).unwrap();
+        let second = stable_port(&remember).unwrap();
+        assert_ne!(second, first);
+        assert_eq!(fs::read_to_string(&remember).unwrap(), second.to_string());
+        drop(held);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn config_needs_absolute_paths() {

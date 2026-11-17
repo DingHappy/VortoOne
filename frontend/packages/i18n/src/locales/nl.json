@@ -16062,7 +16062,7 @@
       },
       "claudeCode": {
         "step1": "Voer uit in de terminal:",
-        "step2": "Typ in Claude Code <code>/mcp</code>, kies agentes en Authenticate.",
+        "step2": "Typ in Claude Code <code>/mcp</code>, kies vortoone en Authenticate.",
         "scope": "Het werkt in elke map. Alleen voor de huidige map? Laat <code>--scope user</code> weg."
       },
       "cursor": {
@@ -16184,7 +16184,7 @@
       "language": "Taal",
       "error": {
         "app_desconhecido": "We herkennen deze app niet",
-        "app_desconhecidoText": "De app bewaarde een registratie die niet meer geldig is. Wis de opgeslagen koppeling en maak opnieuw verbinding. Typ in Claude Code /mcp, kies agentes en Clear authentication. Log in Cursor uit bij de agentes-server in Settings › MCP.",
+        "app_desconhecidoText": "De app bewaarde een registratie die niet meer geldig is. Wis de opgeslagen koppeling en maak opnieuw verbinding. Typ in Claude Code /mcp, kies vortoone en Clear authentication. Log in Cursor uit bij de vortoone-server in Settings › MCP.",
         "endereco_de_retorno": "Terugkeeradres niet geregistreerd",
         "endereco_de_retornoText": "Deze app wilde terug naar een adres dat hij niet heeft geregistreerd. Voor de veiligheid zijn we hier gestopt.",
         "pedido_invalido": "We konden dit verzoek niet gebruiken",

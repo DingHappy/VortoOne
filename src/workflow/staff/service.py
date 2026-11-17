@@ -282,8 +282,15 @@ class StaffService:
                     count[0] -= 1
                     condition.notify_all()
 
-    def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None):
-        """initiator：发起这件事的成员 id（所有者派的活和例行工作不传）。记进任务，执行时据此收窄权限。"""
+    def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
+               via=None):
+        """initiator：发起这件事的成员 id（所有者派的活和例行工作不传）。记进任务，执行时据此收窄权限。
+
+        via：这件事经哪个 AI 应用发来（``{"kind": "ai_app", "grant", "name"}``，只由 web 层的 /mcp 填）。
+        这样的任务从一开始就带外部内容标记：文字出自那个应用，可能夹带它读到的东西，执行时不能当作授权。"""
+        if via is not None and (not isinstance(via, dict) or via.get('kind') != 'ai_app'
+                                or not isinstance(via.get('name'), str)):
+            raise ValueError('来源标记无效')
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)
@@ -305,11 +312,14 @@ class StaffService:
                           'role': role['id'], 'role_revision': role['revision'], 'department': member['department'],
                           **({'notes': notes} if notes is not None else {}),
                           **({'initiator': started_by} if started_by is not None else {}),
+                          **({'via': dict(via)} if via is not None else {}),
                           'delivery': args.get('delivery', 'review'), 'max_steps': role['max_steps'],
                           'timeout_seconds': role['timeout_seconds'], **({'routine': routine} if routine else {})})
             from src.workflow.staff.recovery import seed_queue_proof
             def seed(current):
                 seed_queue_proof(current)
+                if via is not None:
+                    current.collaboration['tainted'] = True
             task = self.collaboration(owner).update_staff_action(task.id, 1, seed)
             try:
                 self.schedule(task, member, role, after=after)
