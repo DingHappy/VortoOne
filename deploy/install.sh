@@ -231,6 +231,7 @@ set -a
 set +a
 [ -n "\${VORTOONE_PUBLIC_URL:-}" ] || unset VORTOONE_PUBLIC_URL
 export VORTOONE_APP_UI_DIR="$DIR/current/web"
+export VORTOONE_UPGRADE_FILE="$DIR/upgrade.json"
 exec "$DIR/current/bin/vc" server --host 127.0.0.1 --port "\${VORTOONE_PORT:-$PORT}"
 EOF
   cat > "$DIR/backup.sh" <<EOF
@@ -281,6 +282,9 @@ upgrade() {
     failure_stage=start_failed
   elif self_check; then
     record true "$from" "" "$saved" completed
+    # 服务已经起来了，自己读不到这次的结果：直接写进它的通知（和它启动时读的是同一段程序）
+    (cd "$DIR/home" && VORTOONE_UPGRADE_FILE="$DIR/upgrade.json" "$TARGET/bin/python" -c \
+      'import os; from src.scheduling.upgrade_notice import report; report(os.getcwd())' >/dev/null 2>&1) || true
     prune "$from"
     say "✓ 已升级到 ${VERSION}，服务在 http://127.0.0.1:$PORT"
     return 0
@@ -302,6 +306,8 @@ upgrade() {
     record false "$from" "${why}；恢复升级前的数据失败，服务保持停止" "$saved" rollback_restore_failed "$failure_stage"
     die "回退未完成：数据恢复失败，服务保持停止；备份在 $saved"
   fi
+  # 先记成「已退回」再启动旧版本：它启动时读到这条，告诉所有者；起不来或自检不过再改记
+  record false "$from" "$why" "$saved" rolled_back "$failure_stage"
   if ! start_server; then
     record false "$from" "${why}；旧版本启动失败：${WHY}" "$saved" rollback_start_failed "$failure_stage"
     die "旧版本和数据已恢复，但服务启动失败：${WHY}"
@@ -310,7 +316,6 @@ upgrade() {
     record false "$from" "${why}；旧版本自检失败：${WHY}" "$saved" rollback_check_failed "$failure_stage"
     die "旧版本和数据已恢复，但服务自检未通过：${WHY}"
   fi
-  record false "$from" "$why" "$saved" rolled_back "$failure_stage"
   die "升级到 $VERSION 失败，已退回 ${from}。原因：${why}（详见 $DIR/server.log 和 $DIR/upgrade.json）"
 }
 

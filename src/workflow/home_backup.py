@@ -201,5 +201,10 @@ def restore(root: str, archive_path: str) -> Dict[str, Any]:
             raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+    if aside is not None:
+        # 不进备份的那几样（日志里有所有者的通知记录、git 工作副本）原样接着用，不随恢复丢掉
+        for name in sorted(NOT_DATA - {"runtime.lock", "moved.json"}):
+            if (aside / name).exists() and not (state / name).exists():
+                (aside / name).rename(state / name)
     return {"restored": str(archive_path), "kept_aside": str(aside) if aside else None,
             "created": manifest.get("created")}

@@ -237,7 +237,8 @@ def run_server(host: str, port: int, im: str = ""):
     """运行服务器（im 非空 = 内嵌 IM 桥，见 gateway/im_service）"""
     from src.web.server import start_server
     refuse_if_moved(str(Path.cwd()))
-
+    from src.scheduling.upgrade_notice import report
+    report(str(Path.cwd()))                     # 安装命令记下的升级结果（成功或退回）进通知，只报一次
     start_server(host, port, im=im)
 
 
