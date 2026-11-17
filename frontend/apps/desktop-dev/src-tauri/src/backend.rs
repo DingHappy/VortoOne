@@ -1,7 +1,7 @@
 //! 开发版连接真实后端：由 App 启动本机的 VortoOne 后端，换一次登录，再让主窗口打开它。
 //!
-//! 开发版不自带 Python 运行时。它读 App 配置目录里的 `backend.json`（指向一份源码和一个 Python），
-//! 没有这个文件就保持原来的界面预览。数据放在开发版自己的目录里，不读正式版的账号、项目或运行状态。
+//! 安装包自带 Python 后端，默认启动它。没有随包运行时的源码开发环境才读取 `backend.json`。
+//! 数据放在开发版自己的目录里，不读正式版的账号、项目或运行状态。
 //!
 //! 主人令牌每次启动现生成、只在本进程和它启动的后端里，绝不交给页面：窗口拿到的是一次性的交接码
 //! （`POST /api/auth/handover` → `GET /api/auth/handover/<码>`），后端核对后种下登录 Cookie。
@@ -120,8 +120,20 @@ pub fn parse_response(raw: &str) -> Option<(u16, String)> {
 pub fn command(config: &Config, home: &Path, ui: &Path, port: u16, token: &str) -> Command {
     let mut command = Command::new(&config.python);
     command.args(["-m", "src.runtime_entry", "server", "--host", "127.0.0.1", "--port"]).arg(port.to_string());
-    command.current_dir(home);
     command.env("PYTHONPATH", &config.source);
+    configure(command, config.env_file.as_deref(), home, ui, token)
+}
+
+pub fn bundled_command(runtime: &Path, env_file: Option<&Path>, home: &Path, ui: &Path, port: u16, token: &str) -> Command {
+    let mut command = Command::new(runtime);
+    command.args(["server", "--host", "127.0.0.1", "--port"]).arg(port.to_string());
+    command.env_remove("PYTHONPATH").env_remove("PYTHONHOME");
+    configure(command, env_file, home, ui, token)
+}
+
+fn configure(mut command: Command, env_file: Option<&Path>, home: &Path, ui: &Path, token: &str) -> Command {
+    command.current_dir(home);
+    command.env("PYTHONNOUSERSITE", "1");
     command.env("VORTOONE_WORKSPACE_SCOPE", "general");
     command.env("VORTOONE_APP_UI_DIR", ui);
     command.env("VORTOONE_API_TOKEN", token);
@@ -130,7 +142,7 @@ pub fn command(config: &Config, home: &Path, ui: &Path, port: u16, token: &str) 
     for name in ["VORTOONE_IM", "VORTOONE_CRON", "VORTOONE_HEARTBEAT"] {
         command.env(name, if name == "VORTOONE_IM" { "" } else { "0" });
     }
-    if let Some(text) = config.env_file.as_ref().and_then(|path| fs::read_to_string(path).ok()) {
+    if let Some(text) = env_file.and_then(|path| fs::read_to_string(path).ok()) {
         command.envs(allowed_env(&text));
     }
     command.stdin(Stdio::null());
@@ -139,13 +151,21 @@ pub fn command(config: &Config, home: &Path, ui: &Path, port: u16, token: &str) 
 
 /// 启动后端并等它应答；返回 (子进程, 端口, 令牌)。
 pub fn start(config: &Config, home: &Path, ui: &Path, log: &Path) -> Result<(Child, u16, String), String> {
+    start_with(home, ui, log, |port, token| command(config, home, ui, port, token))
+}
+
+pub fn start_bundled(runtime: &Path, env_file: Option<&Path>, home: &Path, ui: &Path, log: &Path) -> Result<(Child, u16, String), String> {
+    start_with(home, ui, log, |port, token| bundled_command(runtime, env_file, home, ui, port, token))
+}
+
+fn start_with(home: &Path, ui: &Path, log: &Path, build: impl FnOnce(u16, &str) -> Command) -> Result<(Child, u16, String), String> {
     if !ui.join("index.html").is_file() {
         return Err("安装包里没有界面文件".into());
     }
     fs::create_dir_all(home).map_err(|e| e.to_string())?;
     let (port, token) = (free_port()?, new_token()?);
     let output = fs::File::create(log).map_err(|e| e.to_string())?;
-    let mut child = command(config, home, ui, port, &token)
+    let mut child = build(port, &token)
         .stdout(output.try_clone().map_err(|e| e.to_string())?)
         .stderr(output)
         .spawn()
@@ -182,6 +202,47 @@ fn good_code(code: &str) -> bool {
     (20..=200).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+/// 安装验收：在全新的临时家里启动随包后端并完成登录，不读取用户配置，不调用模型。
+pub fn verify_standalone(resources: &Path) -> Result<(), String> {
+    let runtime = resources.join("runtime").join(if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" });
+    let capabilities = Command::new(&runtime).arg("model-capabilities").output().map_err(|_| "内置后端无法运行")?;
+    if !capabilities.status.success() { return Err("内置模型客户端无法启动".into()); }
+    let capabilities: serde_json::Value = serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
+    if capabilities["native_tools_client"] != true || capabilities["inference_sent"] != false {
+        return Err("内置模型客户端核验失败".into());
+    }
+    let scratch = std::env::temp_dir().join(format!("vortoone-installed-check-{}-{}", std::process::id(), new_token()?));
+    fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+    let outcome = (|| {
+        let ui = resources.join("web");
+        let home = scratch.join("home");
+        let log = scratch.join("backend.log");
+        let (mut child, port, token) = start_with(&home, &ui, &log, |port, token| {
+            let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
+            cmd.env_clear();
+            cmd = configure(cmd, None, &home, &ui, token);
+            cmd.env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
+            cmd
+        })?;
+        let result = (|| {
+            if request(port, "GET", "/api/app/me", None)?.0 != 401
+                || request(port, "GET", "/api/app/me", Some(&token))?.0 != 200
+                || request(port, "GET", "/", None)?.0 != 200 {
+                return Err("独立后端或界面未能通过验收".into());
+            }
+            let address = sign_in_url(port, &token)?;
+            let path = address.strip_prefix(&origin(port)).ok_or("交接地址无效")?;
+            if request(port, "GET", path, None)?.0 != 303 { return Err("独立安装登录交接失败".into()); }
+            Ok(())
+        })();
+        let _ = child.kill();
+        let _ = child.wait();
+        result
+    })();
+    let _ = fs::remove_dir_all(&scratch);
+    outcome
+}
+
 /// 主窗口只在后端自己的地址里走；别的地址交给系统浏览器。
 pub fn own_page(url: &tauri::Url, port: u16) -> bool {
     url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(port)
@@ -203,6 +264,18 @@ mod tests {
         assert!(parse_config(r#"{"python": "/p", "source": "../s"}"#).is_err());
         assert!(parse_config(r#"{"python": "/p"}"#).is_err());
         assert!(parse_config(r#"{"python": "/p", "source": "/s", "env_file": "rel"}"#).is_err());
+    }
+
+    #[test]
+    fn bundled_backend_uses_its_own_executable_without_a_python_or_source_path() {
+        let command = bundled_command(Path::new("/App/runtime/vortocode-runtime"), None,
+            Path::new("/profile"), Path::new("/App/web"), 4321, "token");
+        assert_eq!(command.get_program(), "/App/runtime/vortocode-runtime");
+        assert_eq!(command.get_args().map(|v| v.to_str().unwrap()).collect::<Vec<_>>(),
+            ["server", "--host", "127.0.0.1", "--port", "4321"]);
+        let env: std::collections::HashMap<_, _> = command.get_envs().collect();
+        assert!(env[std::ffi::OsStr::new("PYTHONPATH")].is_none());
+        assert!(env[std::ffi::OsStr::new("PYTHONHOME")].is_none());
     }
 
     #[test]

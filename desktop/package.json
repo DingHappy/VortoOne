@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "icons:generate": "tauri icon app-icon.png --output src-tauri/icons",
     "build": "tsc && vite build",
     "sidecar:python": "node scripts/prepare-managed-python.mjs",
     "sidecar:build": "node scripts/build-sidecar.mjs",

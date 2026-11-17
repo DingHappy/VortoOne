@@ -1097,9 +1097,15 @@ async def app_socket(websocket: WebSocket):
     """每个空间一条连接。订阅与主助理的私聊后，经桥收到这段会话的消息、运行状态和审批事件；
     实时只是尽力而为，界面在重连和订阅确认后会重新读取，内容以读取为准。"""
     from src.web.auth import ws_token_ok
+    from src.web import app_member_realtime
     root = os.getcwd()
-    if not ws_token_ok(websocket) or websocket.query_params.get("orgId") != views.home_id(root):
+    owner = ws_token_ok(websocket)
+    member = None if owner else app_member_realtime.identity(websocket, root)
+    if (not owner and member is None) or websocket.query_params.get("orgId") != views.home_id(root):
         await websocket.close(code=1008)
+        return
+    if member is not None:
+        await app_member_realtime.serve(websocket, root, member)
         return
     await websocket.accept()
     await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=views.owner_id(root)))
