@@ -105,15 +105,26 @@ def redirect_matches(registered: List[str], presented: Any) -> bool:
 
 def access_seconds(redirect_uri: str) -> int:
     """访问令牌的寿命：一小时；Cursor 的续期据报不稳，给一个工作日。"""
-    return 8 * 3600 if redirect_uri == CURSOR_REDIRECT else 3600
+    host = (urlsplit(redirect_uri).hostname or "").lower() if redirect_uri != CURSOR_REDIRECT else ""
+    return 8 * 3600 if redirect_uri == CURSOR_REDIRECT or host in ("cursor.com", "www.cursor.com") else 3600
 
 
-def display(redirect_uri: str, name: str) -> Dict[str, Any]:
-    """确认页和设置里怎么称呼这个应用。由这次请求的回调地址决定，不信应用自报的任何东西。
+# 已知应用的品牌，只认它自己的域名：说明文件放在这里（CIMD），或授权码回到这里（https 回调）
+BRAND_HOSTS = {"claude.ai": "claude", "claude.com": "claude", "chatgpt.com": "openai",
+               "cursor.com": "cursor", "www.cursor.com": "cursor",
+               "vscode.dev": "vscode", "insiders.vscode.dev": "vscode"}
 
-    第一阶段没有「取 https 上的应用说明文件」那种可核实的登记，所以从不给品牌标志（``brand`` 恒为 None）。"""
+
+def display(redirect_uri: str, name: str, client_id: str = "") -> Dict[str, Any]:
+    """确认页和设置里怎么称呼这个应用。由这次请求的回调地址、和说明文件所在的地址决定，不信应用自报的。
+
+    - Cursor 的固定回调：``app_scheme``；
+    - 本机回环：``loopback``（「这台电脑上的一个程序」）——不管它拿的是谁的说明文件：任何本机程序都能
+      拿着知名应用的 client_id、配上自己的端口来登录；
+    - 说明文件在已知应用自己的域名上：``verified``，带品牌标志；
+    - 其余 https：``https``，显示域名；授权码回到已知应用的域名时带品牌标志（码只会交到那里）。"""
     if redirect_uri == CURSOR_REDIRECT:
-        return {"displayKind": "app_scheme", "host": None, "brand": None,
+        return {"displayKind": "app_scheme", "host": None, "brand": "cursor",
                 "returnsTo": "cursor://anysphere.cursor-mcp", "reservedNameWarning": False}
     parts = urlsplit(redirect_uri)
     host = (parts.hostname or "").lower()
@@ -121,8 +132,66 @@ def display(redirect_uri: str, name: str) -> Dict[str, Any]:
         port = f":{parts.port}" if parts.port else ""
         return {"displayKind": "loopback", "host": None, "brand": None,
                 "returnsTo": f"{host}{port}", "reservedNameWarning": bool(_RESERVED.search(name))}
-    return {"displayKind": "https", "host": host, "brand": None, "returnsTo": host,
+    returns = parts.netloc.lower()
+    document = cimd_url(client_id)
+    if document is not None:
+        owner = (urlsplit(document).hostname or "").lower()
+        brand = BRAND_HOSTS.get(owner)
+        return {"displayKind": "verified" if brand else "https", "host": owner, "brand": brand,
+                "returnsTo": returns,
+                "reservedNameWarning": bool(_RESERVED.search(name)) and not _vendor_host(name, owner)}
+    return {"displayKind": "https", "host": host, "brand": BRAND_HOSTS.get(host), "returnsTo": returns,
             "reservedNameWarning": bool(_RESERVED.search(name)) and not _vendor_host(name, host)}
+
+
+# ── 按地址登记（Client ID Metadata Document） ──────────────────────────────────
+# 应用不来注册，直接拿一个 https 地址当 client_id；那个地址上放着它的说明文件（名字、回调地址）。
+# ChatGPT 这样连。文件里必须写着它自己的地址，否则任何网页都能冒充别的应用。
+
+DOCUMENT_BYTES = 64 * 1024
+
+
+def cimd_url(client_id: Any) -> Optional[str]:
+    """这个 client_id 是不是说明文件的地址：https、有路径、不带用户名和片段，主机不是 IP 也不是本机。"""
+    if not isinstance(client_id, str) or not client_id.startswith("https://") or len(client_id) > 2048:
+        return None
+    try:
+        parts = urlsplit(client_id)
+        parts.port                      # noqa: B018
+    except ValueError:
+        return None
+    host = (parts.hostname or "").lower()
+    if not host or parts.path in ("", "/") or "#" in client_id or parts.username is not None:
+        return None
+    if host == "localhost" or host.endswith(".localhost") or "." not in host:
+        return None
+    try:
+        import ipaddress
+        ipaddress.ip_address(host.strip("[]"))
+        return None
+    except ValueError:
+        return client_id
+
+
+def parse_document(client_id: str, raw: bytes) -> Dict[str, Any]:
+    """取回来的说明文件 → 要存的 {name, redirect_uris}；不成立抛 InvalidClient。"""
+    import json
+    if len(raw) > DOCUMENT_BYTES:
+        raise InvalidClient("client metadata document too large")
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, ValueError):
+        raise InvalidClient("client metadata document is not JSON") from None
+    if not isinstance(body, dict) or body.get("client_id") != client_id:
+        raise InvalidClient("client metadata document must name its own address as client_id")
+    method = body.get("token_endpoint_auth_method", "none")
+    # 签名请求的客户端（ChatGPT 的 private_key_jwt）照样按公开客户端 + PKCE 连
+    if method not in ("none", "private_key_jwt"):
+        raise InvalidClient("unsupported token_endpoint_auth_method")
+    checked = check_registration({"client_name": body.get("client_name"), "redirect_uris": body.get("redirect_uris"),
+                                  "grant_types": body.get("grant_types")})
+    host = (urlsplit(client_id).hostname or "").lower()
+    return {"name": clean_name(body.get("client_name")) or host, "redirect_uris": checked["redirect_uris"]}
 
 
 def _vendor_host(name: str, host: str) -> bool:

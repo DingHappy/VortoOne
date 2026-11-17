@@ -67,6 +67,7 @@ _GENERAL_HTTP_PREFIXES = (
     "/artifact/",
     "/api/instance",            # 新版 Desktop 界面登录前读的服务信息
     "/api/app/",                # 新版 Desktop 界面的接口：名册、主要聊天、专员派活、记忆/例行/技能/制品的整理，不碰项目文件、Shell 或 Git
+    "/api/oauth/",              # AI 应用接入的 OAuth 端点（注册、授权、令牌、撤销）：只读写 ai_apps 状态，不碰项目文件、Shell 或 Git
     "/api/decisions",
     "/api/runtime-inbox",
     "/api/audit",

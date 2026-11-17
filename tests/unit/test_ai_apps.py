@@ -569,3 +569,12 @@ def test_a_made_up_bearer_header_does_not_skip_the_origin_check(home):
                            headers={"Authorization": "Bearer junk", "Origin": "https://evil.example"})
     assert refused.status_code == 403
     assert browser.post(f"{home['base']}/tokens", json=body, headers=ORIGIN).status_code == 200
+
+
+def test_the_whole_sign_in_works_in_the_general_scope_the_desktop_uses(home, monkeypatch):
+    """新版 Desktop 以 General 范围启动：/api/oauth/* 必须在那里放行（真机之前会被要求先选工作区）。"""
+    monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
+    tokens, _ = _connect(home)
+    assert _mcp(home, tokens["access_token"], "tools/list").status_code == 200
+    assert home["anon"].get("/.well-known/oauth-authorization-server").status_code == 200
+    assert home["owner"].get("/api/app/authorize-requests").status_code == 200
