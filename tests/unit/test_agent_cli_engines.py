@@ -82,7 +82,7 @@ def test_claude_gets_no_commands_when_asked():
     argv = workers.build_argv("claude", cwd="/w", write=True, commands=False)
     tools = argv[argv.index("--allowedTools") + 1:]
     assert not any(tool.startswith("Bash") for tool in tools)
-    assert {"Read", "Edit", "Write"} <= set(tools)
+    assert {"Read(./**)", "Edit(./**)", "Write(./**)"} <= set(tools)
     assert any(tool.startswith("Bash") for tool in workers.build_argv("claude", cwd="/w", write=True))  # 流水线照旧
 
 
@@ -118,7 +118,7 @@ async def test_a_bad_model_name_starts_nothing(tmp_path, monkeypatch):
 
 # ── 一轮开发 ──────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("engine, worker", [("claude-code", "claude"), ("codex", "codex")])
+@pytest.mark.parametrize("engine, worker", [("claude-code", "claude")])
 async def test_one_developer_turn_runs_the_cli_locked_down(tmp_path, monkeypatch, engine, worker):
     calls = []
 
@@ -137,8 +137,8 @@ async def test_one_developer_turn_runs_the_cli_locked_down(tmp_path, monkeypatch
     assert options["execution_ref"].backend_id == worker and options["execution_ref"].task_id == "task-1"
 
 
-@pytest.mark.parametrize("engine", CLI_ENGINES)
-async def test_not_installed_says_unavailable(tmp_path, monkeypatch, engine):
+async def test_not_installed_says_unavailable(tmp_path, monkeypatch):
+    engine = "claude-code"
     monkeypatch.setattr(workers, "worker_binary", lambda name: None)
     with pytest.raises(team_engines.EngineUnavailable, match="没有装"):
         await team_engines.run_developer(engine, "", "补一行", timeout=60, child_id="task-1", workdir=str(tmp_path), check=lambda: None)
@@ -228,8 +228,8 @@ def test_an_unreadable_member_file_keeps_plans_closed(tmp_path):
 async def test_a_member_task_on_a_closed_plan_never_runs(development, monkeypatch):  # noqa: F811
     root, project, config, data = development
     registry, role, _opencode, pool, service = registered(development)
-    member = registry.register_member({"id": "codex-dev", "name": "Codex 开发", "role": role["id"],
-                                       "engine": "codex"})
+    member = registry.register_member({"id": "claude-dev", "name": "Claude 开发", "role": role["id"],
+                                       "engine": "claude-code"})
 
     async def never(*_args, **_kwargs):
         raise AssertionError("CLI 不该被调用")
@@ -238,3 +238,21 @@ async def test_a_member_task_on_a_closed_plan_never_runs(development, monkeypatc
     with pytest.raises(ValueError, match="只回应所有者"):     # 真实执行池会把这件事记为失败
         await pool.jobs[task.id]()
     assert (project / "app.txt").read_text() == "original\n"
+
+
+# ── Codex 暂不当 agent：限制不了读取范围 ──────────────────────────────────────
+
+def test_codex_cannot_be_registered_as_an_agent(development):  # noqa: F811
+    registry, role, _opencode, _pool, _service = registered(development)
+    with pytest.raises(ValueError, match="限制不了读取范围"):
+        registry.register_member({"id": "codex-dev", "name": "Codex 开发", "role": role["id"], "engine": "codex"})
+
+
+async def test_an_existing_codex_agent_never_starts(tmp_path, monkeypatch):
+    async def never(*_args, **_kwargs):
+        raise AssertionError("Codex 不该被启动")
+    monkeypatch.setattr(workers, "worker_binary", lambda name: "/usr/bin/codex")
+    monkeypatch.setattr(workers, "run_worker", never)
+    with pytest.raises(team_engines.EngineUnavailable, match="限制不了读取范围"):
+        await team_engines.run_developer("codex", "", "补一行", timeout=60, child_id="t", workdir=str(tmp_path),
+                                         check=lambda: None)

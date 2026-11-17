@@ -183,6 +183,8 @@ VORTOONE_EXTERNAL_WORKER_TIMEOUT=1800      # 单次运行秒数，超时终止�
 - 配置只从主进程环境变量读取，不读仓库文件。只认 `implement`、`review` 两个角色和 `codex`、`claude` 两个执行者，其他值会被忽略并记警告。
 - 某个角色配置了外部执行者后，它的 `VORTOONE_MODEL_ROLES` 分工不再生效。调用方显式注入的审查模型（测试、预算客户端）仍然优先。
 - 实现角色只在流水线创建的一次性 worktree 里写。Codex 使用 `-s workspace-write`；Claude 使用 `--permission-mode dontAsk` 加工具白名单（读、查找、编辑、`pytest`）。审查角色一律只读：Codex 用 `-s read-only`，Claude 不给编辑工具。
+- Claude 的文件工具在白名单里一律带路径（`Read(./**)`、`Edit(./**)` 这种），只限工作目录。不带路径的 `Read` 等于允许读任何路径：2026-11-16 本机实测，放行 `Read` 时它读到了工作目录以外的文件，带上路径后同一个文件被拒。
+- **Codex 的读取范围限不住**：同日实测，它的 read-only 和 workspace-write 沙箱都能读到工作目录以外的文件，包括主目录里的。流水线里的 Codex 执行者（实验功能）仍有这个问题：它网络是关的，但读到的内容可能出现在它写的代码或审查结论里。
 - 不使用任何 `--dangerously-*`、`danger-full-access`、`bypassPermissions` 参数。两者都不接入外部 MCP。
 - **个人配置只透传「用哪个模型、哪家服务」**，hooks、插件、记忆、通知、MCP、权限放宽都不继承：
   - Codex 以 `--ignore-user-config` 运行（登录凭据照常从 `CODEX_HOME` 读），再从 `config.toml` 回填 `model`、`model_reasoning_effort`、`model_provider`、`service_tier`，以及所选 `model_providers.<id>` 的定义。所以在 config.toml 里配的第三方供应商可以用；这个供应商 `env_key` 指向的环境变量，必须在 VortoOne 引擎的环境里也存在（从 Dock 启动的 Desktop 读不到 shell 配置文件里的变量）。
@@ -198,10 +200,10 @@ VORTOONE_EXTERNAL_WORKER_TIMEOUT=1800      # 单次运行秒数，超时终止�
 
 ### 登记的开发 agent 也可以用它们
 
-登记 agent 时，开发岗位（内置「开发」和固定项目开发岗）的执行框架可以选 `claude-code` 或 `codex`，和 OpenCode 并列。这条路不受上面的实验开关管：是不是用它，由所有者登记这个 agent 时明确选定。登录、两种模式和个人配置的透传规则与上面相同。
+登记 agent 时，开发岗位（内置「开发」和固定项目开发岗）的执行框架可以选 `claude-code`，和 OpenCode 并列。`codex` 在岗位允许的列表里，但**暂时登记不了也执行不了**：它的读取范围限不住（见上一节），找到可靠的隔离办法之前不当 agent 用。这条路不受上面的实验开关管：是不是用它，由所有者登记这个 agent 时明确选定。登录、两种模式和个人配置的透传规则与上面相同。
 
-- 和 OpenCode 开发成员同一份合同：只在这一轮的一次性项目副本里读写，副本里没有 `.env` 这类私密文件；交付分支和测试由 VortoOne 在它结束后做。
-- **不执行命令**：Claude Code 不给任何 `Bash`（连 `pytest` 也不给）。Codex 没有关掉命令的开关，它的命令只在它自己的沙箱里跑：写只限副本，网络用 `sandbox_workspace_write.network_access=false` 显式关掉（流水线里的 Codex 也一样加了这一项）。
+- 和 OpenCode 开发成员同一份合同：只在这一轮的一次性项目副本里读写（读写规则都带路径，见上一节），副本里没有 `.env` 这类私密文件；交付分支和测试由 VortoOne 在它结束后做。
+- **不执行命令**：Claude Code 不给任何 `Bash`（连 `pytest` 也不给）。流水线里的 Codex 加了 `sandbox_workspace_write.network_access=false`，显式关网。
 - 登记在 agent 上的模型名会覆盖个人配置里的模型；名字只收字母数字开头的短名，以 `-` 开头的值不会进命令行。
 - **不可用就直说**：没装、没登录、订阅额度用完，这件事以失败结束并写明原因，不改用 API 模型，也不自动重试。
 - **默认只回应所有者**（主人 2026-11-16 定，参照 agentes-chat）：这两个 CLI 用的是所有者的个人订阅，成员发起的任务一律不执行，除非所有者对这个 agent 打开「也回应别人」（`MemberRegistry.share_plan`，只有所有者能开关）。开关的界面入口还没有。

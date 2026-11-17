@@ -302,6 +302,9 @@ class StaffRegistry:
         # D10 applies to new staff; S1 only preserves the old team executor choices.
         if item['engine'] != 'vortocode' and not (assigned['id'] == 'developer' or assigned.get('project_binding')):
             raise ValueError('D10：新专员只有开发岗允许外部框架')
+        if item['engine'] == 'codex':
+            from src.agents.team_engines import CODEX_UNCONFINED
+            raise ValueError(CODEX_UNCONFINED)
         if not isinstance(item.get('model', ''), str) or len(item.get('model', '')) > 160:
             raise ValueError('模型名称无效')
         from src.workflow.staff.departments import Departments
