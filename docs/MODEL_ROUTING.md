@@ -213,7 +213,10 @@ VORTOONE_EXTERNAL_WORKER_TIMEOUT=1800      # 单次运行秒数，超时终止�
 
 不看私人资料、不碰项目、只读的岗位，也可以选 `claude-code`：内置的研究员、审查员，以及同样条件的自定义岗位（`roles.cli_general_allowed`：没有私人来源、没有项目、操作只有读、工具最多是 `web_search`、`web_fetch`、`read_delivery`）。
 
-- CLI 在一个用完即删的空目录里跑。内置工具用 `--tools` 限定：岗位允许联网时只开 `WebSearch`、`WebFetch`，否则一样不开。没有读写文件、没有命令、不接 MCP、不续用会话。2026-11-16 用真实 CLI 跑过两次：不开工具和只开联网工具时，都读不到工作目录以外的探测文件；联网搜索正常、带来源。
+- CLI 在一个空目录里跑。内置工具用 `--tools` 限定：岗位允许联网时只开 `WebSearch`、`WebFetch`，否则一样不开。没有读写文件、没有命令、不接 MCP。2026-11-16 用真实 CLI 跑过两次：不开工具和只开联网工具时，都读不到工作目录以外的探测文件；联网搜索正常、带来源。
+- **接着上次的会话聊**（2026-11-17，参照 agentes-chat ADR 0032，`workflow/staff/cli_sessions.py`）：按「agent + 发起的人」各存一个 Claude Code 会话（`--session-id` 开新的、`--resume` 接着用），所有者和每位成员互不相通。上次用过不到 1 小时、且上一轮读进去不到 15 万 token 才接着用；否则开新会话，把这个人和这个 agent 最近 6 件事（最多 6000 字）作为开头带进去。同一个会话同一时刻只跑一轮，正忙时这一轮一轮一清。Claude Code 那边找不到会话记录时（它回 `No conversation found`），换新会话重做一次。
+- 每个会话固定一个空目录（Claude Code 按工作目录存会话），放在工作区外面（`VORTOONE_WORKER_HOME/agent-sessions`，没设时在系统临时目录）：放在工作区里，它会沿上级目录读到 CLAUDE.md 之类的资料。
+- **上下文上限 200K**：经 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 交给 Claude Code 自己压缩，盖过个人配置里的同名设置。
 - 结果按读过外部内容处理（和其它 agent 的交付一样标污点）。用的是订阅，用量记为「不完整」，也不受部门额度约束。
 - 不交给 CLI 的：例行工作（无人值守时不用所有者的个人订阅）、任务小组的活、带交付材料的任务（CLI 读不到那些材料），都写明原因拒绝。
 - 要用记忆、事项、邮箱、日历这类工具的岗位，得等 MCP 桥（设计文档 `HOME_AND_MEMBERS_DESIGN.md` 落地顺序第 9 步）。

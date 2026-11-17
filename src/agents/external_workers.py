@@ -368,9 +368,20 @@ def user_config(worker: str) -> tuple[list[str], dict[str, str]]:
 
 # ── 命令行 ────────────────────────────────────────────────────────────────
 
+def _session_args(session: Optional[tuple[str, bool]]) -> list[str]:
+    """(会话 id, 是否接着上次) → Claude 的参数；不给就不存会话。"""
+    if session is None:
+        return ["--no-session-persistence"]
+    session_id, resume = session
+    if not _SESSION_ID.fullmatch(str(session_id)):
+        raise ValueError("会话 id 不对")
+    return ["--resume", session_id] if resume else ["--session-id", session_id]
+
+
 def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
                binary: str = "", extra: tuple[str, ...] | list[str] = (), commands: bool = True,
-               only_tools: Optional[tuple[str, ...]] = None) -> list[str]:
+               only_tools: Optional[tuple[str, ...]] = None,
+               session: Optional[tuple[str, bool]] = None) -> list[str]:
     """拼一次无头运行的 argv。权限只由这里的显式参数决定，不继承用户级放宽。
 
     提示词一律走 stdin（见 `stdin_text`）：审查提示词带整份 diff，放进 argv 会撞 ARG_MAX。
@@ -378,7 +389,10 @@ def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
     only_tools（只对 Claude）：内置工具只开这几样（`--tools`），放行也只放这几样；空元组是一样都不开。
     给了它，write / commands 就不再起作用。Codex 没有关掉命令的开关，它的命令
     只在它自己的沙箱里跑：写只限 cwd，网络显式关掉。
+    session（只对 Claude）：(会话 id, 是否接着上次)。不给就一轮一清（--no-session-persistence）。
     """
+    if worker == "codex" and session is not None:
+        raise ValueError("Codex 不接着会话跑")
     if worker == "codex":
         return [binary or "codex", "exec", "--json", "--ignore-user-config", "--ephemeral",
                 "-s", "workspace-write" if write else "read-only",
@@ -390,7 +404,7 @@ def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
             raise ValueError(f"不能这样开 Claude 的工具：{sorted(unknown)}")
         argv = [binary or "claude", "-p", "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", "--permission-prompts", "none",
-                "--setting-sources", "local", "--strict-mcp-config", "--no-session-persistence",
+                "--setting-sources", "local", "--strict-mcp-config", *_session_args(session),
                 *extra, "--tools", ",".join(only_tools)]
         if system.strip():
             argv += ["--append-system-prompt", system.strip()]
@@ -400,12 +414,15 @@ def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
         tools = reads + (_CLAUDE_WRITE_TOOLS if write else ())
         argv = [binary or "claude", "-p", "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", "--permission-prompts", "none",
-                "--setting-sources", "local", "--strict-mcp-config", "--no-session-persistence",
+                "--setting-sources", "local", "--strict-mcp-config", *_session_args(session),
                 *extra]
         if system.strip():
             argv += ["--append-system-prompt", system.strip()]
         return argv + ["--allowedTools", *(_claude_rule(tool) for tool in tools)]
     raise ValueError(f"未知外部执行者 {worker!r}")
+
+
+_SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 def stdin_text(worker: str, prompt: str, system: str = "") -> str:
@@ -481,7 +498,9 @@ def parse_claude_event(obj: dict) -> list[WorkerEvent]:
                 "cost_usd": obj.get("total_cost_usd"), "usage": obj.get("usage") or {},
                 "denials": obj.get("permission_denials") or []}
         if obj.get("is_error") or obj.get("subtype") != "success":
-            return [WorkerEvent("error", str(obj.get("result") or obj.get("subtype") or "error"), data)]
+            # 具体原因在 errors 里（例如要接的会话找不到了）；subtype 只是 error_during_execution 这类笼统的词
+            errors = "; ".join(str(e) for e in obj.get("errors") or [] if e)
+            return [WorkerEvent("error", str(obj.get("result") or errors or obj.get("subtype") or "error"), data)]
         return [WorkerEvent("result", str(obj.get("result") or ""), data)]
     return []
 
@@ -531,10 +550,14 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
                      timeout: Optional[int] = None, execution_ref: ExecutionRef | None = None,
                      on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None,
                      commands: bool = True, model: str = "",
-                     only_tools: Optional[tuple[str, ...]] = None) -> WorkerRun:
+                     only_tools: Optional[tuple[str, ...]] = None,
+                     session: Optional[tuple[str, bool]] = None,
+                     context_tokens: Optional[int] = None) -> WorkerRun:
     """跑一次外部 CLI，逐行解析 JSONL 事件。失败如实写进 `WorkerRun.error`，不抛。
 
-    model 给了就覆盖个人配置里的模型（登记在 agent 上的那个）；commands 见 `build_argv`。"""
+    model 给了就覆盖个人配置里的模型（登记在 agent 上的那个）；commands、session 见 `build_argv`。
+    context_tokens（只对 Claude）：读到这么多就由 Claude Code 自己压缩（CLAUDE_CODE_AUTO_COMPACT_WINDOW），
+    盖过个人配置里的同名设置。"""
     run = WorkerRun(worker)
     if execution_ref is not None:
         if not isinstance(execution_ref, ExecutionRef) or execution_ref.backend_id != worker or execution_ref.session_id or execution_ref.turn_id:
@@ -565,7 +588,11 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
         return run
     try:
         argv = build_argv(worker, cwd=cwd, write=write, system=system, binary=binary, extra=[*extra, *chosen],
-                          commands=commands, only_tools=only_tools)
+                          commands=commands, only_tools=only_tools, session=session)
+        if context_tokens is not None:
+            if worker != "claude" or not isinstance(context_tokens, int) or not 50_000 <= context_tokens <= 10_000_000:
+                raise ValueError("上下文上限只给 Claude，且要在 5 万到 1000 万 token 之间")
+            extra_env = {**extra_env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW": str(context_tokens)}
     except ValueError as error:
         run.error, run.failure_code = str(error), "invalid_request"
         publish()
