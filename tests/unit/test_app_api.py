@@ -248,3 +248,10 @@ def test_the_desktop_can_check_an_address_from_its_own_window(client, monkeypatc
     assert answer.headers["access-control-allow-origin"] == "*"
     assert "access-control-allow-credentials" not in answer.headers
     assert "access-control-allow-origin" not in client.get("/api/app/me").headers
+
+
+def test_the_server_says_which_app_versions_it_serves(client):
+    from src.web.routers import app_api
+    instance = client.get("/api/instance").json()
+    assert (instance["minApi"], instance["api"]) == (app_api.MIN_API, app_api.API_CONTRACT)
+    assert 1 <= instance["minApi"] <= instance["api"]
