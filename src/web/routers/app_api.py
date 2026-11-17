@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -846,7 +846,6 @@ async def channel_threads(org_id: str, channel_id: str, request: Request):
 # ── 启动时读取、目前没有对应记录的列表：返回空的合法结构 ─────────────────────────
 
 _EMPTY: Dict[str, Any] = {
-    "/former-agents": {"agents": []},
     "/agent-groups": {"groups": []},
     "/channels": {"channels": []},
     "/channel-categories": {"categories": []},
@@ -1075,6 +1074,127 @@ async def agent_detail(org_id: str, agent_id: str, request: Request):
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
     return views.agent_detail(_root(org_id), agent)
+
+
+# ── 新建、修改、归档、恢复、删除 agent（src/workflow/staff/agent_lifecycle.py）──────────
+# 现在只有所有者能做；成员会话进不了这些接口（不在成员白名单里）。写入要主人证明：Bearer，或登录 Cookie 加同源。
+
+def _staff_of(root: str, agent_id: str) -> Optional[str]:
+    """界面的 agent id 对应哪个专员（含归档的和删掉的）；主助理和不认识的返回 None。"""
+    from src.workflow.staff.registry import StaffRegistry
+    try:
+        members = StaffRegistry(root).members()
+    except (OSError, ValueError):
+        return None
+    return next((m["id"] for m in members if views.member_agent_id(root, m["id"]) == agent_id), None)
+
+
+async def _body(request: Request) -> Dict[str, Any]:
+    try:
+        value = await request.json()
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+async def _lifecycle(request: Request, action):
+    from src.workflow.members.registry import Refused
+    from src.workflow.staff.agent_lifecycle import NotAllowed
+    if not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "管理 agent 需要所有者")
+    try:
+        return await asyncio.to_thread(action)
+    except (NotAllowed, Refused) as error:
+        return _error(403, "forbidden", str(error))
+    except ValueError as error:
+        return _error(422, "invalid", str(error))
+    except OSError:
+        return _error(409, "unavailable", "agent 登记暂时写不了")
+
+
+def _agent_view(root: str, staff_id: str) -> Optional[Dict[str, Any]]:
+    return next((a for a in views.agents(root) if a["handle"] == staff_id), None)
+
+
+@router.post(_ORG + "/agents")
+async def agent_create(org_id: str, request: Request):
+    from src.workflow.staff import agent_lifecycle
+    root, body = _root(org_id), await _body(request)
+    who = member_auth.principal(request, root)
+
+    def run():
+        staff_id = agent_lifecycle.create(
+            root, who, name=body.get("name"), handle=body.get("handle"), title=body.get("role", ""),
+            instructions=body.get("instructions", ""), model=body.get("model", ""), look=body.get("appearance"),
+            setup=body.get("setup"), audience=body.get("audience"))
+        return _agent_view(root, staff_id)
+    return await _lifecycle(request, run)
+
+
+@router.patch(_ORG + "/agents/{agent_id}")
+async def agent_update(org_id: str, agent_id: str, request: Request):
+    from src.workflow.staff import agent_lifecycle
+    root, body = _root(org_id), await _body(request)
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        return _error(404, "not_found", "没有这个角色")
+    who = member_auth.principal(request, root)
+    change = {key: body[key] for key in ("name", "role", "instructions", "model", "appearance", "audience")
+              if key in body}
+
+    def run():
+        agent_lifecycle.update(root, who, staff_id, change)
+        return _agent_view(root, staff_id)
+    return await _lifecycle(request, run)
+
+
+@router.delete(_ORG + "/agents/{agent_id}")
+async def agent_archive(org_id: str, agent_id: str, request: Request, purge: str = ""):
+    from src.workflow.staff import agent_lifecycle
+    root = _root(org_id)
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        return _error(404, "not_found", "没有这个角色")
+    who = member_auth.principal(request, root)
+    action = agent_lifecycle.purge if purge == "true" else agent_lifecycle.archive
+    result = await _lifecycle(request, lambda: action(root, who, staff_id))
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.post(_ORG + "/agents/{agent_id}/unarchive")
+async def agent_unarchive(org_id: str, agent_id: str, request: Request):
+    from src.workflow.staff import agent_lifecycle
+    root = _root(org_id)
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        return _error(404, "not_found", "没有这个角色")
+    who = member_auth.principal(request, root)
+    result = await _lifecycle(request, lambda: agent_lifecycle.unarchive(root, who, staff_id))
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.post(_ORG + "/agents/{agent_id}/setup/{step}")
+async def agent_setup_step(org_id: str, agent_id: str, step: str, request: Request):
+    from src.workflow.staff import agent_lifecycle
+    root = _root(org_id)
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        return _error(404, "not_found", "没有这个角色")
+    who = member_auth.principal(request, root)
+
+    def run():
+        agent_lifecycle.confirm_step(root, who, staff_id, step)
+        return _agent_view(root, staff_id)
+    return await _lifecycle(request, run)
+
+
+@router.get(_ORG + "/former-agents")
+async def former_agents(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return {"agents": await asyncio.to_thread(views.former_agents, root)}
 
 
 @router.get("/api/app/connectors/catalog")

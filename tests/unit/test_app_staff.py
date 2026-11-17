@@ -175,3 +175,17 @@ async def test_watch_pushes_the_result_when_the_task_finishes(home):
     created = [e["message"] for e in socket.frames if e["type"] == "message.created"]
     assert [m["body"] for m in created] == ["读一下", "逐条交回结论"] and created[0]["id"] == sent["id"]
     assert next(e for e in socket.frames if e["type"] == "run.finished")["status"] == "done"
+
+
+async def test_an_agent_made_in_the_app_takes_a_message(home):
+    """界面里新建的 agent：私聊发一句话就成为它的一件事，跑完回复回到对话里。"""
+    client, base, pool, service = (home[k] for k in ("client", "base", "pool", "service"))
+    made = client.post(f"{base}/agents", json={"name": "小研", "handle": "xiaoyan", "instructions": "查资料",
+                                               "audience": {"mode": "owner", "userIds": [], "roleIds": []}})
+    assert made.status_code == 200, made.text
+    channel = client.post(f"{base}/dms", json={"agentId": made.json()["id"]}).json()["channelId"]
+    sent = client.post(f"{base}/channels/{channel}/messages", json={"body": "查一下今天的天气"})
+    assert sent.status_code == 200, sent.text
+    task_id, = pool.jobs
+    task = service.collaboration("sid-owner").get(task_id)
+    assert task.collaboration["dispatch"]["member"] == "xiaoyan"

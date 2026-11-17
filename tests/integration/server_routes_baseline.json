@@ -2634,5 +2634,35 @@
     "methods": [
       "GET"
     ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/unarchive",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/setup/{step}",
+    "methods": [
+      "POST"
+    ]
   }
 ]
