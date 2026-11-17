@@ -32,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
     inventory.add_argument("--output", help="create a new private report; never overwrite an existing file")
     verify = commands.add_parser("legacy-verify", help="re-read declared inventory sources; never authorize removal")
     verify.add_argument("report")
+    export = commands.add_parser("home-export", help="把当前目录的家导出成搬家包（不带凭据与绑在这台电脑上的东西）")
+    export.add_argument("output", help="新建的 .tar.gz 文件，不覆盖已有文件")
+    export.add_argument("--move", action="store_true", help="搬走：导出后这里的家停用，服务不再启动")
+    load = commands.add_parser("home-import", help="把搬家包导入到当前目录的家（先停掉服务）")
+    load.add_argument("package")
+    load.add_argument("--replace", action="store_true", help="这里已有数据时替换；原来的挪到旁边留着")
     add_job_commands(commands)
     return parser
 
@@ -59,6 +65,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (OSError, ValueError, TypeError, RecursionError):
             print(json.dumps({"schema_version": 1, "error": "inventory_or_report_unavailable", "retirement_authorized": False, "runtime_migration_verified": False}))
             return 2
+    if args.command in {"home-export", "home-import"}:
+        return run_home_move(args)
     prepare_runtime()
     if args.command in JOB_COMMANDS:
         return run_job_command(args)
@@ -151,9 +159,36 @@ async def run_im(channel: str, *, mode: str = "plan"):
         await adapter.close()
 
 
+def run_home_move(args) -> int:
+    """搬家的导出与导入；结果以一行 JSON 打出（Desktop 读它），失败退出码 2。"""
+    import json
+    from src.workflow.home_move import MoveError, export_home, import_home
+    try:
+        if args.command == "home-export":
+            result = export_home(str(Path.cwd()), args.output, moving=args.move)
+        else:
+            result = import_home(str(Path.cwd()), args.package, replace=args.replace)
+    except (MoveError, OSError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+        return 2
+    print(json.dumps({"ok": True, **result}, ensure_ascii=False))
+    return 0
+
+
+def refuse_if_moved(root: str) -> None:
+    """搬走了的家不再启动服务：同一个空间不能在两个地方同时接活。"""
+    from src.workflow.home_move import moved
+    found = moved(root)
+    if found is not None:
+        print(f"这个家已经搬走了（{found.get('at') or '时间不详'}），这里不再启动服务。"
+              f"要在这里继续用，把搬家包导入回来，或删除 .vortoone/moved.json。", file=sys.stderr)
+        raise SystemExit(3)
+
+
 def run_server(host: str, port: int, im: str = ""):
     """运行服务器（im 非空 = 内嵌 IM 桥，见 gateway/im_service）"""
     from src.web.server import start_server
+    refuse_if_moved(str(Path.cwd()))
 
     start_server(host, port, im=im)
 

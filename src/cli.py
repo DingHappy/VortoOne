@@ -164,7 +164,18 @@ def main():
             p.add_argument("--" + field, help="固定期望值；不提供时仅核验文件内部一致性")
         p.add_argument("--source-round", type=int, choices=(1, 2, 3), help="固定原轮次")
 
+    p = sub.add_parser("home-export", help="搬家：把当前目录的家导出成搬家包（不带凭据与绑在这台电脑上的东西）")
+    p.add_argument("output", help="新建的 .tar.gz 文件，不覆盖已有文件")
+    p.add_argument("--move", action="store_true", help="搬走：导出后这里的家停用，服务不再启动")
+    p = sub.add_parser("home-import", help="搬家：把搬家包导入到当前目录的家（先停掉服务）")
+    p.add_argument("package")
+    p.add_argument("--replace", action="store_true", help="这里已有数据时替换；原来的挪到旁边留着")
+
     args = parser.parse_args()
+
+    if args.command in {"home-export", "home-import"}:
+        from src.runtime_entry import run_home_move
+        raise SystemExit(run_home_move(args))
 
     # 无命令：给友好总览，而不是报错
     if not args.command:
