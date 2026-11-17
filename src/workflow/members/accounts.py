@@ -187,6 +187,15 @@ class MemberAccounts:
                                              "member": "", "created": _iso(now or _now())}
             return account_id
 
+    def has_email(self, email: str) -> bool:
+        """这个邮箱有没有成员账号（所有者认领时用：所有者的邮箱不能和成员的重）。"""
+        try:
+            address = login_name(email)
+        except ValueError:
+            return False
+        with _LOCK:
+            return self._by_email(self._load(), address) is not None
+
     def get(self, account_id: str) -> Optional[Dict[str, Any]]:
         """账号的公开部分（没有密码）。"""
         with _LOCK:

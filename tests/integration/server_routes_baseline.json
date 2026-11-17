@@ -2430,6 +2430,12 @@
     ]
   },
   {
+    "path": "/api/auth/owner-claim",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/sign-in-options",
     "methods": [
       "POST"

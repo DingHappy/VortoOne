@@ -38,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     load = commands.add_parser("home-import", help="把搬家包导入到当前目录的家（先停掉服务）")
     load.add_argument("package")
     load.add_argument("--replace", action="store_true", help="这里已有数据时替换；原来的挪到旁边留着")
+    claim = commands.add_parser("owner-claim", help="开一个一次性的所有者认领链接（24 小时内有效，只能用一次）")
+    claim.add_argument("--url", default="", help="这个家对外的地址；不给就用 VORTOONE_PUBLIC_URL，再不行用本机地址")
+    claim.add_argument("--reset", action="store_true", help="忘了所有者密码：去掉现在的密码，重新认领")
     add_job_commands(commands)
     return parser
 
@@ -67,6 +70,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
     if args.command in {"home-export", "home-import"}:
         return run_home_move(args)
+    if args.command == "owner-claim":
+        return run_owner_claim(args)
     prepare_runtime()
     if args.command in JOB_COMMANDS:
         return run_job_command(args)
@@ -172,6 +177,25 @@ def run_home_move(args) -> int:
         print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
         return 2
     print(json.dumps({"ok": True, **result}, ensure_ascii=False))
+    return 0
+
+
+def run_owner_claim(args) -> int:
+    """打印一次性的所有者认领链接（一行 JSON：link、expires）。已经有所有者账号时退出码 2。
+    链接只该出现在安装者自己的终端里：它能让第一个打开的人成为所有者。"""
+    import json
+    import os
+    from src.workflow.members.owner_account import OwnerAccount, Taken
+    base = (args.url or os.getenv("VORTOONE_PUBLIC_URL", "") or "http://127.0.0.1:8080").strip().rstrip("/")
+    if not base.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+        print(json.dumps({"ok": False, "error": "地址要是 https，或这台电脑上的 http"}, ensure_ascii=False))
+        return 2
+    try:
+        token, expires = OwnerAccount(str(Path.cwd())).claim_link(reset=bool(getattr(args, "reset", False)))
+    except (Taken, OSError, ValueError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+        return 2
+    print(json.dumps({"ok": True, "link": f"{base}/owner#claim={token}", "expires": expires}, ensure_ascii=False))
     return 0
 
 

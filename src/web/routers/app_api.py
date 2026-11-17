@@ -69,14 +69,20 @@ async def instance(request: Request):
     return JSONResponse({"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": API_CONTRACT,
                          "url": server_url(request),
                          "signIn": {"email": bool(get_api_token()), "google": False, "github": False, "apple": False},
-                         "signup": "invite", "cloud": False},
+                         "signup": "invite", "cloud": False, "ownerClaim": _claim_waiting()},
                         headers={"Access-Control-Allow-Origin": "*"})
+
+
+def _claim_waiting() -> bool:
+    """装好后还没人认领：只收认领链接，别的登录和注册都不收（src/workflow/members/owner_account.py）。"""
+    from src.workflow.members.owner_account import OwnerAccount
+    return OwnerAccount(os.getcwd()).waiting()
 
 
 @router.get("/api/app/auth-config")
 async def auth_config():
     return {"socialProviders": {"google": False, "github": False}, "signupOpen": False, "firstRun": False,
-            "passwordReset": False, "feedback": False}
+            "ownerClaim": _claim_waiting(), "passwordReset": False, "feedback": False}
 
 
 class _SignIn(BaseModel):
@@ -93,15 +99,29 @@ async def sign_in_options(body: _SignIn):
 @router.post("/api/auth/sign-in/email")
 async def sign_in(body: _SignIn, request: Request, response: Response):
     """界面的登录框。密码一栏填的是主人令牌就按所有者登录（邮箱不参与判断，沿用 /api/auth/login）；
-    不是的话按成员账号的邮箱加密码登录。两种失败回同一句话，看不出是哪一种没对上。"""
+    是所有者账号的邮箱就按所有者的密码核对；都不是的话按成员账号的邮箱加密码登录。
+    失败都回同一句话，看不出是哪一种没对上。还没人认领时成员登录不收。"""
+    from src.web.auth import get_api_token
     from src.web.routers.auth_routes import LoginBody, login
     from src.workflow.members.accounts import Locked, MemberAccounts, WrongCredentials
+    from src.workflow.members.owner_account import OwnerAccount
     root = os.getcwd()
     result = await login(LoginBody(token=body.password), request, response)
     if not isinstance(result, JSONResponse):
         return {"redirect": False, "token": None, "user": views.me(root)["user"]}
     wrong = JSONResponse({"code": "INVALID_EMAIL_OR_PASSWORD", "message": "邮箱、密码或令牌不正确"}, status_code=401)
     if not views.owner_connection() or not member_auth.same_origin(request):
+        return wrong
+    try:
+        owner = await asyncio.to_thread(OwnerAccount(root).sign_in, body.email, body.password)
+    except Locked as error:
+        return JSONResponse({"code": "TOO_MANY_REQUESTS", "message": str(error)}, status_code=429)
+    except WrongCredentials:
+        return wrong
+    if owner:                                           # 所有者的邮箱和密码：给的就是所有者的登录
+        await login(LoginBody(token=get_api_token()), request, response)
+        return {"redirect": False, "token": None, "user": views.me(root)["user"]}
+    if _claim_waiting():
         return wrong
     accounts = MemberAccounts(root)
     try:
@@ -130,9 +150,12 @@ async def sign_up(body: _SignUp, request: Request, response: Response):
     from src.workflow.members.accounts import MemberAccounts
     from src.workflow.members.registry import MemberRegistry, login_name
     root = os.getcwd()
+    from src.workflow.members.owner_account import OwnerAccount
     closed = JSONResponse({"code": "SIGNUP_CLOSED", "message": "要有一份还有效的邀请才能注册"}, status_code=403)
-    if not views.owner_connection() or not member_auth.same_origin(request):
+    if not views.owner_connection() or not member_auth.same_origin(request) or _claim_waiting():
         return closed
+    if await asyncio.to_thread(OwnerAccount(root).is_owner_email, body.email):
+        return JSONResponse({"code": "INVALID_SIGN_UP", "message": "这个邮箱已经有账号了"}, status_code=422)
     try:
         invitation = MemberRegistry(root).invitation(request.headers.get("x-invitation-token", ""))
         if invitation is None or (invitation.get("email") and invitation["email"] != login_name(body.email)):
@@ -146,6 +169,40 @@ async def sign_up(body: _SignUp, request: Request, response: Response):
         return JSONResponse({"code": "UNAVAILABLE", "message": "账号暂时建不了"}, status_code=409)
     member_auth.set_cookie(request, response, token)
     return {"token": None, "user": {"id": account_id, "name": body.name.strip(), "email": login_name(body.email)}}
+
+
+class _OwnerClaim(BaseModel):
+    token: str = ""
+    name: str = ""
+    email: str = ""
+    password: str = ""
+
+
+@router.post("/api/auth/owner-claim")
+async def owner_claim(body: _OwnerClaim, request: Request, response: Response):
+    """装好时的一次性认领链接：第一个凭它填名字、邮箱、密码的人成为所有者，链接随即作废。
+    链接不对、过期、用过回 401；已经有所有者回 409。"""
+    from src.web.auth import get_api_token
+    from src.web.routers.auth_routes import LoginBody, login
+    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.members.owner_account import OwnerAccount, Taken, WrongClaim
+    root = os.getcwd()
+    if not get_api_token() or not member_auth.same_origin(request):
+        return JSONResponse({"code": "INVALID_TOKEN", "message": "认领链接不对"}, status_code=401)
+    try:
+        if await asyncio.to_thread(MemberAccounts(root).has_email, body.email):
+            return JSONResponse({"code": "INVALID_CLAIM", "message": "这个邮箱已经是成员的账号"}, status_code=422)
+        await asyncio.to_thread(OwnerAccount(root).claim, body.token, body.name, body.email, body.password)
+    except WrongClaim as error:
+        return JSONResponse({"code": "INVALID_TOKEN", "message": str(error)}, status_code=401)
+    except Taken as error:
+        return JSONResponse({"code": "ALREADY_CLAIMED", "message": str(error)}, status_code=409)
+    except ValueError as error:
+        return JSONResponse({"code": "INVALID_CLAIM", "message": str(error)}, status_code=422)
+    except OSError:
+        return JSONResponse({"code": "UNAVAILABLE", "message": "暂时认领不了"}, status_code=409)
+    await login(LoginBody(token=get_api_token()), request, response)
+    return {"redirect": False, "token": None, "user": views.me(root)["user"]}
 
 
 class _Reset(BaseModel):

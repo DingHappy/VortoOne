@@ -58,6 +58,8 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/auth/sign-up/email", "/api/auth/reset-password",
                  # 另一台设备凭一次性登录换登录：核对它自己的一次性凭据（members/one_time.py）
                  "/api/auth/sign-in/one-time-token",
+                 # 装好时的一次性认领链接（members/owner_account.py）：核对它自己的认领令牌
+                 "/api/auth/owner-claim",
                  # 小智语音端点用自己的专用令牌（routers/voice.py），不收也不放行主 API 令牌
                  "/api/voice/mcp",
                  # 运维心跳报到与运维消息同样只认自己的专用令牌（routers/ops_heartbeat.py）
