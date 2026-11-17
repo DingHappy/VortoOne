@@ -1,0 +1,19 @@
+# VortoOne 用 Docker 跑在一台常开的电脑上：
+#
+#   docker compose -f deploy/docker-compose.yml up -d
+#   docker compose -f deploy/docker-compose.yml logs vortoone     # 第一次启动时这里有所有者认领链接
+#
+# 端口只映射到这台电脑的 127.0.0.1。别的设备连进来：在这台电脑上 tailscale serve --bg http://127.0.0.1:8080，
+# 再在卷里的 server.env 填 VORTOONE_PUBLIC_URL，重启容器。
+# 升级：改 image 的版本号（或 pull latest），docker compose up -d。数据在卷 vortoone-data 里，不随容器删除。
+services:
+  vortoone:
+    image: ghcr.io/dinghappy/vortoone:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - vortoone-data:/data
+
+volumes:
+  vortoone-data: {}
