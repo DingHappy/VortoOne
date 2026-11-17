@@ -76,7 +76,9 @@ npm run desktop:dev
 
 新界面通过 `src/web/routers/app_api.py`、`src/web/app_bridge.py`、`app_views.py`、`app_staff.py` 和 `app_members.py` 等适配复用现有 Python runtime。主人聊天与模型回复已在实际安装的 App 中验证；成员使用 `/api/ws` 接收自己有权访问的 agent 私聊消息和任务结果，首次订阅及重连补发有界快照。
 
-上游设置、AI 应用连接和 runner control 等功能仍需逐项接入和验收；不能把静态预览中的成功状态作为真实后端能力。独立 Dev 宿主不启动上游 runner，也不创建第二套 Agent 执行器。
+main 已实现 [AI 应用接入第一阶段](../docs/AI_APPS.md)：服务作为远程 MCP 服务器，以连接者身份给 agent 派活、读取回复，并增加本机授权确认窗口。该改动晚于 Dev7 的构建提交；现有 Dev7 安装包不包含它，下一版需重新打包与单独验收。
+
+其他上游设置和 runner control 等功能仍需逐项接入和验收；不能把静态预览中的成功状态作为真实后端能力。独立 Dev 宿主不启动上游 runner，也不创建第二套 Agent 执行器。
 
 旧 runtime 协议调试页仍单独保留：
 

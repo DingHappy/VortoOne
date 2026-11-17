@@ -219,6 +219,8 @@ python -m pytest tests/ -q   # 离线、结果确定，不调用真实模型
 
 [`frontend/`](frontend/README.md) 包含新桌面的 React/TypeScript 界面、史莱姆角色与独立的 `apps/desktop-dev` Tauri 宿主。安装版默认启动随包 Python 后端并打开真实本机工作区，已接通主人聊天和成员私聊实时更新；示例数据只用于显式打开的界面预览。页面和上游集成仍按各自接入范围使用，源码调试、静态预览与打包方式见 [前端说明](frontend/README.md)。
 
+main 已加入 [AI 应用的远程 MCP 接入](docs/AI_APPS.md)，让连接者给 agent 派活、读取回复。该后续改动尚未进入当前 Dev7 成品，需要相应版本的后端和桌面宿主重新打包、验收后交付。
+
 ## 致谢
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（Agent 循环与工具设计）· [Model Context Protocol](https://modelcontextprotocol.io/)（工具接入）· [Agent Client Protocol](https://agentclientprotocol.com/)（外部框架接入）· [Tauri](https://tauri.app/)（Desktop）
