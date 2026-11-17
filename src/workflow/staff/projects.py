@@ -56,11 +56,13 @@ def validate(role):
         if not isinstance(binding['instance_id'], str) or not re.fullmatch(r'[a-f0-9]{32}', binding['instance_id']):
             raise ValueError('岗位固定项目身份无效')
     # ACP permissions are the existing fixed developer contract, not arbitrary role tool grants.
-    if role['grants'] != developer['grants'] or role['engine'] != developer['engine']:
+    engines = role.get('engine')
+    if (role['grants'] != developer['grants'] or not isinstance(engines, list) or not engines
+            or not set(engines) <= set(developer['engine'])):
         raise ValueError('固定项目开发岗只能使用既有隔离开发权限；不能扩大或虚报权限')
 
 
-def propose_development(root, owner, *, kind, id, name, project='', role=''):
+def propose_development(root, owner, *, kind, id, name, project='', role='', engine='opencode'):
     """Desktop owner form can request the fixed contract, never supply permission fields."""
     from src.workflow.staff.approvals import StaffApprovals
     from src.workflow.staff.roles import builtin_roles
@@ -77,6 +79,8 @@ def propose_development(root, owner, *, kind, id, name, project='', role=''):
     if kind == 'member' and role and not project:
         assigned = approvals.registry.role(role)
         check(assigned)
-        return approvals.propose(owner, 'member', {'id': id, 'name': name, 'role': role, 'engine': 'opencode'},
+        if engine not in assigned['engine']:
+            raise ValueError('这个岗位不允许用这个执行框架')
+        return approvals.propose(owner, 'member', {'id': id, 'name': name, 'role': role, 'engine': engine},
                                  '主人在 Desktop 提议固定项目的开发专员')
     raise ValueError('岗位须选择登记项目；专员须选择已批准的固定项目岗位')

@@ -42,6 +42,19 @@ def level_on(root, staff_member_id: str, principal: Principal) -> str:
         return 'none'
 
 
+def plan_allows(root, staff_member: dict) -> bool:
+    """这个 agent 的执行框架用不用所有者的个人订阅；用的话，所有者有没有打开「也回应别人」。
+    读不出来按没打开。"""
+    from src.workflow.staff.roles import CLI_ENGINES
+    if staff_member.get('engine') not in CLI_ENGINES:
+        return True
+    from src.workflow.members.registry import MemberRegistry
+    try:
+        return MemberRegistry(root).plan_shared(staff_member.get('id', ''))
+    except (ValueError, OSError):
+        return False
+
+
 def role_for_member(registry, role: dict, level: str) -> dict:
     """岗位在成员回合里的样子：只留他用得了的操作类别和工具。什么都不剩时抛 ValueError。"""
     if role.get('project_binding') or str(role.get('id') or '').startswith('routine-'):

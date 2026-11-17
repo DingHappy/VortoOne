@@ -326,6 +326,8 @@ def usable_level(root: str, staff_id: str, actor: Principal, role: Optional[Mapp
     if level == "none":
         return level
     try:
+        if not initiators.plan_allows(root, StaffRegistry(root).member(staff_id)):
+            return "none"            # 用所有者个人订阅的 agent，所有者没打开就只回应他
         current = role if role is not None else StaffRegistry(root).role(
             StaffRegistry(root).member(staff_id)["role"])
         initiators.role_for_member(StaffRegistry(root), dict(current), level)
