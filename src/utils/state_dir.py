@@ -165,6 +165,7 @@ _STATE_ENTRIES = [
     "states/",
     "projects/",
     "ai_apps/",
+    "moved.json",
     "logs/",
     "vector_memory/",
     "memory/",

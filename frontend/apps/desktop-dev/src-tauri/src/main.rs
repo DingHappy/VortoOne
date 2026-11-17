@@ -265,6 +265,7 @@ fn main() {
         return;
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(backend::Backend::default())
         .manage(ConnectionGate::default())
         .manage(LiveAddress::default())
@@ -296,6 +297,8 @@ fn main() {
                 .text("characters", "史莱姆外观")
                 .text("settings", "偏好设置…")
                 .text("welcome", "添加或切换服务…")
+                .text("move-out", "搬家：导出并停用这里…")
+                .text("move-in", "从搬家包导入…")
                 .text("preferences", "偏好设置预览（示例数据）")
                 .separator()
                 .text("versions", "版本管理")
@@ -339,6 +342,14 @@ fn main() {
                     return;
                 }
                 "models" => show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0),
+                "move-out" => {
+                    shell::move_out(app.clone());
+                    return;
+                }
+                "move-in" => {
+                    shell::move_in(app.clone());
+                    return;
+                }
                 "settings" | "welcome" => {
                     if let Err(error) = shell::open_window(app, if event.id().as_ref() == "settings" { "prefs" } else { "welcome" }) {
                         eprintln!("无法打开窗口: {error}");

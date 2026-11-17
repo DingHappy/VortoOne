@@ -374,6 +374,126 @@ fn erase(app: &tauri::AppHandle) -> Result<String, String> {
     Ok(target.display().to_string())
 }
 
+// ── 搬家：导出并停用这里、从搬家包导入（菜单「开发版」；排除规则只在后端 home_move.py 一处） ──────
+
+/// 用随包后端（源码开发时用 backend.json 的 Python）在这个家的目录里跑一个子命令，读它打的那一行 JSON。
+fn runtime_tool(app: &tauri::AppHandle, args: &[&str]) -> Result<Value, String> {
+    let (config, data) = dirs(app)?;
+    let runtime = app.path().resource_dir().map_err(|e| e.to_string())?.join("runtime").join("vortocode-runtime");
+    let home = data.join("home");
+    std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
+    let mut command = if runtime.is_file() {
+        let mut command = Command::new(&runtime);
+        command.env_remove("PYTHONPATH");
+        command
+    } else {
+        let text = std::fs::read_to_string(config.join(backend::CONFIG_FILE)).map_err(|_| "这个安装包里没有本机服务".to_string())?;
+        let source = backend::parse_config(&text)?;
+        let mut command = Command::new(&source.python);
+        command.args(["-m", "src.runtime_entry"]).env("PYTHONPATH", &source.source);
+        command
+    };
+    let output = command.args(args).current_dir(&home).env("PYTHONNOUSERSITE", "1").env_remove("PYTHONHOME")
+        .stdin(std::process::Stdio::null()).output().map_err(|e| format!("后端没能运行：{e}"))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let answer: Value = text.lines().rev().find(|l| !l.trim().is_empty()).and_then(|l| serde_json::from_str(l).ok())
+        .ok_or_else(|| "后端没有给出结果".to_string())?;
+    if answer["ok"] == true { Ok(answer) } else { Err(answer["error"].as_str().unwrap_or("没有完成").to_string()) }
+}
+
+fn tell(app: &tauri::AppHandle, title: &str, text: &str, error: bool) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+    let kind = if error { MessageDialogKind::Error } else { MessageDialogKind::Info };
+    app.dialog().message(text).title(title).kind(kind).blocking_show();
+}
+
+fn ask(app: &tauri::AppHandle, title: &str, text: &str, yes: &str) -> bool {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    app.dialog().message(text).title(title).kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(yes.into(), "取消".into())).blocking_show()
+}
+
+/// 「搬家：导出并停用这里…」：导出成搬家包，这台电脑上不再启动这个家；数据挪到 `moved-<时间>` 留着。
+pub fn move_out(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let Ok((config, data)) = dirs(&app) else { return };
+        if !data.join("home").join(".vortoone").is_dir() {
+            return tell(&app, "搬家", "这台电脑上还没有可以搬的家。", true);
+        }
+        if !ask(&app, "搬家", "把这台电脑上的家导出成一个搬家包，在新的地方导入。\n\n导出后这里不再启动它（同一个空间不能在两处同时接活）；\
+                  这里的数据挪到旁边留着，不删。手机、AI 应用到新家要重新连，模型要重新填。", "导出并停用这里") {
+            return;
+        }
+        let Some(path) = app.dialog().file().add_filter("VortoOne 搬家包", &["gz"])
+            .set_file_name(format!("vortoone-home-{}.tar.gz", stamp())).blocking_save_file()
+            .and_then(|f| f.into_path().ok()) else { return };
+        let was_running = phase(&app) == "running";
+        stop_local(&app);
+        let target = path.display().to_string();
+        match runtime_tool(&app, &["home-export", &target, "--move"]) {
+            Ok(_) => {
+                let aside = data.join(format!("moved-{}", stamp()));
+                let moved = std::fs::create_dir_all(&aside).and_then(|_| std::fs::rename(data.join("home"), aside.join("home")));
+                let mut list = places::read_servers(&config);
+                let mut local = places::read_local(&config, &data);
+                if let Some(url) = local.url.as_deref() { list.remove(url); }
+                local = places::LocalState { erased: Some(aside.display().to_string()), owner_name: local.owner_name,
+                                             owner_email: local.owner_email, ..places::LocalState::default() };
+                let _ = places::write_servers(&config, &list);
+                let _ = places::write_local(&config, &local);
+                if let Some(live) = app.get_webview_window(crate::LIVE) { let _ = live.close(); }
+                set_phase(&app, "off");
+                let note = if moved.is_ok() { format!("这里的数据留在 {}。", aside.display()) } else { String::new() };
+                tell(&app, "搬家", &format!("搬家包在 {target}。\n\n在新的地方打开 VortoOne Dev，用菜单「开发版 → 从搬家包导入…」导入它。{note}"), false);
+                let _ = open_window(&app, "welcome");
+            }
+            Err(error) => {
+                if was_running { crate::connect(app.clone()); }
+                tell(&app, "搬家没有完成", &error, true);
+            }
+        }
+    });
+}
+
+/// 「从搬家包导入…」：导入到这台电脑上的家；这里已有数据时先问要不要替换（原来的挪到旁边留着）。
+pub fn move_in(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let Ok((config, data)) = dirs(&app) else { return };
+        let Some(path) = app.dialog().file().add_filter("VortoOne 搬家包", &["gz"]).blocking_pick_file()
+            .and_then(|f| f.into_path().ok()) else { return };
+        let package = path.display().to_string();
+        stop_local(&app);
+        let mut result = runtime_tool(&app, &["home-import", &package]);
+        if matches!(&result, Err(e) if e.contains("已经有数据")) {
+            if !ask(&app, "导入搬家包", "这台电脑上的家里已经有数据。要用搬家包替换吗？原来的会挪到旁边留着，不删。", "替换") {
+                if places::read_local(&config, &data).should_start(now_ms()) { crate::connect(app.clone()); }
+                return;
+            }
+            result = runtime_tool(&app, &["home-import", &package, "--replace"]);
+        }
+        match result {
+            Ok(_) => {
+                let mut local = places::read_local(&config, &data);
+                local.installed = true;
+                local.run = true;
+                local.held = false;
+                local.held_until = None;
+                local.erased = None;
+                let _ = places::write_local(&config, &local);
+                if let Some(welcome) = app.get_webview_window("welcome") { let _ = welcome.hide(); }
+                crate::connect(app.clone());
+                tell(&app, "导入好了", "聊天、记忆、agent 和成员都搬过来了。手机、AI 应用要重新连；模型在「开发版 → 模型连接…」重新填。", false);
+            }
+            Err(error) => {
+                if places::read_local(&config, &data).should_start(now_ms()) { crate::connect(app.clone()); }
+                tell(&app, "导入没有完成", &error, true);
+            }
+        }
+    });
+}
+
 // ── Tailscale：只读状态（让别的设备连进来在第 3 个 PR 做） ─────────────────────
 
 fn output_within(mut command: Command, limit: Duration) -> Option<String> {
