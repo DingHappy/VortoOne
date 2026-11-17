@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 pub const SERVERS_FILE: &str = "servers.json";
 pub const LOCAL_FILE: &str = "local-server.json";
 pub const OWNER_KEY_FILE: &str = "owner-key";
+/// 经 Tailscale 对外的地址，后端启动时读它设 `VORTOONE_PUBLIC_URL`（外壳写；没开就没有这个文件）。
+pub const PUBLIC_URL_FILE: &str = "public-url";
 const MAX_SERVERS: usize = 50;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -118,12 +120,16 @@ pub struct LocalState {
     /// 首次引导填的所有者名字和邮箱。所有者是 App 保管的所有者密钥，登录不靠它们；留给以后的账号与云端。
     pub owner_name: Option<String>,
     pub owner_email: Option<String>,
+    /// 经 Tailscale 让别的设备连进来：开着时对外的地址，和分享的是哪个本机端口。
+    pub public_url: Option<String>,
+    pub reach_port: Option<u16>,
 }
 
 impl Default for LocalState {
     fn default() -> Self {
         LocalState { installed: false, run: false, held: false, held_until: None, url: None, nightly: true,
-                     copy_to: None, erased: None, owner_name: None, owner_email: None }
+                     copy_to: None, erased: None, owner_name: None, owner_email: None, public_url: None,
+                     reach_port: None }
     }
 }
 
@@ -142,6 +148,11 @@ pub fn write_local(config: &Path, state: &LocalState) -> Result<(), String> {
 }
 
 impl LocalState {
+    /// `server` 是不是这台电脑上的服务经 Tailscale 对外的地址：那还是这里，照本机的办法打开和登录。
+    pub fn is_public(&self, server: &str) -> bool {
+        self.installed && self.public_url.as_deref().is_some_and(|url| origin(url).as_deref() == origin(server).as_deref())
+    }
+
     /// 现在该不该随 App 启动：装了、要随 App 启动、没被人停着（停一段时间的到点了就不算停着）。
     pub fn should_start(&self, now_ms: u64) -> bool {
         self.installed && self.run && !(self.held && self.held_until.is_none_or(|until| now_ms < until))
@@ -162,7 +173,8 @@ pub enum Opening {
 pub fn opening(list: &ServerList, local: &LocalState, now_ms: u64) -> Opening {
     let local_url = local.url.as_deref().and_then(origin);
     match &list.current {
-        Some(current) if local_url.as_deref() == Some(current.as_str()) || (is_loopback(current) && local.installed) => {
+        Some(current) if local_url.as_deref() == Some(current.as_str()) || local.is_public(current)
+            || (is_loopback(current) && local.installed) => {
             if local.should_start(now_ms) { Opening::Local } else { Opening::Welcome }
         }
         Some(current) if !is_loopback(current) => Opening::Remote(current.clone()),
@@ -319,8 +331,14 @@ mod tests {
         let held = LocalState { held: true, held_until: Some(1000), ..installed.clone() };
         assert_eq!(opening(&here, &held, 999), Opening::Welcome);
         assert_eq!(opening(&here, &held, 1000), Opening::Local);
-        let stopped = LocalState { held: true, held_until: None, ..installed };
+        let stopped = LocalState { held: true, held_until: None, ..installed.clone() };
         assert_eq!(opening(&here, &stopped, u64::MAX), Opening::Welcome);
+        // 选的是这里经 Tailscale 对外的地址：还是这里，照本机的办法打开
+        let shared = LocalState { public_url: Some("https://box.tail1.ts.net".into()), ..installed };
+        let public = ServerList { current: Some("https://box.tail1.ts.net/".into()), servers: vec![] };
+        assert!(shared.is_public("https://box.tail1.ts.net") && !shared.is_public("https://other.tail1.ts.net"));
+        assert_eq!(opening(&public, &shared, 0), Opening::Local);
+        assert!(!LocalState { installed: false, ..shared }.is_public("https://box.tail1.ts.net"));
     }
 
     #[test]

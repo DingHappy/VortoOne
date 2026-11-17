@@ -49,7 +49,10 @@
   - 搬走的家里留 `.vortoone/moved.json`，那里的服务拒绝启动并说明已搬走。
 - **连接链接** `vortoone://connect?server=<地址>[#token=<一次性登录>]`：点了链接或扫了码，App 打开首次引导窗口，用大字显示要连的地址，确认后才打开；带一次性登录的直接登录进去。一次性凭据只放在 `#` 后面，放在 `?` 里的链接不认。外壳只收 `vortoone://connect`，原样交给窗口，链接本身不能配对电脑、启动服务或安装东西。协议登记在 `src-tauri/Info.plist`，只在打包好的 App 里生效（`tauri dev` 收不到）；目前只有 macOS。
   - 一次性登录由已登录的人在网页「在手机上打开」里开（`POST /api/app/phone-sign-in`），5 分钟、用一次就作废，只换得到开它的那个人：所有者开的登录成所有者，成员开的登录成这个成员。服务重启，没用掉的全部作废。
-- 还没有：经 Tailscale 让手机和别的电脑连进来、发现网络里的服务（第 1 步下一个 PR）。
+- **经 Tailscale 让别的设备连进来**（首次引导里勾选，或偏好设置里打开）：外壳跑 `tailscale serve --bg --https=443 http://127.0.0.1:<端口>`，只在这个人的 tailnet 里、走 HTTPS；服务本身照旧只听 127.0.0.1。443 上已经在分享别的东西就用 8443。tailnet 里还没开 HTTPS 时，Tailscale 给一个管理页地址，窗口显示出来等人去打开（最多 10 分钟，可以不等）。打开后对外地址写进数据目录的 `public-url`，服务带着 `VORTOONE_PUBLIC_URL` 重启一次，链接、二维码和 AI 应用都报这个地址；关掉时只撤我们开的那个端口。端口换了会自动改分享。Tailscale 没连上时偏好设置里提示「别人这会儿连不进来」。
+  - 后端经代理拿到的来源和协议照 uvicorn 默认只信 127.0.0.1 上的代理；经 tailnet 进来的请求按它的真实地址算，不算本机。
+- **发现**：连接页的「找到的」先列这台电脑上的服务，再列 tailnet 里的 `vortoone.<tailnet>` 和在线的、名字是 `vortoone` 或以 `vortoone-` 开头的设备（最多 5 台）。不扫局域网；每个地址是不是 VortoOne 由窗口问它的 `/api/instance`。
+- **常开的电脑**（`vc server`）想被发现和连进来：把那台电脑在 Tailscale 里改名为 `vortoone`（或 `vortoone-<名字>`），跑 `tailscale serve --bg http://127.0.0.1:8080`，并设 `VORTOONE_PUBLIC_URL=https://<它在 tailnet 里的名字>`。一条命令装好这一套留到后面。
 
 ## 本机管理
 

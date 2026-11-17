@@ -181,8 +181,19 @@ fn configure(mut command: Command, env_file: Option<&Path>, home: &Path, ui: &Pa
     if let Some(text) = env_file.and_then(|path| fs::read_to_string(path).ok()) {
         command.envs(allowed_env(&text));
     }
+    // 经 Tailscale 对外的地址（外壳打开「让别的设备连进来」时写下）：链接、二维码和 AI 应用报这个地址
+    command.env_remove("VORTOONE_PUBLIC_URL");
+    if let Some(url) = public_url(&home.with_file_name(crate::places::PUBLIC_URL_FILE)) {
+        command.env("VORTOONE_PUBLIC_URL", url);
+    }
     command.stdin(Stdio::null());
     command
+}
+
+/// 文件里记的对外地址：只认 https 的源地址，别的当没有。
+pub fn public_url(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    crate::places::origin(text.trim()).filter(|url| url.starts_with("https://"))
 }
 
 /// 启动后端并等它应答；返回 (子进程, 端口, 令牌)。
@@ -320,6 +331,23 @@ pub fn own_page(url: &tauri::Url, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_public_address_reaches_the_server_only_when_it_is_https() {
+        let dir = std::env::temp_dir().join(format!("vortoone-public-url-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("home")).unwrap();
+        let env_of = |command: &Command| command.get_envs()
+            .find(|(key, _)| *key == "VORTOONE_PUBLIC_URL")
+            .and_then(|(_, value)| value.map(|v| v.to_string_lossy().to_string()));
+        let build = || bundled_command(Path::new("/bin/true"), None, &dir.join("home"), &dir, 4321, "k");
+        assert_eq!(env_of(&build()), None);
+        fs::write(dir.join(crate::places::PUBLIC_URL_FILE), "https://box.tail1.ts.net/\n").unwrap();
+        assert_eq!(env_of(&build()).as_deref(), Some("https://box.tail1.ts.net"));
+        fs::write(dir.join(crate::places::PUBLIC_URL_FILE), "http://box.tail1.ts.net").unwrap();
+        assert_eq!(env_of(&build()), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn the_owner_key_is_made_once_and_kept() {
