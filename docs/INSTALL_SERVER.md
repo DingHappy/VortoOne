@@ -17,12 +17,28 @@ curl -fsSL https://github.com/DingHappy/VortoOne/releases/download/server-latest
 2. 从 GitHub Releases 下载这一版的安装包、界面和依赖锁，按同一版的 `SHA256SUMS` 核对；对不上就停下。
 3. 装进 `~/.local/share/vortoone/versions/<版本>/`，`current` 指向它。Python 由 uv 准备，不动系统里的 Python。
 4. 第一次装时生成所有者令牌，只写在 `~/.local/share/vortoone/server.env`（0600）。
-5. 登记成用户服务并启动：Linux 是 `systemd --user`（要在没登录时也运行，跑一次 `sudo loginctl enable-linger $USER`），macOS 是 launchd。服务只听 `127.0.0.1`。
+5. 登记成用户服务并启动：Linux 是 `systemd --user`（要在没登录时也运行，跑一次 `sudo loginctl enable-linger $USER`），macOS 是 launchd。服务只听 `127.0.0.1`。另登记每天 3:30 的备份。
 6. 打印一次性的**所有者认领链接**。
 
 不用 sudo，不改防火墙，不对外开端口。
 
-选项：`--version <版本>`、`--dir <目录>`、`--port <端口>`（默认 8080）、`--no-service`（只装，不登记服务，之后自己跑 `<目录>/run.sh`）、`--from <目录>`（从本地目录取安装文件，离线安装用）。
+选项：`--version <版本>`、`--dir <目录>`、`--port <端口>`（默认 8080）、`--no-service`（只装，不登记服务，之后自己跑 `<目录>/run.sh`）、`--background`（不登记服务，直接在后台启动；没有 systemd 的机器用，不登记每天的备份）、`--from <目录>`（从本地目录取安装文件，离线安装用）。
+
+## 备份
+
+- 每天 3:30 自动备份到 `~/.local/share/vortoone/backups`，只留最新 7 份；升级前另备份一份。手动备份：`~/.local/share/vortoone/backup.sh manual`。
+- 备份里有聊天、记忆、agent、成员，也有手机配对、IM 凭据、AI 应用的连接：它和家里的数据一样要紧，只有你这个用户能读（0600）。要放到别的机器上，用加密的 `scripts/assistant-backup.py`。
+- 恢复：先停服务，`cd ~/.local/share/vortoone/home && ../current/bin/vc home-restore <备份文件>`。原来的数据挪到旁边（`.vortoone.before-restore-<时间>`）留着。
+
+## 升级与失败退回
+
+再跑一次安装命令就是升级（要装指定版本加 `--version`）：
+
+1. 停服务，备份一份；
+2. 换到新版本启动，在限定时间里自检：要应答，报的版本要是新版本；
+3. 自检不过，就退回旧版本和升级前的数据，重新启动，并把原因写进 `~/.local/share/vortoone/upgrade.json`。
+
+成功了只留新版本和刚才那一个旧版本。`scripts/check-server-upgrade.sh` 在发布流程里用一个故意坏掉的版本验证这一套。
 
 ## 认领
 
@@ -64,6 +80,7 @@ docker compose logs vortoone      # 第一次启动时这里有认领链接
 
 ## 还没有
 
-- 自动备份、升级与失败退回：下一个 PR。现在升级就是用新版本再跑一次安装命令（数据和 `server.env` 不动，旧版本留在 `versions/` 里）。
+- 升级失败的原因还只写在 `upgrade.json` 和安装命令的输出里，Desktop 里还不显示。
+- Docker 的升级就是换镜像，没有自动退回；备份用 `docker compose exec -w /data/home vortoone /opt/vortoone/venv/bin/vc home-backup --dir /data/backups --reason manual`。
 - Windows。
 - `/review` 审批页还从源码目录读页面文件，用安装包装的家里打不开它。
