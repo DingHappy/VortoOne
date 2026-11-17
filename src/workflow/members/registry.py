@@ -40,6 +40,10 @@ class Refused(PermissionError):
     """操作人没有做这件事的权限。"""
 
 
+class Damaged(ValueError):
+    """登记文件读不出来或内容不合规矩。停下等人处理，不回到默认登记。"""
+
+
 class Missing(LookupError):
     """说的那个成员、身份组或邀请不存在（或邀请已失效）。"""
 
@@ -79,6 +83,20 @@ def _name(value: Any, label: str) -> str:
     return text
 
 
+def _look(value: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """身份组的展示信息（图标、颜色之类）：登记处只存不解释，只收短字符串和布尔值。"""
+    look: Dict[str, Any] = {}
+    for key, item in (value or {}).items():
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z_]{1,24}", key):
+            raise ValueError("展示信息的字段名无效")
+        if not (isinstance(item, bool) or (isinstance(item, str) and len(item) <= 32)):
+            raise ValueError("展示信息只能是短文字或开关")
+        look[key] = item
+    if len(look) > 8:
+        raise ValueError("展示信息太多了")
+    return look
+
+
 def _post(group_id: str, record: Mapping[str, Any]) -> Post:
     return Post(group_id, frozenset(str(item) for item in record.get("items") or []),
                 str(record.get("computer") or "none"), str(record.get("act") or "none"))
@@ -94,23 +112,28 @@ class MemberRegistry:
     def _load(self) -> Dict[str, Any]:
         path = self.directory / _FILE
         if self.directory.is_symlink():
-            raise ValueError("成员登记目录不能是符号链接")
+            raise Damaged("成员登记目录不能是符号链接")
         if not path.exists():
             return _fresh()
         if path.is_symlink() or path.stat().st_size > _MAX_BYTES:
-            raise ValueError("成员登记文件无效或过大")
+            raise Damaged("成员登记文件无效或过大")
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (UnicodeError, ValueError) as error:
             # 读坏了就停：不回到默认登记，那等于把所有人的身份组悄悄清掉
-            raise ValueError("成员登记文件损坏，未恢复默认登记") from error
+            raise Damaged("成员登记文件损坏，未恢复默认登记") from error
         if not isinstance(value, dict) or value.get("version") != 1:
-            raise ValueError("成员登记文件版本无效")
+            raise Damaged("成员登记文件版本无效")
         for key, kind in (("groups", dict), ("order", list), ("members", dict), ("invitations", dict),
                           ("agent_levels", dict)):
             if not isinstance(value.get(key), kind):
-                raise ValueError("成员登记文件结构无效")
-        self._check(value)
+                raise Damaged("成员登记文件结构无效")
+        try:
+            self._check(value)
+        except Damaged:
+            raise
+        except ValueError as error:
+            raise Damaged(f"成员登记文件内容不合规矩：{error}") from error
         return value
 
     @staticmethod
@@ -220,7 +243,8 @@ class MemberRegistry:
     # ── 身份组 ────────────────────────────────────────────────────────────────
 
     def create_group(self, actor: Principal, name: str, *, items: Iterable[str] = (), computer: str = "none",
-                     act: str = rules.ACT_DEFAULT, before: Optional[str] = None) -> str:
+                     act: str = rules.ACT_DEFAULT, before: Optional[str] = None,
+                     look: Optional[Mapping[str, Any]] = None) -> str:
         """新建身份组，放在 before 之前（默认放在「所有人」之前，也就是自定义身份组的最后）。"""
         with self._change() as state:
             owner, held = self._actor(state, actor)
@@ -240,7 +264,7 @@ class MemberRegistry:
                 raise Refused("不能新建这个身份组：位置要排在你之后，权限项要是你自己有的")
             self._check_levels(state, held, posts, owner, computer=post.computer, act=post.act)
             state["groups"][group_id] = {"name": _name(name, "身份组名字"), "items": sorted(wanted),
-                                         "computer": post.computer, "act": post.act}
+                                         "computer": post.computer, "act": post.act, "look": _look(look)}
             state["order"] = order
             return group_id
 
@@ -258,7 +282,8 @@ class MemberRegistry:
 
     def change_group(self, actor: Principal, group_id: str, *, name: Optional[str] = None,
                      items: Optional[Iterable[str]] = None, computer: Optional[str] = None,
-                     act: Optional[str] = None) -> None:
+                     act: Optional[str] = None, look: Optional[Mapping[str, Any]] = None) -> None:
+        """改一个身份组；没给的字段不动。look 给了就并进现有的展示信息。"""
         with self._change() as state:
             owner, held = self._actor(state, actor)
             record = state["groups"].get(str(group_id))
@@ -280,6 +305,8 @@ class MemberRegistry:
                                act=None if act is None else changed.act)
             if name is not None:
                 record["name"] = _name(name, "身份组名字")
+            if look is not None:
+                record["look"] = _look({**(record.get("look") or {}), **look})
             record.update(items=sorted(wanted), computer=changed.computer, act=changed.act)
 
     def delete_group(self, actor: Principal, group_id: str) -> None:

@@ -2048,6 +2048,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/roles",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions",
     "methods": [
       "GET"
@@ -2081,6 +2093,30 @@
     "path": "/api/app/organizations/{org_id}/roles",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles/order",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles/{role_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles/{role_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {

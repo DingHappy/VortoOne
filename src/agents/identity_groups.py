@@ -31,7 +31,7 @@ _ITEMS: Dict[str, bool] = {
     "chat.speak": True, "chat.create_channel": True, "chat.mention_everyone": False, "chat.manage_channels": False,
     "roles.talk": True, "roles.dispatch": True, "roles.create_own": True, "roles.manage_routines": False,
     "roles.approve": False, "roles.manage_all": False, "roles.set_auto_approval": False,
-    "roles.act_for_members": False,
+    "roles.act_for_members": False, "roles.view_all": False,
     "computers.connect_own": True, "computers.manage_connections": False, "computers.manage_credentials": False,
     "material.edit": True, "material.upload": True, "material.review_memory": False,
     "space.invite": False, "space.view_usage": False, "space.view_audit": False, "space.edit_settings": False,
