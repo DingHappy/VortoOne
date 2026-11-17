@@ -296,3 +296,114 @@ def password_link(root: str, actor: Principal, member_id: str, origin: str) -> D
         raise LookupError("这个成员没有可重置的账号")
     token, expires = accounts.reset_link(account_id)
     return {"url": f"{origin}/reset-password?token={token}", "expiresAt": expires}
+
+
+# ── 成员和 agent ──────────────────────────────────────────────────────────────
+# 成员看得到的 agent：他对其办事级别不是「不能对话」、且岗位允许成员使用的那些。主助理永远不在里面
+# （ADR-019：主助理连着所有者的个人记忆和电脑）。同一个 agent 的私聊，每个成员看到的只有自己发起的事。
+
+def _staff_roles(root: str) -> Dict[str, Any]:
+    """agent（专员 id）→ 它登记的岗位。读不出来的跳过：看不清的 agent 不给成员。"""
+    from src.workflow.staff.registry import StaffRegistry
+    registry = StaffRegistry(root)
+    found: Dict[str, Any] = {}
+    for person in views._staff(root).get("members") or []:
+        staff_id = str(person.get("id") or "")
+        if not staff_id or person.get("status") == "retired":
+            continue
+        try:
+            found[staff_id] = registry.role(person.get("role"))
+        except (ValueError, OSError):
+            continue
+    return found
+
+
+def usable_level(root: str, staff_id: str, actor: Principal, role: Optional[Mapping[str, Any]] = None) -> str:
+    """这个成员对这个 agent 实际能用的级别：登记的级别，岗位不许成员用时按「不能对话」。"""
+    from src.workflow.staff import initiators
+    from src.workflow.staff.registry import StaffRegistry
+    level = initiators.level_on(root, staff_id, actor)
+    if level == "none":
+        return level
+    try:
+        current = role if role is not None else StaffRegistry(root).role(
+            StaffRegistry(root).member(staff_id)["role"])
+        initiators.role_for_member(StaffRegistry(root), dict(current), level)
+    except (ValueError, OSError, KeyError, TypeError):
+        return "none"
+    return level
+
+
+def member_agents(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    roles_by_staff = _staff_roles(root)
+    shown = []
+    for agent in views.agents(root):
+        staff_id = agent["handle"]
+        if agent["id"] == views.main_agent_id(root) or staff_id not in roles_by_staff:
+            continue
+        if usable_level(root, staff_id, actor, roles_by_staff[staff_id]) == "none":
+            continue
+        shown.append({**agent, "seesDetails": False, "audienceMode": "people"})
+    return shown
+
+
+def member_staff(root: str, actor: Principal, agent_id: str) -> Optional[str]:
+    """成员要找的这个 agent 是哪个专员；他看不到的返回 None（与「没有这个 agent」不作区分）。"""
+    return next((agent["handle"] for agent in member_agents(root, actor) if agent["id"] == agent_id), None)
+
+
+def member_agent_detail(root: str, actor: Principal, agent_id: str) -> Optional[Dict[str, Any]]:
+    """成员看到的 agent 资料：没有用量、运行次数这些所有者的数字。"""
+    agent = next((row for row in member_agents(root, actor) if row["id"] == agent_id), None)
+    if agent is None:
+        return None
+    return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
+                                           "ownerUserId", "createdAt", "audienceMode", "canTalk", "seesDetails")},
+            "credentialId": None, "budgetUsedPercent": 0, "tokensThisMonth": 0, "runsThisMonth": 0,
+            "failuresThisMonth": 0, "runsByDay": [], "pendingApprovals": 0, "channels": []}
+
+
+def member_dms(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    return [{"channelId": views.dm_channel_id(agent["id"]),
+             "with": {"type": "agent", "id": agent["id"], "name": agent["name"], "handle": agent["handle"]},
+             "openedAt": agent["createdAt"], "lastMessage": None, "unread": 0}
+            for agent in member_agents(root, actor)]
+
+
+def member_overview(root: str, actor: Principal) -> Dict[str, Any]:
+    return {"name": views.overview(root)["name"], "role": "member", "people": len(members(root)),
+            "agents": len(member_agents(root, actor)), "budgetUsedPercent": 0, "approvalsWaitingForMe": 0,
+            "proposalsWaitingForMe": 0}
+
+
+def people(root: str) -> List[Dict[str, Any]]:
+    """空间里的人。在线状态没有记录，所有者按在线（服务在跑就是他的），成员按离线。"""
+    now = views.now_iso()
+    return [{**row, "online": row["role"] == "owner", "presence": "online" if row["role"] == "owner" else "offline",
+             "status": None, "lastSeenAt": now if row["role"] == "owner" else None} for row in members(root)]
+
+
+def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:
+    """成员在私聊里交给 agent 一件事。记下发起人；执行时按他的级别收窄，读以外的每一步都要所有者批准。"""
+    from src.gateway.audit import append_audit
+    from src.gateway.main_conversation import main_chat_key
+    from src.scheduling.staff_runner import get_staff_service
+    from src.workflow.members.registry import Refused
+    from src.workflow.staff.conversations import StaffConversations
+    import uuid
+    if usable_level(root, staff_id, actor) == "none":
+        raise Refused("你不能和这个 agent 对话")
+    if len(text) > 4000:
+        raise ValueError("交给 agent 的一件事最多 4000 字")
+    owner = main_chat_key(root)
+    if not owner:
+        raise ValueError("所有者还没有打开主要聊天，agent 现在不能接活")
+    service = get_staff_service(root)
+    task_id = StaffConversations.request_task_id(staff_id, f"{actor.id}:{uuid.uuid4().hex}")
+    if not append_audit(root, {"category": "decision", "decision": "allowed", "decision_source": "member",
+                               "operation": "成员交给 agent 处理任务", "operation_kind": "execute",
+                               "staff_task": task_id, "initiator": actor.id, "agent": staff_id}, durable=True):
+        raise OSError("审计未能保存，没有派出")
+    task = service.assign(owner, {"member": staff_id, "prompt": text, "acceptance": [], "delivery": "notify"},
+                          task_id=task_id, initiator=actor.id)
+    return views.member_owner_message(root, staff_id, task.to_dict(), client_id, viewer=actor.id)

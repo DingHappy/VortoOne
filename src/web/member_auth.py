@@ -1,8 +1,14 @@
 """成员的登录会话在网页这一层怎么算数。
 
 主人令牌过了鉴权就能用全部接口——那些接口都是按「调用的人是所有者」写的。成员的会话因此**不能**
-走同一条路：它只在下面这张白名单里的接口上算数，白名单外一律 403。往白名单里加一条之前，那个接口
-必须已经会分辨是谁在调（用 ``principal``），并按这个人的权限做事。
+走同一条路，只认两张表：
+
+- ``MEMBER_ROUTES``：进处理函数。往这里加一条之前，那个接口必须已经会分辨是谁在调（用
+  ``principal``）并按这个人的权限做事，或者它的回答里本来就没有所有者的数据。
+- ``empty_answer``（表 ``_EMPTY_ANSWERS``）：对成员一律回一个固定的空结构，**不进处理函数**。所有者的记忆、例行、技能、
+  制品、通知、用量、审批这些归这里——界面拿到合法的空列表，所有者的数据不可能从这条路漏出去。
+
+两张表之外一律 403。
 
 - 成员会话用自己的 Cookie（``MEMBER_COOKIE``），与主人令牌的 Cookie 不同名；这里的任何凭据都
   不会让 ``auth._token_ok`` 通过。
@@ -32,7 +38,64 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/invitations"),
     ("DELETE", _ORG + r"/invitations/[^/]+"),
     ("POST", _ORG + r"/members/[^/]+/password-link"),
+    # 成员和 agent：只列他用得了的 agent，私聊里只有他自己发起的事（web/app_members.py）
+    ("GET", _ORG + r"/agents"),
+    ("GET", _ORG + r"/agents/[^/]+"),
+    ("GET", _ORG + r"/agent-status"),
+    ("GET", _ORG + r"/ai-status"),
+    ("GET", _ORG + r"/dms"),
+    ("POST", _ORG + r"/dms"),
+    ("GET", _ORG + r"/channels/[^/]+/members"),
+    ("GET", _ORG + r"/channels/[^/]+/messages"),
+    ("POST", _ORG + r"/channels/[^/]+/messages"),
+    ("GET", _ORG + r"/channels/[^/]+/active-runs"),
+    ("GET", _ORG + r"/channels/[^/]+/pins"),
+    ("GET", _ORG + r"/channels/[^/]+/threads"),
+    ("GET", _ORG + r"/overview"),
+    ("GET", _ORG + r"/people"),
+    # 回答里没有所有者的数据：空间名和时区、首页的默认版面、电脑接入引导
+    ("GET", _ORG + r"/settings"),
+    ("GET", _ORG + r"/dashboards/home"),
+    ("GET", _ORG + r"/computer-setup"),
 ))
+
+# 路径（GET）→ 成员看到的固定回答。
+_EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
+    (r"/api/app/models", {"models": [], "defaultModel": ""}),
+    (r"/api/app/connectors/catalog", {"connectors": [], "builtinScopes": []}),
+    (_ORG + r"/memories", {"memories": []}),
+    (_ORG + r"/agents/[^/]+/memories", {"memories": []}),
+    (_ORG + r"/agents/[^/]+/skills", {"skills": []}),
+    (_ORG + r"/skills", {"skills": []}),
+    (_ORG + r"/routines", {"routines": []}),
+    (_ORG + r"/notifications", {"items": [], "counts": {"all": 0, "mentions": 0, "waiting": 0, "unread": 0,
+                                                       "reactions": 0}, "nextCursor": None}),
+    (_ORG + r"/runs", {"runs": []}),
+    (_ORG + r"/active-runs", {"runs": []}),
+    (_ORG + r"/usage", {"usage": []}),
+    (_ORG + r"/approvals", {"approvals": []}),
+    (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
+)
+
+
+def _empty_table() -> Tuple[Tuple["re.Pattern[str]", Any], ...]:
+    """上面那张表，加上本来就回空的启动列表（routers/app_api.py 的 _EMPTY）。"""
+    from src.web.routers.app_api import _EMPTY
+    rows = list(_EMPTY_ANSWERS) + [(_ORG + re.escape(path), payload) for path, payload in _EMPTY.items()]
+    return tuple((re.compile(pattern + r"\Z"), payload) for pattern, payload in rows)
+
+
+_EMPTY_CACHE: list = []
+
+
+def empty_answer(method: str, path: str) -> Optional[Any]:
+    """这个请求对成员该回的固定空结构；不在表里返回 None。"""
+    if method != "GET":
+        return None
+    if not _EMPTY_CACHE:
+        _EMPTY_CACHE.extend(_empty_table())
+    import json
+    return next((json.loads(json.dumps(payload)) for pattern, payload in _EMPTY_CACHE if pattern.match(path)), None)
 
 
 def same_origin(request) -> bool:
@@ -62,8 +125,9 @@ def member_id(found: Optional[Dict[str, Any]]) -> str:
     return found["member"] if record is not None and record.get("account") == found["id"] else ""
 
 
-def admit(request) -> int:
-    """主人令牌没通过的请求，凭成员会话能不能进。返回 0 表示放行，否则是该回的状态码。
+def admit(request):
+    """主人令牌没通过的请求，凭成员会话能不能进。返回 0 表示放行进处理函数；401/403 是该回的状态码；
+    返回一个 dict 时直接把它作为回答（``empty_answer``），不进处理函数。
 
     放行时把账号记在 ``request.state.member_account`` 上——只有这里会写它，处理函数据此知道
     调用人不是所有者。"""
@@ -72,7 +136,8 @@ def admit(request) -> int:
         return 401
     path, method = request.url.path, request.method
     if not any(method == allowed and pattern.match(path) for allowed, pattern in MEMBER_ROUTES):
-        return 403
+        empty = empty_answer(method, path)
+        return empty if empty is not None else 403
     if not same_origin(request):
         return 403
     request.state.member_account = found

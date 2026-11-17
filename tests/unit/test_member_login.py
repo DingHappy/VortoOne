@@ -201,8 +201,12 @@ def test_a_member_session_reaches_nothing_outside_the_allow_list(home):
             allowed = any(method == m and pattern.match(url) for m, pattern in member_auth.MEMBER_ROUTES)
             if exempt or allowed:
                 continue
-            status = member.request(method, url, json={}).status_code
-            assert status == 403, f"{method} {path} 对成员会话回了 {status}"
+            answer = member.request(method, url, json={})
+            empty = member_auth.empty_answer(method, url)
+            if empty is not None:          # 对成员回固定空结构的：回答必须正是那个空结构
+                assert answer.status_code == 200 and answer.json() == empty, f"{method} {path}"
+            else:
+                assert answer.status_code == 403, f"{method} {path} 对成员会话回了 {answer.status_code}"
             checked += 1
     assert checked > 150                               # 确实扫到了整个服务，而不是空跑
 
@@ -218,7 +222,8 @@ def test_every_allow_listed_route_exists(home):
 def test_a_member_cookie_is_never_the_owner(home):
     browser = _join(home)
     assert browser.get("/api/auth/status").json()["authed"] is False
-    assert browser.get(f"{home['base']}/agents").status_code == 403
+    assert browser.get(f"{home['base']}/agents").json()["agents"] == []       # 只列他用得了的，主助理不在内
+    assert browser.patch(f"{home['base']}/routines/r1", json={"active": False}).status_code == 403
     assert browser.post(f"{home['base']}/roles", json={"name": "我想当管理员",
                                                        "permissions": ["administrator"]}).status_code == 403
     with pytest.raises(Exception):                      # 长连接握手不认成员会话

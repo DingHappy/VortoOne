@@ -360,35 +360,38 @@ def member_for_channel(root: str, channel_id: str) -> Optional[str]:
     return None
 
 
-def member_conversation(root: str, member_id: str) -> Dict[str, Any]:
+def member_conversation(root: str, member_id: str, viewer: Optional[str] = None) -> Dict[str, Any]:
+    """viewer：看的人。None 是所有者，只看所有者自己交代的事；成员 id 只看那个成员发起的事。
+    同一个 agent 的私聊，每个人看到的是自己和它之间的那一份。"""
     from src.workflow.staff.conversations import StaffConversations
-    return StaffConversations(root).read(member_id, limit=50)
+    return StaffConversations(root).read(member_id, limit=50, initiator=viewer)
 
 
 def _member_message(root: str, member_id: str, mid: str, *, from_owner: bool, body: str, created: str,
-                    task_id: str, **extra: Any) -> Dict[str, Any]:
+                    task_id: str, viewer: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
     agent = member_agent_id(root, member_id)
+    person = viewer or owner_id(root)
     return {"id": mid, "channelId": dm_channel_id(agent), "threadId": None,
-            "author": {"type": "person" if from_owner else "agent", "id": owner_id(root) if from_owner else agent},
+            "author": {"type": "person" if from_owner else "agent", "id": person if from_owner else agent},
             "body": body, "mentionedAgentIds": [], "agentRunId": None if from_owner else task_id,
             "createdAt": created, **extra}
 
 
 def member_owner_message(root: str, member_id: str, task: Dict[str, Any],
-                         client_id: Optional[str] = None) -> Dict[str, Any]:
+                         client_id: Optional[str] = None, viewer: Optional[str] = None) -> Dict[str, Any]:
     extra = {"clientId": client_id} if client_id else {}
     return _member_message(root, member_id, message_id(task["id"], "user"), from_owner=True,
                            body=str(task.get("prompt") or ""), created=_iso(task.get("created")),
-                           task_id=task["id"], **extra)
+                           task_id=task["id"], viewer=viewer, **extra)
 
 
 def member_messages(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None, *,
-                    before: str = "", limit: int = 100) -> List[Dict[str, Any]]:
-    """每件事两条：主人交代的话；做完（或没做成）后专员交回的结果。进行中的只有前一条。"""
-    conversation = conversation or member_conversation(root, member_id)
+                    before: str = "", limit: int = 100, viewer: Optional[str] = None) -> List[Dict[str, Any]]:
+    """每件事两条：交代的话；做完（或没做成）后 agent 交回的结果。进行中的只有前一条。"""
+    conversation = conversation or member_conversation(root, member_id, viewer)
     rows: List[Dict[str, Any]] = []
     for task in reversed(conversation["tasks"]):          # 台账给的是新的在前
-        rows.append(member_owner_message(root, member_id, task))
+        rows.append(member_owner_message(root, member_id, task, viewer=viewer))
         status = str(task.get("status") or "")
         if status in ACTIVE_TASK:
             continue
@@ -399,15 +402,16 @@ def member_messages(root: str, member_id: str, conversation: Optional[Dict[str, 
             body = "这件事没有完成" + (f"：{reason}" if reason else f"（状态：{status or '未知'}）。")
         rows.append(_member_message(root, member_id, message_id(task["id"], "assistant"), from_owner=False,
                                     body=body, created=_iso(task.get("updated") or task.get("created")),
-                                    task_id=task["id"]))
+                                    task_id=task["id"], viewer=viewer))
     if before:
         cutoff = _iso(before)
         rows = [row for row in rows if row["createdAt"] < cutoff]
     return rows[-max(1, min(int(limit), 400)):]
 
 
-def member_runs(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    conversation = conversation or member_conversation(root, member_id)
+def member_runs(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None,
+                viewer: Optional[str] = None) -> List[Dict[str, Any]]:
+    conversation = conversation or member_conversation(root, member_id, viewer)
     agent = member_agent_id(root, member_id)
     return [{"runId": task["id"], "agentId": agent, "channelId": dm_channel_id(agent),
              "threadId": message_id(task["id"], "user"), "triggerMessageId": message_id(task["id"], "user"),
