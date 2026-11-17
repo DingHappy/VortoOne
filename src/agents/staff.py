@@ -125,11 +125,24 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
         from src.agents.team_engines import CLI_WORKERS
         # 执行观测核对身份：本机 CLI 的执行器名是 claude / codex，与登记的框架名不同
         execution = StaffExecution(work, task, CLI_WORKERS.get(member['engine'], member['engine']))
-        return await execute_development(work, task,
-            {**task.collaboration['dispatch'], 'model': member['model']}, member['engine'], check_project(role),
+        project = check_project(role)
+        continue_from, lead = '', ''
+        if _continues_conversation(task):
+            # 私聊里连着交代的开发：带上之前几件，并接着上一件还没合、没删的分支改（主人 2026-11-17 定）
+            from src.agents.team_members import continued_branch
+            from src.workflow.staff.conversation_context import earlier_conversation
+            viewer = principal.id if principal else None
+            lead = earlier_conversation(root, member['id'], viewer, task.id)
+            continue_from = continued_branch(root, str(project.get('repo_root') or ''), member['id'], viewer, task.id)
+        done = await execute_development(work, task,
+            {**task.collaboration['dispatch'], 'model': member['model']}, member['engine'], project,
             bool(task.collaboration.get('tainted')), record_delivery=record, check=check,
             execution_ref=execution.ref, on_snapshot=execution.publish,
-            execute_backend=partial(run_developer, member['engine'], member['model']))
+            execute_backend=partial(run_developer, member['engine'], member['model']),
+            continue_from=continue_from, lead=lead)
+        from src.workflow.staff.conversation_context import record_external
+        record_external(work, task, bool(getattr(done, 'collaboration', {}).get('tainted', True)))
+        return done
     from src.workflow.staff.roles import CLI_ENGINES
     if member['engine'] in CLI_ENGINES:
         return await _execute_cli_general(root, task, work, turn_role, member, check, approval_service)
