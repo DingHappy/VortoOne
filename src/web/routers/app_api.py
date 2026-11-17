@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_staff
+from src.web import app_members, app_staff
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 
 router = APIRouter(tags=["app"])
@@ -186,7 +186,8 @@ async def settings(org_id: str):
 
 @router.get(_ORG + "/members")
 async def members(org_id: str):
-    return {"members": [views.person(_root(org_id))]}
+    root = _root(org_id)
+    return await _members_call(lambda: {"members": app_members.members(root)})
 
 
 @router.get(_ORG + "/people")
@@ -195,10 +196,72 @@ async def people(org_id: str):
                         "lastSeenAt": views.now_iso()}]}
 
 
+# ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
+# 规矩在登记处和内核；这里把登记处的三种拒绝对成状态码。写入只在设了主人令牌的服务上开放。
+
+async def _members_call(action, *, write: bool = False):
+    from src.workflow.members.registry import Damaged, Missing, Refused
+    if write and not views.owner_connection():
+        return _error(403, "forbidden", "改成员和身份组需要已认证的主人连接")
+    try:
+        return await asyncio.to_thread(action)
+    except Refused as error:
+        return _error(403, "forbidden", str(error))
+    except (Missing, LookupError) as error:
+        return _error(404, "not_found", str(error))
+    except (Damaged, OSError):
+        # 登记读不出来：照实说，不拿空名单顶替（那会让界面以为没有成员、没有身份组）
+        return _error(409, "unavailable", "成员登记读不出来，需要先修复")
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+
+
 @router.get(_ORG + "/roles")
 async def roles(org_id: str):
-    _root(org_id)
-    return {"roles": [], "areas": [], "colors": [], "icons": []}
+    root = _root(org_id)
+    return await _members_call(lambda: app_members.roles(root))
+
+
+@router.post(_ORG + "/roles")
+async def create_role(org_id: str, body: Dict[str, Any]):
+    root = _root(org_id)
+    return await _members_call(lambda: {"id": app_members.create_role(root, body)}, write=True)
+
+
+# 先于 /roles/{role_id} 登记：否则 "order" 会被当成一个身份组的 id
+@router.put(_ORG + "/roles/order", status_code=204)
+async def reorder_roles(org_id: str, body: Dict[str, Any]):
+    root = _root(org_id)
+    result = await _members_call(lambda: app_members.reorder_roles(root, body.get("ids")), write=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.patch(_ORG + "/roles/{role_id}", status_code=204)
+async def change_role(org_id: str, role_id: str, body: Dict[str, Any]):
+    root = _root(org_id)
+    result = await _members_call(lambda: app_members.change_role(root, role_id, body), write=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.delete(_ORG + "/roles/{role_id}", status_code=204)
+async def delete_role(org_id: str, role_id: str):
+    root = _root(org_id)
+    result = await _members_call(lambda: app_members.delete_role(root, role_id), write=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.put(_ORG + "/members/{user_id}/roles")
+async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any]):
+    root = _root(org_id)
+    return await _members_call(
+        lambda: {"roleIds": app_members.set_member_roles(root, user_id, body.get("roleIds"))}, write=True)
+
+
+@router.delete(_ORG + "/members/{user_id}", status_code=204)
+async def remove_member(org_id: str, user_id: str):
+    root = _root(org_id)
+    result = await _members_call(lambda: app_members.remove_member(root, user_id), write=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
 # ── 角色 ─────────────────────────────────────────────────────────────────────
