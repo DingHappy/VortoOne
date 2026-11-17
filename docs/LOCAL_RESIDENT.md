@@ -90,7 +90,3 @@ local-resident/
 
 本步实现运行地点、生命周期和连接入口。设置的全面重排、共同执行事件、更多恢复核对、记忆出处与有效性评估，
 按后续独立改动推进，不因参考项目而改变现有权限或引入新任务系统。
-
-交互与机制参考来自
-[agentes.chat 固定源码版本](https://github.com/agentes-chat/agentes-chat/tree/d7b5ca9d5d465f675287a886cd1ad2d60e3c27d5)。
-其 Desktop 托管服务也会随 App 退出停止，独立系统服务另有入口；本项目的常驻承诺以自己的服务合同为准。

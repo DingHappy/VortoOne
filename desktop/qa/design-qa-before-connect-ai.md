@@ -1,32 +1,6 @@
 # 统一角色与主区设置验收
 
-本次范围：按已选定的 agentes.chat 方向接入正式 Desktop 组件，角色直接出现在侧栏，
-总助手与登记角色共用资料弹层，全局设置改为主区页面；同步共同框架与文案。
-此前频道验收归档于 `desktop/qa/design-qa-before-role-family.md`。
-不把本步的共同框架验收解释为整个应用或手机所有页面都已重构。
-
 ## 视觉依据与尺度
-
-- source visual truth：本机实际 agentes.chat 应用的只读截图：
-  `/private/tmp/agentes-all-ui-role-chat.png`、`agentes-all-ui-profile.png`、
-  `agentes-all-ui-settings.png`、`agentes-all-ui-access.png`，均在同一目录。
-  截图含个人资料，只供本机比较，不提交仓库或上传 PR；文件扩展名为 png，实际格式为 JPEG。
-- 结构依据：[agentes.chat 源码](https://github.com/agentes-chat/agentes-chat/tree/d7b5ca9d5d465f675287a886cd1ad2d60e3c27d5)：
-  Sidebar、AgentPage、agent/Hero、SettingsPage 与 settings-nav。安装应用版本不据此推断与源码提交相同。
-  VortoOne 的组件、样式与交互独立实现，不迁入其代码、品牌、图标或图片。
-- implementation：`docs/design/role-family/chat.png`、`role-profile.png`、`role-access.png`、
-  `settings.png`、`roles-dark.png`、`roles-narrow.png`、`role-expired.png`、`add-role.png`、`onboarding.png`。
-  均为生产组件配合合成资料/IPC 的浏览器渲染，不读写主人配置。
-- 主比较视口 1240×801 CSS px，源图和实现图均为 2480×1602 实际像素、密度 2。
-  原先使用的普通 screenshot 辅助方法输出密度 1；最终改为原始 CDP 截图匹配密度 2，没有放大旧截图。
-  宽窗及深色为 1440×900 CSS / 2880×1800 像素；窄窗为 1080×900 CSS / 2160×1800 像素。
-- 全图比较：源应用角色聊天/资料与对应实现放在同一图像输入中检查；设置也以同一输入比较。
-  源应用是团队空间、英语和真实账号，实现是个人空间、中文与合成数据；源聊天右侧详情打开、
-  实现关闭，不比较正文总高度、内容密度或有无团队邀请。比较共同顶栏、侧栏分组、主区和资料导航。
-- 局部比较：源图 `/private/tmp/agentes-role-tabs-focus.jpg` 为原截图角色标签区域，1700×116 像素，
-  无缩放；实现 `role-tabs-focus.png` 为生产标签区域，1700×82 像素（850×41 CSS），同为密度 2。
-  二者在同一图像输入中核对文字、下划线、边线与状态。裁剪上下留白不同，不以其总高度推断行高差。
-- 四张角色 PNG 来自已选定的独立设计素材；已有自定义头像优先。实际角色数量和名字来自原登记。
 
 ## Findings 与比较历史
 

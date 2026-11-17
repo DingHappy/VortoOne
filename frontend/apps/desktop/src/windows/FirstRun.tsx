@@ -1,3 +1,4 @@
+import { helpDocument } from "@agenteschat/i18n/help";
 /**
  * The welcome window: how the app finds its server. "Onde fica o seu workspace?" first, the Cloud chosen and one's
  * own server beside it; one's own server leads to Connect (an address, or one found on this computer or the Tailscale
@@ -41,7 +42,6 @@ import {
   escapeAction,
   type FirstScreen,
   foundServers,
-  INSTALL_COMMAND,
   type LinkView,
   LOOK_MS,
   linkView,
@@ -358,7 +358,7 @@ function Choose({
         <PlaceScene place={pick} computer={host.platform} shape="tall" />
         <span className="dk-choose__brand" aria-hidden="true">
           <BrandFace size="sm" />
-          agentes.chat
+          VortoOne
         </span>
       </div>
       <div className="dk-choose__main">
@@ -425,54 +425,16 @@ function BackLink({ label, onClick }: { label: string; onClick: () => void }) {
  * on, whose last line is the link that opens it here; and the same as words to send to whoever installs it.
  */
 function Install({ onBack, onConnect }: { onBack: () => void; onConnect: () => void }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  const copy = () =>
-    void navigator.clipboard
-      .writeText(t("desktop.install.text", { command: INSTALL_COMMAND }))
-      .then(() => setCopied(true))
-      .catch(() => {});
+  const { t, i18n } = useTranslation();
   return (
     <>
       <BackLink label={t("desktop.place.title")} onClick={onBack} />
-      <h1 className="dk-fr__h1sm">{t("desktop.install.title")}</h1>
-      <p className="dk-lead">{t("desktop.install.lead")}</p>
-      <ol className="dk-fr__ways">
-        <li>
-          <span className="dk-fr__num">1</span>
-          <div>
-            <b>{t("desktop.install.step1")}</b>
-            <CommandCopy command={INSTALL_COMMAND} />
-          </div>
-        </li>
-        <li>
-          <span className="dk-fr__num">2</span>
-          <div>
-            <b>{t("desktop.install.step2")}</b>
-            <span className="dk-help">
-              {t("desktop.install.noLink")}{" "}
-              <button type="button" className="ac-link dk-link" onClick={onConnect}>
-                {t("desktop.place.haveOneLink")}
-              </button>
-            </span>
-          </div>
-        </li>
-      </ol>
-      <div className="dk-fr__share">
-        <span className="dk-help">{t("desktop.install.someoneElse")}</span>
-        <Button icon={copied ? "check" : "copy"} onClick={copy}>
-          {t(copied ? "desktop.install.copied" : "desktop.install.copy")}
-        </Button>
-      </div>
+      <h1 className="dk-fr__h1sm">VortoOne Desktop</h1>
+      <p className="dk-lead">{helpDocument("install-on-a-server", i18n.language).summary}</p>
+      <Button onClick={onConnect}>{t("desktop.place.haveOneLink")}</Button>
     </>
   );
 }
-
 /**
  * What's wrong with an address, with the one thing that fixes it where the app can do it: its updates for a server
  * newer than this app, Tailscale's app for a server on a Tailscale network it can't reach.

@@ -4,7 +4,7 @@ import { shownAddress } from "@agenteschat/client/lib/sites";
 import { Card, CardHeader, Icon } from "@agenteschat/ui";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";
 import { LoadingLine } from "@/components/Loading";
 import { PrefRow } from "@/components/NoticePrefs";
@@ -31,7 +31,7 @@ export function AboutSection() {
         title={
           // One inline run: the heading lays its children out with a gap, which would part the link from its words.
           <span>
-            <Trans i18nKey="settings.about.basedOn" components={{ site: <span /> }} />
+            VortoOne
           </span>
         }
       />
@@ -58,7 +58,6 @@ export function AboutSection() {
           />
         )}
       </div>
-      <p className="ac-card__foot">{t("settings.about.copyright")}</p>
     </Card>
   );
 }

@@ -81,6 +81,12 @@ class _SignIn(BaseModel):
     password: str = ""
 
 
+@router.post("/api/app/sign-in-options")
+async def sign_in_options(body: _SignIn):
+    """单主人服务不按邮箱枚举账号；所有地址都走同一个令牌密码入口。"""
+    return {"account": True, "password": True, "providers": [], "canSignUp": False}
+
+
 @router.post("/api/auth/sign-in/email")
 async def sign_in(body: _SignIn, request: Request, response: Response):
     """界面的登录框。密码一栏填的是主人令牌就按所有者登录（邮箱不参与判断，沿用 /api/auth/login）；
@@ -226,6 +232,13 @@ async def sign_out(request: Request, response: Response):
             pass                       # 账号文件读写不了：Cookie 照清，会话到期自己失效
     member_auth.clear_cookie(response)
     return {"success": True}
+
+
+@router.post("/api/app/device-accounts/sign-out")
+async def device_sign_out(request: Request, response: Response):
+    """新版客户端退出当前账号（界面的「退出」走这里）。所有者和成员都用它；一个浏览器只登一个账号。"""
+    await sign_out(request, response)
+    return {"signedIn": False}
 
 
 # ── 主人与空间 ────────────────────────────────────────────────────────────────

@@ -79,7 +79,6 @@ import { AccessMatrixSection } from "@/components/AccessLevels";
 import { AccountSection } from "@/components/AccountSettings";
 import { AiAppsSection } from "@/components/AiApps";
 import { ApprovalsSection } from "@/components/ApprovalCover";
-import { AppsDownloadSection } from "@/components/AppsDownload";
 import { AuditSection } from "@/components/Audit";
 import { AutoModelsRow } from "@/components/AutoModels";
 import { usePlanHold } from "@/components/ai/ConnectAiSteps";
@@ -266,7 +265,6 @@ function Settings({
         )}
       {current === "account" && <AccountSection />}
       {current === "notifications" && <NoticePrefsSection />}
-      {current === "download" && <AppsDownloadSection />}
       {current === "approvals" && <ApprovalsSection />}
       {current === "apps" && <AiAppsSection />}
       {current === "general" && <GeneralSection />}

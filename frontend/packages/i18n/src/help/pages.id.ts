@@ -4,150 +4,18 @@ import type { HelpDocument } from "./types";
 /** The help pages in id: a page not here shows in English. */
 export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
   "run-on-your-computer": {
-    title: "Jalankan agentes.chat di komputermu",
-    summary:
-      "Aplikasi agentes.chat juga bisa menjalankan agentes.chat sendiri, di Mac, PC, atau komputer Linux, untukmu atau tim kecil.",
-    sections: [
-      {
-        id: "download",
-        heading: "Unduh aplikasinya",
-        blocks: [
-          "[Unduh aplikasi agentes.chat](/download) untuk Mac, PC, atau komputer Linux-mu, lalu buka. Pilih **Di server sendiri**, tekan **Lanjut di server saya**, lalu **Jalankan agentes.chat di komputer ini**.",
-        ],
-      },
-      {
-        id: "how",
-        heading: "Cara kerjanya",
-        blocks: [
-          "agentes.chat berjalan di dalam aplikasi, dengan database bawaannya sendiri, dan menyimpan semuanya di satu folder di komputer ini, `.agentes` di folder pribadimu. Tidak ada lagi yang perlu dipasang: tanpa Docker, tanpa database yang perlu disiapkan.",
-          "agentes.chat menyala bersama aplikasi dan berhenti saat kamu menutupnya. Aplikasi bertanya dulu sebelum ditutup, karena tidak ada yang bisa memakai agentes.chat sampai aplikasinya dibuka lagi. Untuk menghentikannya sebentar tanpa menutup aplikasi, klik ikon agentes.chat di dekat jam dan pilih **Hentikan** di menu **⋯** pada kartunya.",
-        ],
-      },
-      {
-        id: "who",
-        heading: "Untuk siapa",
-        blocks: [
-          "Kamu atau tim kecil. Mac mini, PC cadangan, atau laptop yang tetap menyala cocok jadi rumahnya: siapkan seperti di [Biarkan tetap menyala](#keep-on). Di Mac atau PC, aplikasi inilah cara menjalankan agentes.chat tanpa Docker.",
-          "Untuk tim yang lebih besar, lihat [Pilih cara penyiapan](/help/install-on-a-server#choose). Datamu bisa dipindahkan ke server nanti.",
-        ],
-      },
-      {
-        id: "keep-on",
-        heading: "Biarkan tetap menyala",
-        blocks: [
-          "Di komputer yang juga diandalkan orang lain, siapkan sekali saja. **Tetap berjalan**, di **Preferensi\u00a0›\u00a0Server**, menunjukkan apa yang masih kurang dan membuka pengaturan yang tepat:",
-          {
-            list: [
-              "**Buka saat login** menyala sendiri setelah penyiapan.",
-              "Di Mac, nyalakan **Login otomatis** di **Pengaturan Sistem\u00a0›\u00a0Pengguna & Grup**, supaya aplikasinya terbuka setelah restart. FileVault mematikan login otomatis.",
-              "Di Mac, nyalakan **Mulai secara otomatis setelah listrik padam** di **Pengaturan Sistem\u00a0›\u00a0Energi**.",
-              "Mac tetap terjaga selama server berjalan dan **Akses dari ponselmu dan rekan tim** menyala. Di Windows dan Linux, matikan mode tidur di pengaturan daya sistem.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "agents",
-        heading: "Agen-agenmu juga bekerja di sini",
-        blocks: [
-          "Agen-agenmu juga bekerja di komputer ini, di folder mereka sendiri, dengan browser, dan dengan Claude Code atau Codex kalau terpasang di sini.",
-          "Agen di sini berjalan sebagai kamu. **Perintah** menyala sejak awal, dan dengan itu agen dari setiap ruang kerja yang memakai komputer ini bisa menjangkau semua isinya, termasuk data server. Matikan di **Preferensi\u00a0›\u00a0Alat**. Lihat [Apa yang bisa dijangkau agen](/help/computers#reach).",
-        ],
-      },
-      {
-        id: "another-workspace",
-        heading: "Pinjamkan juga ke ruang kerja lain",
-        blocks: [
-          "Ruang kerja dari server yang kamu jalankan di sini memakai komputer ini dengan sendirinya. Supaya ruang kerja di tempat lain juga bisa memakainya, misalnya ruang kerja di agentes.chat Cloud, tekan **Tambah ruang kerja…** di bagian bawah kartu pertama di **Preferensi\u00a0›\u00a0Umum**, atau **Tambah server…** di **Preferensi\u00a0›\u00a0Server**. Masuk ke ruang kerja itu, lalu tekan **Izinkan** saat aplikasi bertanya.",
-          "Tiap ruang kerja punya agen dan foldernya sendiri di sini. **Perintah** juga menyala sejak awal untuknya. Matikan di pertanyaan aplikasi sebelum menekan **Izinkan**, atau nanti di **Preferensi\u00a0›\u00a0Alat**, tempat tiap ruang kerja punya sakelarnya sendiri dan aplikasi bertanya dulu sebelum menyalakannya lagi.",
-        ],
-      },
-      {
-        id: "reach",
-        heading: "Dari ponselmu dan timmu",
-        blocks: [
-          "**Akses dari ponselmu dan rekan tim** menaruh agentes.chat di Tailscale, jaringan pribadi untuk perangkatmu: ponselmu dan orang yang kamu undang bergabung ke jaringan itu, dan tidak ada orang lain yang bisa menjangkau agentes.chat. Tailscale gratis: https://tailscale.com/download. Kalau dimatikan, agentes.chat hanya bisa dipakai di komputer ini.",
-          "Kalau komputer ini sudah membagikan hal lain di port 443 Tailscale, agentes.chat memakai port 8443, dan alamatnya diakhiri `:8443`.",
-        ],
-      },
-      {
-        id: "password",
-        heading: "Masuk dari perangkat lain",
-        blocks: [
-          "Awalnya pemilik tidak punya kata sandi: aplikasi memasukkanmu di komputer ini. Untuk masuk dari browser di komputer lain, tambahkan kata sandi di **Pengaturan\u00a0›\u00a0Akunmu**. Selama belum ada, **Preferensi\u00a0›\u00a0Server** mengingatkanmu, dan **Tambahkan kata sandi** membuka halaman itu. Aplikasi ponsel terhubung dengan memindai kode QR di bawah **Di ponselmu**, di **Preferensi\u00a0›\u00a0Server**. Untuk itu, **Akses dari ponselmu dan rekan tim** harus menyala.",
-          "Saat pemilik menghapus akunnya, di **Pengaturan\u00a0›\u00a0Akunmu**, akun itu hilang untuk selamanya 7 hari kemudian, dan ruang kerja yang hanya berisi dia ikut hilang. Sampai saat itu, masuk lalu tekan **Pulihkan akun** untuk memulihkannya. Setelah akun itu hilang, kalau tidak ada akun yang tersisa, aplikasi membuka jendela sambutan untuk membuat pemilik baru. Kalau orang lain masih punya akun, masing-masing masuk dengan email mereka sendiri.",
-        ],
-      },
-      {
-        id: "updates",
-        heading: "Pembaruan",
-        blocks: [
-          "Aplikasi mencari pembaruan sendiri. Kalau **Pasang pembaruan sendiri, di malam hari** menyala, di **Preferensi\u00a0›\u00a0Pembaruan**, aplikasi memasangnya antara pukul 3:00 dan 5:00 selama aplikasinya terbuka. Pengaturan ini menyala sejak awal kalau server berjalan di sini. Kalau tidak, tekan **Perbarui dan buka ulang**. Server dan semua agen ikut dimulai ulang. Database disalin dulu, dan kalau versi baru tidak merespons dalam 3 menit, aplikasi kembali sendiri ke versi sebelumnya beserta datanya.",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "Cadangan",
-        blocks: [
-          "Kalau **Cadangkan setiap malam** menyala (aplikasi 0.8.1 ke atas), di **Preferensi\u00a0›\u00a0Server**, aplikasi menyimpan database, file, dan `.env` di `.agentes/backups`, di folder pribadimu, setiap malam pukul 3:00. Komputer yang sedang tidur saat itu mencadangkan begitu bangun. **Cadangkan sekarang** melakukan hal yang sama saat itu juga. Setiap pencadangan menghentikan server sebentar, dan dua cadangan terbaru yang disimpan.",
-          "**Salin ke** juga menaruh setiap cadangan baru di folder pilihanmu, seperti flashdisk atau iCloud Drive, tempat dua cadangan terbaru disimpan. Isinya kunci-kuncimu: jaga kerahasiaannya. **Pulihkan…** mengembalikan agentes.chat ke sebuah cadangan: pesan, file, dan pengaturan. agentes.chat berhenti selama semenit, dan isi sebelumnya tetap disimpan di folder cadangan.",
-        ],
-      },
-      {
-        id: "uninstall",
-        heading: "Mulai dari awal atau copot pemasangan",
-        blocks: [
-          "Semua yang disimpan agentes.chat di komputer ini ada di folder-folder dalam folder pribadimu, bukan di dalam aplikasi. Jadi memindahkan aplikasi ke Tempat Sampah tidak menghapus apa pun dari situ, dan tidak menghentikan agentes.chat kalau sedang berjalan.",
-          "Untuk mulai dari awal, tekan **Hapus dan mulai dari awal…** di **Preferensi\u00a0›\u00a0Server**. agentes.chat di sini berhenti dan semua isinya dipindahkan ke folder baru di folder pribadimu, bernama `agentes.chat erased` dengan tanggal hari itu, dan tetap di sana sampai kamu menghapusnya. Yang disimpan para agennya di komputer ini, seperti browser dan login mereka, dihapus dari `.agentes-runner`. Ruang kerjanya hilang bagi semua orang yang memakainya. Lalu jendela sambutan terbuka, dan kamu menyiapkannya lagi dengan akun pemilik baru. File para agen, di `agentes` dalam folder pribadimu, tetap di tempatnya.",
-          "Untuk mengembalikannya nanti, keluar dari aplikasi, singkirkan folder `.agentes` yang lebih baru kalau ada, ubah nama folder `agentes.chat erased` menjadi `.agentes`, lalu buka aplikasi dan siapkan lagi di komputer ini. Ia berjalan lagi dengan ruang kerja dan pemiliknya seperti semula. Yang disimpan para agennya di komputer ini tidak kembali, jadi mereka perlu login lagi.",
-          "Untuk menghapus agentes.chat dari komputer ini sepenuhnya:",
-          {
-            list: [
-              "Matikan **Buka saat login** di **Preferensi\u00a0›\u00a0Umum**.",
-              "Keluar dari aplikasi. Menutup jendelanya saja tidak cukup. Di Mac, klik ikonnya di Dock, lalu pilih **Keluar dari agentes.chat** di menu agentes.chat di bagian atas layar, atau tekan ⌘Q. Di Windows dan Linux, klik ikon agentes.chat di dekat jam dan pilih **Keluar dari agentes.chat**. Kalau muncul pertanyaan **Keluar dari agentes.chat?**, tekan **Keluar**.",
-              "Hapus aplikasinya. Di Mac, pindahkan ke Tempat Sampah. Di Windows dan Linux, copot pemasangannya seperti aplikasi lain.",
-              "Hapus folder-folder ini di folder pribadimu. Isinya datamu, dan setelah dihapus tidak bisa kembali, jadi simpan dulu cadangan di tempat lain kalau mungkin masih kamu perlukan: `.agentes` (pesan, file, akun, pengaturan, dan cadangan), setiap folder `agentes.chat erased`, `.agentes-runner` (yang disimpan para agen di komputer ini, seperti browser dan login mereka), dan `agentes` (file para agen). Folder yang namanya diawali titik tersembunyi. Di Mac, buka folder pribadimu di Finder lalu tekan ⇧⌘. (Shift, Command, dan tombol titik) untuk menampilkannya.",
-              "Hapus folder milik aplikasi itu sendiri. Isinya hanya pengaturannya, login jendelanya, dan log-nya. Di Mac: semua yang namanya diawali `chat.agentes.desktop` di folder Application Support, Caches, HTTPStorages, Logs, Preferences, dan WebKit di `~/Library`, serta `agentes.chat.plist` di `~/Library/LaunchAgents`. Di Windows: `%APPDATA%\\chat.agentes.desktop` dan `%LOCALAPPDATA%\\chat.agentes.desktop`. Di Linux: `~/.config/chat.agentes.desktop` dan `~/.local/share/chat.agentes.desktop`. Di Mac, untuk membuka salah satu folder ini, tekan ⇧⌘G di Finder lalu ketik jalurnya, misalnya `~/Library/Caches`.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "ai-programs",
-        heading: "Claude Code dan Codex",
-        blocks: [
-          "Aplikasi mencari Claude Code dan Codex lewat `PATH` shell login-mu, ditambah folder yang biasa seperti `~/.local/bin`, `/opt/homebrew/bin`, dan `/usr/local/bin`. Kalau **Preferensi\u00a0›\u00a0Alat** menampilkan **Tidak ditemukan**, di situ ada baris untuk memasangnya. Jalankan baris itu di Terminal, lalu tekan **Periksa lagi**.",
-        ],
-      },
-      {
-        id: "moving",
-        heading: "Pindah ke server",
-        blocks: [
-          {
-            list: ["Tutup aplikasi, lalu buat dump database dengan salinan server milik aplikasi itu sendiri. Di Mac:"],
-          },
-          {
-            code: "BUN_BE_BUN=1 /Applications/agentes.chat.app/Contents/MacOS/agentes-runner \\\n  ~/.agentes/app/current/server/native.js db dump --data ~/.agentes --out agentes.sql",
-          },
-          {
-            list: [
-              "[Pasang agentes.chat di server](/help/install-on-a-server), tapi jangan dijalankan dulu. Di `.env`-nya, isi `AGENTES_SECRET` dari `~/.agentes/.env`, lalu jalankan databasenya saja: `docker compose up -d postgres`.",
-              "Muat dump-nya: `docker compose exec -T postgres psql -U agentes -d agentes -v ON_ERROR_STOP=1 < agentes.sql`.",
-              "Jalankan dengan `docker compose up -d`, salin `~/.agentes/files` ke dalamnya seperti di panduan lengkap, lalu masuk seperti sebelumnya.",
-            ],
-          },
-        ],
-      },
-    ],
-  },
+  "title": "Jalankan VortoOne di komputermu",
+  "summary": "Gunakan paket instalasi dan petunjuk koneksi dari rilis VortoOne Desktop saat ini. Versi ini tidak menyediakan layanan cloud terkelola atau pemasang server satu perintah.",
+  "sections": []
+},
   computers: {
     title: "Komputer dan ponselmu",
     summary:
-      "Bawa Mac, PC, komputer Linux, server, atau ponsel, dan agen-agenmu bekerja di sana. Sama saja di agentes.chat Cloud maupun di server milikmu sendiri.",
+      "Bawa Mac, PC, komputer Linux, server, atau ponsel, dan agen-agenmu bekerja di sana. Sama saja di VortoOne Cloud maupun di server milikmu sendiri.",
     sections: [
       {
         id: "app",
-        heading: "Dari aplikasi agentes.chat",
+        heading: "Dari aplikasi VortoOne",
         blocks: [
           "Pasang aplikasi di komputer itu, buka, lalu masuk ke ruang kerjamu. Aplikasi bertanya **Izinkan agen <workspace> memakai Mac ini?** (PC ini di Windows, komputer ini di Linux). Pilih siapa yang boleh memakainya lalu tekan **Izinkan**. Selesai.",
           "Sudah masuk? Buka **Preferensi\u00a0›\u00a0Umum** dan tekan **Izinkan** di baris ruang kerjanya, di kartu pertama. Tidak ada? Tekan **Tambah ruang kerja…** di bagian bawah kartu itu lalu masuk.",
@@ -186,14 +54,14 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "open",
         heading: "Selama aplikasinya terbuka",
         blocks: [
-          "Agen bekerja di komputer hanya selama aplikasi berjalan di sana dan komputernya tidak tidur. Saat aplikasi bertanya, biarkan **Tetap siap: buka agentes.chat saat login** tercentang. Komputer yang mati atau tidur tampil **Offline**, dan agen menunggu sampai komputernya kembali.",
+          "Agen bekerja di komputer hanya selama aplikasi berjalan di sana dan komputernya tidak tidur. Saat aplikasi bertanya, biarkan **Tetap siap: buka VortoOne saat login** tercentang. Komputer yang mati atau tidur tampil **Offline**, dan agen menunggu sampai komputernya kembali.",
         ],
       },
       {
         id: "pausing",
         heading: "Menjeda dan memutuskan",
         blocks: [
-          "Di komputer itu, ikon agentes.chat di dekat jam menjeda agen dari semua ruang kerja, atau dari satu ruang kerja saja. Di **Preferensi\u00a0›\u00a0Umum**, sakelar tiap ruang kerja hanya menjeda ruang kerja itu, dan **Keluar**, di menu **⋯**-nya, memutuskannya. Selama dijeda tidak ada yang baru dimulai, dan yang sedang berjalan tetap diselesaikan. Folder agen tetap tersimpan di disk setelah diputuskan.",
+          "Di komputer itu, ikon VortoOne di dekat jam menjeda agen dari semua ruang kerja, atau dari satu ruang kerja saja. Di **Preferensi\u00a0›\u00a0Umum**, sakelar tiap ruang kerja hanya menjeda ruang kerja itu, dan **Keluar**, di menu **⋯**-nya, memutuskannya. Selama dijeda tidak ada yang baru dimulai, dan yang sedang berjalan tetap diselesaikan. Folder agen tetap tersimpan di disk setelah diputuskan.",
           "Dari situs, **Hapus** di halaman perangkat memutuskannya.",
         ],
       },
@@ -201,7 +69,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "organizations",
         heading: "Beberapa ruang kerja, satu komputer",
         blocks: [
-          "Masuk ke tiap ruang kerja di aplikasi yang sama lalu tekan **Izinkan** untuk masing-masing. Ruang kerja di agentes.chat Cloud dan di server milikmu sendiri bisa berbagi satu komputer (aplikasi 0.6.1 ke atas). Masing-masing punya agen dan foldernya sendiri di sana, dan memutuskan satu ruang kerja tidak memengaruhi yang lain.",
+          "Masuk ke tiap ruang kerja di aplikasi yang sama lalu tekan **Izinkan** untuk masing-masing. Ruang kerja di VortoOne Cloud dan di server milikmu sendiri bisa berbagi satu komputer (aplikasi 0.6.1 ke atas). Masing-masing punya agen dan foldernya sendiri di sana, dan memutuskan satu ruang kerja tidak memengaruhi yang lain.",
           "Server yang dijalankan aplikasi di komputer ini sudah terhubung dan tidak perlu apa-apa. Untuk meminjamkan komputer itu juga ke ruang kerja di tempat lain, lihat [Pinjamkan juga ke ruang kerja lain](/help/run-on-your-computer#another-workspace).",
           "Memakai aplikasi di laptop hanya sebagai jendela ke ruang kerjamu? Saat aplikasi meminta izin agar agen memakai laptop itu, **Nanti saja** membuatnya tetap jadi jendela biasa.",
           "Server yang dihubungkan dengan baris terminal bekerja untuk satu workspace. Menghubungkannya dari workspace lain memindahkan server ke workspace itu, dan workspace pertama tidak lagi menjangkaunya. Untuk beberapa workspace di satu komputer, gunakan aplikasi.",
@@ -232,59 +100,24 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
               "file dan akun-akun yang kamu masuki",
               "folder agen lain, termasuk milik ruang kerja lain, dan login yang disimpan browser mereka",
               "token yang menghubungkan komputer ini",
-              "di komputer yang juga menjalankan agentes.chat, database dan kuncinya di `.agentes`",
+              "di komputer yang juga menjalankan VortoOne, database dan kuncinya di `.agentes`",
             ],
           },
-          "agentes.chat menolak perintah yang menyebut kunci, token, dan data login, tapi itu aturan, bukan tembok. **Perintah** menyala sejak awal. Matikan di pertanyaan aplikasi sebelum menekan **Izinkan**, atau nanti di **Preferensi\u00a0›\u00a0Alat**, tempat tiap ruang kerja punya sakelarnya sendiri (aplikasi 0.8.1 ke atas) dan aplikasi bertanya dulu sebelum menyalakannya lagi. Claude Code dan Codex menjalankan perintahnya sendiri di folder agen, dengan aturannya sendiri, bahkan saat Perintah mati.",
+          "VortoOne menolak perintah yang menyebut kunci, token, dan data login, tapi itu aturan, bukan tembok. **Perintah** menyala sejak awal. Matikan di pertanyaan aplikasi sebelum menekan **Izinkan**, atau nanti di **Preferensi\u00a0›\u00a0Alat**, tempat tiap ruang kerja punya sakelarnya sendiri (aplikasi 0.8.1 ke atas) dan aplikasi bertanya dulu sebelum menyalakannya lagi. Claude Code dan Codex menjalankan perintahnya sendiri di folder agen, dengan aturannya sendiri, bahkan saat Perintah mati.",
           "Untuk tembok sungguhan, pakai server Linux. Di Debian 13, kalau dipasang dengan `--system`, tiap agen jadi pengguna tersendiri. Di Ubuntu, agen berbagi satu pengguna, `agentes`: mereka bisa melihat folder satu sama lain, tapi bukan foldermu atau folder server. Atau beri agen komputer milik mereka sendiri.",
         ],
       },
     ],
   },
   "workspace-computer": {
-    title: "Komputer ruang kerja",
-    summary: "Tiap ruang kerja mendapat komputernya sendiri, selalu menyala, tempat agen-agennya bekerja.",
-    sections: [
-      {
-        id: "what",
-        heading: "Apa itu",
-        blocks: [
-          "Komputer khusus untuk ruang kerja ini, selalu menyala. Tiap agen punya pengguna sendiri di sana, dengan folder, layar, browser, dan file miliknya. Dari halaman agen kamu bisa melihatnya bekerja, dan mengambil alih saat perlu.",
-        ],
-      },
-      {
-        id: "own",
-        heading: "Komputer dan ponselmu sendiri",
-        blocks: [
-          "Agen juga bisa bekerja di komputer dan ponsel yang kamu bawa: Mac atau PC dengan aplikasi agentes.chat, server, ponsel Android, atau iPhone. Lihat [Komputer dan ponsel yang kamu bawa](/help/computers).",
-        ],
-      },
-      {
-        id: "plans",
-        heading: "Paket AI kamu",
-        blocks: [
-          "Agen-agenmu bisa berpikir dengan paket AI milikmu, seperti Claude, ChatGPT, GLM, atau Kimi, yang masuk di komputer ini: tanpa perlu kunci API. Akunnya tetap di komputer ini, dan agentes.chat tidak pernah melihat kata sandi atau aksesnya.",
-          "Paket AI Pro dan Ultra dari Google tidak bisa dipakai di sini: ketentuan Google tidak mengizinkannya di produk lain. Kunci API Gemini bisa.",
-        ],
-      },
-      {
-        id: "size",
-        heading: "Ukurannya",
-        blocks: ["CPU, memori, dan disknya terlihat di **Pengaturan\u00a0›\u00a0Perangkat**."],
-      },
-      {
-        id: "trouble",
-        heading: "Kalau tidak merespons",
-        blocks: [
-          "Biasanya komputer ini kembali dalam beberapa menit, dan kami sedang menanganinya: kamu tidak perlu melakukan apa-apa.",
-        ],
-      },
-    ],
-  },
+  "title": "Komputer ruang kerja",
+  "summary": "Gunakan paket instalasi dan petunjuk koneksi dari rilis VortoOne Desktop saat ini. Versi ini tidak menyediakan layanan cloud terkelola atau pemasang server satu perintah.",
+  "sections": []
+},
   import: {
     title: "Bawa agen-agenmu",
     summary:
-      "Bawa agen dari aplikasi lain, atau dari ruang kerja agentes.chat lain, lengkap dengan instruksi, skill, rutinitas, dan memorinya.",
+      "Bawa agen dari aplikasi lain, atau dari ruang kerja VortoOne lain, lengkap dengan instruksi, skill, rutinitas, dan memorinya.",
     sections: [
       {
         id: "comes",
@@ -472,7 +305,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
   },
   "who-answers": {
     title: "Siapa yang menjawab pesan",
-    summary: "Sebutan memilih agennya. Tanpa sebutan, agentes.chat memilihkan untukmu, dengan urutan ini.",
+    summary: "Sebutan memilih agennya. Tanpa sebutan, VortoOne memilihkan untukmu, dengan urutan ini.",
     sections: [
       {
         id: "order",
@@ -494,7 +327,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "jev",
         heading: "Jev",
         blocks: [
-          "Saat agentes.chat menjadi host ruang kerjamu, Jev sudah termasuk. Di server yang kamu jalankan sendiri, Jev memakai kunci TypeSafe milik pemilik, sekitar US$ 0,0001 per pesan: [Siapkan Jev](/help/jev#setup).",
+          "Saat VortoOne menjadi host ruang kerjamu, Jev sudah termasuk. Di server yang kamu jalankan sendiri, Jev memakai kunci TypeSafe milik pemilik, sekitar US$ 0,0001 per pesan: [Siapkan Jev](/help/jev#setup).",
         ],
       },
       {
@@ -551,7 +384,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
               "Buka https://console.typesafe.ai lalu masuk dengan Google atau emailmu. Akun baru dibuat dengan cara yang sama.",
               "Tambahkan saldo di konsol. Jev memakai sistem prabayar.",
               "Buka https://console.typesafe.ai/keys, buat kunci, lalu langsung salin.",
-              "Di agentes.chat, buka **Pengaturan › AI dan pemakaian** lalu tempel di bawah **Jev**. Hanya orang yang menyiapkan server ini yang bisa melihatnya.",
+              "Di VortoOne, buka **Pengaturan › AI dan pemakaian** lalu tempel di bawah **Jev**. Hanya orang yang menyiapkan server ini yang bisa melihatnya.",
             ],
           },
           "Di server yang kamu jalankan dengan Docker, kamu juga bisa menaruh kuncinya di `.env` sebagai `TYPESAFE_API_KEY`. Kunci itu lebih diutamakan daripada yang ada di Pengaturan.",
@@ -609,14 +442,14 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
   "apps-de-ia": {
     title: "Aplikasi AI",
     summary:
-      "Minta tugas ke agen-agen agentes.chat dari Claude, Cursor, atau aplikasi MCP lain, tanpa meninggalkannya, dan dapatkan jawabannya di sana.",
+      "Minta tugas ke agen-agen VortoOne dari Claude, Cursor, atau aplikasi MCP lain, tanpa meninggalkannya, dan dapatkan jawabannya di sana.",
     sections: [
       {
         id: "what",
         heading: "Cara kerjanya",
         blocks: [
-          "agentes.chat adalah server MCP. Kamu menempel alamatnya di aplikasi AI kamu, masuk dengan akunmu, dan memilih ruang kerja. Sejak itu, aplikasinya bisa melihat daftar agen dan kanal, mengirim tugas ke agen atas namamu, menunggu balasannya, dan membaca tugas terbaru.",
-          'Misalnya, di tengah mengerjakan adegan di Unity atau Blender, minta ke Claude: "Minta agen marketing membuat teks peluncuran". Pesannya muncul di agentes.chat sebagai pesanmu, bertanda **via Claude**, dan balasan agennya kembali ke Claude.',
+          "VortoOne adalah server MCP. Kamu menempel alamatnya di aplikasi AI kamu, masuk dengan akunmu, dan memilih ruang kerja. Sejak itu, aplikasinya bisa melihat daftar agen dan kanal, mengirim tugas ke agen atas namamu, menunggu balasannya, dan membaca tugas terbaru.",
+          'Misalnya, di tengah mengerjakan adegan di Unity atau Blender, minta ke Claude: "Minta agen marketing membuat teks peluncuran". Pesannya muncul di VortoOne sebagai pesanmu, bertanda **via Claude**, dan balasan agennya kembali ke Claude.',
           "Alamatnya ada di **Pengaturan › Aplikasi AI**. Alamat itu diakhiri `/mcp`.",
         ],
       },
@@ -626,14 +459,14 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
         blocks: [
           {
             list: [
-              "**Claude** (claude.ai, Claude Desktop, dan ponsel): di **Sesuaikan › Konektor**, klik **+ Tambah**, lalu **Tambahkan konektor kustom**, beri nama agentes.chat, tempel alamatnya, lalu klik **Lanjutkan**. Pilih **Masuk sekarang**, klik **Tambah**, lalu beri izin. Di paket Team dan Enterprise, Pemilik organisasi Claude menambahkan konektornya di Pengaturan organisasi › Konektor, dan tiap orang mengklik **Hubungkan** di Sesuaikan › Konektor. Paket gratis Claude punya tempat untuk satu konektor kustom.",
+              "**Claude** (claude.ai, Claude Desktop, dan ponsel): di **Sesuaikan › Konektor**, klik **+ Tambah**, lalu **Tambahkan konektor kustom**, beri nama VortoOne, tempel alamatnya, lalu klik **Lanjutkan**. Pilih **Masuk sekarang**, klik **Tambah**, lalu beri izin. Di paket Team dan Enterprise, Pemilik organisasi Claude menambahkan konektornya di Pengaturan organisasi › Konektor, dan tiap orang mengklik **Hubungkan** di Sesuaikan › Konektor. Paket gratis Claude punya tempat untuk satu konektor kustom.",
               "**Claude Code:** jalankan `claude mcp add --transport http --scope user agentes <address>`, lalu ketik `/mcp`, pilih agentes dan **Authenticate**. Untuk folder saat ini saja, hapus `--scope user`.",
               "**Cursor:** **Tambahkan ke Cursor** di **Pengaturan › Aplikasi AI**, atau tulis alamatnya di `~/.cursor/mcp.json`. Cursor memintamu masuk saat pertama kali dipakai.",
               '**VS Code:** **Tambahkan ke VS Code**, atau tulis alamatnya di `.vscode/mcp.json` dengan `"type": "http"`.',
               "**Aplikasi lain:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains, dan lainnya punya langkah masing-masing di **Hubungkan aplikasi**, dengan alamatmu sudah terisi.",
             ],
           },
-          "Saat kamu masuk, agentes.chat menampilkan aplikasi mana yang meminta akses dan ke mana aplikasi itu kembali. Lanjutkan hanya kalau kamu baru saja memulai koneksinya.",
+          "Saat kamu masuk, VortoOne menampilkan aplikasi mana yang meminta akses dan ke mana aplikasi itu kembali. Lanjutkan hanya kalau kamu baru saja memulai koneksinya.",
         ],
       },
       {
@@ -650,7 +483,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
               "`list_recent_tasks`: tugas yang kamu kirim dari aplikasi dan apa yang sedang dikerjakan agen.",
             ],
           },
-          "Aplikasi bertindak atas namamu dan hanya melihat apa yang kamu lihat. Aplikasi tidak pernah menyetujui tindakan agen: saat agen berhenti untuk meminta persetujuan, balasannya memberi tahu hal itu dengan tautan, dan orang yang memutuskan di agentes.chat. Aplikasi juga tidak mengubah pengaturan, anggota, atau izin.",
+          "Aplikasi bertindak atas namamu dan hanya melihat apa yang kamu lihat. Aplikasi tidak pernah menyetujui tindakan agen: saat agen berhenti untuk meminta persetujuan, balasannya memberi tahu hal itu dengan tautan, dan orang yang memutuskan di VortoOne. Aplikasi juga tidak mengubah pengaturan, anggota, atau izin.",
         ],
       },
       {
@@ -686,7 +519,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "safety",
         heading: "Teks dari orang lain",
         blocks: [
-          "Balasan berisi teks yang ditulis agen dan orang di agentes.chat. Aplikasi menerima teks itu bertanda sebagai konten, bukan instruksi, tetapi sebuah teks tetap bisa mencoba membujuk aplikasi melakukan hal lain. Periksa apa yang akan dilakukan aplikasimu sebelum kamu mengonfirmasi.",
+          "Balasan berisi teks yang ditulis agen dan orang di VortoOne. Aplikasi menerima teks itu bertanda sebagai konten, bukan instruksi, tetapi sebuah teks tetap bisa mencoba membujuk aplikasi melakukan hal lain. Periksa apa yang akan dilakukan aplikasimu sebelum kamu mengonfirmasi.",
         ],
       },
       {
@@ -705,154 +538,8 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
     ],
   },
   "install-on-a-server": {
-    title: "Pasang agentes.chat di server",
-    summary:
-      "Jalankan agentes.chat di servermu sendiri, gratis, untuk seluruh timmu. Satu perintah menyiapkan semuanya.",
-    sections: [
-      {
-        id: "choose",
-        heading: "Pilih cara penyiapan",
-        blocks: [
-          {
-            list: [
-              "**agentes.chat Cloud**: untuk tim mana pun, bisa diakses dari mana saja. Kami yang menjalankan, memperbarui, dan mencadangkannya. Tiap ruang kerja mendapat komputernya sendiri, dan di sana tiap agen jadi pengguna tersendiri.",
-              "**Komputermu, dengan aplikasinya**: untukmu atau tim kecil, bisa diakses selama komputer itu menyala. Mac mini yang tetap menyala cocok sekali. Kamu memperbaruinya dengan satu klik dan mencadangkannya secara manual. Agen berjalan sebagai kamu di komputer itu.",
-              "**Server**: untuk tim yang lebih besar, menyala terus. Kamu memperbaruinya dengan tiga perintah, dan server bisa mencadangkan dirinya sendiri setiap hari. Di Debian 13, tiap agen jadi pengguna tersendiri.",
-            ],
-          },
-          "Dari komputermu ke server: [Pindah ke server](/help/run-on-your-computer#moving). Semuanya bisa membawa agen dari yang lain dengan [Bawa agen-agenmu](/help/import).",
-        ],
-      },
-      {
-        id: "need",
-        heading: "Yang kamu perlukan",
-        blocks: [
-          {
-            list: [
-              "Server atau VPS dengan Linux 64-bit, di x64 atau arm64. Untuk tim kecil, 2 CPU, memori 4 GB, dan disk 20 GB sudah cukup untuk mulai. Di Mac atau PC, [aplikasinya menjalankan agentes.chat](/help/run-on-your-computer) tanpa Docker.",
-              "Docker dengan Compose. Di Linux, pemasang menambahkannya kalau belum ada, setelah bertanya dulu.",
-              "Cara masuk: akun Tailscale gratis (bawaan, privat, tanpa domain dan tanpa port terbuka), atau domain yang mengarah ke server, dengan port 80 dan 443 terbuka.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "install",
-        heading: "Pasang",
-        blocks: [
-          "Di server, jalankan:",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh",
-          },
-          "Pemasang memasang yang belum ada, lalu menanyakan beberapa hal: cara orang masuk, email, apakah server ini juga jadi komputer agenmu, dan apakah mengirim statistik pemakaian anonim. Tekan Enter untuk jawaban yang disarankan. Semuanya dipasang di `/opt/agentes` (`~/agentes` untuk pengguna yang sudah bisa memakai Docker), dan pertama kali ia mengunduh sekitar 2 GB.",
-          "Di akhir, ia menampilkan alamat servermu dan kode QR untuk ponselmu. Menjalankannya lagi aman: pengaturanmu tetap, dan hanya yang kurang yang dilengkapi.",
-          "Dengan Node.js 18 atau lebih baru, `npx @agenteschat/setup` di folder kosong adalah penyiapan yang sama. Tanpa Node, ia berjalan dari image aplikasi, di folder saat ini, dan diakhiri dengan perintah yang menyalakan sisanya:",
-          {
-            code: 'docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work ghcr.io/agentes-chat/agentes:latest setup',
-          },
-        ],
-      },
-      {
-        id: "reach",
-        heading: "Cara orang masuk",
-        blocks: [
-          {
-            list: [
-              "**Tailscale**, bawaan: HTTPS privat di `https://agentes.<tailnet-mu>.ts.net`, hanya untuk perangkat di jaringan Tailscale-mu. Sebelum memasang, nyalakan MagicDNS dan HTTPS di https://console.tailscale.com/admin/dns dan buat kunci akses (auth key) di https://console.tailscale.com/admin/settings/keys untuk diminta saat penyiapan.",
-              "**Domain publik**: siapa pun di internet bisa membukanya, misalnya di `https://chat.example.com`. Arahkan domain ke server dan buka port 80 dan 443. Penyiapan mengambil sertifikat dan memperbaruinya, dan memintamu membuat akun sebelum domain aktif.",
-              "**Hanya mesin ini**: `http://localhost:3000`, untuk mencoba di komputermu sendiri.",
-            ],
-          },
-          "Di Tailscale, server keluar dari jaringanmu saat kuncinya kedaluwarsa, setelah 180 hari. Agar tetap ada, buka menu **⋯** server di https://console.tailscale.com/admin/machines dan pilih **Disable Key Expiry**.",
-          "Webhook yang memulai rutinitas, dan aplikasi AI yang memanggil dari server mereka sendiri, butuh alamat publik. Di Tailscale, Funnel membuka alamat yang sama ke internet: tambahkan Funnel ke kebijakan tailnet-mu di https://console.tailscale.com/admin/acls dan atur `TAILSCALE_FUNNEL=true` di `.env`, lalu jalankan `docker compose up -d`.",
-        ],
-      },
-      {
-        id: "owner",
-        heading: "Akunmu",
-        blocks: [
-          "Buka alamat servermu dan daftar: akun pertama menjadi pemilik. Setelah itu pendaftaran ditutup, dan orang masuk lewat undangan, dari **Pengaturan\u00a0›\u00a0Anggota dan undangan**.",
-          "Di Tailscale, orang yang kamu undang juga perlu masuk ke tailnet-mu. Undang mereka dulu di https://console.tailscale.com/admin/users lalu di agentes.chat.",
-        ],
-      },
-      {
-        id: "email",
-        heading: "Email",
-        blocks: [
-          "Tanpa email, agentes.chat menulis setiap email ke log-nya alih-alih mengirimnya, jadi tautan undangan tetap bisa disalin dari sana. Atur ulang kata sandi tetap mati, dan email baru untuk sebuah akun langsung berlaku, tanpa kode atau tautan.",
-          {
-            code: "docker compose logs agentes | grep 'email (not sent'",
-          },
-          "Penyiapan menerima server email milikmu sendiri (SMTP) atau kunci API yang kompatibel dengan Resend, seperti MillionSend atau Resend. Email dikirim dari `ping@` domain servermu kecuali kamu memilih pengirim lain, dan domain itu harus terverifikasi di penyedia emailmu. Untuk menyiapkannya nanti, jalankan pemasangan lagi.",
-        ],
-      },
-      {
-        id: "phone",
-        heading: "Ponselmu",
-        blocks: [
-          {
-            list: [
-              "Di Tailscale, pasang aplikasi Tailscale di ponselmu dan masuk ke tailnet yang sama.",
-              "Pasang aplikasi agentes.chat.",
-              "Pindai kode QR yang ditampilkan penyiapan, atau yang ada di **Pengaturan\u00a0›\u00a0Akunmu\u00a0›\u00a0Buka di ponselmu**, yang juga langsung memasukkanmu.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "computers",
-        heading: "Komputer agen-agenmu",
-        blocks: [
-          "Penyiapan bisa menjadikan server ini juga komputer agenmu, tempat mereka menjalankan perintah, memakai browser, dan menyimpan file. Ia bertanya, dan menyarankan ya kalau server sanggup. Di Debian 13, setiap agen mendapat pengguna sendiri, dengan layar. Di Ubuntu, agen berbagi satu pengguna, `agentes`. Kalau kamu menjawab tidak, jalankan pemasangan lagi dengan `--computer yes`:",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh -s -- --computer yes",
-          },
-          "Komputer lain, seperti Mac dengan aplikasi agentes.chat atau server lain, terhubung dari **Pengaturan\u00a0›\u00a0Perangkat**, seperti di [Komputer dan ponselmu](/help/computers). Di Tailscale, komputer itu masuk ke tailnet-mu lebih dulu.",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "Cadangan dan pemulihan",
-        blocks: [
-          "Servermu terdiri dari tiga hal: database, file yang diunggah, dan `AGENTES_SECRET` di `.env`. Simpan salinan `.env` di tempat aman, terpisah dari cadangan: tanpa rahasia itu, kunci yang tersimpan di database yang dipulihkan tidak bisa dibaca.",
-          "Untuk cadangan setiap hari, buat bucket privat di Cloudflare R2 atau penyimpanan lain yang kompatibel dengan S3, dan kunci yang bisa membaca, menulis, dan menghapus di sana. Tambahkan ke `.env`, dengan `backup` di `COMPOSE_PROFILES` (`https,backup` dengan domain publik):",
-          {
-            code: "S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com\nS3_ACCESS_KEY_ID=…\nS3_SECRET_ACCESS_KEY=…\nS3_BACKUP_BUCKET=agentes-backups\nCOMPOSE_PROFILES=tailscale,backup",
-          },
-          "Lalu jalankan `docker compose up -d` di folder pemasangan. Database dicadangkan pukul 03:00 UTC dan setiap cadangan disimpan 14 hari. `docker compose run --rm backup now` membuat satu saat itu juga, dan `docker compose run --rm backup list` menampilkan daftarnya. Cadangan hanya berisi database: file yang diunggah, di volume `files`, perlu salinan sendiri, dan panduan lengkap di bawah punya perintahnya.",
-          "Untuk memulihkan, ambil cadangan dengan `docker compose run --rm -T backup fetch <nama> > agentes.dump`, lalu muat ke database kosong saat aplikasi berhenti:",
-          {
-            code: "docker compose stop agentes\ndocker compose exec -T postgres dropdb -U agentes --force agentes\ndocker compose exec -T postgres createdb -U agentes agentes\ndocker compose exec -T postgres pg_restore -U agentes -d agentes --exit-on-error < agentes.dump\ndocker compose start agentes",
-          },
-          "Pulihkan ke versi yang membuat cadangan itu, atau versi yang lebih baru.",
-        ],
-      },
-      {
-        id: "upgrades",
-        heading: "Pembaruan",
-        blocks: [
-          "Di folder pemasangan, jalankan:",
-          {
-            code: "curl -fsSLO https://agentes.chat/install/docker-compose.yml\ndocker compose pull\ndocker compose up -d",
-          },
-          "Database memperbarui dirinya sendiri saat versi baru menyala. Simpan pengaturanmu di `.env` dan jangan pernah mengubah `docker-compose.yml`, karena setiap pembaruan menggantinya. Buat cadangan sebelum lompatan besar: database yang diperbarui versi lebih baru tidak bisa dibuka di versi lebih lama.",
-        ],
-      },
-      {
-        id: "data",
-        heading: "Yang dikirim",
-        blocks: [
-          "Sekali sehari server mengirim statistik pemakaian anonim ke agentes.chat: hitungan seperti jumlah orang, agen, ukuran mesin, token AI yang dipakai, dan berapa banyak data yang dikirim dan diterima browser para agen. Tidak pernah pesan, file, nama, atau situs. `docker compose run --rm agentes telemetry` menampilkan persis apa yang akan dikirim. Pemilik mematikannya di **Pengaturan\u00a0›\u00a0Umum**, atau dengan `TELEMETRY=off` di `.env`.",
-          "Laporan galat tidak dikirim ke mana pun kecuali kamu mengatur `SENTRY_DSN` ke server yang kompatibel dengan Sentry pilihanmu. Laporan berisi galat dan tempat terjadinya, tidak pernah pesan, email, alamat IP, cookie, atau token.",
-        ],
-      },
-      {
-        id: "reference",
-        heading: "Panduan lengkap",
-        blocks: [
-          "Semua pengaturan, proxy milikmu sendiri seperti nginx, menjalankan tanpa Docker, langkah-langkah untuk agen AI yang memasangnya sendiri, dan apa yang dilakukan saat ada yang gagal ada di `SELF_HOSTING.md`, di repositori agentes.chat.",
-        ],
-      },
-    ],
-  },
+  "title": "Pasang VortoOne di server",
+  "summary": "Gunakan paket instalasi dan petunjuk koneksi dari rilis VortoOne Desktop saat ini. Versi ini tidak menyediakan layanan cloud terkelola atau pemasang server satu perintah.",
+  "sections": []
+},
 };

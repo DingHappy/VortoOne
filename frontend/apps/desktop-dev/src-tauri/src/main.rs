@@ -43,6 +43,15 @@ fn show(
 
 const LIVE: &str = "live";
 
+fn live_window_capability(port: u16) -> tauri::ipc::CapabilityBuilder {
+    tauri::ipc::CapabilityBuilder::new(format!("dev-live-window-{port}"))
+        .local(false)
+        .remote(format!("{}/*", backend::origin(port)))
+        .webview(LIVE)
+        .permission("core:window:allow-start-dragging")
+        .permission("core:window:allow-internal-toggle-maximize")
+}
+
 /// 连接真实后端：读配置、启动后端、换一次登录、打开主窗口。没有配置文件时什么也不做（保持界面预览）。
 /// 在后台线程里跑：后端冷启动要几秒到几十秒，不能卡住界面。
 fn connect(app: tauri::AppHandle) {
@@ -72,13 +81,15 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
         *slot = Some(child);
     }
     let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
+    app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if let Some(old) = handle.get_webview_window(LIVE) {
             let _ = old.destroy();
         }
-        let built = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
+        let builder = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
             .title("VortoOne Dev")
+            .initialization_script(include_str!("../../desktop-titlebar.js"))
             .inner_size(1440.0, 960.0)
             .min_inner_size(900.0, 600.0)
             .center()
@@ -92,8 +103,13 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
                 }
                 false
             })
-            .on_new_window(|_, _| NewWindowResponse::Deny)
-            .build();
+            .on_new_window(|_, _| NewWindowResponse::Deny);
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(18.0, 18.0));
+        let built = builder.build();
         match built {
             // 连上了：预览窗口让位（菜单里仍可打开）
             Ok(_) => {
@@ -204,6 +220,22 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_live_backend_can_drag_its_own_window() {
+        use tauri::ipc::RuntimeCapability;
+        use tauri::utils::acl::capability::{CapabilityFile, PermissionEntry};
+        let CapabilityFile::Capability(cap) = live_window_capability(4321).build() else { panic!("one capability expected") };
+        assert!(!cap.local);
+        assert!(cap.windows.is_empty());
+        assert_eq!(cap.webviews, [LIVE]);
+        assert_eq!(cap.remote.unwrap().urls, ["http://127.0.0.1:4321/*"]);
+        let permissions: Vec<_> = cap.permissions.iter().map(|permission| match permission {
+            PermissionEntry::PermissionRef(id) => id.get().to_owned(),
+            _ => panic!("unscoped window permission expected"),
+        }).collect();
+        assert_eq!(permissions, ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]);
+    }
 
     #[test]
     fn navigation_stays_in_packaged_pages() {

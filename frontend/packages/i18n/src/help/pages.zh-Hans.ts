@@ -4,149 +4,18 @@ import type { HelpDocument } from "./types";
 /** The help pages in zh-Hans: a page not here shows in English. */
 export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
   "run-on-your-computer": {
-    title: "在你的电脑上运行 agentes.chat",
-    summary: "agentes.chat 应用也可以在 Mac、PC 或 Linux 电脑上直接运行 agentes.chat，供你自己或小团队使用。",
-    sections: [
-      {
-        id: "download",
-        heading: "下载应用",
-        blocks: [
-          "为你的 Mac、PC 或 Linux 电脑[下载 agentes.chat 应用](/download)并打开。选择**在你自己的服务器上**，点击**继续使用我的服务器**，然后点击**在这台电脑上运行 agentes.chat**。",
-        ],
-      },
-      {
-        id: "how",
-        heading: "运行方式",
-        blocks: [
-          "它在应用内运行，自带数据库，所有内容都保存在这台电脑的一个文件夹里，也就是你主文件夹中的 `.agentes`。无需安装其他东西：不用 Docker，也不用配置数据库。",
-          "它随应用启动，退出应用时停止。退出前会先询问你，因为在应用重新打开之前，谁都无法使用 agentes.chat。要在不退出应用的情况下暂时停止它，请点按时钟旁的 agentes.chat 图标，在它卡片的 **⋯** 菜单中选择 **停止**。",
-        ],
-      },
-      {
-        id: "who",
-        heading: "适合谁",
-        blocks: [
-          "适合你自己或小团队。一台一直开着的 Mac mini、一台闲置的 PC 或一台笔记本电脑都很合适：按 [保持开机](#keep-on) 中的方法设置好。在 Mac 或 PC 上，用这个应用就能不借助 Docker 运行 agentes.chat。",
-          "团队更大的话，请看 [选哪种方式](/help/install-on-a-server#choose)。你的数据之后可以迁移到服务器。",
-        ],
-      },
-      {
-        id: "keep-on",
-        heading: "保持开机",
-        blocks: [
-          "如果这台电脑也有别人在用，请设置一次。**偏好设置\u00a0›\u00a0服务器** 中的 **保持运行** 会显示还缺什么，并打开对应的设置：",
-          {
-            list: [
-              "设置完成后，**登录时打开** 会自动开启。",
-              "在 Mac 上，到 **系统设置\u00a0›\u00a0用户与群组** 中开启 **自动登录**，这样重启后应用会自动打开。开启 FileVault 会关闭自动登录。",
-              "在 Mac 上，到 **系统设置\u00a0›\u00a0能源** 中开启 **断电后自动启动**。",
-              "服务器在运行且 **从你的手机和队友那里访问** 开启时，Mac 会保持唤醒。在 Windows 和 Linux 上，请在系统的电源设置中关闭睡眠。",
-            ],
-          },
-        ],
-      },
-      {
-        id: "agents",
-        heading: "你的智能体也在这里工作",
-        blocks: [
-          "你的智能体也在这台电脑上工作，各自有自己的文件夹和浏览器，如果这里装了 Claude Code 或 Codex，它们也能使用。",
-          "这里的智能体以你的身份运行。**命令** 默认开启，开启时，使用这台电脑的每个工作区的智能体都能访问这台电脑上的一切，包括服务器的数据。可在 **偏好设置\u00a0›\u00a0工具** 中关闭。请看 [智能体能访问什么](/help/computers#reach)。",
-        ],
-      },
-      {
-        id: "another-workspace",
-        heading: "也借给其他工作区",
-        blocks: [
-          "你在这里运行的服务器上的工作区会自动使用这台电脑。要让别处的工作区也使用它，比如 agentes.chat Cloud 上的工作区，请点 **偏好设置\u00a0›\u00a0通用** 第一张卡片底部的 **添加工作区…**，或 **偏好设置\u00a0›\u00a0服务器** 中的 **添加服务器…**。登录那个工作区，在应用询问时点 **允许**。",
-          "每个工作区在这里都有自己的智能体和文件夹。**命令** 对它也默认开启。你可以在应用询问时、按 **允许** 之前关闭，或之后在 **偏好设置\u00a0›\u00a0工具** 中关闭，那里每个工作区都有自己的开关，重新开启前应用会先询问你。",
-        ],
-      },
-      {
-        id: "reach",
-        heading: "从手机和团队访问",
-        blocks: [
-          "**从你的手机和队友那里访问** 会把 agentes.chat 接入 Tailscale，一个连接你各台设备的私有网络：你的手机和你邀请的人可以加入，其他人都无法访问 agentes.chat。Tailscale 是免费的：https://tailscale.com/download 。关闭这个选项时，agentes.chat 只能在这台电脑上使用。",
-          "如果这台电脑已经在 Tailscale 的 443 端口上共享了别的东西，agentes.chat 会改用 8443，地址以 `:8443` 结尾。",
-        ],
-      },
-      {
-        id: "password",
-        heading: "从其他设备登录",
-        blocks: [
-          "所有者一开始没有密码：在这台电脑上，应用会帮你登录。要在另一台电脑的浏览器中登录，请在 **设置\u00a0›\u00a0你的账号** 中添加密码。在你添加之前，**偏好设置\u00a0›\u00a0服务器** 会提醒你，点 **添加密码** 就会打开那个页面。手机应用扫描 **偏好设置\u00a0›\u00a0服务器** 中 **在你的手机上** 下方的二维码即可连接。这需要开启 **从你的手机和队友那里访问**。",
-          "所有者在 **设置\u00a0›\u00a0你的账号** 中删除账号后，账号会在 7 天后彻底删除，只有所有者一人的工作区也会随之删除。在此之前，登录并点按 **恢复账号** 即可恢复。删除后，如果一个账号都不剩，应用会打开欢迎窗口来创建新的所有者。如果其他人还有账号，每个人用自己的邮箱登录。",
-        ],
-      },
-      {
-        id: "updates",
-        heading: "更新",
-        blocks: [
-          "应用会自动检查更新。在 **偏好设置\u00a0›\u00a0更新** 中开启 **夜间自动安装更新** 后，只要应用开着，它就会在 3:00 到 5:00 之间安装。服务器在这里运行时，这一项默认开启。否则请点 **更新并重新打开**。服务器和所有智能体会随之重启。数据库会先复制一份，如果新版本在 3 分钟内没有响应，应用会自动回到上一个版本及其数据。",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "备份",
-        blocks: [
-          "在 **偏好设置\u00a0›\u00a0服务器** 中开启 **每晚备份** 后（应用 0.8.1 及以上版本），应用每晚 3:00 会把数据库、文件和 `.env` 保存到你主文件夹的 `.agentes/backups` 中。那时处于睡眠的电脑会在醒来后备份。**立即备份** 会马上做同样的事。每次备份都会让服务器暂停片刻，并保留最新的两份。",
-          "**复制到** 会把每份新备份也放进你选的文件夹，比如 U 盘或 iCloud 云盘，那里同样保留最新的两份。里面有你的密钥：请妥善保管，不要给别人。**恢复…** 会把 agentes.chat 恢复到某份备份：消息、文件和设置。它会停止一分钟左右，之前的内容会留在备份文件夹中。",
-        ],
-      },
-      {
-        id: "uninstall",
-        heading: "重新开始或卸载",
-        blocks: [
-          "agentes.chat 在这台电脑上保存的所有内容都在你主文件夹的文件夹里，而不在应用里面。所以把应用移到废纸篓不会删除其中任何内容，也不会停止正在运行的 agentes.chat。",
-          "要重新开始，请在 **偏好设置\u00a0›\u00a0服务器** 中点按 **清除并重新开始…**。这台电脑上的 agentes.chat 会停止，里面的所有内容会移到你主文件夹中的一个新文件夹（名为 `agentes.chat erased` 加上当天日期），并留在那里，直到你删除它。它的智能体在这台电脑上保存的内容，比如它们的浏览器和登录信息，会从 `.agentes-runner` 中删除。它的工作区会对所有使用者消失。之后欢迎窗口会打开，你用新的所有者账号重新设置。智能体的文件在你主文件夹的 `agentes` 中，会留在原处。",
-          "以后要恢复它，请退出应用，如果有更新的 `.agentes` 文件夹就先把它移开，把 `agentes.chat erased` 文件夹重新命名为 `.agentes`，然后打开应用，在这台电脑上重新设置。它会带着原来的工作区和所有者启动。它的智能体在这台电脑上保存的内容不会恢复，所以它们需要重新登录。",
-          "要把 agentes.chat 从这台电脑上彻底移除：",
-          {
-            list: [
-              "在 **偏好设置\u00a0›\u00a0通用** 中关闭 **登录时打开**。",
-              "退出应用。只关闭窗口是不够的。在 Mac 上，点按它在程序坞中的图标，然后在屏幕顶部的 agentes.chat 菜单中选择 **退出 agentes.chat**，或按 ⌘Q。在 Windows 和 Linux 上，点按时钟旁的 agentes.chat 图标，选择 **退出 agentes.chat**。如果它询问 **退出 agentes.chat？**，点按 **退出**。",
-              "删除应用。在 Mac 上，把它移到废纸篓。在 Windows 和 Linux 上，像卸载其他应用一样卸载它。",
-              "删除你主文件夹中的这些文件夹。它们保存着你的数据，删除后无法恢复，所以如果以后可能还需要，请先在别处留一份备份：`.agentes`（消息、文件、账号、设置和备份）、每个 `agentes.chat erased` 文件夹、`.agentes-runner`（智能体在这台电脑上保存的内容，比如它们的浏览器和登录信息）以及 `agentes`（智能体的文件）。名称以点开头的文件夹是隐藏的。在 Mac 上，在访达中打开你的主文件夹，按 ⇧⌘.（Shift、Command 和句点键）即可显示。",
-              "删除应用自己的文件夹。里面只有它的设置、窗口的登录信息和日志。在 Mac 上：`~/Library` 中 Application Support、Caches、HTTPStorages、Logs、Preferences 和 WebKit 文件夹里名称以 `chat.agentes.desktop` 开头的所有内容，以及 `~/Library/LaunchAgents` 中的 `agentes.chat.plist`。在 Windows 上：`%APPDATA%\\chat.agentes.desktop` 和 `%LOCALAPPDATA%\\chat.agentes.desktop`。在 Linux 上：`~/.config/chat.agentes.desktop` 和 `~/.local/share/chat.agentes.desktop`。在 Mac 上，要打开其中一个文件夹，请在访达中按 ⇧⌘G，然后输入它的路径，比如 `~/Library/Caches`。",
-            ],
-          },
-        ],
-      },
-      {
-        id: "ai-programs",
-        heading: "Claude Code 和 Codex",
-        blocks: [
-          "应用通过你登录 shell 的 `PATH`，以及 `~/.local/bin`、`/opt/homebrew/bin` 和 `/usr/local/bin` 等常用文件夹来查找 Claude Code 和 Codex。如果 **偏好设置\u00a0›\u00a0工具** 显示 **未找到**，那里会显示安装它的命令。在终端中运行这条命令，然后点 **重新检查**。",
-        ],
-      },
-      {
-        id: "moving",
-        heading: "迁移到服务器",
-        blocks: [
-          {
-            list: ["退出应用，然后用应用自带的服务器导出数据库。在 Mac 上："],
-          },
-          {
-            code: "BUN_BE_BUN=1 /Applications/agentes.chat.app/Contents/MacOS/agentes-runner \\\n  ~/.agentes/app/current/server/native.js db dump --data ~/.agentes --out agentes.sql",
-          },
-          {
-            list: [
-              "[把 agentes.chat 安装到服务器上](/help/install-on-a-server)，但先不要启动。在它的 `.env` 中填入 `~/.agentes/.env` 里的 `AGENTES_SECRET`，然后只启动数据库：`docker compose up -d postgres`。",
-              "导入导出的文件：`docker compose exec -T postgres psql -U agentes -d agentes -v ON_ERROR_STOP=1 < agentes.sql`。",
-              "用 `docker compose up -d` 启动它，按完整指南中的方法把 `~/.agentes/files` 复制进去，然后像以前一样登录。",
-            ],
-          },
-        ],
-      },
-    ],
-  },
+  "title": "在你的电脑上运行 VortoOne",
+  "summary": "请使用当前 VortoOne Desktop 版本提供的安装包和连接说明。此版本未提供托管云服务或一键服务器安装命令。",
+  "sections": []
+},
   computers: {
     title: "你的电脑和手机",
     summary:
-      "带上 Mac、PC、Linux 电脑、服务器或手机，你的智能体就能在上面工作。在 agentes.chat Cloud 和你自己的服务器上都一样。",
+      "带上 Mac、PC、Linux 电脑、服务器或手机，你的智能体就能在上面工作。在 VortoOne Cloud 和你自己的服务器上都一样。",
     sections: [
       {
         id: "app",
-        heading: "通过 agentes.chat 应用",
+        heading: "通过 VortoOne 应用",
         blocks: [
           "在那台电脑上安装并打开应用，登录你的工作区。它会问 **允许 <workspace> 的智能体使用这台 Mac？**（Windows 上是这台 PC，Linux 上是这台电脑）。选择谁可以使用，然后点 **允许**。就这么简单。",
           "已经登录了？打开 **偏好设置\u00a0›\u00a0通用**，在第一张卡片中这个工作区的那一行点 **允许**。没有看到？点那张卡片底部的 **添加工作区…** 并登录。",
@@ -185,14 +54,14 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "open",
         heading: "应用打开期间",
         blocks: [
-          "只有当应用在那台电脑上运行、电脑处于唤醒状态时，智能体才能在上面工作。应用询问时，请保持勾选 **保持就绪：登录时打开 agentes.chat**。关机或睡眠的电脑会显示 **离线**，智能体会等它回来。",
+          "只有当应用在那台电脑上运行、电脑处于唤醒状态时，智能体才能在上面工作。应用询问时，请保持勾选 **保持就绪：登录时打开 VortoOne**。关机或睡眠的电脑会显示 **离线**，智能体会等它回来。",
         ],
       },
       {
         id: "pausing",
         heading: "暂停和断开",
         blocks: [
-          "在电脑上，时钟旁的 agentes.chat 图标可以暂停所有工作区的智能体，也可以只暂停其中一个。在 **偏好设置\u00a0›\u00a0通用** 中，每个工作区的开关只暂停那一个，它 **⋯** 菜单中的 **离开** 则断开它。暂停期间不会开始新工作，正在运行的会照常完成。断开后，智能体的文件夹仍保留在磁盘上。",
+          "在电脑上，时钟旁的 VortoOne 图标可以暂停所有工作区的智能体，也可以只暂停其中一个。在 **偏好设置\u00a0›\u00a0通用** 中，每个工作区的开关只暂停那一个，它 **⋯** 菜单中的 **离开** 则断开它。暂停期间不会开始新工作，正在运行的会照常完成。断开后，智能体的文件夹仍保留在磁盘上。",
           "在网站上，设备页面上的 **移除** 会断开它。",
         ],
       },
@@ -200,7 +69,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "organizations",
         heading: "一台电脑，多个工作区",
         blocks: [
-          "在同一个应用中分别登录每个工作区，并为每个工作区点 **允许**。agentes.chat Cloud 上的工作区和你自己服务器上的工作区可以共用一台电脑（应用 0.6.1 及以上版本）。每个工作区在上面都有自己的智能体和文件夹，断开其中一个不会影响其他工作区。",
+          "在同一个应用中分别登录每个工作区，并为每个工作区点 **允许**。VortoOne Cloud 上的工作区和你自己服务器上的工作区可以共用一台电脑（应用 0.6.1 及以上版本）。每个工作区在上面都有自己的智能体和文件夹，断开其中一个不会影响其他工作区。",
           "应用在这台电脑上运行的服务器已经连接好，无需任何操作。如果还想把这台电脑借给别处的工作区，请看 [也借给其他工作区](/help/run-on-your-computer#another-workspace)。",
           "只把笔记本电脑上的应用当作打开工作区的窗口？当它询问是否让智能体使用这台笔记本电脑时，点 **以后再说**，它就仍然只是一个窗口。",
           "用终端命令行连接的服务器只为一个工作区工作。从另一个工作区连接它，服务器就会转到那个工作区，原来的工作区将无法再使用它。要在一台电脑上使用多个工作区，请使用应用。",
@@ -231,56 +100,23 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
               "你的文件和登录信息",
               "其他智能体的文件夹，包括其他工作区的，以及它们浏览器中保存的登录",
               "连接这台电脑的令牌",
-              "如果这台电脑也运行 agentes.chat，还有 `.agentes` 中它的数据库和密钥",
+              "如果这台电脑也运行 VortoOne，还有 `.agentes` 中它的数据库和密钥",
             ],
           },
-          "agentes.chat 会拒绝提到密钥、令牌和登录信息的命令，但这只是一条规则，不是一堵墙。**命令** 默认开启。你可以在应用询问时、按 **允许** 之前关闭，或之后在 **偏好设置\u00a0›\u00a0工具** 中关闭，那里每个工作区都有自己的开关（应用 0.8.1 及以上版本），重新开启前应用会先询问你。即使命令关闭，Claude Code 和 Codex 也会在智能体的文件夹中按自己的规则运行自己的命令。",
+          "VortoOne 会拒绝提到密钥、令牌和登录信息的命令，但这只是一条规则，不是一堵墙。**命令** 默认开启。你可以在应用询问时、按 **允许** 之前关闭，或之后在 **偏好设置\u00a0›\u00a0工具** 中关闭，那里每个工作区都有自己的开关（应用 0.8.1 及以上版本），重新开启前应用会先询问你。即使命令关闭，Claude Code 和 Codex 也会在智能体的文件夹中按自己的规则运行自己的命令。",
           "如果需要一堵真正的墙，请使用 Linux 服务器。在 Debian 13 上用 `--system` 安装时，每个智能体都是一个独立的用户。在 Ubuntu 上，智能体共用一个用户 `agentes`：它们能看到彼此的文件夹，但看不到你的或服务器的。或者给智能体一台专用电脑。",
         ],
       },
     ],
   },
   "workspace-computer": {
-    title: "工作区的电脑",
-    summary: "每个工作区都有一台始终开机的专属电脑，它的智能体就在上面工作。",
-    sections: [
-      {
-        id: "what",
-        heading: "它是什么",
-        blocks: [
-          "一台只属于这个工作区、始终开机的电脑。每个智能体在上面都有自己的用户，有自己的文件夹、屏幕、浏览器和文件。在智能体页面上，你可以看着它工作，需要时也可以接管操作。",
-        ],
-      },
-      {
-        id: "own",
-        heading: "你的电脑和手机",
-        blocks: [
-          "智能体也可以在你带来的电脑和手机上工作：装有 agentes.chat 应用的 Mac 或 PC、服务器、Android 手机或 iPhone。请看 [你带来的电脑和手机](/help/computers)。",
-        ],
-      },
-      {
-        id: "plans",
-        heading: "你的 AI 套餐",
-        blocks: [
-          "你的智能体可以用你自己的 AI 套餐来思考，比如 Claude、ChatGPT、GLM 或 Kimi，只需在这台电脑上登录，无需 API 密钥。账号只留在这台电脑上，agentes.chat 永远看不到密码和登录凭据。",
-          "Google 的 AI Pro 和 Ultra 套餐在这里无法使用：Google 的条款不允许在其他产品中使用它们。Gemini 的 API 密钥可以。",
-        ],
-      },
-      {
-        id: "size",
-        heading: "配置",
-        blocks: ["它的 CPU、内存和磁盘显示在 **设置 › 设备** 中。"],
-      },
-      {
-        id: "trouble",
-        heading: "如果它没有响应",
-        blocks: ["它通常几分钟内就会恢复，我们也在处理：你这边无需做任何事。"],
-      },
-    ],
-  },
+  "title": "工作区的电脑",
+  "summary": "请使用当前 VortoOne Desktop 版本提供的安装包和连接说明。此版本未提供托管云服务或一键服务器安装命令。",
+  "sections": []
+},
   import: {
     title: "带上你的智能体",
-    summary: "从其他应用或另一个 agentes.chat 工作区带来智能体，连同它们的指令、技能、例行工作和记忆。",
+    summary: "从其他应用或另一个 VortoOne 工作区带来智能体，连同它们的指令、技能、例行工作和记忆。",
     sections: [
       {
         id: "comes",
@@ -458,7 +294,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
   },
   "who-answers": {
     title: "谁来回复消息",
-    summary: "提及会指定智能体。没有提及时，agentes.chat 按以下顺序替你选择。",
+    summary: "提及会指定智能体。没有提及时，VortoOne 按以下顺序替你选择。",
     sections: [
       {
         id: "order",
@@ -480,7 +316,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "jev",
         heading: "Jev",
         blocks: [
-          "由 agentes.chat 托管你的工作区时，Jev 已包含在内。在你自己运行的服务器上，它使用所有者的 TypeSafe 密钥，每条消息约 0.0001 美元：[设置 Jev](/help/jev#setup)。",
+          "由 VortoOne 托管你的工作区时，Jev 已包含在内。在你自己运行的服务器上，它使用所有者的 TypeSafe 密钥，每条消息约 0.0001 美元：[设置 Jev](/help/jev#setup)。",
         ],
       },
       {
@@ -536,7 +372,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
               "打开 https://console.typesafe.ai ，用 Google 或你的邮箱登录。新账号也用同样的方式创建。",
               "在控制台中充值。Jev 是预付费的。",
               "打开 https://console.typesafe.ai/keys ，创建一个密钥并立即复制。",
-              "在 agentes.chat 中打开 **设置 › AI 和用量**，把它粘贴到 **Jev** 下面。只有设置这台服务器的人能看到它。",
+              "在 VortoOne 中打开 **设置 › AI 和用量**，把它粘贴到 **Jev** 下面。只有设置这台服务器的人能看到它。",
             ],
           },
           "在用 Docker 运行的服务器上，你也可以把密钥写进 `.env` 的 `TYPESAFE_API_KEY`。它优先于设置中的密钥。",
@@ -593,14 +429,14 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
   },
   "apps-de-ia": {
     title: "AI 应用",
-    summary: "在 Claude、Cursor 或其他 MCP 应用中直接请 agentes.chat 的智能体完成任务，无需离开，答案就在原处返回。",
+    summary: "在 Claude、Cursor 或其他 MCP 应用中直接请 VortoOne 的智能体完成任务，无需离开，答案就在原处返回。",
     sections: [
       {
         id: "what",
         heading: "工作原理",
         blocks: [
-          "agentes.chat 是一个 MCP 服务器。把它的地址粘贴到你的 AI 应用中，用你的账号登录并选择一个工作区。之后，这个应用就可以列出智能体和频道、以你的身份给智能体发送任务、等待回复，以及查看最近的任务。",
-          "例如，正在 Unity 或 Blender 里编辑场景时，对 Claude 说：“让市场智能体写一段发布文案”。这条消息会以你的名义出现在 agentes.chat 中，标注 **via Claude**，智能体的回复会回到 Claude。",
+          "VortoOne 是一个 MCP 服务器。把它的地址粘贴到你的 AI 应用中，用你的账号登录并选择一个工作区。之后，这个应用就可以列出智能体和频道、以你的身份给智能体发送任务、等待回复，以及查看最近的任务。",
+          "例如，正在 Unity 或 Blender 里编辑场景时，对 Claude 说：“让市场智能体写一段发布文案”。这条消息会以你的名义出现在 VortoOne 中，标注 **via Claude**，智能体的回复会回到 Claude。",
           "地址在 **设置 › AI 应用** 中，以 `/mcp` 结尾。",
         ],
       },
@@ -610,14 +446,14 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
         blocks: [
           {
             list: [
-              "**Claude**（claude.ai、Claude Desktop 和手机）：在 **Customize › Connectors** 中点 **+ Add**，再点 **Add custom connector**，命名为 agentes.chat，粘贴地址后点 **Continue**。选择 **Sign in now**，点 **Add** 并授权。在 Team 和 Enterprise 套餐中，由 Claude 组织的 Owner 在 Organization settings › Connectors 中添加连接器，每个人再在 Customize › Connectors 中点 **Connect**。Claude 免费版可以添加一个自定义连接器。",
+              "**Claude**（claude.ai、Claude Desktop 和手机）：在 **Customize › Connectors** 中点 **+ Add**，再点 **Add custom connector**，命名为 VortoOne，粘贴地址后点 **Continue**。选择 **Sign in now**，点 **Add** 并授权。在 Team 和 Enterprise 套餐中，由 Claude 组织的 Owner 在 Organization settings › Connectors 中添加连接器，每个人再在 Customize › Connectors 中点 **Connect**。Claude 免费版可以添加一个自定义连接器。",
               "**Claude Code：** 运行 `claude mcp add --transport http --scope user agentes <address>`，然后输入 `/mcp`，选择 agentes 并点 **Authenticate**。只用于当前文件夹时，去掉 `--scope user`。",
               "**Cursor：** 在 **设置 › AI 应用** 中点 **添加到 Cursor**，或把地址写进 `~/.cursor/mcp.json`。第一次使用时，Cursor 会请你登录。",
               '**VS Code：** 点 **添加到 VS Code**，或把地址写进 `.vscode/mcp.json`，并加上 `"type": "http"`。',
               "**其他应用：** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains 等在 **连接应用** 里都有各自的步骤，地址已经填好。",
             ],
           },
-          "登录时，agentes.chat 会显示是哪个应用请求访问、之后会返回到哪里。只有在你刚刚发起连接时才继续。",
+          "登录时，VortoOne 会显示是哪个应用请求访问、之后会返回到哪里。只有在你刚刚发起连接时才继续。",
         ],
       },
       {
@@ -634,7 +470,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
               "`list_recent_tasks`：你从应用发出的任务，以及智能体正在做的事。",
             ],
           },
-          "应用以你的身份行事，只能看到你能看到的内容。它永远不会审批智能体的操作：当智能体停下来请求审批时，回复中会说明并附上链接，由人在 agentes.chat 中做决定。它也不会更改设置、成员或权限。",
+          "应用以你的身份行事，只能看到你能看到的内容。它永远不会审批智能体的操作：当智能体停下来请求审批时，回复中会说明并附上链接，由人在 VortoOne 中做决定。它也不会更改设置、成员或权限。",
         ],
       },
       {
@@ -670,7 +506,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "safety",
         heading: "他人写的文字",
         blocks: [
-          "回复中包含智能体和成员在 agentes.chat 中写的文字。应用收到的这些文字会被标记为内容而非指令，但某段文字仍可能试图诱导应用去做别的事。在确认之前，请检查你的应用将要做什么。",
+          "回复中包含智能体和成员在 VortoOne 中写的文字。应用收到的这些文字会被标记为内容而非指令，但某段文字仍可能试图诱导应用去做别的事。在确认之前，请检查你的应用将要做什么。",
         ],
       },
       {
@@ -689,153 +525,8 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
     ],
   },
   "install-on-a-server": {
-    title: "在服务器上安装 agentes.chat",
-    summary: "在你自己的服务器上免费运行 agentes.chat，供整个团队使用。一条命令就能装好。",
-    sections: [
-      {
-        id: "choose",
-        heading: "选哪种方式",
-        blocks: [
-          {
-            list: [
-              "**agentes.chat Cloud**：适合任何团队，在哪里都能访问。由我们运行、更新和备份。每个工作区都有自己的电脑，每个智能体在上面都是独立的用户。",
-              "**你的电脑，配合应用**：适合你自己或小团队，在那台电脑开机时可以访问。一台一直开着的 Mac mini 就很合适。一键更新，手动备份。智能体在那台电脑上以你的身份运行。",
-              "**服务器**：适合更大的团队，一直在线。用三条命令更新，还可以每天自动备份。在 Debian 13 上，每个智能体都是独立的用户。",
-            ],
-          },
-          "从你的电脑迁移到服务器：[迁移到服务器](/help/run-on-your-computer#moving)。任何一种方式都可以通过 [带上你的智能体](/help/import) 从另一种方式带来智能体。",
-        ],
-      },
-      {
-        id: "need",
-        heading: "你需要什么",
-        blocks: [
-          {
-            list: [
-              "一台 64 位 Linux（x64 或 arm64）服务器或 VPS。小团队可以从 2 个 CPU、4 GB 内存和 20 GB 磁盘起步。在 Mac 或 PC 上，[应用就能运行 agentes.chat](/help/run-on-your-computer)，不需要 Docker。",
-              "带 Compose 的 Docker。在 Linux 上，缺少时安装程序会先问你，再帮你装上。",
-              "一种访问方式：一个免费的 Tailscale 账号（默认方式，私有，不需要域名，也不用开放端口），或者一个指向服务器的域名，并开放 80 和 443 端口。",
-            ],
-          },
-        ],
-      },
-      {
-        id: "install",
-        heading: "安装",
-        blocks: [
-          "在服务器上运行：",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh",
-          },
-          "它会装好缺少的东西，然后问几个问题：大家怎么访问、邮件、这台服务器是否也当作智能体的电脑，以及是否发送匿名使用统计。按 Enter 采用建议的答案。它装在 `/opt/agentes`（已经能用 Docker 的用户装在 `~/agentes`），第一次会下载大约 2 GB。",
-          "最后它会显示服务器的地址和一个给手机用的二维码。再运行一次也没关系：它会保留你的设置，只补上缺少的部分。",
-          "有 Node.js 18 或更新版本时，在空文件夹里运行 `npx @agenteschat/setup` 是同样的设置。没有 Node 的话，它可以从应用的镜像在当前文件夹里运行，最后会给出启动其余部分的命令：",
-          {
-            code: 'docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work ghcr.io/agentes-chat/agentes:latest setup',
-          },
-        ],
-      },
-      {
-        id: "reach",
-        heading: "大家怎么访问",
-        blocks: [
-          {
-            list: [
-              "**Tailscale**，默认方式：在 `https://agentes.<你的tailnet>.ts.net` 上的私有 HTTPS，只有你 Tailscale 网络里的设备能打开。安装前，先在 https://console.tailscale.com/admin/dns 打开 MagicDNS 和 HTTPS，并在 https://console.tailscale.com/admin/settings/keys 创建一个认证密钥（auth key），设置时会要用。",
-              "**公开域名**：互联网上任何人都能打开，比如 `https://chat.example.com`。把域名指向服务器，开放 80 和 443 端口。设置会申请并续期证书，并在域名上线前让你先创建账号。",
-              "**只在这台机器**：`http://localhost:3000`，用来在你自己的电脑上试用。",
-            ],
-          },
-          "在 Tailscale 上，服务器的密钥 180 天后过期，过期后服务器会离开你的网络。要让它一直在，打开 https://console.tailscale.com/admin/machines ，在服务器的 **⋯** 菜单里选择 **Disable Key Expiry**。",
-          "启动例行任务的 Webhook，以及从自己服务器发起调用的 AI 应用，需要一个公开地址。在 Tailscale 上，Funnel 可以把同一个地址开放到互联网：在 https://console.tailscale.com/admin/acls 把 Funnel 加进你 tailnet 的策略，在 `.env` 里设置 `TAILSCALE_FUNNEL=true`，然后运行 `docker compose up -d`。",
-        ],
-      },
-      {
-        id: "owner",
-        heading: "你的账号",
-        blocks: [
-          "打开服务器的地址并注册：第一个账号就是所有者。之后注册会关闭，其他人通过邀请加入，邀请在 **设置\u00a0›\u00a0成员和邀请** 里发出。",
-          "在 Tailscale 上，你邀请的人也需要加入你的 tailnet。先在 https://console.tailscale.com/admin/users 邀请他们，再在 agentes.chat 里邀请。",
-        ],
-      },
-      {
-        id: "email",
-        heading: "邮件",
-        blocks: [
-          "没有配置邮件时，agentes.chat 会把每封邮件写进日志而不是发出去，所以邀请链接可以从日志里复制。重置密码不可用，账号换新邮箱会立即生效，无需验证码或链接。",
-          {
-            code: "docker compose logs agentes | grep 'email (not sent'",
-          },
-          "设置可以使用你自己的邮件服务器（SMTP），或者一个兼容 Resend 的 API 密钥，比如 MillionSend 或 Resend。除非你另选发件人，邮件会从服务器域名的 `ping@` 发出，这个域名需要在你的邮件服务商那里验证过。以后想配置，再运行一次安装就行。",
-        ],
-      },
-      {
-        id: "phone",
-        heading: "你的手机",
-        blocks: [
-          {
-            list: [
-              "使用 Tailscale 时，在手机上安装 Tailscale 应用，并登录同一个 tailnet。",
-              "安装 agentes.chat 应用。",
-              "扫描设置显示的二维码，或者 **设置\u00a0›\u00a0你的账号\u00a0›\u00a0在手机上打开** 里的二维码，后者还会帮你登录。",
-            ],
-          },
-        ],
-      },
-      {
-        id: "computers",
-        heading: "智能体的电脑",
-        blocks: [
-          "设置可以把这台服务器也当作智能体的电脑，它们在上面运行命令、使用浏览器、存放文件。设置会先问你，在服务器能胜任时建议选是。在 Debian 13 上，每个智能体都有自己的用户和屏幕。在 Ubuntu 上，智能体共用一个用户 `agentes`。如果你选了否，加上 `--computer yes` 再运行一次安装：",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh -s -- --computer yes",
-          },
-          "其他电脑，比如装了 agentes.chat 应用的 Mac 或另一台服务器，在 **设置\u00a0›\u00a0设备** 里连接，详见 [你的电脑和手机](/help/computers)。使用 Tailscale 时，它们要先加入你的 tailnet。",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "备份和恢复",
-        blocks: [
-          "你的服务器由三样东西组成：数据库、上传的文件，以及 `.env` 里的 `AGENTES_SECRET`。把 `.env` 的副本放在安全的地方，和备份分开：没有这个密钥，恢复后的数据库里存的密钥就读不出来。",
-          "要每天备份，在 Cloudflare R2 或其他兼容 S3 的存储上建一个私有存储桶，再建一个能在里面读、写、删除的密钥。把它们加到 `.env`，并在 `COMPOSE_PROFILES` 里加上 `backup`（用公开域名时是 `https,backup`）：",
-          {
-            code: "S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com\nS3_ACCESS_KEY_ID=…\nS3_SECRET_ACCESS_KEY=…\nS3_BACKUP_BUCKET=agentes-backups\nCOMPOSE_PROFILES=tailscale,backup",
-          },
-          "然后在安装文件夹里运行 `docker compose up -d`。数据库会在 03:00 UTC 导出，每份导出保留 14 天。`docker compose run --rm backup now` 立即做一份，`docker compose run --rm backup list` 列出所有导出。导出只包含数据库：`files` 卷里上传的文件需要单独复制，命令在下面的完整指南里。",
-          "要恢复，先用 `docker compose run --rm -T backup fetch <名称> > agentes.dump` 取回一份导出，然后在应用停止时把它载入一个空数据库：",
-          {
-            code: "docker compose stop agentes\ndocker compose exec -T postgres dropdb -U agentes --force agentes\ndocker compose exec -T postgres createdb -U agentes agentes\ndocker compose exec -T postgres pg_restore -U agentes -d agentes --exit-on-error < agentes.dump\ndocker compose start agentes",
-          },
-          "恢复到做这份导出的版本，或者更新的版本。",
-        ],
-      },
-      {
-        id: "upgrades",
-        heading: "升级",
-        blocks: [
-          "在安装文件夹里运行：",
-          {
-            code: "curl -fsSLO https://agentes.chat/install/docker-compose.yml\ndocker compose pull\ndocker compose up -d",
-          },
-          "新版本启动时，数据库会自动更新。把设置放在 `.env` 里，不要修改 `docker-compose.yml`，每次升级都会替换它。大版本跨越前先备份：被新版本更新过的数据库，旧版本打不开。",
-        ],
-      },
-      {
-        id: "data",
-        heading: "它会发送什么",
-        blocks: [
-          "服务器每天向 agentes.chat 发送一次匿名使用统计：人数、智能体数量、机器大小、用掉的 AI 令牌，以及智能体的浏览器收发了多少数据等计数。从不发送消息、文件、名字或网站。`docker compose run --rm agentes telemetry` 会原样显示将要发送的内容。所有者可以在 **设置\u00a0›\u00a0常规** 里关闭，或者在 `.env` 里设置 `TELEMETRY=off`。",
-          "除非你把 `SENTRY_DSN` 设为你自己选的兼容 Sentry 的服务器，否则错误报告不会发到任何地方。报告包含错误和发生的位置，从不包含消息、邮箱地址、IP 地址、Cookie 或令牌。",
-        ],
-      },
-      {
-        id: "reference",
-        heading: "完整指南",
-        blocks: [
-          "所有设置、自己的代理（比如 nginx）、不用 Docker 的运行方式、给自行安装的 AI 智能体的步骤，以及出问题时怎么办，都在 agentes.chat 仓库里的 `SELF_HOSTING.md` 中。",
-        ],
-      },
-    ],
-  },
+  "title": "在服务器上安装 VortoOne",
+  "summary": "请使用当前 VortoOne Desktop 版本提供的安装包和连接说明。此版本未提供托管云服务或一键服务器安装命令。",
+  "sections": []
+},
 };
