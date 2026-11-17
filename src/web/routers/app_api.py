@@ -81,6 +81,12 @@ class _SignIn(BaseModel):
     password: str = ""
 
 
+@router.post("/api/app/sign-in-options")
+async def sign_in_options(body: _SignIn):
+    """单主人服务不按邮箱枚举账号；所有地址都走同一个令牌密码入口。"""
+    return {"account": True, "password": True, "providers": [], "canSignUp": False}
+
+
 @router.post("/api/auth/sign-in/email")
 async def sign_in(body: _SignIn, request: Request, response: Response):
     """界面的登录框：密码一栏填主人令牌，校验与种 Cookie 沿用 /api/auth/login，邮箱不参与判断。"""
@@ -147,6 +153,13 @@ async def sign_out(response: Response):
     from src.web.routers.auth_routes import logout
     await logout(response)
     return {"success": True}
+
+
+@router.post("/api/app/device-accounts/sign-out")
+async def device_sign_out(response: Response):
+    """新版客户端退出当前账号；此服务只有这一位主人。"""
+    await sign_out(response)
+    return {"signedIn": False}
 
 
 # ── 主人与空间 ────────────────────────────────────────────────────────────────

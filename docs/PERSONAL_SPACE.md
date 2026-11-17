@@ -1,8 +1,7 @@
 # 安装引导与个人空间改版
 
 2026-11-13 主人确认：每个运行端先有一个个人空间，里面管理多个项目；退出面向用户的
-`vc` / `vortocode` 产品入口，保留内部启动、诊断与第三方执行器。参考 agentes.chat 的
-安装与空间组织方式，沿用现有 Python runtime、主人确认、污点、岗位、任务和调度合同。
+`vc` / `vortocode` 产品入口，保留内部启动、诊断与第三方执行器。沿用现有 Python runtime、主人确认、污点、岗位、任务和调度合同。
 
 ## 概念与当前实现（P0）
 
@@ -115,8 +114,3 @@ P4 的 `settingsTarget.test.ts` 覆盖目标变化、同 client 的 epoch、迟�
 旧目标隐藏停用与不装配不存在的空间表单；设置搜索测试覆盖各项归属。`test_resident_keeps_user_home_for_shared_global_instructions`
 验证常驻启动沿用用户目录与既有全局指令，不把文案当作配置隔离的证据。
 浏览器复查步骤及证据边界见 `desktop/qa/design-qa-settings-targets.md`。
-
-源码参考固定在 agentes.chat
-[`afabf5b`](https://github.com/agentes-chat/agentes-chat/tree/afabf5b9555152f51298843948943dfc809518f0)：
-`apps/desktop/src/windows/FirstRun.tsx`、`apps/desktop/src-tauri/src/local_server.rs` 与
-`packages/db/src/schema/tenancy.ts`。只借鉴流程与归属，不照搬团队权限、自动恢复或技术栈。

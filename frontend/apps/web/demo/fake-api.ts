@@ -209,7 +209,7 @@ export interface FakeState {
   authConfig?: Partial<AuthConfig>;
   /** Overrides `account.signInOptions` (default: no account, sign-up allowed). */
   signInOptions?: SignInOptions;
-  /** The server `account.phoneSignIn` names (default: https://app.agentes.chat). */
+  /** The server `account.phoneSignIn` names (default: https://chat.example.com). */
   phoneServer?: string;
   /** Questions someone else answered on the server (this tab still shows them open). */
   answeredElsewhere?: Set<string>;
@@ -881,7 +881,7 @@ export function seedState(overrides: Partial<FakeState> = {}): FakeState {
           "ap-merge",
           ADA_ID,
           "Merge PR #42 into main",
-          "github.merge_pull_request · agentes-chat/app · PR 42",
+          "github.merge_pull_request · example/app · PR 42",
           2,
           "msg-card",
         ),
@@ -1419,11 +1419,11 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
     system: {
       health: async () => ({ status: "ok", version: "test", edition: state.edition ?? "cloud" }),
       instance: async () => ({
-        name: "agentes.chat",
+        name: "VortoOne",
         version: "test",
         api: 1,
         minApi: 1,
-        url: "https://app.agentes.chat",
+        url: "https://chat.example.com",
         signIn: { email: true, google: false, github: true, apple: false },
         signup: "open",
         cloud: true,
@@ -1602,7 +1602,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         log("account.phoneSignIn");
         return {
           token: `tok-${state.calls.filter((c) => c.method === "account.phoneSignIn").length}`,
-          server: state.phoneServer ?? "https://app.agentes.chat",
+          server: state.phoneServer ?? "https://chat.example.com",
           expiresIn: 180,
         };
       },
@@ -3576,7 +3576,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       },
       install: async (orgId, returnTo) => {
         log("githubApp.install", orgId, returnTo);
-        return "https://github.com/apps/agentes-chat/installations/new?state=s";
+        return "https://github.com/apps/example/installations/new?state=s";
       },
       complete: async (orgId, input) => {
         log("githubApp.complete", orgId, input);

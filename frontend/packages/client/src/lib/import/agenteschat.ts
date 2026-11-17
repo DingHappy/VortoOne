@@ -22,7 +22,8 @@ import {
  * `EXPORT_PROMPT`. Read like any other source: nothing in it is trusted.
  */
 
-const FORMAT = "agenteschat.bundle";
+const FORMAT = "vortoone.bundle";
+const LEGACY_FORMAT = "agenteschat.bundle";
 const NOTE_KINDS: BundleNote["kind"][] = ["fact", "preference", "decision", "note", "lesson"];
 const TODO_KINDS: BundleTodo["kind"][] = ["connection", "app", "secret", "model", "file"];
 const LEFT_OUT_KINDS = new Set<string>([
@@ -49,11 +50,11 @@ const LEFT_OUT_KINDS = new Set<string>([
  * Viktor…): paste it there and bring back the file it writes, or the JSON it
  * replies with.
  */
-export const EXPORT_PROMPT = `Please export everything I set up with you, so I can move it to agentes.chat (a workspace where people and AI agents work together).
+export const EXPORT_PROMPT = `Please export everything I set up with you, so I can move it to VortoOne (a workspace where people and AI agents work together).
 
 Export all of my agents in this one file, not only the one I'm talking to now: every agent, bot or assistant in my account or workspace, each with its own instructions, skills and scheduled tasks. List them all first and read each one's setup with the tools you have, then write the file.
 
-Write one JSON file named agentes-chat-export.json and give it to me to download. If you can't make files, reply with the JSON in a single \`\`\`json code block and nothing else.
+Write one JSON file named vortoone-export.json and give it to me to download. If you can't make files, reply with the JSON in a single \`\`\`json code block and nothing else.
 
 Use exactly this shape:
 
@@ -104,7 +105,7 @@ Rules:
 - Never include API keys, tokens, passwords, cookies, private keys or any other secret, in any field. Write [removed] in their place.
 - Use [] for anything you don't have. Write valid JSON only: no comments, no trailing commas.`;
 
-const bundleOf = (files: ImportFile[]) => files.find((f) => jsonOf(f)?.format === FORMAT);
+const bundleOf = (files: ImportFile[]) => files.find((f) => { const format = jsonOf(f)?.format; return format === FORMAT || format === LEGACY_FORMAT; });
 
 export const detect = (files: ImportFile[]) => bundleOf(files) !== undefined;
 

@@ -4,18 +4,6 @@ final result: passed
 
 ## 对照范围
 
-本批独立基于 main，继续个人模式的模型设置、例行工作管理与资料库；不包含尚待合并的聊天批次 #888。
-参考固定为 [agentes.chat d7b5ca9](https://github.com/agentes-chat/agentes-chat/tree/d7b5ca9d5d465f675287a886cd1ad2d60e3c27d5)。
-本轮在隔离目录直接渲染其 SettingsSection / SettingRow / SettingsMore / Toolbar / SearchField 原始组件与样式，
-组成相同模型名称和资料标题的合成样本。它是原组件的比较样本，不冒充完整原生应用截图。
-VortoOne 的组件、样式和查询逻辑独立实现，参考源码、依赖和素材均没有迁入产品。
-
-参考捕获在 `/private/tmp/agentes-settings-collections-source2.png`；提交的正式组件截图在 `docs/design/settings-collections/`：
-`model-services.png`、`settings-dark.png`、`settings-narrow.png`、`configuration-unavailable.png`、
-`library.png`、`library-dark.png`、`library-detail.png`、`library-failed.png`、
-`routines.png`、`routines-dark.png`、`routines-narrow.png`。
-所有界面仅使用合成资料/原生命令替身，没有读取私人对话、保存的密钥或实际作业。
-
 ## 比较与修复记录
 
 1. P2，已修：模型设置的运行回执卡过于突出，服务列表和常用编辑动作被挤到下方。
@@ -34,12 +22,6 @@ VortoOne 的组件、样式和查询逻辑独立实现，参考源码、依赖�
 `vortoone-routines-before.png`、`vortoone-library-before.png`。
 第一次实现捕获见同目录 `vortoone-settings-model-after1.png`、`vortoone-routines-after1.png`、`vortoone-library-after1.png`。
 交互核对发现屏幕外编辑表单后修复，再按相同主视口和窄窗捕获本报告的最终截图。
-
-全图均为 1240×900 CSS/实际 px，密度 1；窄窗为 900×900，密度 1，没有放大旧图。
-最终局部比较把 `/private/tmp/agentes-settings-section-final.png` 与 `/private/tmp/vortoone-settings-section-final.png`
-放在同一图像输入中查看：两者宽 654 实际 px，源高度约 262、实现约 301。
-源样本只给每行一个编辑动作，实现保留默认、编辑、删除及原说明，所以不按总高度判断是否逐像素一致。
-已分别检查完整页面、分组行、输入/筛选、失败状态、预览版本和窄窗长名称，没有未处理的 P0/P1/P2。最近任务状态修正后，重新捕获三张例行工作图并核对浅深色与窄窗。
 
 ## 五个必查面
 

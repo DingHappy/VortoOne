@@ -729,7 +729,9 @@ def _record(websocket, role: str, text: str, *, rid: Optional[str] = None, sourc
     t = sess["transcript"]
     from datetime import datetime, timezone
     # at：助理模式的动态按时间分组；旧存档没有这个字段，读的一侧当未知处理。
-    item = {"role": role, "text": str(text), "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    from src.gateway.transcript_order import next_transcript_sequence
+    item = {"role": role, "text": str(text), "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "sequence": next_transcript_sequence(t)}
     if rid:
         item["rid"] = str(rid)
     if type(source_tainted) is bool:
@@ -977,9 +979,11 @@ def _key_actor_context(key: str) -> ActorContext:
 
 def _append_transcript(sess: Dict[str, Any], role: str, text: str, *, rid: str, source: str) -> None:
     from datetime import datetime, timezone
+    from src.gateway.transcript_order import next_transcript_sequence
     transcript = sess["transcript"]
     transcript.append({"role": role, "text": str(text), "rid": rid, "source": source,
-                       "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+                       "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                       "sequence": next_transcript_sequence(transcript)})
     _touch_session(sess)
     if len(transcript) > _MAX_TRANSCRIPT:
         del transcript[:-_MAX_TRANSCRIPT]

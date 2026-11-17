@@ -112,6 +112,12 @@ async def test_a_message_runs_a_turn_and_the_reply_arrives(app_home):
 
     listed = (await http.get(f"{base}/channels/{channel}/messages")).json()["messages"]
     assert [m["id"] for m in listed] == [e["messageId"] for e in created]      # 读到的与推送的是同一批 id
+    assert [m["sequence"] for m in listed] == [1, 2]
+    assert [e["message"]["sequence"] for e in created] == [1, 2]
+    assert [e["message"]["createdAt"] for e in created] == [m["createdAt"] for m in listed]
+    from src.web.routers.realtime import live_session_view
+    stored = live_session_view(app_home["bridge"].key)["transcript"]
+    assert [item["sequence"] for item in stored] == [1, 2]  # 序号随记录保存，不随读取或裁剪重排
     assert (await http.get(f"{base}/channels/{channel}/active-runs")).json() == {"runs": []}
 
 

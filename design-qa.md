@@ -6,26 +6,6 @@
 
 ## 依据与视觉对照
 
-- 固定参考：[agentes.chat 50ca784](https://github.com/agentes-chat/agentes-chat/tree/50ca784dd4c83efbc7ca916a6f07faa8accfe7f6)。
-  研究 `DmPage` / `AgentPage` / `Sidebar` / `NewAgentDialog`，工作会话参考 Message / Composer。
-  官方组件只在仓库外的隔离合成参考页运行，没有进入生产代码、依赖或发布产物。继续 Apache-2.0。
-- Source visual truth：本机 `/private/tmp/agentes-role-reference.png`（整体组件参考）与
-  `/private/tmp/agentes-role-panel-final.png`（960×852 的角色区参考）。这是官方组件加自编合成容器，
-  没有运行其完整服务；不能据此声称整个应用已逐像素一致。
-- 实现为生产组件、真实 GatewayClient、真实 owner API / StaffService / TaskRunner，资料位于独立临时目录。
-  执行器显式放行后返回离线示例，不连接模型、不读私人资料、不发外部通知。
-- 实现截图：[浅色会话](docs/design/personal-roles/conversation-light.png)、[深色会话](docs/design/personal-roles/conversation-dark.png)、
-  [空状态](docs/design/personal-roles/empty.png)、[创建](docs/design/personal-roles/create.png)、
-  [400 宽深色核对](docs/design/personal-roles/create-narrow-dark.png)。
-- 频道补回后的浏览器截图：[频道与角色](docs/design/personal-roles/channels-restored.png)，实际 1716×907 CSS/PNG。
-- 完整实现视口 1240×900 CSS，输出 1240×900 PNG；窄窗口 400×900 CSS，输出 400×900 PNG。
-  浏览器实际 DPR=2，捕获使用 CSS 像素归一化，没有放大旧图片。
-  宿主浏览器锁定窗口尺寸，因此用真实 iframe 设置子页面视口，再按子页面原始 CSS 范围捕获。
-- 完整组件参考 1716×907；聚焦比较采用 960×852 CSS/PNG 参考图，与实现相同大小的角色区域截取
-  `/private/tmp/vortoone-role-panel-final.png` 一起查看（实现主区本身 952×844，余下 8px 为壳留白）。
-  比较输入包含参考和实现两张图；没有把两次独立观察称作并排比较。
-  内容均为同一份合成请求和交付。额外的过程、验收与岗位信息是 VortoOne 保留的合同。
-
 ## 对照结果与修正记录
 
 1. [P1，已修] 角色首页直接显示旧岗位的模型执行指令，冗长且混入内部工具名。
