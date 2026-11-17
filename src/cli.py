@@ -170,6 +170,12 @@ def main():
     p = sub.add_parser("home-import", help="搬家：把搬家包导入到当前目录的家（先停掉服务）")
     p.add_argument("package")
     p.add_argument("--replace", action="store_true", help="这里已有数据时替换；原来的挪到旁边留着")
+    p = sub.add_parser("home-backup", help="备份当前目录的家（含凭据，0600），只留最新几份")
+    p.add_argument("--dir", required=True, help="备份放在哪个目录")
+    p.add_argument("--keep", type=int, default=7, help="留几份（默认 7）")
+    p.add_argument("--reason", default="daily", choices=["daily", "manual", "upgrade"])
+    p = sub.add_parser("home-restore", help="把当前目录的家恢复成一份备份（先停服务；原来的挪到旁边）")
+    p.add_argument("archive")
     p = sub.add_parser("owner-claim", help="开一个一次性的所有者认领链接（24 小时内有效，只能用一次）")
     p.add_argument("--url", default="", help="这个家对外的地址；不给就用 VORTOONE_PUBLIC_URL，再不行用本机地址")
     p.add_argument("--reset", action="store_true", help="忘了所有者密码：去掉现在的密码，重新认领")
@@ -182,6 +188,9 @@ def main():
     if args.command == "owner-claim":
         from src.runtime_entry import run_owner_claim
         raise SystemExit(run_owner_claim(args))
+    if args.command in {"home-backup", "home-restore"}:
+        from src.runtime_entry import run_home_backup
+        raise SystemExit(run_home_backup(args))
 
     # 无命令：给友好总览，而不是报错
     if not args.command:

@@ -38,6 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
     load = commands.add_parser("home-import", help="把搬家包导入到当前目录的家（先停掉服务）")
     load.add_argument("package")
     load.add_argument("--replace", action="store_true", help="这里已有数据时替换；原来的挪到旁边留着")
+    saved = commands.add_parser("home-backup", help="备份当前目录的家（含凭据，0600），只留最新几份")
+    saved.add_argument("--dir", required=True, help="备份放在哪个目录")
+    saved.add_argument("--keep", type=int, default=7, help="留几份（默认 7）")
+    saved.add_argument("--reason", default="daily", choices=["daily", "manual", "upgrade"])
+    back = commands.add_parser("home-restore", help="把当前目录的家恢复成一份备份（先停服务；原来的挪到旁边）")
+    back.add_argument("archive")
     claim = commands.add_parser("owner-claim", help="开一个一次性的所有者认领链接（24 小时内有效，只能用一次）")
     claim.add_argument("--url", default="", help="这个家对外的地址；不给就用 VORTOONE_PUBLIC_URL，再不行用本机地址")
     claim.add_argument("--reset", action="store_true", help="忘了所有者密码：去掉现在的密码，重新认领")
@@ -72,6 +78,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_home_move(args)
     if args.command == "owner-claim":
         return run_owner_claim(args)
+    if args.command in {"home-backup", "home-restore"}:
+        return run_home_backup(args)
     prepare_runtime()
     if args.command in JOB_COMMANDS:
         return run_job_command(args)
@@ -174,6 +182,22 @@ def run_home_move(args) -> int:
         else:
             result = import_home(str(Path.cwd()), args.package, replace=args.replace)
     except (MoveError, OSError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+        return 2
+    print(json.dumps({"ok": True, **result}, ensure_ascii=False))
+    return 0
+
+
+def run_home_backup(args) -> int:
+    """备份与恢复；结果以一行 JSON 打出，失败退出码 2。"""
+    import json
+    from src.workflow.home_backup import BackupError, backup, restore
+    try:
+        if args.command == "home-backup":
+            result = backup(str(Path.cwd()), args.dir, keep=args.keep, reason=args.reason)
+        else:
+            result = restore(str(Path.cwd()), args.archive)
+    except (BackupError, OSError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
         return 2
     print(json.dumps({"ok": True, **result}, ensure_ascii=False))
