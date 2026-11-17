@@ -369,11 +369,14 @@ def user_config(worker: str) -> tuple[list[str], dict[str, str]]:
 # ── 命令行 ────────────────────────────────────────────────────────────────
 
 def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
-               binary: str = "", extra: tuple[str, ...] | list[str] = (), commands: bool = True) -> list[str]:
+               binary: str = "", extra: tuple[str, ...] | list[str] = (), commands: bool = True,
+               only_tools: Optional[tuple[str, ...]] = None) -> list[str]:
     """拼一次无头运行的 argv。权限只由这里的显式参数决定，不继承用户级放宽。
 
     提示词一律走 stdin（见 `stdin_text`）：审查提示词带整份 diff，放进 argv 会撞 ARG_MAX。
-    commands=False：Claude Code 不给任何 Bash（连 pytest 也不给）。Codex 没有关掉命令的开关，它的命令
+    commands=False：Claude Code 不给任何 Bash（连 pytest 也不给）。
+    only_tools（只对 Claude）：内置工具只开这几样（`--tools`），放行也只放这几样；空元组是一样都不开。
+    给了它，write / commands 就不再起作用。Codex 没有关掉命令的开关，它的命令
     只在它自己的沙箱里跑：写只限 cwd，网络显式关掉。
     """
     if worker == "codex":
@@ -381,6 +384,17 @@ def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
                 "-s", "workspace-write" if write else "read-only",
                 "-c", "sandbox_workspace_write.network_access=false",
                 "-C", cwd, "-c", "mcp_servers={}", *extra, "-"]
+    if worker == "claude" and only_tools is not None:
+        unknown = set(only_tools) - _CLAUDE_NETWORK_TOOLS
+        if unknown:                        # 简单版只开联网的两样；文件、命令工具不从这里开
+            raise ValueError(f"不能这样开 Claude 的工具：{sorted(unknown)}")
+        argv = [binary or "claude", "-p", "--output-format", "stream-json", "--verbose",
+                "--permission-mode", "dontAsk", "--permission-prompts", "none",
+                "--setting-sources", "local", "--strict-mcp-config", "--no-session-persistence",
+                *extra, "--tools", ",".join(only_tools)]
+        if system.strip():
+            argv += ["--append-system-prompt", system.strip()]
+        return argv + (["--allowedTools", *only_tools] if only_tools else [])
     if worker == "claude":
         reads = _CLAUDE_READ_TOOLS if commands else tuple(t for t in _CLAUDE_READ_TOOLS if not t.startswith("Bash"))
         tools = reads + (_CLAUDE_WRITE_TOOLS if write else ())
@@ -516,7 +530,8 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
                      on_event: Optional[Callable[[WorkerEvent], Any]] = None,
                      timeout: Optional[int] = None, execution_ref: ExecutionRef | None = None,
                      on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None,
-                     commands: bool = True, model: str = "") -> WorkerRun:
+                     commands: bool = True, model: str = "",
+                     only_tools: Optional[tuple[str, ...]] = None) -> WorkerRun:
     """跑一次外部 CLI，逐行解析 JSONL 事件。失败如实写进 `WorkerRun.error`，不抛。
 
     model 给了就覆盖个人配置里的模型（登记在 agent 上的那个）；commands 见 `build_argv`。"""
@@ -548,8 +563,13 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
         run.error, run.failure_code = str(error), "invalid_request"
         publish()
         return run
-    argv = build_argv(worker, cwd=cwd, write=write, system=system, binary=binary, extra=[*extra, *chosen],
-                      commands=commands)
+    try:
+        argv = build_argv(worker, cwd=cwd, write=write, system=system, binary=binary, extra=[*extra, *chosen],
+                          commands=commands, only_tools=only_tools)
+    except ValueError as error:
+        run.error, run.failure_code = str(error), "invalid_request"
+        publish()
+        return run
     parse = _PARSERS[worker]
     proc = await asyncio.create_subprocess_exec(
         *argv, cwd=cwd, env=_env_for(binary, {**worker_env(), **extra_env}), stdin=asyncio.subprocess.PIPE,

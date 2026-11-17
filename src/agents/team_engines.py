@@ -311,3 +311,42 @@ async def run_cli_developer(engine: str, model: str, prompt: str, *, timeout: fl
     elif error and workers.is_unavailable(run):
         error = f"{ENGINE_LABELS[engine]} 现在不可用（可能没有登录）：{error[:200]}"
     return AcpResult(text=run.final_text, error=error, networked=run.used_network)
+
+
+async def run_cli_general(engine: str, model: str, prompt: str, *, system: str, web: bool, timeout: float,
+                          task_id: str, check=None, execution_ref=None, on_snapshot=None) -> AcpResult:
+    """登记的通用 agent 用本机 CLI 跑一轮（简单版，主人 2026-11-16 定）：只做研究、审查、写作。
+
+    CLI 在一个用完即删的空目录里跑。内置工具只开联网搜索与抓网页（岗位允许联网时），否则一样不开：
+    没有读写文件、没有命令、不接 MCP、不续用会话。碰不到所有者的任何资料——要用那些得等 MCP 桥。
+    """
+    from src.agents import external_workers as workers
+    from src.agents.backends.execution import ExecutionRef, new_run_id, process_instance
+    if engine not in CONFINED_CLI:
+        raise EngineUnavailable(CODEX_UNCONFINED)
+    worker = CLI_WORKERS[engine]
+    if check is not None:
+        check()
+    if not workers.worker_binary(worker):
+        raise EngineUnavailable(f"这台电脑上没有装 {ENGINE_LABELS[engine]}，或者没有登录")
+    ref = execution_ref
+    if ref is None or ref.backend_id != worker:
+        ref = ExecutionRef(worker, process_instance("external-cli"), new_run_id(), task_id=task_id)
+    scratch = _scratch_dir(task_id)
+    try:
+        run = await workers.run_worker(worker, prompt, str(scratch), write=False, system=system,
+                                       timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot,
+                                       commands=False, model=model,
+                                       only_tools=("WebSearch", "WebFetch") if web else ())
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if check is not None:
+        check()
+    if run.failure_code == "unavailable":
+        raise EngineUnavailable(run.error)
+    error = run.error
+    if run.rate_limited:
+        error = f"{ENGINE_LABELS[engine]} 的订阅额度用完了，等额度恢复后再交给它"
+    elif error and workers.is_unavailable(run):
+        error = f"{ENGINE_LABELS[engine]} 现在不可用（可能没有登录）：{error[:200]}"
+    return AcpResult(text=run.final_text, error=error, networked=run.used_network or web)
