@@ -31,6 +31,7 @@ _FILE = "space.json"
 _MAX_BYTES = 1024 * 1024
 _LOCK = threading.RLock()
 _NAME = re.compile(r"^[^\x00-\x1f\x7f]{1,64}$")
+_EMAIL = re.compile(r"^[^@\s\x00-\x1f\x7f]{1,64}@[^@\s\x00-\x1f\x7f]{1,190}$")
 _AGENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MAX_GROUPS, MAX_MEMBERS, MAX_INVITATIONS = 64, 500, 200
 INVITE_DAYS_DEFAULT, INVITE_DAYS_MAX = 7, 30
@@ -80,6 +81,14 @@ def _name(value: Any, label: str) -> str:
     text = value.strip() if isinstance(value, str) else ""
     if not _NAME.fullmatch(text):
         raise ValueError(f"{label}不能为空，最长 64 个字，不能有控制字符")
+    return text
+
+
+def login_name(value: Any) -> str:
+    """登录用的邮箱：去空白、转小写。登记处不验证它收不收得到信，只当登录名。"""
+    text = value.strip().lower() if isinstance(value, str) else ""
+    if not _EMAIL.fullmatch(text):
+        raise ValueError("邮箱格式不对")
     return text
 
 
@@ -368,14 +377,22 @@ class MemberRegistry:
     # ── 邀请 ──────────────────────────────────────────────────────────────────
 
     def invite(self, actor: Principal, *, groups: Iterable[str] = (), days: int = INVITE_DAYS_DEFAULT,
-               note: str = "", now: Optional[datetime] = None) -> Tuple[str, str]:
-        """发一份邀请，返回（邀请 id，令牌）。令牌只在这里出现一次，登记里只留它的摘要。"""
+               note: str = "", email: str = "", now: Optional[datetime] = None) -> Tuple[str, str]:
+        """发一份邀请，返回（邀请 id，令牌）。令牌只在这里出现一次，登记里只留它的摘要。
+
+        写了 email 的邀请只有那个邮箱的账号能接受；同一个邮箱只留最新的一份邀请。"""
+        address = login_name(email) if email else ""
         if type(days) is not int or not 1 <= days <= INVITE_DAYS_MAX:
             raise ValueError(f"邀请有效期是 1 到 {INVITE_DAYS_MAX} 天")
         moment = now or _now()
         with self._change() as state:
             owner, held = self._actor(state, actor)
             self._drop_expired(state, moment)
+            if address:
+                if any(member.get("email") == address for member in state["members"].values()):
+                    raise ValueError("这个邮箱已经是成员了")
+                for stale in [key for key, item in state["invitations"].items() if item.get("email") == address]:
+                    del state["invitations"][stale]
             if len(state["invitations"]) >= MAX_INVITATIONS:
                 raise ValueError("还没用掉的邀请太多了，先撤回一些")
             try:
@@ -385,6 +402,7 @@ class MemberRegistry:
             invitation_id, token = f"i_{uuid.uuid4().hex[:12]}", secrets.token_urlsafe(32)
             state["invitations"][invitation_id] = {
                 "digest": _digest(token), "groups": chosen, "by": actor.id, "note": str(note or "")[:200],
+                "email": address,
                 "created": _iso(moment), "expires": _iso(moment + timedelta(days=days))}
             return invitation_id, token
 
@@ -407,8 +425,32 @@ class MemberRegistry:
                 raise Refused("不能撤回别人发的邀请")
             del state["invitations"][str(invitation_id)]
 
-    def accept_invitation(self, token: str, name: str, *, now: Optional[datetime] = None) -> str:
-        """凭令牌加入，返回新成员的 id。邀请用一次就作废；发出后被删掉的身份组自动跳过。"""
+    def invitation(self, token: str, *, now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+        """凭令牌看一份还有效的邀请（不消耗它）。没有或已过期返回 None。"""
+        stamp, digest = _iso(now or _now()), _digest(str(token or ""))
+        for invitation_id, item in self.snapshot()["invitations"].items():
+            if secrets.compare_digest(str(item.get("digest") or ""), digest):
+                return {**item, "id": invitation_id} if str(item.get("expires") or "") > stamp else None
+        return None
+
+    def manages(self, actor: Principal, member_id: str) -> bool:
+        """操作人管不管得了这个成员（重置他的密码、移除他）：所有者，或有「管理成员」且排在他之前。"""
+        state = self.snapshot()
+        member = state["members"].get(str(member_id))
+        if member is None:
+            raise Missing("没有这个成员")
+        try:
+            owner, held = self._actor(state, actor)
+        except Refused:
+            return False
+        return rules.may_remove_member(held, member.get("groups") or [], self._posts(state), state["order"],
+                                       owner=owner)
+
+    def accept_invitation(self, token: str, name: str, *, email: str = "", account: str = "",
+                          now: Optional[datetime] = None) -> str:
+        """凭令牌加入，返回新成员的 id。邀请用一次就作废；发出后被删掉的身份组自动跳过。
+
+        邀请写了邮箱的，接受的人必须是那个邮箱（email 由入口从已登录的账号取，不取请求里的）。"""
         moment = now or _now()
         digest = _digest(str(token or ""))
         with self._change() as state:
@@ -419,10 +461,14 @@ class MemberRegistry:
                 raise Missing("邀请不存在或已失效")
             if len(state["members"]) >= MAX_MEMBERS:
                 raise ValueError("成员数已到上限")
+            wanted = str(state["invitations"][found].get("email") or "")
+            if wanted and wanted != str(email or ""):
+                raise Refused("这份邀请是发给另一个邮箱的")
             invitation = state["invitations"].pop(found)
             member_id = f"m_{uuid.uuid4().hex[:12]}"
             state["members"][member_id] = {
                 "name": _name(name, "名字"), "joined": _iso(moment), "invited_by": str(invitation.get("by") or ""),
+                "email": str(email or ""), "account": str(account or ""),
                 "groups": rules.accepted_posts(invitation.get("groups") or [], self._posts(state))}
             return member_id
 

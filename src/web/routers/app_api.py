@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_members, app_staff
+from src.web import app_members, app_staff, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 
 router = APIRouter(tags=["app"])
@@ -83,12 +83,82 @@ class _SignIn(BaseModel):
 
 @router.post("/api/auth/sign-in/email")
 async def sign_in(body: _SignIn, request: Request, response: Response):
-    """界面的登录框：密码一栏填主人令牌，校验与种 Cookie 沿用 /api/auth/login，邮箱不参与判断。"""
+    """界面的登录框。密码一栏填的是主人令牌就按所有者登录（邮箱不参与判断，沿用 /api/auth/login）；
+    不是的话按成员账号的邮箱加密码登录。两种失败回同一句话，看不出是哪一种没对上。"""
     from src.web.routers.auth_routes import LoginBody, login
+    from src.workflow.members.accounts import Locked, MemberAccounts, WrongCredentials
+    root = os.getcwd()
     result = await login(LoginBody(token=body.password), request, response)
-    if isinstance(result, JSONResponse):
-        return JSONResponse({"code": "INVALID_EMAIL_OR_PASSWORD", "message": "令牌不正确"}, status_code=401)
-    return {"redirect": False, "token": None, "user": views.me(os.getcwd())["user"]}
+    if not isinstance(result, JSONResponse):
+        return {"redirect": False, "token": None, "user": views.me(root)["user"]}
+    wrong = JSONResponse({"code": "INVALID_EMAIL_OR_PASSWORD", "message": "邮箱、密码或令牌不正确"}, status_code=401)
+    if not views.owner_connection() or not member_auth.same_origin(request):
+        return wrong
+    accounts = MemberAccounts(root)
+    try:
+        account_id, token = await asyncio.to_thread(accounts.sign_in, body.email, body.password)
+    except Locked as error:
+        return JSONResponse({"code": "TOO_MANY_REQUESTS", "message": str(error)}, status_code=429)
+    except (WrongCredentials, ValueError, OSError):
+        return wrong
+    account = accounts.get(account_id) or {}
+    member_auth.set_cookie(request, response, token)
+    return {"redirect": False, "token": None,
+            "user": {"id": account.get("member") or account_id, "name": account.get("name"),
+                     "email": account.get("email")}}
+
+
+class _SignUp(BaseModel):
+    name: str = ""
+    email: str = ""
+    password: str = ""
+
+
+@router.post("/api/auth/sign-up/email")
+async def sign_up(body: _SignUp, request: Request, response: Response):
+    """凭邀请注册成员账号：必须带一份还有效的邀请令牌，邮箱要和邀请上写的一致。注册不等于加入——
+    加入是下一步「接受邀请」。没有开放注册。"""
+    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.members.registry import MemberRegistry, login_name
+    root = os.getcwd()
+    closed = JSONResponse({"code": "SIGNUP_CLOSED", "message": "要有一份还有效的邀请才能注册"}, status_code=403)
+    if not views.owner_connection() or not member_auth.same_origin(request):
+        return closed
+    try:
+        invitation = MemberRegistry(root).invitation(request.headers.get("x-invitation-token", ""))
+        if invitation is None or (invitation.get("email") and invitation["email"] != login_name(body.email)):
+            return closed
+        accounts = MemberAccounts(root)
+        account_id = await asyncio.to_thread(accounts.create, body.email, body.name, body.password)
+        token = accounts.open_session(account_id)
+    except ValueError as error:
+        return JSONResponse({"code": "INVALID_SIGN_UP", "message": str(error)}, status_code=422)
+    except OSError:
+        return JSONResponse({"code": "UNAVAILABLE", "message": "账号暂时建不了"}, status_code=409)
+    member_auth.set_cookie(request, response, token)
+    return {"token": None, "user": {"id": account_id, "name": body.name.strip(), "email": login_name(body.email)}}
+
+
+class _Reset(BaseModel):
+    token: str = ""
+    newPassword: str = ""       # noqa: N815 —— 界面的字段名
+
+
+@router.post("/api/auth/reset-password")
+async def reset_password(body: _Reset, request: Request):
+    """凭重置链接里的令牌改密码。改完这个账号在各处的登录全部退出，要用新密码重新登录。"""
+    from src.workflow.members.accounts import MemberAccounts
+    if not views.owner_connection() or not member_auth.same_origin(request):
+        return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
+    try:
+        await asyncio.to_thread(MemberAccounts(os.getcwd()).reset_password, body.token, body.newPassword)
+    except LookupError:
+        return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
+    except ValueError as error:
+        return JSONResponse({"code": "INVALID_PASSWORD", "message": str(error)}, status_code=422)
+    except OSError:
+        return JSONResponse({"code": "UNAVAILABLE", "message": "暂时改不了密码"}, status_code=409)
+    return {"status": True}
 
 
 # ── 外壳交接登录 ──────────────────────────────────────────────────────────────
@@ -143,17 +213,30 @@ async def handover_finish(code: str, request: Request):
 
 
 @router.post("/api/auth/sign-out")
-async def sign_out(response: Response):
+async def sign_out(request: Request, response: Response):
+    """所有者的登录和成员的会话都退出。成员的会话在服务端也作废，不只是清 Cookie。"""
     from src.web.routers.auth_routes import logout
+    from src.workflow.members.accounts import MemberAccounts
     await logout(response)
+    token = request.cookies.get(member_auth.MEMBER_COOKIE, "")
+    if token and member_auth.same_origin(request):
+        try:
+            MemberAccounts(os.getcwd()).sign_out(token)
+        except (ValueError, OSError):
+            pass                       # 账号文件读写不了：Cookie 照清，会话到期自己失效
+    member_auth.clear_cookie(response)
     return {"success": True}
 
 
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
 @router.get("/api/app/me")
-async def me():
-    return views.me(os.getcwd())
+async def me(request: Request):
+    root = os.getcwd()
+    account = getattr(request.state, "member_account", None)
+    if account is None:
+        return views.me(root)
+    return await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
 
 
 @router.get("/api/app/models")
@@ -172,8 +255,10 @@ async def settings(org_id: str):
 
 
 @router.get(_ORG + "/members")
-async def members(org_id: str):
+async def members(org_id: str, request: Request):
     root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner and not member_auth.member_id(request.state.member_account):
+        return _error(403, "forbidden", "还不是这个空间的成员")
     return await _members_call(lambda: {"members": app_members.members(root)})
 
 
@@ -204,51 +289,129 @@ async def _members_call(action, *, write: bool = False):
 
 
 @router.get(_ORG + "/roles")
-async def roles(org_id: str):
+async def roles(org_id: str, request: Request):
     root = _root(org_id)
-    return await _members_call(lambda: app_members.roles(root))
+    who = member_auth.principal(request, root)
+    if not who.is_owner and not member_auth.member_id(request.state.member_account):
+        return _error(403, "forbidden", "还不是这个空间的成员")
+    return await _members_call(lambda: app_members.roles(root, who))
 
 
 @router.post(_ORG + "/roles")
-async def create_role(org_id: str, body: Dict[str, Any]):
+async def create_role(org_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
-    return await _members_call(lambda: {"id": app_members.create_role(root, body)}, write=True)
+    who = member_auth.principal(request, root)
+    return await _members_call(lambda: {"id": app_members.create_role(root, who, body)}, write=True)
 
 
 # 先于 /roles/{role_id} 登记：否则 "order" 会被当成一个身份组的 id
 @router.put(_ORG + "/roles/order", status_code=204)
-async def reorder_roles(org_id: str, body: Dict[str, Any]):
+async def reorder_roles(org_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
-    result = await _members_call(lambda: app_members.reorder_roles(root, body.get("ids")), write=True)
+    who = member_auth.principal(request, root)
+    result = await _members_call(lambda: app_members.reorder_roles(root, who, body.get("ids")), write=True)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
 @router.patch(_ORG + "/roles/{role_id}", status_code=204)
-async def change_role(org_id: str, role_id: str, body: Dict[str, Any]):
+async def change_role(org_id: str, role_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
-    result = await _members_call(lambda: app_members.change_role(root, role_id, body), write=True)
+    who = member_auth.principal(request, root)
+    result = await _members_call(lambda: app_members.change_role(root, who, role_id, body), write=True)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
 @router.delete(_ORG + "/roles/{role_id}", status_code=204)
-async def delete_role(org_id: str, role_id: str):
+async def delete_role(org_id: str, role_id: str, request: Request):
     root = _root(org_id)
-    result = await _members_call(lambda: app_members.delete_role(root, role_id), write=True)
+    who = member_auth.principal(request, root)
+    result = await _members_call(lambda: app_members.delete_role(root, who, role_id), write=True)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
 @router.put(_ORG + "/members/{user_id}/roles")
-async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any]):
+async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
+    who = member_auth.principal(request, root)
     return await _members_call(
-        lambda: {"roleIds": app_members.set_member_roles(root, user_id, body.get("roleIds"))}, write=True)
+        lambda: {"roleIds": app_members.set_member_roles(root, who, user_id, body.get("roleIds"))}, write=True)
 
 
 @router.delete(_ORG + "/members/{user_id}", status_code=204)
-async def remove_member(org_id: str, user_id: str):
+async def remove_member(org_id: str, user_id: str, request: Request):
     root = _root(org_id)
-    result = await _members_call(lambda: app_members.remove_member(root, user_id), write=True)
+    who = member_auth.principal(request, root)
+    result = await _members_call(lambda: app_members.remove_member(root, who, user_id), write=True)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+def _origin(request: Request) -> str:
+    """本服务对外的地址，用来拼邀请和重置链接。取这次请求自己用的地址——发链接的人正是从这里访问的。"""
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    return f"{scheme if scheme in ('http', 'https') else 'http'}://{host}"
+
+
+@router.get(_ORG + "/invitations")
+async def invitations(org_id: str, request: Request):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    return await _members_call(lambda: {"invitations": app_members.invitations(root, who)})
+
+
+@router.post(_ORG + "/invitations")
+async def invite(org_id: str, body: Dict[str, Any], request: Request):
+    root = _root(org_id)
+    who, origin = member_auth.principal(request, root), _origin(request)
+    return await _members_call(lambda: app_members.invite(root, who, body, origin), write=True)
+
+
+@router.delete(_ORG + "/invitations/{invitation_id}", status_code=204)
+async def revoke_invitation(org_id: str, invitation_id: str, request: Request):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    result = await _members_call(lambda: app_members.revoke_invitation(root, who, invitation_id), write=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.post(_ORG + "/members/{user_id}/password-link")
+async def password_link(org_id: str, user_id: str, request: Request):
+    root = _root(org_id)
+    who, origin = member_auth.principal(request, root), _origin(request)
+    return await _members_call(lambda: app_members.password_link(root, who, user_id, origin), write=True)
+
+
+# 下面两条不过鉴权中间件（收到邀请的人可能还没有账号）：凭邀请令牌本身，接受时再核对成员会话。
+
+@router.get("/api/app/invitations/{token}")
+async def invitation_preview(token: str):
+    root = os.getcwd()
+    result = await _members_call(lambda: app_members.invitation_preview(root, token))
+    return result if result is not None else _error(404, "not_found", "邀请不存在或已失效")
+
+
+@router.post("/api/app/invitations/{token}/accept")
+async def accept_invitation(token: str, request: Request):
+    """已登录的成员账号接受邀请、成为成员。所有者不需要、也不能接受邀请。"""
+    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.members.registry import MemberRegistry
+    root = os.getcwd()
+    account = member_auth.account(request)
+    if account is None or not member_auth.same_origin(request):
+        return _error(401, "unauthorized", "先登录或注册，再接受邀请")
+
+    def join():
+        registry, accounts = MemberRegistry(root), MemberAccounts(root)
+        if member_auth.member_id(account):
+            return {"orgId": views.home_id(root)}               # 已经是成员：再点一次不出错
+        # 上一次接受到一半（成员记下了、账号还没指过去）：补上指向，不再消耗一份邀请
+        mine = next((member_id for member_id, member in registry.snapshot()["members"].items()
+                     if member.get("account") == account["id"]), None)
+        if mine is None:
+            mine = registry.accept_invitation(token, account["name"], email=account["email"], account=account["id"])
+        accounts.bind_member(account["id"], mine)
+        return {"orgId": views.home_id(root)}
+    return await _members_call(join)
 
 
 # ── 角色 ─────────────────────────────────────────────────────────────────────

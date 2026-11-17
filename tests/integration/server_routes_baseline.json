@@ -2382,6 +2382,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/invitations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/password-link",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/accept",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/auth/handover",
     "methods": [
       "POST"
@@ -2391,6 +2427,18 @@
     "path": "/api/auth/handover/{code}",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/reset-password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/sign-up/email",
+    "methods": [
+      "POST"
     ]
   }
 ]
