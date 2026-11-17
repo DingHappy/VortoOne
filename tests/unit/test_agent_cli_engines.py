@@ -6,7 +6,6 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +16,16 @@ from src.workflow.members.registry import MemberRegistry, Refused
 from src.workflow.staff.registry import StaffRegistry
 from src.workflow.staff.roles import CLI_ENGINES, builtin_roles, builtin_team_roles
 from tests.unit.test_staff_development import development, git, registered  # noqa: F401 —— 复用夹具
+
+
+@pytest.fixture(autouse=True)
+def session_dirs(tmp_path, monkeypatch):
+    """接着会话聊时 CLI 用的固定目录放进本测试的临时目录，不碰系统临时目录。"""
+    from src.workflow.staff import cli_sessions
+    monkeypatch.setattr(cli_sessions, "_session_dirs", lambda: tmp_path / "agent-sessions")
+    cli_sessions.reset_busy()
+    yield
+    cli_sessions.reset_busy()
 
 OWNER_P = Principal(OWNER, "owner")
 
@@ -349,7 +358,7 @@ def _general_service(tmp_path, monkeypatch, answer="带来源的结论"):
 
     async def fake(engine, model, prompt, **options):
         seen.update(engine=engine, prompt=prompt, **options)
-        return SimpleNamespace(text=answer, error="", networked=True)
+        return team_engines.CliGeneralResult(text=answer, networked=True, input_tokens=1000)
     monkeypatch.setattr(team_engines, "run_cli_general", fake)
     pool = Pool()
     service = StaffService(str(tmp_path), pool, execute=None)

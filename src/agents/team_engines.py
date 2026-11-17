@@ -19,6 +19,8 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import json
 import os
 import shutil
@@ -313,12 +315,37 @@ async def run_cli_developer(engine: str, model: str, prompt: str, *, timeout: fl
     return AcpResult(text=run.final_text, error=error, networked=run.used_network)
 
 
+@dataclass
+class CliGeneralResult:
+    text: str = ""
+    error: str = ""
+    networked: bool = False
+    input_tokens: int = 0            # 这一轮读进去多少（新输入加缓存读写），决定下一轮还接不接这个会话
+    lost_session: bool = False       # 要接的会话 Claude Code 那边已经找不到了
+
+
+def _input_tokens(usage: dict) -> int:
+    return sum(int(usage.get(key) or 0) for key in
+               ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+
+
+def _lost_session(run, session) -> bool:
+    """要接的会话 Claude Code 那边找不到了（记录被清掉、临时目录被系统清了）。"""
+    if session is None or not session.resume or run.final_text:
+        return False
+    return "no conversation found" in (run.error or "").lower()
+
+
 async def run_cli_general(engine: str, model: str, prompt: str, *, system: str, web: bool, timeout: float,
-                          task_id: str, check=None, execution_ref=None, on_snapshot=None) -> AcpResult:
+                          task_id: str, check=None, execution_ref=None, on_snapshot=None,
+                          session=None, context_tokens: Optional[int] = None) -> "CliGeneralResult":
     """登记的通用 agent 用本机 CLI 跑一轮（简单版，主人 2026-11-16 定）：只做研究、审查、写作。
 
     CLI 在一个用完即删的空目录里跑。内置工具只开联网搜索与抓网页（岗位允许联网时），否则一样不开：
-    没有读写文件、没有命令、不接 MCP、不续用会话。碰不到所有者的任何资料——要用那些得等 MCP 桥。
+    没有读写文件、没有命令、不接 MCP。碰不到所有者的任何资料——要用那些得等 MCP 桥。
+
+    session：``cli_sessions.Session``，接着上次的会话聊（固定的空目录，跑完不删）；不给就一轮一清。
+    context_tokens：读到这么多由 Claude Code 自己压缩。
     """
     from src.agents import external_workers as workers
     from src.agents.backends.execution import ExecutionRef, new_run_id, process_instance
@@ -332,14 +359,17 @@ async def run_cli_general(engine: str, model: str, prompt: str, *, system: str, 
     ref = execution_ref
     if ref is None or ref.backend_id != worker:
         ref = ExecutionRef(worker, process_instance("external-cli"), new_run_id(), task_id=task_id)
-    scratch = _scratch_dir(task_id)
+    scratch = Path(session.cwd) if session is not None else _scratch_dir(task_id)
     try:
         run = await workers.run_worker(worker, prompt, str(scratch), write=False, system=system,
                                        timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot,
                                        commands=False, model=model,
-                                       only_tools=("WebSearch", "WebFetch") if web else ())
+                                       only_tools=("WebSearch", "WebFetch") if web else (),
+                                       session=(session.id, session.resume) if session is not None else None,
+                                       context_tokens=context_tokens)
     finally:
-        shutil.rmtree(scratch, ignore_errors=True)
+        if session is None:
+            shutil.rmtree(scratch, ignore_errors=True)
     if check is not None:
         check()
     if run.failure_code == "unavailable":
@@ -349,4 +379,5 @@ async def run_cli_general(engine: str, model: str, prompt: str, *, system: str, 
         error = f"{ENGINE_LABELS[engine]} 的订阅额度用完了，等额度恢复后再交给它"
     elif error and workers.is_unavailable(run):
         error = f"{ENGINE_LABELS[engine]} 现在不可用（可能没有登录）：{error[:200]}"
-    return AcpResult(text=run.final_text, error=error, networked=run.used_network or web)
+    return CliGeneralResult(text=run.final_text, error=error, networked=run.used_network or web,
+                            input_tokens=_input_tokens(run.usage), lost_session=_lost_session(run, session))
