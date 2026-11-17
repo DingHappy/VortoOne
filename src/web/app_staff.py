@@ -84,20 +84,20 @@ def stop(root: str, task_id: str) -> bool:
     return True
 
 
-async def watch(socket, root: str, member_id: str, *, interval: float = 2.0) -> None:
+async def watch(socket, root: str, member_id: str, *, interval: float = 1.0,
+                viewer: Optional[str] = None) -> None:
     """订阅了某位专员私聊的界面连接：定时看台账，把新出现的消息和运行状态的变化推过去。
 
     专员的任务没有会话事件流可附着，所以这里是轮询；连接断开或取消订阅时由调用方取消本任务。"""
     channel = views.dm_channel_id(views.member_agent_id(root, member_id))
     agent = views.member_agent_id(root, member_id)
-    seen: Optional[set] = None
+    seen: set = set()
     active: Dict[str, Dict[str, Any]] = {}
     while True:
-        conversation = await asyncio.to_thread(views.member_conversation, root, member_id)
-        messages = views.member_messages(root, member_id, conversation)
-        runs = {run["runId"]: run for run in views.member_runs(root, member_id, conversation)}
-        if seen is None:
-            seen = {message["id"] for message in messages}
+        conversation = await asyncio.to_thread(views.member_conversation, root, member_id, viewer)
+        messages = views.member_messages(root, member_id, conversation, viewer=viewer)
+        runs = {run["runId"]: run for run in views.member_runs(root, member_id, conversation, viewer=viewer)}
+        # 首次也发快照：订阅确认与历史读取之间刚完成的回复不能漏掉；客户端按消息 id 合并。
         for message in messages:
             if message["id"] in seen:
                 continue
@@ -118,4 +118,5 @@ async def watch(socket, root: str, member_id: str, *, interval: float = 2.0) -> 
                     channel, "run.finished", threadId=run["threadId"], runId=run_id, agentId=agent,
                     status=status)))
         active = runs
+        seen.intersection_update(message["id"] for message in messages)
         await asyncio.sleep(interval)

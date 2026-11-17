@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>连接模型</title><link rel="stylesheet" href="model-settings.css"></head>
+<body><main><h1>连接模型</h1><p>连接兼容 OpenAI 的模型服务，或这台电脑上的本地模型。</p>
+<form id="model-form">
+<label for="base-url">服务地址</label><input id="base-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off">
+<label for="model">模型名</label><input id="model" required placeholder="服务提供的模型名称" autocomplete="off">
+<label for="api-key">API Key</label><input id="api-key" type="password" placeholder="本地服务可留空" autocomplete="off">
+<p id="key-state" class="hint"></p><label class="clear"><input id="clear-key" type="checkbox">清除已保存的 API Key</label>
+<p class="hint">配置保存在这台电脑上。保存后会重新连接，聊天记录会保留。</p>
+<p id="status" role="status" aria-live="polite"></p><button id="save" type="submit" disabled>保存并连接</button>
+</form></main><script type="module" src="model-settings.js"></script></body></html>
