@@ -29,7 +29,7 @@ def _imports(path, root=SRC):
                 yield node.lineno, module + '.' + alias.name
 
 
-@pytest.mark.parametrize('module', ['agents/gate.py', 'agents/principal.py', 'agents/taint.py', 'agents/capabilities.py',
+@pytest.mark.parametrize('module', ['agents/gate.py', 'agents/principal.py', 'agents/identity_groups.py', 'agents/taint.py', 'agents/capabilities.py',
                                     'agents/scoped_approval.py',
                                     'memory/write_policy.py', 'sandbox/policy.py',
                                     'agents/tool.py', 'agents/tool_runtime.py',
