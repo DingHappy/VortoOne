@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-preview/
+dist-live/
 .npm-cache/
 .env.local
 qa-artifacts/

@@ -237,3 +237,14 @@ def test_app_frames_are_validated_before_they_leave():
                 lambda: F.make_app_frame(F.PONG, extra=1)):                    # 未登记字段
         with pytest.raises(ProtocolError):
             bad()
+
+
+def test_the_desktop_can_check_an_address_from_its_own_window(client, monkeypatch):
+    """首次引导在 Desktop 自己的窗口里核对地址：/api/instance 是公开信息，允许跨域读取，但不放凭据。"""
+    monkeypatch.setenv("VORTOONE_API_TOKEN", "owner-token-for-test")
+    client.cookies.clear()
+    answer = client.get("/api/instance", headers={"Origin": "tauri://localhost"})
+    assert answer.status_code == 200 and answer.json()["name"] == "VortoOne"
+    assert answer.headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-credentials" not in answer.headers
+    assert "access-control-allow-origin" not in client.get("/api/app/me").headers

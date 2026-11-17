@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod places;
+mod shell;
 mod model_settings;
 
 use tauri::{
@@ -13,14 +15,22 @@ const RELEASES: &str = "https://github.com/DingHappy/VortoOne/releases";
 const STABLE: &str = "https://github.com/DingHappy/VortoOne/releases/latest";
 #[derive(Default)]
 struct ConnectionGate(std::sync::Mutex<()>);
+/// 主窗口现在打开的服务（scheme://host[:port]）。导航闸据此放行：只在这个服务自己的页面里走，别的交给系统浏览器。
+/// 本机服务另记端口，盯授权请求的线程据此知道后端换没换。
 #[derive(Clone, Default)]
-struct LiveAddress(std::sync::Arc<std::sync::atomic::AtomicU16>);
+struct LiveAddress(std::sync::Arc<std::sync::Mutex<(String, u16)>>);
 
 impl LiveAddress {
-    fn set(&self, port: u16) { self.0.store(port, std::sync::atomic::Ordering::SeqCst); }
-    fn port(&self) -> u16 { self.0.load(std::sync::atomic::Ordering::SeqCst) }
+    fn set(&self, port: u16) { self.set_origin(&backend::origin(port), port); }
+    fn set_origin(&self, origin: &str, local_port: u16) {
+        if let Ok(mut slot) = self.0.lock() { *slot = (origin.to_string(), local_port); }
+    }
+    fn port(&self) -> u16 { self.0.lock().map(|slot| slot.1).unwrap_or(0) }
+    fn origin(&self) -> String { self.0.lock().map(|slot| slot.0.clone()).unwrap_or_default() }
     fn allows(&self, url: &tauri::Url) -> bool {
-        backend::own_page(url, self.0.load(std::sync::atomic::Ordering::SeqCst))
+        let current = self.origin();
+        !current.is_empty() && url.username().is_empty() && url.password().is_none()
+            && places::origin(url.as_str()).is_some_and(|o| o == current)
     }
 }
 
@@ -57,9 +67,14 @@ fn show(
 const LIVE: &str = "live";
 
 fn live_window_capability(port: u16) -> tauri::ipc::CapabilityBuilder {
-    tauri::ipc::CapabilityBuilder::new(format!("dev-live-window-{port}"))
+    live_window_capability_for(&backend::origin(port), &format!("dev-live-window-{port}"))
+}
+
+/// 主窗口里服务自己的页面只能拖动、双击标题栏放大窗口；拿不到任何宿主命令。
+fn live_window_capability_for(origin: &str, id: &str) -> tauri::ipc::CapabilityBuilder {
+    tauri::ipc::CapabilityBuilder::new(id)
         .local(false)
-        .remote(format!("{}/*", backend::origin(port)))
+        .remote(format!("{origin}/*"))
         .webview(LIVE)
         .permission("core:window:allow-start-dragging")
         .permission("core:window:allow-internal-toggle-maximize")
@@ -95,11 +110,21 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     };
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     app.state::<backend::Backend>().stop();
-    let (child, port, token) = if let Some(config) = config {
-        backend::start(&config, &data.join("home"), &ui, &data.join("backend.log"))?
+    shell::set_phase(app, "starting");
+    let key = backend::owner_key(&data.join(places::OWNER_KEY_FILE))?;
+    let started = if let Some(config) = config {
+        backend::start(&config, &data.join("home"), &ui, &data.join("backend.log"), &key)
     } else {
-        backend::start_bundled(&runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"))?
+        backend::start_bundled(&runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"), &key)
     };
+    let (child, port, token) = match started {
+        Ok(found) => found,
+        Err(error) => {
+            shell::set_phase(app, "failing");
+            return Err(error);
+        }
+    };
+    shell::local_started(app, port)?;
     if let Ok(mut slot) = app.state::<backend::Backend>().0.lock() {
         *slot = Some(child);
     }
@@ -107,6 +132,11 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
     app.state::<LiveAddress>().set(port);
     watch_consents(app.clone(), port, token.clone());
+    show_live(app, url, first_run)
+}
+
+/// 主窗口打开 url（本机服务的交接登录地址，或别处服务的页面）。已开着就原地导航。
+fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result<(), String> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if let Some(window) = handle.get_webview_window(LIVE) {
@@ -238,7 +268,24 @@ fn main() {
         .manage(backend::Backend::default())
         .manage(ConnectionGate::default())
         .manage(LiveAddress::default())
-        .invoke_handler(tauri::generate_handler![model_settings::model_settings_get, model_settings::model_settings_save])
+        .manage(shell::ShellState::default())
+        .invoke_handler(tauri::generate_handler![
+            model_settings::model_settings_get, model_settings::model_settings_save,
+            shell::servers_get, shell::server_choose, shell::server_remove, shell::server_sign_out, shell::workspaces_get,
+            shell::welcome_mode_take, shell::welcome_add, shell::discover, shell::link_take, shell::open_external,
+            shell::show_window, shell::hide_window, shell::app_info, shell::quit_app, shell::reveal_folder,
+            shell::local_server_status, shell::local_server_install, shell::local_server_cancel, shell::local_server_start,
+            shell::local_server_stop, shell::local_server_restart, shell::local_server_reach, shell::local_server_backup,
+            shell::local_server_backups_set, shell::local_server_restore, shell::local_server_erase,
+            shell::local_server_diagnostics, shell::tailscale_status, shell::tailscale_open, shell::keep_running,
+            shell::runners_list, shell::pick_folder, shell::setup_state_get, shell::notch_info, shell::notch_place,
+            shell::autostart_get, shell::update_install, shell::screen_access, shell::screen_request, shell::disk_access,
+            shell::pair_ask, shell::runner_send, shell::runner_remove, shell::set_tray_state, shell::tray_visible,
+            shell::notify, shell::update_cancel, shell::notch_set, shell::this_mac_reply, shell::app_menu_set,
+            shell::this_mac_listening, shell::notify_site_set, shell::local_server_reach_stop, shell::local_server_usage,
+            shell::local_server_sync, shell::open_system_settings, shell::privacy_open, shell::setup_state_set,
+            shell::autostart_set, shell::network_ask, shell::runner_add, shell::pair_link_info, shell::site_fetch,
+        ])
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
             let preview = SubmenuBuilder::new(app, "开发版")
@@ -247,7 +294,9 @@ fn main() {
                 .separator()
                 .text("desktop", "桌面界面（示例数据）")
                 .text("characters", "史莱姆外观")
-                .text("preferences", "偏好设置预览")
+                .text("settings", "偏好设置…")
+                .text("welcome", "添加或切换服务…")
+                .text("preferences", "偏好设置预览（示例数据）")
                 .separator()
                 .text("versions", "版本管理")
                 .text("stable", "公开稳定版下载…")
@@ -255,17 +304,32 @@ fn main() {
                 .build()?;
             menu.append(&preview)?;
             app.set_menu(menu)?;
+            app.add_capability(shell::capability())?;
             let bundled = app.path().resource_dir()?.join("runtime").join(
                 if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" }).is_file();
-            show(
-                app.handle(),
-                "main",
-                if bundled { "starting.html" } else { "index.html?lang=zh-Hans" },
-                if bundled { "VortoOne Dev" } else { "VortoOne Dev · 界面预览" },
-                1440.0,
-                960.0,
-            )?;
-            connect(app.handle().clone());
+            // 先打开哪个：上次选的服务；什么都还没选就是首次引导（HOME_AND_MEMBERS_DESIGN 第 4 节）
+            let (config, data) = (app.path().app_config_dir()?, app.path().app_data_dir()?);
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+            match places::opening(&places::read_servers(&config), &places::read_local(&config, &data), now) {
+                places::Opening::Local => {
+                    show(
+                        app.handle(),
+                        "main",
+                        if bundled { "starting.html" } else { "index.html?lang=zh-Hans" },
+                        if bundled { "VortoOne Dev" } else { "VortoOne Dev · 界面预览" },
+                        1440.0,
+                        960.0,
+                    )?;
+                    connect(app.handle().clone());
+                }
+                places::Opening::Remote(server) => {
+                    if let Err(error) = shell::open_remote(app.handle(), &server, None) {
+                        eprintln!("无法打开 {server}: {error}");
+                        shell::open_window(app.handle(), "welcome").map_err(std::io::Error::other)?;
+                    }
+                }
+                places::Opening::Welcome => shell::open_window(app.handle(), "welcome").map_err(std::io::Error::other)?,
+            }
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -275,6 +339,12 @@ fn main() {
                     return;
                 }
                 "models" => show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0),
+                "settings" | "welcome" => {
+                    if let Err(error) = shell::open_window(app, if event.id().as_ref() == "settings" { "prefs" } else { "welcome" }) {
+                        eprintln!("无法打开窗口: {error}");
+                    }
+                    return;
+                }
                 "desktop" => show(
                     app,
                     "main",
