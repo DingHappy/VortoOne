@@ -1,6 +1,9 @@
 """Canonical built-in role records; legacy teams consume a compatibility view."""
 from copy import deepcopy
 
+# 用个人订阅登录的本机 CLI（agentes-chat 叫「计划大脑」）。主人 2026-11-16 定：这样的 agent 默认只回应所有者。
+CLI_ENGINES = ('claude-code', 'codex')
+
 _READ_FILES = ['read_file', 'list_files', 'glob', 'grep', 'find_definition', 'find_references',
                'document_symbols', 'git_status', 'list_branches', 'show_diff']
 _BUILTINS = [
@@ -19,8 +22,18 @@ _BUILTINS = [
     {'id': 'developer', 'title': '开发', 'brief': '在登记项目的一次性副本里读写代码；不执行命令、不联网，交回分支供主人审查。',
      'grants': {'operations': ['read', 'write'], 'tools': [*_READ_FILES, 'edit_file', 'write_file'],
                 'sees': [], 'web': False, 'project': True},
-     'engine': ['opencode'], 'max_steps': 40, 'timeout_seconds': 1800},
+     'engine': ['opencode', *CLI_ENGINES], 'max_steps': 40, 'timeout_seconds': 1800},
 ]
+# 内置岗位以前的写法。老安装存盘的是这些，读取时照样认得，按现在的写法给出。
+_PREVIOUS = {'developer': [{'engine': ['opencode']}]}
+
+
+def previous_builtins(role_id: str) -> list[dict]:
+    """某个内置岗位以前的完整写法（只改过的字段不同）。"""
+    current = next((item for item in builtin_roles() if item['id'] == role_id), None)
+    if current is None:
+        return []
+    return [{**deepcopy(current), **deepcopy(change)} for change in _PREVIOUS.get(role_id, [])]
 
 
 def builtin_roles(*, legacy=False) -> list[dict]:
@@ -48,7 +61,8 @@ def team_role_view(records: list[dict]) -> dict:
         if role['id'] == 'reviewer':
             item['max_steps'] = 2  # Old teams retain the S1 compatibility contract.
         if role['id'] == 'developer':
-            item['engines'] = tuple(role['engine'])
+            # 任务小组只接 ACP 框架；本机 CLI 只给登记的开发 agent 用（团队协作已冻结，ADR-008）
+            item['engines'] = tuple(engine for engine in role['engine'] if engine not in CLI_ENGINES)
         result[role['id']] = item
     return result
 

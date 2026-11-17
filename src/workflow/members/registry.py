@@ -74,6 +74,7 @@ def _fresh() -> Dict[str, Any]:
         "members": {},
         "invitations": {},
         "agent_levels": {},
+        "plans_shared": {},
     }
 
 
@@ -137,6 +138,9 @@ class MemberRegistry:
                           ("agent_levels", dict)):
             if not isinstance(value.get(key), kind):
                 raise Damaged("成员登记文件结构无效")
+        value.setdefault("plans_shared", {})          # 早于这一项的登记文件没有它：一个都没打开
+        if not isinstance(value["plans_shared"], dict):
+            raise Damaged("成员登记文件结构无效")
         try:
             self._check(value)
         except Damaged:
@@ -233,6 +237,26 @@ class MemberRegistry:
                 "permissions": rules.permissions_of(held, posts),
                 "computer": rules.computer_level(held, posts),
                 "act": rules.act_level(held, posts)}
+
+    # ── 用个人订阅的 agent 回不回应别人 ─────────────────────────────────────────
+    # 主人 2026-11-16 定（参照 agentes-chat ADR 0059 §5）：用本机 Claude Code / Codex（所有者的个人订阅）的
+    # agent 默认只回应所有者；所有者可以对单个 agent 打开「也回应别人」。只有所有者能开关——订阅是他的。
+
+    def plan_shared(self, agent_id: str) -> bool:
+        return str(agent_id) in self.snapshot()["plans_shared"]
+
+    def share_plan(self, actor: Principal, agent_id: str, shared: bool, *, now: Optional[datetime] = None) -> None:
+        """打开或关上。调用方负责先让所有者看过条款提示，并记审计。"""
+        agent = str(agent_id)
+        if not _AGENT.fullmatch(agent):
+            raise ValueError("agent 标识无效")
+        if not actor.is_owner:
+            raise Refused("只有所有者能决定自己的订阅回不回应别人")
+        with self._change() as state:
+            if shared:
+                state["plans_shared"][agent] = {"at": _iso(now or _now())}
+            else:
+                state["plans_shared"].pop(agent, None)
 
     def act_level_on(self, agent_id: str, principal: Principal) -> str:
         """这个人对这一个 agent 的办事级别。所有者最高；不在册的成员、没有真人发起的，不能对话。"""

@@ -104,7 +104,10 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     if principal is not None:
         if task.collaboration['dispatch'].get('source') != 'staff':
             raise ValueError('成员只能直接让 agent 办事，不能发起小组任务')
+        from src.workflow.staff.initiators import plan_allows
         from src.workflow.staff.registry import StaffRegistry
+        if not plan_allows(root, member):
+            raise ValueError('这个 agent 用的是所有者的个人订阅，只回应所有者')
         turn_role = role_for_member(StaffRegistry(root), role, level_on(root, member['id'], principal))
     if task.collaboration['dispatch'].get('source') == 'team' and role['id'] == 'developer':
         from src.agents.team_members import execute_team_developer
@@ -119,7 +122,9 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
             work.update_staff_action(task.id, task.collaboration['round'],
                 lambda current: current.collaboration.update(delivery=delivery))
         from src.workflow.staff.executions import StaffExecution
-        execution = StaffExecution(work, task, member['engine'])
+        from src.agents.team_engines import CLI_WORKERS
+        # 执行观测核对身份：本机 CLI 的执行器名是 claude / codex，与登记的框架名不同
+        execution = StaffExecution(work, task, CLI_WORKERS.get(member['engine'], member['engine']))
         return await execute_development(work, task,
             {**task.collaboration['dispatch'], 'model': member['model']}, member['engine'], check_project(role),
             bool(task.collaboration.get('tainted')), record_delivery=record, check=check,

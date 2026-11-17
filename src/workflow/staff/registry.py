@@ -12,7 +12,7 @@ from src.workflow.tasks.tasks import TASK_STATE_LOCK
 from src.workflow.staff.roles import builtin_roles, canonical_roles, published_roles, standing_roles, team_role_view
 
 _ID = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}$')
-_ENGINES = {'vortocode', 'opencode', 'deepseek-harness'}
+_ENGINES = {'vortocode', 'opencode', 'deepseek-harness', 'claude-code', 'codex'}
 _FIELDS = {'id', 'title', 'brief', 'grants', 'engine', 'max_steps', 'timeout_seconds', 'builtin', 'revision', 'enabled',
            'project', 'project_binding'}
 _FORBIDDEN_TOOLS = {'staff_assign', 'staff_propose', 'staff_plan', 'routine_propose', 'task', 'research_parallel',
@@ -195,8 +195,12 @@ class StaffRegistry:
                 expected = builtins.get(row.get('id')) if row.get('builtin') else None
                 legacy = next((x for x in builtin_roles(legacy=True) if x['id'] == row['id']), None)
                 matches = lambda target: target is not None and all(row.get(k) == v for k, v in target.items() if k not in {'enabled', 'revision'})
+                from src.workflow.staff.roles import previous_builtins
                 if expected and not (matches(expected) or matches(legacy)):
-                    raise ValueError('内置岗位被改写')
+                    if not any(matches(old) for old in previous_builtins(row['id'])):
+                        raise ValueError('内置岗位被改写')
+                    # 老安装存的是以前的写法：按现在的写法给出，状态和版本照旧
+                    row = {**deepcopy(expected), 'enabled': row.get('enabled', True), 'revision': row.get('revision', 1)}
                 item = self.validate_role(row, builtin=expected is not None, catalog=catalog)
                 output.append(item)
                 ids.add(item['id'])

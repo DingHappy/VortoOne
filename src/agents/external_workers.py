@@ -65,6 +65,17 @@ _EXTRA_STRIPPED = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN"})
 _CLAUDE_READ_TOOLS = ("Read", "Glob", "Grep", "Bash(python -m pytest *)", "Bash(pytest *)")
 _CLAUDE_WRITE_TOOLS = ("Edit", "Write", "MultiEdit")
 _CLAUDE_NETWORK_TOOLS = frozenset({"WebFetch", "WebSearch"})
+# 模型名只收这种形状：argv 里一个以 - 开头的值会被 CLI 当成参数，能借此打开别的开关
+_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,79}")
+
+
+def model_args(worker: str, model: str) -> list[str]:
+    """登记在 agent 上的模型 → CLI 参数。空的不加（用 CLI 自己的默认）；形状不对的拒绝。"""
+    if not model:
+        return []
+    if not _MODEL.fullmatch(model):
+        raise ValueError(f"模型名称无效：{model!r}")
+    return ["-m", model] if worker == "codex" else ["--model", model]
 _TAIL = 2000
 
 
@@ -350,17 +361,21 @@ def user_config(worker: str) -> tuple[list[str], dict[str, str]]:
 # ── 命令行 ────────────────────────────────────────────────────────────────
 
 def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
-               binary: str = "", extra: tuple[str, ...] | list[str] = ()) -> list[str]:
+               binary: str = "", extra: tuple[str, ...] | list[str] = (), commands: bool = True) -> list[str]:
     """拼一次无头运行的 argv。权限只由这里的显式参数决定，不继承用户级放宽。
 
     提示词一律走 stdin（见 `stdin_text`）：审查提示词带整份 diff，放进 argv 会撞 ARG_MAX。
+    commands=False：Claude Code 不给任何 Bash（连 pytest 也不给）。Codex 没有关掉命令的开关，它的命令
+    只在它自己的沙箱里跑：写只限 cwd，网络显式关掉。
     """
     if worker == "codex":
         return [binary or "codex", "exec", "--json", "--ignore-user-config", "--ephemeral",
                 "-s", "workspace-write" if write else "read-only",
+                "-c", "sandbox_workspace_write.network_access=false",
                 "-C", cwd, "-c", "mcp_servers={}", *extra, "-"]
     if worker == "claude":
-        tools = _CLAUDE_READ_TOOLS + (_CLAUDE_WRITE_TOOLS if write else ())
+        reads = _CLAUDE_READ_TOOLS if commands else tuple(t for t in _CLAUDE_READ_TOOLS if not t.startswith("Bash"))
+        tools = reads + (_CLAUDE_WRITE_TOOLS if write else ())
         argv = [binary or "claude", "-p", "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", "--permission-prompts", "none",
                 "--setting-sources", "local", "--strict-mcp-config", "--no-session-persistence",
@@ -492,8 +507,11 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
 async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system: str = "",
                      on_event: Optional[Callable[[WorkerEvent], Any]] = None,
                      timeout: Optional[int] = None, execution_ref: ExecutionRef | None = None,
-                     on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None) -> WorkerRun:
-    """跑一次外部 CLI，逐行解析 JSONL 事件。失败如实写进 `WorkerRun.error`，不抛。"""
+                     on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None,
+                     commands: bool = True, model: str = "") -> WorkerRun:
+    """跑一次外部 CLI，逐行解析 JSONL 事件。失败如实写进 `WorkerRun.error`，不抛。
+
+    model 给了就覆盖个人配置里的模型（登记在 agent 上的那个）；commands 见 `build_argv`。"""
     run = WorkerRun(worker)
     if execution_ref is not None:
         if not isinstance(execution_ref, ExecutionRef) or execution_ref.backend_id != worker or execution_ref.session_id or execution_ref.turn_id:
@@ -516,7 +534,14 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
         publish()
         return run
     extra, extra_env = user_config(worker)
-    argv = build_argv(worker, cwd=cwd, write=write, system=system, binary=binary, extra=extra)
+    try:
+        chosen = model_args(worker, model)
+    except ValueError as error:
+        run.error, run.failure_code = str(error), "invalid_request"
+        publish()
+        return run
+    argv = build_argv(worker, cwd=cwd, write=write, system=system, binary=binary, extra=[*extra, *chosen],
+                      commands=commands)
     parse = _PARSERS[worker]
     proc = await asyncio.create_subprocess_exec(
         *argv, cwd=cwd, env=_env_for(binary, {**worker_env(), **extra_env}), stdin=asyncio.subprocess.PIPE,
