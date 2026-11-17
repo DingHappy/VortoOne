@@ -4120,9 +4120,11 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vortoone-desktop-dev"
-version = "0.3.0-dev.4"
+version = "0.3.0-dev.5"
 dependencies = [
  "dotenvy",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",

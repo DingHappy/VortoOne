@@ -66,7 +66,8 @@ test("development release notes identify fixtures, the stable version and the ex
   });
   for (const text of [
     "示例数据",
-    "尚未连接正式后端",
+    "无需源码、系统 Python",
+    "默认连接真实本机数据",
     "草稿",
     "abc123",
     stable.version,

@@ -20,6 +20,7 @@
     "desktop:build": "npm run build --workspace @agenteschat/desktop",
     "desktop-dev:bundle": "node scripts/desktop-dev.mjs bundle",
     "desktop-dev:install": "node scripts/desktop-dev.mjs install",
+    "desktop-dev:check-installed": "node scripts/desktop-dev.mjs check-installed",
     "desktop-dev:status": "node scripts/desktop-dev.mjs status",
     "desktop-dev:version": "node scripts/desktop-dev.mjs version",
     "desktop-dev:manage": "node scripts/desktop-dev.mjs manage",

@@ -22,6 +22,7 @@ import {
   devReleaseNotes,
   nextDevelopmentVersion,
 } from "./desktop-dev-model.mjs";
+import { signRuntime } from "./standalone-runtime.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const repo = fileURLToPath(new URL("../..", import.meta.url));
@@ -74,6 +75,8 @@ function inspect(path) {
   if (result?.identifier !== DEV_ID || result.version !== config.version)
     throw new Error("Unexpected development bundle identity/version");
   run("codesign", ["--verify", "--deep", "--strict", path]);
+  if (!existsSync(join(path, "Contents/Resources/runtime/vortocode-runtime")))
+    throw new Error("Standalone Python backend is missing from application");
   return { ...result, sha256Tree: digestTree(path) };
 }
 function identity() {
@@ -156,6 +159,9 @@ if (action === "status") {
   console.log(
     `Development version: ${config.version} -> ${version}; commit and merge before building.`,
   );
+} else if (action === "check-installed") {
+  inspect(target);
+  run(join(target, "Contents/MacOS/vortoone-desktop-dev"), ["--check-standalone"], {stdio: "inherit"});
 } else if (action === "manage") {
   run("open", [RELEASES]);
 } else if (action === "bundle") {
@@ -163,6 +169,7 @@ if (action === "status") {
   if (process.platform !== "darwin" || process.arch !== "arm64")
     throw new Error("This installer currently targets Apple Silicon macOS");
   const signing = identity();
+  run("node", [join(repo, "desktop/scripts/build-sidecar.mjs")], {stdio: "inherit"});
   const buildEnv = { ...process.env };
   for (const key of Object.keys(buildEnv)) {
     if (/^APPLE_(ID|PASSWORD|APP_SPECIFIC_PASSWORD|API_(KEY|ISSUER))/.test(key))
@@ -177,12 +184,21 @@ if (action === "status") {
       "app",
       "--ci",
       "--config",
-      JSON.stringify({ bundle: { macOS: { signingIdentity: signing } } }),
+      JSON.stringify({ bundle: {
+        macOS: { signingIdentity: signing },
+        resources: {
+          "../../web/dist": "web",
+          [join(repo, "desktop/src-tauri/binaries/runtime/")]: "runtime/",
+          [join(repo, "desktop/src-tauri/resources/THIRD_PARTY_NOTICES.txt")]: "THIRD_PARTY_NOTICES.txt",
+        },
+      } }),
       "--",
       "--locked",
     ],
     { cwd: appRoot, stdio: "inherit", env: buildEnv },
   );
+  signRuntime(app, signing, repo);
+  run(join(app, "Contents/MacOS/vortoone-desktop-dev"), ["--check-standalone"], {stdio: "inherit"});
   const built = inspect(app);
   mkdirSync(out, { recursive: true });
   const staging = mkdtempSync(join(tmpdir(), "vortoone-dev-dmg-"));
@@ -216,7 +232,8 @@ if (action === "status") {
     version: config.version,
     identifier: DEV_ID,
     commit: commit(),
-    data: "in-memory fixtures",
+    data: "local persistent backend; bundled Python runtime",
+    runtime: JSON.parse(readFileSync(join(repo, "desktop/src-tauri/target/sidecar/aarch64-apple-darwin/manifest.json"))),
     notarized: false,
     updates: "manual-development-draft",
     appSha256Tree: built.sha256Tree,
