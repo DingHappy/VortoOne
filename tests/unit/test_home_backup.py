@@ -1,6 +1,7 @@
 """家的备份与恢复：数据库拿一致的快照、凭据也带上、只留最新几份；恢复时原来的挪到旁边，包里每一项都核对。"""
 import io
 import json
+import os
 import sqlite3
 import tarfile
 from pathlib import Path
@@ -70,6 +71,107 @@ def test_restore_brings_the_home_back_and_keeps_what_was_there(tmp_path):
     assert rows == [("第一句",)]
     aside = Path(result["kept_aside"])
     assert "升级后改坏了" in (aside / "web_sessions" / "sid-1.json").read_text()      # 原来的留着
+    assert state.stat().st_mode & 0o777 == 0o700
+    assert (state / "mobile-devices").stat().st_mode & 0o777 == 0o700
+    assert (state / "mobile-devices" / "keys.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_online_backup_keeps_a_complete_owner_file_during_atomic_update(tmp_path, monkeypatch):
+    from src.workflow.members.owner_account import OwnerAccount
+
+    owner = OwnerAccount(str(tmp_path))
+    before = {"name": "Ding", "email": "me@example.com", "password": {"hash": "old"}}
+    after = {**before, "name": "A much longer updated owner name", "password": {"hash": "x" * 128}}
+    owner._save(before)
+    gettarinfo = tarfile.TarFile.gettarinfo
+    updated = False
+
+    def update_after_metadata(archive, name=None, arcname=None, fileobj=None):
+        nonlocal updated
+        info = gettarinfo(archive, name=name, arcname=arcname, fileobj=fileobj)
+        if arcname == ".vortoone/members/owner.json" and not updated:
+            owner._save(after)       # 真正的落盘路径：临时文件写完后原子替换
+            updated = True
+        return info
+
+    monkeypatch.setattr(tarfile.TarFile, "gettarinfo", update_after_metadata)
+    saved = B.backup(str(tmp_path), str(tmp_path / "backups"))["path"]
+    assert updated and owner._load() == after
+    B.restore(str(tmp_path), saved)
+    assert owner._load() == before
+
+
+@pytest.mark.parametrize("relative", ["web_sessions/sid.json.tmp", "members/.owner.json.123.tmp",
+                                      "personal-skills/example/.pending-123", "state.json.part"])
+def test_online_backup_excludes_unfinished_atomic_writes(tmp_path, relative):
+    _home(tmp_path)
+    pending = tmp_path / ".vortoone" / relative
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text('{"unfinished":')
+    saved = B.backup(str(tmp_path), str(tmp_path / "backups"))["path"]
+    assert f".vortoone/{relative}" not in _names(saved)
+    B.restore(str(tmp_path), saved)
+    assert not pending.exists()
+    assert (tmp_path / ".vortoone" / "mobile-devices" / "keys.json").read_text() == "device-key"
+
+
+def test_manifest_only_backup_restores_an_empty_home_and_keeps_old_state(tmp_path):
+    state = tmp_path / ".vortoone"
+    state.mkdir()
+    (state / "runtime.lock").write_text("old lock")
+    saved = B.backup(str(tmp_path), str(tmp_path / "backups"))
+    assert saved["files"] == 0
+    result = B.restore(str(tmp_path), saved["path"])
+    assert state.is_dir() and list(state.iterdir()) == []
+    assert state.stat().st_mode & 0o777 == 0o700
+    assert (Path(result["kept_aside"]) / "runtime.lock").read_text() == "old lock"
+
+
+def test_backup_of_hardlinked_files_can_restore_without_archive_links(tmp_path):
+    state = _home(tmp_path)
+    source = state / "memory.txt"
+    source.write_text("keep both files")
+    os.link(source, state / "memory-copy.txt")
+    saved = B.backup(str(tmp_path), str(tmp_path / "backups"))["path"]
+    with tarfile.open(saved, "r:gz") as archive:
+        assert all(member.isfile() for member in archive.getmembers())
+    B.restore(str(tmp_path), saved)
+    assert source.read_text() == (state / "memory-copy.txt").read_text() == "keep both files"
+
+
+def test_restore_puts_original_state_back_if_installing_staging_fails(tmp_path, monkeypatch):
+    state = _home(tmp_path)
+    saved = B.backup(str(tmp_path), str(tmp_path / "backups"))["path"]
+    source = state / "web_sessions" / "sid-1.json"
+    source.write_text("newer data")
+    rename = Path.rename
+
+    def fail_staging_install(path, target):
+        if path.name.startswith(".vortoone.restoring-") and Path(target) == state:
+            raise OSError("cannot install restored directory")
+        return rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_staging_install)
+    with pytest.raises(OSError, match="cannot install"):
+        B.restore(str(tmp_path), saved)
+    assert source.read_text() == "newer data"
+    assert not list(tmp_path.glob(".vortoone.restoring-*"))
+
+
+def test_online_sqlite_backup_contains_committed_wal_rows(tmp_path):
+    state = _home(tmp_path)
+    with sqlite3.connect(state / "sessions.db") as live:
+        assert live.execute("pragma journal_mode=wal").fetchone()[0] == "wal"
+        live.execute("insert into chats values ('committed in WAL')")
+        live.commit()
+        saved = B.backup(str(tmp_path), str(tmp_path / "backups"))["path"]
+        with tarfile.open(saved, "r:gz") as archive:
+            snapshot = archive.extractfile(".vortoone/sessions.db").read()
+            assert not any(name.endswith(("-wal", "-shm")) for name in archive.getnames())
+    copied = tmp_path / "snapshot.db"
+    copied.write_bytes(snapshot)
+    with sqlite3.connect(copied) as database:
+        assert database.execute("select body from chats").fetchall() == [("第一句",), ("committed in WAL",)]
 
 
 def _package(path, name, kind="file"):
