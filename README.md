@@ -197,7 +197,7 @@ python -m pytest tests/ -q   # 离线、结果确定，不调用真实模型
 
 ### 新 Desktop 前端基底
 
-[`frontend/`](frontend/README.md) 是复用 `agentes-chat` Desktop 界面的独立 React/TypeScript 工程，包含完整聊天界面、桌面辅助窗口和可自定义的史莱姆角色。可运行隔离数据预览并构建前端资源；当前产品入口仍是 `desktop/`，新界面尚未全面接入现有 Gateway，也未替换原生安装包。启动、验证及接口适配边界见 [前端说明](frontend/README.md)。
+[`frontend/`](frontend/README.md) 是 VortoOne Desktop 的独立 React/TypeScript 工程，包含完整聊天界面、桌面辅助窗口和可自定义的史莱姆角色。可运行隔离数据预览并构建前端资源；当前产品入口仍是 `desktop/`，新界面尚未全面接入现有 Gateway，也未替换原生安装包。启动、验证及接口适配边界见 [前端说明](frontend/README.md)。
 
 ## 致谢
 

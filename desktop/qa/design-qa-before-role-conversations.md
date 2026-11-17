@@ -5,16 +5,6 @@
 
 ## 依据与范围
 
-- 流程依据：agentes.chat `745d26cde30d6acff732c46c652ed1a385a72a80` 的
-  ConnectAi / EndpointForm：先选连接方式，再配置并选模型，核对保存位置后完成。
-  本批未迁入上游代码、样式、翻译、品牌或依赖。
-- 视觉沿用 VortoOne 共同控件、Lucide 图标、canonical token、灰阶分组和现有设置页面。
-  本批是该流程的独立接入，不声称整个前端或订阅登录已对齐。
-- 实现截图为生产组件 + 合成 IPC：`docs/design/connect-ai/` 的 `method.png`、`models.png`、
-  `method-narrow-dark.png`、`models-narrow-dark.png`。不读取或写入主人配置。
-- 宽窗 1240×900 CSS，图片 2480×1800；窄窗 400×900 CSS，图片 800×1800。
-  均按原始浏览器 Retina 密度捕获，没有放大旧图。辅助截图在密度 1 时出现裁切，最终已全部重拍。
-
 ## 已验证的行为
 
 1. 新连接等待模拟原生保存时，配置尚未写入，按钮不可重复提交；确认后回读手动模型，
