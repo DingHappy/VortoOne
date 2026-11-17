@@ -13,6 +13,15 @@ const RELEASES: &str = "https://github.com/DingHappy/VortoOne/releases";
 const STABLE: &str = "https://github.com/DingHappy/VortoOne/releases/latest";
 #[derive(Default)]
 struct ConnectionGate(std::sync::Mutex<()>);
+#[derive(Clone, Default)]
+struct LiveAddress(std::sync::Arc<std::sync::atomic::AtomicU16>);
+
+impl LiveAddress {
+    fn set(&self, port: u16) { self.0.store(port, std::sync::atomic::Ordering::SeqCst); }
+    fn allows(&self, url: &tauri::Url) -> bool {
+        backend::own_page(url, self.0.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
 
 fn packaged_url(url: &tauri::Url) -> bool {
     (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
@@ -95,11 +104,20 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     }
     let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
     app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
+    app.state::<LiveAddress>().set(port);
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        if let Some(old) = handle.get_webview_window(LIVE) {
-            let _ = old.destroy();
+        if let Some(window) = handle.get_webview_window(LIVE) {
+            // 同名 WebView 销毁后的异步清理会影响刚重建的窗口；重连只导航现有窗口。
+            // 导航闸读取当前端口，仍不允许旧服务或其它本机地址进入主窗口。
+            if let Err(error) = window.navigate(url) {
+                eprintln!("无法重新连接主窗口: {error}");
+            }
+            let _ = window.show();
+            let _ = window.set_focus();
+            return;
         }
+        let address = handle.state::<LiveAddress>().inner().clone();
         let builder = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
             .title("VortoOne Dev")
             .initialization_script(include_str!("../../desktop-titlebar.js"))
@@ -108,7 +126,7 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
             .center()
             // 窗口只在后端自己的地址里走；外部链接交给系统浏览器
             .on_navigation(move |target| {
-                if backend::own_page(target, port) {
+                if address.allows(target) {
                     return true;
                 }
                 if matches!(target.scheme(), "https" | "http") {
@@ -154,6 +172,7 @@ fn main() {
     tauri::Builder::default()
         .manage(backend::Backend::default())
         .manage(ConnectionGate::default())
+        .manage(LiveAddress::default())
         .invoke_handler(tauri::generate_handler![model_settings::model_settings_get, model_settings::model_settings_save])
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
@@ -171,11 +190,13 @@ fn main() {
                 .build()?;
             menu.append(&preview)?;
             app.set_menu(menu)?;
+            let bundled = app.path().resource_dir()?.join("runtime").join(
+                if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" }).is_file();
             show(
                 app.handle(),
                 "main",
-                "index.html?lang=zh-Hans",
-                "VortoOne Dev · 界面预览",
+                if bundled { "starting.html" } else { "index.html?lang=zh-Hans" },
+                if bundled { "VortoOne Dev" } else { "VortoOne Dev · 界面预览" },
                 1440.0,
                 960.0,
             )?;
@@ -251,6 +272,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconnect_navigation_uses_the_current_backend_and_rejects_the_old_port() {
+        let address = LiveAddress::default();
+        address.set(4321);
+        let nav = address.clone();
+        assert!(nav.allows(&"http://127.0.0.1:4321/home".parse().unwrap()));
+        address.set(4322);
+        assert!(nav.allows(&"http://127.0.0.1:4322/api/auth/handover/code".parse().unwrap()));
+        for rejected in ["http://127.0.0.1:4321/", "http://localhost:4322/", "https://example.test/"] {
+            assert!(!nav.allows(&rejected.parse().unwrap()));
+        }
+    }
 
     #[test]
     fn only_the_live_backend_can_drag_its_own_window() {

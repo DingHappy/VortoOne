@@ -33,7 +33,7 @@ await cp(new URL("../apps/web/dist-preview/", import.meta.url), output, {
   recursive: true,
 });
 await cp(new URL("../NOTICE", import.meta.url), new URL("NOTICE", output));
-for (const name of ["model-settings.html", "model-settings.css", "model-settings.js"]) {
+for (const name of ["model-settings.html", "model-settings.css", "model-settings.js", "starting.html", "starting.css"]) {
   await cp(new URL(`../apps/desktop-dev/${name}`, import.meta.url), new URL(name, output));
 }
 const commit = execFileSync("git", ["rev-parse", "HEAD"], {
