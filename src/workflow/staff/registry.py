@@ -300,8 +300,11 @@ class StaffRegistry:
         if item.get('engine') not in assigned['engine']:
             raise ValueError('执行框架不在岗位允许范围内')
         # D10 applies to new staff; S1 only preserves the old team executor choices.
-        if item['engine'] != 'vortocode' and not (assigned['id'] == 'developer' or assigned.get('project_binding')):
-            raise ValueError('D10：新专员只有开发岗允许外部框架')
+        from src.workflow.staff.roles import CLI_ENGINES, cli_general_allowed
+        cli_general = item['engine'] in CLI_ENGINES and cli_general_allowed(assigned)
+        if item['engine'] != 'vortocode' and not (assigned['id'] == 'developer' or assigned.get('project_binding')
+                                                  or cli_general):
+            raise ValueError('D10：新专员只有开发岗允许外部框架；本机 CLI 另可用于只读、不看私人资料的岗位')
         if item['engine'] == 'codex':
             from src.agents.team_engines import CODEX_UNCONFINED
             raise ValueError(CODEX_UNCONFINED)
