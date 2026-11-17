@@ -26,7 +26,7 @@ fail() { echo "✗ $*" >&2; [ -f "$INST/server.log" ] && tail -20 "$INST/server.
 release() {   # release <版本> [broken]
   src="$WORK/src-$1"
   mkdir -p "$src/frontend/apps/web" "$src/scripts" "$src/deploy"
-  cp -R "$ROOT/src" "$ROOT/pyproject.toml" "$ROOT/README.md" "$ROOT/constraints.txt" "$src/"
+  cp -R "$ROOT/src" "$ROOT/web" "$ROOT/pyproject.toml" "$ROOT/README.md" "$ROOT/constraints.txt" "$src/"   # web/：审批台页面随包装（pyproject 的 data-files）
   cp -R "$ROOT/frontend/apps/web/dist" "$src/frontend/apps/web/"
   cp "$ROOT/scripts/build-server-release.sh" "$src/scripts/"
   cp "$ROOT/deploy/install.sh" "$src/deploy/"
