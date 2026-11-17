@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>连接的电脑</title><link rel="stylesheet" href="computers.css"></head>
+<body><main>
+<header><p class="eyebrow">这台电脑 · VortoOne Dev</p><h1>连接的电脑</h1><p>把这台电脑的身份登记到你选择的家，由电脑主动保持连接。退出 App 后连接停止。</p></header>
+<aside class="notice"><strong>全部执行能力尚未就绪</strong><p>当前仅支持配对和连接状态。文件读取、写入、命令、浏览器和 Codex 全部关闭；配对不会开放它们。</p></aside>
+<section aria-labelledby="connections-title"><div class="section-head"><h2 id="connections-title">已登记的连接</h2><button id="refresh" type="button" class="secondary">刷新</button></div><p id="auto-status" class="muted" role="status"></p><div id="connections" aria-live="polite"><p class="muted">正在读取本机连接…</p></div></section>
+<section aria-labelledby="pair-title"><h2 id="pair-title">连接一个家</h2><p class="muted">先在已登录的家里生成电脑配对码，再在这里核对家的身份并输入。不会沿用网页的登录凭据。</p>
+<form id="preview-form"><label for="origin">家的 HTTPS 地址</label><input id="origin" type="url" placeholder="https://your-home.example" maxlength="2048" required autocomplete="off" spellcheck="false"><label for="name">电脑名称</label><input id="name" maxlength="64" placeholder="我的 Mac" required autocomplete="off"><button id="preview" type="submit">核对家的身份</button></form>
+<form id="pair-form" hidden><dl><dt>家的地址</dt><dd id="verified-origin"></dd><dt>家身份</dt><dd id="verified-home" class="identity"></dd><dt>电脑名称</dt><dd id="verified-name"></dd></dl><label for="code">12 位电脑配对码</label><input id="code" autocomplete="off" spellcheck="false" maxlength="20" placeholder="XXXX XXXX XXXX" required><p class="muted">确认时还会出现本机系统确认窗口。身份预览和配对码都会过期。</p><div class="actions"><button id="confirm" type="submit">确认配对</button><button id="cancel" class="secondary" type="button">重新选择</button></div></form>
+<p id="status" role="status" aria-live="polite"></p>
+</section></main><script type="module" src="computers.js"></script></body></html>

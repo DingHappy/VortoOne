@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import json
 import tarfile
+import tempfile
 import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
 
 from src.utils.state_dir import state_dir
+from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
+from src.workflow.home_identity import HomeIdentityError
 
 FORMAT = "vortoone-home"
 VERSION = 1
@@ -32,9 +35,9 @@ MAX_FILES = 500_000
 # .vortoone/ 下不带走的顶层项
 LEFT_BEHIND = frozenset({
     "runtime.lock", "worktrees", "worktree_bindings.json", "isolated_deliveries", "shadow.git", "logs",
-    "ai_apps", "mobile-devices", "im-pairings", "im-bots", MARKER,
+    "ai_apps", "mobile-devices", "connected-computers", "im-pairings", "im-bots", MARKER,
 })
-_DATA_ROOTS = ("sessions.db", "web_sessions", "staff", "members", "tasks", "memory", "main_chat.json")
+_DATA_ROOTS = ("sessions.db", "web_sessions", "staff", "members", "tasks", "memory", "main_chat.json", "connected-computers")
 
 
 class MoveError(ValueError):
@@ -56,6 +59,14 @@ def _left_behind(relative: PurePosixPath) -> bool:
 
 def export_home(root: str, destination: str, *, moving: bool = False) -> Dict[str, Any]:
     """把这个家导出到 destination（一个还不存在的 .tar.gz）。moving：导出后旧的家停用。"""
+    try:
+        with home_maintenance(root, require_stopped=moving):
+            return _export_home(root, destination, moving=moving)
+    except (HomeIdentityError, HomeMaintenanceError) as error:
+        raise MoveError("搬家前无法安全核对身份或确认服务已停止") from error
+
+
+def _export_home(root: str, destination: str, *, moving: bool) -> Dict[str, Any]:
     state = state_dir(root)
     if not state.is_dir():
         raise MoveError("这里还没有可以搬的家")
@@ -66,6 +77,8 @@ def export_home(root: str, destination: str, *, moving: bool = False) -> Dict[st
         raise MoveError("目标文件已经存在，换个名字")
     if not target.name.endswith(".tar.gz"):
         raise MoveError("搬家包的文件名要以 .tar.gz 结尾")
+    from src.workflow.home_identity import ensure_home_identity
+    ensure_home_identity(root)          # 先保留旧手机目录里的公共 UUID，再留下手机凭据
     files: List[Path] = []
     skipped: set = set()
     total = 0
@@ -98,6 +111,8 @@ def export_home(root: str, destination: str, *, moving: bool = False) -> Dict[st
     finally:
         temporary.unlink(missing_ok=True)
     if moving:
+        from src.workflow.home_identity import invalidate_computer_trust
+        invalidate_computer_trust(root, "move-out")
         (state / MARKER).write_text(json.dumps({"at": manifest["created"], "package": str(target)},
                                                ensure_ascii=False), encoding="utf-8")
     return {**manifest, "path": str(target), "moving": moving}
@@ -129,6 +144,14 @@ def _checked_members(archive: tarfile.TarFile) -> List[tarfile.TarInfo]:
 
 def import_home(root: str, package: str, *, replace: bool = False) -> Dict[str, Any]:
     """把搬家包导入到 root 这个家。已有数据时要 replace=True，原来的挪到旁边（不删）。"""
+    try:
+        with home_maintenance(root, require_stopped=True):
+            return _import_home(root, package, replace=replace)
+    except (HomeIdentityError, HomeMaintenanceError) as error:
+        raise MoveError("导入前无法安全核对身份或确认服务已停止；原来的家保持不变") from error
+
+
+def _import_home(root: str, package: str, *, replace: bool) -> Dict[str, Any]:
     state = state_dir(root)
     try:
         archive = tarfile.open(package, "r:gz")
@@ -146,20 +169,22 @@ def import_home(root: str, package: str, *, replace: bool = False) -> Dict[str, 
             raise MoveError("搬家包的版本这里认不得，先把这里的 VortoOne 升级到最新")
         members = _checked_members(archive)
         aside = None
-        if state.exists() and _has_data(state):
-            if not replace:
-                raise MoveError("这个家里已经有数据；确定要用搬家包替换，就选替换（原来的会挪到旁边留着）")
-            aside = state.with_name(f"{state.name}.before-import-{int(time.time())}")
-            state.rename(aside)
-        staging = state.with_name(f"{state.name}.importing-{int(time.time())}")
+        had_data = state.exists() and _has_data(state)
+        if had_data and not replace:
+            raise MoveError("这个家里已经有数据；确定要用搬家包替换，就选替换（原来的会挪到旁边留着）")
+        state.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f"{state.name}.importing-", dir=state.parent))
         try:
             for member in members:
                 relative = PurePosixPath(*PurePosixPath(member.name).parts[1:])
                 destination = staging.joinpath(*relative.parts)
                 if member.isdir():
-                    destination.mkdir(parents=True, exist_ok=True)
+                    destination.mkdir(mode=0o700, parents=True, exist_ok=True)
                     continue
-                destination.parent.mkdir(parents=True, exist_ok=True)
+                parent = staging
+                for part in relative.parts[:-1]:
+                    parent = parent / part
+                    parent.mkdir(mode=0o700, exist_ok=True)
                 source = archive.extractfile(member)
                 if source is None:
                     raise MoveError(f"搬家包里的文件读不出来：{member.name[:120]}")
@@ -167,12 +192,16 @@ def import_home(root: str, package: str, *, replace: bool = False) -> Dict[str, 
                     while chunk := source.read(1024 * 1024):
                         out.write(chunk)
                 destination.chmod(0o600)
-            # 原来已有、但没数据的状态目录（只有锁和 .gitignore 之类）：并进来，不丢它的锁文件
+            from src.workflow.home_identity import prepare_replaced_home
+            prepare_replaced_home(staging, "move-in")
             if state.exists():
-                for leftover in state.iterdir():
+                aside = state.with_name(f"{state.name}.before-import-{time.time_ns()}")
+                state.rename(aside)
+            # 原来已有、但没数据的状态目录（只有锁和 .gitignore 之类）：并进来，不丢它的锁文件
+            if aside is not None and not had_data:
+                for leftover in aside.iterdir():
                     if not (staging / leftover.name).exists():
                         leftover.rename(staging / leftover.name)
-                state.rmdir()
             staging.rename(state)
         except Exception:
             import shutil
@@ -180,5 +209,5 @@ def import_home(root: str, package: str, *, replace: bool = False) -> Dict[str, 
             if aside is not None and not state.exists():
                 aside.rename(state)
             raise
-    return {"files": len([m for m in members if m.isfile()]), "replaced": aside is not None,
+    return {"files": len([m for m in members if m.isfile()]), "replaced": bool(had_data),
             "kept_aside": str(aside) if aside else None, "created": manifest.get("created")}

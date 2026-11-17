@@ -83,6 +83,7 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/usage", {"usage": []}),
     (_ORG + r"/approvals", {"approvals": []}),
     (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
+    (_ORG + r"/machines", {"machines": []}),  # C1 只开放所有者的电脑列表，成员继续固定空回答
     (_ORG + r"/former-agents", {"agents": []}),          # 不在团队里的 agent 是所有者的事
 )
 

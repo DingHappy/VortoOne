@@ -2670,5 +2670,51 @@
     "methods": [
       "POST"
     ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/computer-pairings",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/computer-pairings/{pairing_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/computers/identity",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/computers/native-pair",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/computers/pair",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/computers/ws",
+    "methods": []
   }
 ]

@@ -10,7 +10,6 @@ from collections.abc import Sequence
 
 from src.runtime_bootstrap import prepare_runtime
 from src.runtime_jobs import JOB_COMMANDS, add_job_commands, validate_job_args, run_job_command
-from src.utils.state_dir import state_dir
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,10 +17,15 @@ def build_parser() -> argparse.ArgumentParser:
         prog="vortoone-runtime", description="VortoOne internal service runner"
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("computer-connector", help="native-managed outbound computer control worker")
+    desktop_restore = commands.add_parser("desktop-home-restore", help="restore native Desktop home data without reviving computer trust")
+    desktop_restore.add_argument("--data-dir", required=True)
+    desktop_restore.add_argument("--archive", required=True)
     server = commands.add_parser("server", help="start the existing Gateway service")
     server.add_argument("--host", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8080)
     server.add_argument("--im", choices=["telegram", "dingtalk"], default="")
+    server.add_argument("--native-computer-control", action="store_true", help="read a native launch ticket from private stdin")
     im = commands.add_parser("im", help="start the existing standalone IM bridge")
     im.add_argument("channel", choices=["telegram", "dingtalk"])
     im.add_argument("--mode", choices=["plan", "build"], default="plan")
@@ -55,6 +59,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     validate_job_args(parser, args)
+    if args.command == "computer-connector":
+        from src.gateway.computer_connector import main as connector_main
+        return connector_main()
+    if args.command == "desktop-home-restore":
+        return run_desktop_restore(args.data_dir, args.archive)
     if args.command in {"legacy-inventory", "legacy-verify"}:
         import json
         from src.cli_migration import inventory, verify_report, write_report
@@ -84,7 +93,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command in JOB_COMMANDS:
         return run_job_command(args)
     if args.command == "server":
-        run_server(args.host, args.port, im=args.im)
+        native = {"native_control": True} if args.native_computer_control else {}
+        run_server(args.host, args.port, im=args.im, **native)
         return 0
     if args.command == "im":
         asyncio.run(run_im(args.channel, mode=args.mode))
@@ -94,6 +104,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "canary":
         return asyncio.run(run_canary_cli())
     raise AssertionError(f"unsupported internal command: {args.command}")
+
+
+def run_desktop_restore(data_dir: str, archive: str) -> int:
+    """Native maintenance only: no home/env setup before validating the archive."""
+    import json
+    from src.workflow.desktop_backup import DesktopRestoreError, restore_desktop
+    try:
+        restore_desktop(data_dir, archive)
+    except (DesktopRestoreError, OSError, ValueError):
+        print(json.dumps({"ok": False, "error": "desktop_restore_unavailable"}))
+        return 2
+    print(json.dumps({"ok": True}))
+    return 0
 
 
 async def run_doctor() -> int:
@@ -159,10 +182,10 @@ async def run_im(channel: str, *, mode: str = "plan"):
     warn = bridge.allow_from_warning()  # 白名单配错（空 / 漏了 owner）→ 开机就在终端讲清楚：
     if warn:  # 不是坏了，是配置把你自己也挡在门外了
         print(warn, file=sys.stderr)
-    from src.gateway.process_lease import ProcessLease
+    from src.gateway.process_lease import RuntimeLease
 
     try:
-        with ProcessLease(state_dir(cwd) / "runtime.lock"):
+        with RuntimeLease(cwd):
             try:
                 await bridge.run()
             finally:
@@ -210,12 +233,17 @@ def run_owner_claim(args) -> int:
     import json
     import os
     from src.workflow.members.owner_account import OwnerAccount, Taken
+    from src.workflow.home_identity import HomeIdentityError
+    from src.utils.home_maintenance import HomeMaintenanceError
     base = (args.url or os.getenv("VORTOONE_PUBLIC_URL", "") or "http://127.0.0.1:8080").strip().rstrip("/")
     if not base.startswith(("https://", "http://127.0.0.1", "http://localhost")):
         print(json.dumps({"ok": False, "error": "地址要是 https，或这台电脑上的 http"}, ensure_ascii=False))
         return 2
     try:
         token, expires = OwnerAccount(str(Path.cwd())).claim_link(reset=bool(getattr(args, "reset", False)))
+    except (HomeIdentityError, HomeMaintenanceError):
+        print(json.dumps({"ok": False, "error": "认领状态正在维护或暂时无法保存，请稍后重试"}, ensure_ascii=False))
+        return 2
     except (Taken, OSError, ValueError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
         return 2
@@ -233,10 +261,18 @@ def refuse_if_moved(root: str) -> None:
         raise SystemExit(3)
 
 
-def run_server(host: str, port: int, im: str = ""):
+def run_server(host: str, port: int, im: str = "", *, native_control: bool = False):
     """运行服务器（im 非空 = 内嵌 IM 桥，见 gateway/im_service）"""
     from src.web.server import start_server
     refuse_if_moved(str(Path.cwd()))
+    from src.runtime_bootstrap import prepare_server_ownership
+    prepare_server_ownership(Path.cwd())
+    if native_control:
+        from src.gateway.computer_native import ComputerNativeDenied, ComputerNativeUnavailable, read_bootstrap
+        try:
+            read_bootstrap(Path.cwd())
+        except (ComputerNativeDenied, ComputerNativeUnavailable, OSError, ValueError):
+            raise SystemExit("本机启动票据不可用，服务未启动") from None
     from src.scheduling.upgrade_notice import report
     report(str(Path.cwd()))                     # 安装命令记下的升级结果（成功或退回）进通知，只报一次
     start_server(host, port, im=im)

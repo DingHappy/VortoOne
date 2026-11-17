@@ -4,6 +4,18 @@ from pathlib import Path
 from src.env_compat import env_compat
 
 
+def prepare_server_ownership(root) -> None:
+    """A fresh server is unclaimed; an existing home remains an explicit migration candidate."""
+    from src.utils.home_maintenance import home_maintenance
+    from src.utils.state_dir import state_dir
+    from src.workflow.home_identity import initialize_unclaimed_home
+
+    with home_maintenance(root):
+        state = state_dir(root)
+        if not state.exists() and not state.is_symlink():
+            initialize_unclaimed_home(root)
+
+
 def resolve_log_level(raw) -> int:
     """把 ``LOG_LEVEL`` 的原始值解析成 logging 级别；**认不出一律 WARNING**。
 

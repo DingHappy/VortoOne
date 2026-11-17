@@ -24,6 +24,7 @@ import uuid
 
 from src.utils.state_dir import ensure_state_gitignore
 from src.utils.state_dir import state_dir
+from src.workflow.home_identity import ensure_home_identity, HomeIdentityError
 
 SCOPE = "assistant:read"
 MAX_DEVICES = 256
@@ -203,6 +204,14 @@ class MobileDevices:
             yield
 
     def _save(self, data: dict) -> None:
+        try:
+            identity = ensure_home_identity(self.root)["home_instance_id"]
+        except (HomeIdentityError, OSError) as error:
+            raise MobileStoreError("家的身份不可用") from error
+        # 无旧存储的兼容子类也必须使用公共身份，不能另造第二个 UUID。
+        if self.path.exists() and data.get("instance_id") != identity:
+            raise MobileStoreError("家的身份与设备授权不一致")
+        data["instance_id"] = identity
         fd, temporary = tempfile.mkstemp(prefix=".grants-", dir=self.directory)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -227,21 +236,28 @@ class MobileDevices:
 
     def ensure_instance(self) -> str:
         """Create only an empty identity, never a device/account grant."""
+        try:
+            instance_id = ensure_home_identity(self.root)["home_instance_id"]
+        except (HomeIdentityError, OSError) as error:
+            raise MobileStoreError("家的身份不可用") from error
         with self._lock():
             data = self._load()
             if data is None:
-                data = {"schema_version": 1, "instance_id": uuid.uuid4().hex, "devices": []}
+                data = {"schema_version": 1, "instance_id": instance_id, "devices": []}
                 self._save(data)
+            if data["instance_id"] != instance_id:
+                raise MobileStoreError("家的身份与设备授权不一致")
             return data["instance_id"]
 
     def issue(self, name: str, ttl_days: int = 30) -> dict:
         name = _name(name)
         if type(ttl_days) is not int or not 1 <= ttl_days <= 90:
             raise ValueError("设备有效期需要 1–90 天")
+        instance_id = self.ensure_instance()
         with self._lock():
             data = self._load() or {
                 "schema_version": 1,
-                "instance_id": uuid.uuid4().hex,
+                "instance_id": instance_id,
                 "devices": [],
             }
             if len(data["devices"]) >= MAX_DEVICES:

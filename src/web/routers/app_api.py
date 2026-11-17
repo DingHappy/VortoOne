@@ -203,7 +203,7 @@ async def owner_claim(body: _OwnerClaim, request: Request, response: Response):
         return JSONResponse({"code": "ALREADY_CLAIMED", "message": str(error)}, status_code=409)
     except ValueError as error:
         return JSONResponse({"code": "INVALID_CLAIM", "message": str(error)}, status_code=422)
-    except OSError:
+    except (OSError, RuntimeError):
         return JSONResponse({"code": "UNAVAILABLE", "message": "暂时认领不了"}, status_code=409)
     await login(LoginBody(token=get_api_token()), request, response)
     return {"redirect": False, "token": None, "user": views.me(root)["user"]}
@@ -916,7 +916,6 @@ _EMPTY: Dict[str, Any] = {
     "/notifications/count": {"unread": 0, "waiting": 0},
     "/waiting": {"items": [], "count": 0},
     "/missions": {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}},
-    "/machines": {"machines": []},
     "/machines/outages": {"outages": [], "targets": []},
     "/issues": {"issues": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},

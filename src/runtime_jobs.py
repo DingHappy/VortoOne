@@ -5,7 +5,6 @@ import asyncio
 import sys
 from pathlib import Path
 
-from src.utils.state_dir import state_dir
 
 JOB_COMMANDS = frozenset({"cron", "collect", "stats", "digest", "pipeline", "heartbeat"})
 
@@ -198,13 +197,13 @@ async def run_heartbeat_cli(*, worker_factory=None):
     """
     from src.scheduling import heartbeat as _hb
     from src.gateway.runtime import RuntimeServices
-    from src.gateway.process_lease import ProcessLease
+    from src.gateway.process_lease import RuntimeLease
     from src.gateway.workspace_scope import current_workspace_scope
 
     cwd = str(Path.cwd())
     if current_workspace_scope() != "project":
         raise RuntimeError("Autonomous scheduling requires a Project workspace")
-    with ProcessLease(state_dir(cwd) / "runtime.lock"):
+    with RuntimeLease(cwd):
         worker = (worker_factory or make_background_development_worker)(cwd)
         runner = RuntimeServices(cwd, development_worker=worker).runner
         try:

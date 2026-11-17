@@ -148,6 +148,12 @@ main() {
   case $PORT in ''|*[!0-9]*) PORT=8080 ;; esac
   write_scripts
 
+  # ── 先登记认领状态，再启动新服务（owner-key 不是已认领的证明） ──
+  URL=$(sed -n 's/^VORTOONE_PUBLIC_URL=//p' "$DIR/server.env" | tail -1)
+  [ -n "$URL" ] || URL="http://127.0.0.1:$PORT"
+  CLAIM=$(cd "$DIR/home" && "$TARGET/bin/vc" owner-claim --url "$URL" 2>/dev/null || true)
+  LINK=$(printf '%s' "$CLAIM" | sed -n 's/.*"link": *"\([^"]*\)".*/\1/p')
+
   # ── 换到这一版：第一次装直接用；升级要先备份，自检不过就退回 ──
   PREVIOUS=$(current_version)
   if [ -z "$PREVIOUS" ] || [ "$PREVIOUS" = "$VERSION" ] || [ ! -f "$DIR/versions/$PREVIOUS/.complete" ]; then
@@ -161,11 +167,6 @@ main() {
     upgrade "$PREVIOUS"
   fi
 
-  # ── 所有者认领 ──
-  URL=$(sed -n 's/^VORTOONE_PUBLIC_URL=//p' "$DIR/server.env" | tail -1)
-  [ -n "$URL" ] || URL="http://127.0.0.1:$PORT"
-  CLAIM=$(cd "$DIR/home" && "$DIR/current/bin/vc" owner-claim --url "$URL" 2>/dev/null || true)
-  LINK=$(printf '%s' "$CLAIM" | sed -n 's/.*"link": *"\([^"]*\)".*/\1/p')
   say ""
   if [ -n "$LINK" ]; then
     say "所有者认领链接（24 小时内有效，只能用一次；第一个打开的人成为所有者）："

@@ -13,6 +13,12 @@ cron / collect / stats / digest / pipeline / heartbeat，以及只读 legacy-inv
 当作离线自检。参数解析和帮助先于准备，非法命令不创建状态目录。
 
 `runtime_bootstrap.prepare_runtime` 复用原日志、环境名兼容和工作/家目录状态迁移顺序。
+内部入口和 Desktop 的实际打包入口另外接受 `computer-connector`，其配置只从父进程私有 stdin 读取；
+这个分支在通用准备前分发，不加载家的 `.env`、不创建家、也不启动 agent 或本地服务。
+两入口另有 `desktop-home-restore --data-dir … --archive …`，在通用准备前调用共同恢复与信任失效。
+只有自有外壳启动的 server 使用 `--native-computer-control`，从私有 stdin 接收本机一次票据；
+该参数不包含秘密，不放宽普通服务器的鉴权或认领要求。
+主动连接、秘密存储与父进程退出合同见 [连接的电脑](CONNECTED_COMPUTERS.md)。
 公开 CLI 与内部入口共用服务和诊断实现，CLI 日志包装仍支持原调用路径。
 独立 IM 保留原凭证拒启、scope、进程租约、runner shutdown 与 adapter close。
 服务本身仍走原 `start_server`、runtime 生命周期和会话装配，不新增安全判断位置。

@@ -222,6 +222,10 @@ def test_every_startup_read_answers_for_this_home(client):
              f"channels/{channel}/pins"]
     for path in reads:
         response = client.get(f"/api/app/organizations/{org}/{path}")
+        if path == "machines":
+            # C1's actual computer registry needs an authenticated owner even in tokenless dev mode.
+            assert response.status_code == 403
+            continue
         assert response.status_code == 200, path
         assert client.get(f"/api/app/organizations/other/{path}").status_code == 404, path
     assert client.get("/api/app/models").status_code == 200

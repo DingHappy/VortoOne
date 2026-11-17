@@ -23,6 +23,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
 
 from src.utils.state_dir import state_dir
+from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
+from src.workflow.home_identity import HomeIdentityError
 
 FORMAT = "vortoone-backup"
 VERSION = 1
@@ -150,6 +152,14 @@ def _checked(archive: tarfile.TarFile) -> List[tarfile.TarInfo]:
 
 def restore(root: str, archive_path: str) -> Dict[str, Any]:
     """把 root 这个家恢复成这份备份。原来的状态目录挪到旁边留着。调用方先停服务。"""
+    try:
+        with home_maintenance(root, require_stopped=True):
+            return _restore(root, archive_path)
+    except (HomeIdentityError, HomeMaintenanceError) as error:
+        raise BackupError("恢复前无法安全核对身份或确认服务已停止；原来的家保持不变") from error
+
+
+def _restore(root: str, archive_path: str) -> Dict[str, Any]:
     state = state_dir(root)
     try:
         archive = tarfile.open(archive_path, "r:gz")
@@ -185,6 +195,8 @@ def restore(root: str, archive_path: str) -> Dict[str, Any]:
                     while chunk := source.read(1024 * 1024):
                         out.write(chunk)
                 destination.chmod(0o600)
+            from src.workflow.home_identity import prepare_replaced_home
+            prepare_replaced_home(staging, "restore")
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise

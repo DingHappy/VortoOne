@@ -16,5 +16,8 @@ tauri = { version = "=2.12.5", features = [] }
 tauri-plugin-opener = "=2.5.4"
 tauri-plugin-dialog = "=2.7.1"
 
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.186"
+
 [profile.release]
 strip = true
