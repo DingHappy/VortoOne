@@ -257,9 +257,26 @@ async def models():
     return {"models": [], "defaultModel": ""}
 
 
+def _who(request: Request, root: str):
+    """调用人。所有者照旧；成员要在册，账号还没加入或已被移除的返回 None。"""
+    who = member_auth.principal(request, root)
+    if who.is_owner:
+        return who
+    return who if member_auth.member_id(getattr(request.state, "member_account", None)) else None
+
+
+_NOT_MEMBER = "还不是这个空间的成员"
+
+
 @router.get(_ORG + "/overview")
-async def overview(org_id: str):
-    return views.overview(_root(org_id))
+async def overview(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner:
+        return views.overview(root)
+    return await _members_call(lambda: app_members.member_overview(root, who))
 
 
 @router.get(_ORG + "/settings")
@@ -276,9 +293,11 @@ async def members(org_id: str, request: Request):
 
 
 @router.get(_ORG + "/people")
-async def people(org_id: str):
-    return {"people": [{**views.person(_root(org_id)), "online": True, "presence": "online", "status": None,
-                        "lastSeenAt": views.now_iso()}]}
+async def people(org_id: str, request: Request):
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return await _members_call(lambda: {"people": app_members.people(root)})
 
 
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
@@ -429,26 +448,61 @@ async def accept_invitation(token: str, request: Request):
 
 # ── 角色 ─────────────────────────────────────────────────────────────────────
 
+async def _visible_ids(request: Request, root: str):
+    """调用人看得到的 agent id；所有者是 None（全部）。成员不在册时抛 PermissionError。"""
+    who = _who(request, root)
+    if who is None:
+        raise PermissionError(_NOT_MEMBER)
+    if who.is_owner:
+        return None
+    return {agent["id"] for agent in await asyncio.to_thread(app_members.member_agents, root, who)}
+
+
 @router.get(_ORG + "/agents")
-async def agents(org_id: str):
-    return {"agents": views.agents(_root(org_id))}
+async def agents(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner:
+        return {"agents": views.agents(root)}
+    return await _members_call(lambda: {"agents": app_members.member_agents(root, who)})
 
 
 @router.get(_ORG + "/agent-status")
-async def agent_status(org_id: str):
-    return {"agents": views.agent_statuses(_root(org_id))}
+async def agent_status(org_id: str, request: Request):
+    root = _root(org_id)
+    try:
+        shown = await _visible_ids(request, root)
+    except PermissionError as error:
+        return _error(403, "forbidden", str(error))
+    return {"agents": [row for row in views.agent_statuses(root) if shown is None or row["agentId"] in shown]}
 
 
 @router.get(_ORG + "/ai-status")
-async def ai_status(org_id: str):
-    return views.ai_status(_root(org_id))
+async def ai_status(org_id: str, request: Request):
+    root = _root(org_id)
+    try:
+        shown = await _visible_ids(request, root)
+    except PermissionError as error:
+        return _error(403, "forbidden", str(error))
+    status = views.ai_status(root)
+    if shown is not None:
+        status["agents"] = [row for row in status["agents"] if row["agentId"] in shown]
+    return status
 
 
 # ── 私聊与消息 ────────────────────────────────────────────────────────────────
 
 @router.get(_ORG + "/dms")
-async def dms(org_id: str):
-    return {"dms": [views.main_dm(_root(org_id))]}
+async def dms(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner:
+        return {"dms": [views.main_dm(root)]}
+    return await _members_call(lambda: {"dms": app_members.member_dms(root, who)})
 
 
 class _OpenDm(BaseModel):
@@ -457,8 +511,17 @@ class _OpenDm(BaseModel):
 
 
 @router.post(_ORG + "/dms")
-async def open_dm(org_id: str, body: _OpenDm):
+async def open_dm(org_id: str, body: _OpenDm, request: Request):
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        dm = next((row for row in await asyncio.to_thread(app_members.member_dms, root, who)
+                   if row["with"]["id"] == body.agentId), None)
+        if dm is None:
+            return _error(404, "not_found", "没有这个角色")
+        return {"channelId": dm["channelId"], "dm": dm}
     if body.agentId == views.main_agent_id(root):
         dm = views.main_dm(root)
     else:
@@ -484,6 +547,40 @@ def _member_channel(org_id: str, channel_id: str) -> tuple[str, str] | None:
 _NEEDS_OWNER = "专员对话需要主人证明：先登录，并从本服务自己的页面发起"
 
 
+def _member_dm(request: Request, org_id: str, channel_id: str):
+    """凭成员会话打开的私聊：返回 (家, 专员, 成员)；不是成员会话返回 None。
+    成员看不到的 agent、以及主助理的私聊，一律当作没有这个对话（抛 LookupError）。"""
+    if getattr(request.state, "member_account", None) is None:
+        return None
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        raise PermissionError(_NOT_MEMBER)
+    staff_id = views.member_for_channel(root, channel_id)
+    if staff_id is None or app_members.member_staff(root, who, views.member_agent_id(root, staff_id)) is None:
+        raise LookupError("没有这个对话")
+    return root, staff_id, who
+
+
+async def _as_member(request: Request, org_id: str, channel_id: str, answer):
+    """成员会话走这里：answer(家, 专员, 成员) 给出回答。不是成员会话返回 None，交回原有逻辑。"""
+    try:
+        found = await asyncio.to_thread(_member_dm, request, org_id, channel_id)
+    except PermissionError as error:
+        return _error(403, "forbidden", str(error))
+    except LookupError as error:
+        return _error(404, "not_found", str(error))
+    if found is None:
+        return None
+    from src.workflow.members.registry import Refused
+    try:
+        return await asyncio.to_thread(answer, *found)
+    except Refused as error:
+        return _error(403, "forbidden", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "staff_unavailable", str(error))
+
+
 def _staff_read(action):
     try:
         return action()
@@ -492,7 +589,11 @@ def _staff_read(action):
 
 
 @router.get(_ORG + "/channels/{channel_id}/members")
-async def channel_members(org_id: str, channel_id: str):
+async def channel_members(org_id: str, channel_id: str, request: Request):
+    answer = await _as_member(request, org_id, channel_id, lambda root, staff, who: {"members": [
+        {"type": "person", "id": who.id}, {"type": "agent", "id": views.member_agent_id(root, staff)}]})
+    if answer is not None:
+        return answer
     root = _main_channel(org_id, channel_id)
     member = _member_channel(org_id, channel_id) if root is None else None
     if member:
@@ -506,6 +607,11 @@ async def channel_members(org_id: str, channel_id: str):
 @router.get(_ORG + "/channels/{channel_id}/messages")
 async def channel_messages(org_id: str, channel_id: str, request: Request, before: str = "", limit: int = 100,
                            threadId: str = ""):  # noqa: N803 —— 界面的查询参数名
+    answer = await _as_member(request, org_id, channel_id, lambda root, staff, who: {
+        "messages": [] if threadId else views.member_messages(root, staff, before=before, limit=limit,
+                                                              viewer=who.id)})
+    if answer is not None:
+        return answer
     root = _main_channel(org_id, channel_id)
     member = _member_channel(org_id, channel_id) if root is None else None
     if member:
@@ -547,6 +653,10 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     client_id = (body.clientId or "")[:120] or None
+    answer = await _as_member(request, org_id, channel_id,
+                              lambda root, staff, who: app_members.member_send(root, who, staff, text, client_id))
+    if answer is not None:
+        return answer
     if member:
         if len(text) > 4000:
             return _error(413, "message_too_long", "交给专员的一件事最多 4000 字")
@@ -561,6 +671,10 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
 
 @router.get(_ORG + "/channels/{channel_id}/active-runs")
 async def channel_active_runs(org_id: str, channel_id: str, request: Request):
+    answer = await _as_member(request, org_id, channel_id,
+                              lambda root, staff, who: {"runs": views.member_runs(root, staff, viewer=who.id)})
+    if answer is not None:
+        return answer
     root = _main_channel(org_id, channel_id)
     member = _member_channel(org_id, channel_id) if root is None else None
     if member:
@@ -647,14 +761,20 @@ async def refuse(org_id: str, approval_id: str, body: _Approve):
 
 
 @router.get(_ORG + "/channels/{channel_id}/pins")
-async def channel_pins(org_id: str, channel_id: str):
+async def channel_pins(org_id: str, channel_id: str, request: Request):
+    answer = await _as_member(request, org_id, channel_id, lambda *_found: {"pins": []})
+    if answer is not None:
+        return answer
     if _main_channel(org_id, channel_id) is None and _member_channel(org_id, channel_id) is None:
         return _error(404, "not_found", "没有这个对话")
     return {"pins": []}
 
 
 @router.get(_ORG + "/channels/{channel_id}/threads")
-async def channel_threads(org_id: str, channel_id: str):
+async def channel_threads(org_id: str, channel_id: str, request: Request):
+    answer = await _as_member(request, org_id, channel_id, lambda *_found: {"threads": [], "nextCursor": None})
+    if answer is not None:
+        return answer
     if _main_channel(org_id, channel_id) is None and _member_channel(org_id, channel_id) is None:
         return _error(404, "not_found", "没有这个对话")
     return {"threads": [], "nextCursor": None}
@@ -880,7 +1000,14 @@ def _known_agent(org_id: str, agent_id: str) -> bool:
 
 
 @router.get(_ORG + "/agents/{agent_id}")
-async def agent_detail(org_id: str, agent_id: str):
+async def agent_detail(org_id: str, agent_id: str, request: Request):
+    if getattr(request.state, "member_account", None) is not None:
+        root = _root(org_id)
+        who = _who(request, root)
+        if who is None:
+            return _error(403, "forbidden", _NOT_MEMBER)
+        detail = await asyncio.to_thread(app_members.member_agent_detail, root, who, agent_id)
+        return detail if detail is not None else _error(404, "not_found", "没有这个角色")
     agent = next((a for a in views.agents(_root(org_id)) if a["id"] == agent_id), None)
     if agent is None:
         return _error(404, "not_found", "没有这个角色")

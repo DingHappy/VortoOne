@@ -116,6 +116,15 @@ def effective_grants(principal: Principal, role: Grants, initiator: Optional[Gra
     return role.meet(initiator or Grants())
 
 
+def member_initiator_grants(role: Grants, operations: Iterable[str]) -> Grants:
+    """一个成员自己带到回合里的权限，供 ``effective_grants`` 与角色的权限取交集。
+
+    operations 是他对这个角色的办事级别放出来的操作类别（上层按级别算好）。其余固定：主人的私人
+    来源（记忆、对话、事项、邮箱、日历之类）一样都没有；主人登记的项目副本也没有；出网跟角色的走。
+    工具不在这里筛——一个工具用不用得了，由它需要的操作类别和来源决定。"""
+    return Grants(_set(operations) & role.operations, role.tools, frozenset(), role.web, False)
+
+
 def may_address_main_assistant(principal: Principal) -> bool:
     """主助理连着主人的个人记忆、个人事项和电脑，属于个人空间：只有所有者和系统回合能到它。"""
     return not principal.is_member

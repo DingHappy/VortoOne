@@ -151,7 +151,9 @@ async def auth_middleware(request, call_next):
         # 主人令牌没过：成员的会话只在它自己的白名单接口上算数（web/member_auth.py），其余一律不放行
         from src.web.member_auth import admit
         refused = admit(request)
-    if refused:
+    if isinstance(refused, (dict, list)):      # 对成员回固定的空结构，不进处理函数
+        response = JSONResponse(refused)
+    elif refused:
         response = JSONResponse({"detail": "Unauthorized" if refused == 401 else "Forbidden"}, status_code=refused)
     else:
         response = await call_next(request)
