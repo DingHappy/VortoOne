@@ -64,10 +64,12 @@ async def instance(request: Request):
             break
         except metadata.PackageNotFoundError:
             continue
-    return {"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": API_CONTRACT,
-            "url": str(request.base_url).rstrip("/"),
-            "signIn": {"email": bool(get_api_token()), "google": False, "github": False, "apple": False},
-            "signup": "invite", "cloud": False}
+    # 公开信息，不带凭据：Desktop 的首次引导要从它自己的窗口核对一个地址是不是 VortoOne（跨域读取）
+    return JSONResponse({"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": API_CONTRACT,
+                         "url": str(request.base_url).rstrip("/"),
+                         "signIn": {"email": bool(get_api_token()), "google": False, "github": False, "apple": False},
+                         "signup": "invite", "cloud": False},
+                        headers={"Access-Control-Allow-Origin": "*"})
 
 
 @router.get("/api/app/auth-config")

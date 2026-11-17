@@ -3,8 +3,9 @@
 //! 安装包自带 Python 后端，默认启动它。没有随包运行时的源码开发环境才读取 `backend.json`。
 //! 数据放在开发版自己的目录里，不读正式版的账号、项目或运行状态。
 //!
-//! 主人令牌每次启动现生成、只在本进程和它启动的后端里，绝不交给页面：窗口拿到的是一次性的交接码
-//! （`POST /api/auth/handover` → `GET /api/auth/handover/<码>`），后端核对后种下登录 Cookie。
+//! 主人令牌即「所有者密钥」：第一次设置这台电脑上的服务时生成，存在 App 自己的数据目录（0600），之后每次
+//! 启动沿用——手机、应用链接、别的设备认的都是同一个所有者。它只在本进程和它启动的后端里，绝不交给页面：
+//! 窗口拿到的是一次性的交接码（`POST /api/auth/handover` → `GET /api/auth/handover/<码>`），后端核对后种下登录 Cookie。
 
 use std::fs;
 use std::io::{Read, Write};
@@ -185,20 +186,52 @@ fn configure(mut command: Command, env_file: Option<&Path>, home: &Path, ui: &Pa
 }
 
 /// 启动后端并等它应答；返回 (子进程, 端口, 令牌)。
-pub fn start(config: &Config, home: &Path, ui: &Path, log: &Path) -> Result<(Child, u16, String), String> {
-    start_with(home, ui, log, |port, token| command(config, home, ui, port, token))
+pub fn start(config: &Config, home: &Path, ui: &Path, log: &Path, token: &str) -> Result<(Child, u16, String), String> {
+    start_with(home, ui, log, token, |port, token| command(config, home, ui, port, token))
 }
 
-pub fn start_bundled(runtime: &Path, env_file: Option<&Path>, home: &Path, ui: &Path, log: &Path) -> Result<(Child, u16, String), String> {
-    start_with(home, ui, log, |port, token| bundled_command(runtime, env_file, home, ui, port, token))
+pub fn start_bundled(runtime: &Path, env_file: Option<&Path>, home: &Path, ui: &Path, log: &Path, token: &str) -> Result<(Child, u16, String), String> {
+    start_with(home, ui, log, token, |port, token| bundled_command(runtime, env_file, home, ui, port, token))
 }
 
-fn start_with(home: &Path, ui: &Path, log: &Path, build: impl FnOnce(u16, &str) -> Command) -> Result<(Child, u16, String), String> {
+/// 这台电脑上的服务的所有者密钥：有就读出来，没有就生成一把存下（0600）。读出来的不像样就报错，不悄悄换一把
+/// ——换了之后，所有拿旧密钥登录过的设备都会被踢出去。
+pub fn owner_key(path: &Path) -> Result<String, String> {
+    if let Ok(text) = fs::read_to_string(path) {
+        let key = text.trim().to_string();
+        return if key.len() == 64 && key.chars().all(|c| c.is_ascii_hexdigit()) {
+            Ok(key)
+        } else {
+            Err("所有者密钥文件内容不对；请从备份恢复，或在偏好设置里清空重来".into())
+        };
+    }
+    let key = new_token()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    write_private(path, &key)?;
+    Ok(key)
+}
+
+fn write_private(path: &Path, text: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path).map_err(|e| format!("无法保存所有者密钥：{e}"))?;
+    file.write_all(text.as_bytes()).map_err(|e| e.to_string())
+}
+
+fn start_with(home: &Path, ui: &Path, log: &Path, token: &str, build: impl FnOnce(u16, &str) -> Command) -> Result<(Child, u16, String), String> {
     if !ui.join("index.html").is_file() {
         return Err("安装包里没有界面文件".into());
     }
     fs::create_dir_all(home).map_err(|e| e.to_string())?;
-    let (port, token) = (stable_port(&home.with_file_name("backend.port"))?, new_token()?);
+    let (port, token) = (stable_port(&home.with_file_name("backend.port"))?, token.to_string());
     let output = fs::File::create(log).map_err(|e| e.to_string())?;
     let mut child = build(port, &token)
         .stdout(output.try_clone().map_err(|e| e.to_string())?)
@@ -252,7 +285,7 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
         let ui = resources.join("web");
         let home = scratch.join("home");
         let log = scratch.join("backend.log");
-        let (mut child, port, token) = start_with(&home, &ui, &log, |port, token| {
+        let (mut child, port, token) = start_with(&home, &ui, &log, &new_token()?, |port, token| {
             let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
             cmd.env_clear();
             cmd = configure(cmd, None, &home, &ui, token);
@@ -287,6 +320,25 @@ pub fn own_page(url: &tauri::Url, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_owner_key_is_made_once_and_kept() {
+        let dir = std::env::temp_dir().join(format!("vortoone-owner-key-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("owner-key");
+        let first = owner_key(&path).unwrap();
+        assert_eq!(first.len(), 64);
+        assert_eq!(owner_key(&path).unwrap(), first);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        fs::write(&path, "short").unwrap();
+        assert!(owner_key(&path).is_err());                 // 坏了要报出来，不悄悄换一把
+        assert_eq!(fs::read_to_string(&path).unwrap(), "short");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn consent_ids_are_checked_before_use() {
@@ -403,7 +455,7 @@ mod tests {
         let config = Config { python: var("VORTO_DEV_PYTHON"), source: var("VORTO_DEV_SOURCE"), env_file: None };
         let scratch = std::env::temp_dir().join(format!("vorto-dev-live-{}", std::process::id()));
         let (mut child, port, token) =
-            start(&config, &scratch.join("home"), &var("VORTO_DEV_UI"), &scratch.join("backend.log")).unwrap();
+            start(&config, &scratch.join("home"), &var("VORTO_DEV_UI"), &scratch.join("backend.log"), &new_token().unwrap()).unwrap();
         let outcome = (|| {
             assert_eq!(request(port, "GET", "/api/app/me", None)?.0, 401);
             assert_eq!(request(port, "GET", "/api/app/me", Some(&token))?.0, 200);

@@ -25,6 +25,11 @@ if (!process.argv.includes("--skip-build")) {
     cwd: root,
     stdio: "inherit",
   });
+  // 首次引导、偏好设置窗口：连真外壳的那一份（不是示例数据），外壳从 shell/index.html 打开
+  execFileSync("npm", ["run", "build", "--workspace", "@agenteschat/desktop", "--", "--outDir", "dist-live"], {
+    cwd: root,
+    stdio: "inherit",
+  });
 }
 const output = new URL("../apps/desktop-dev/dist/", import.meta.url);
 await rm(output, { recursive: true, force: true });
@@ -33,6 +38,9 @@ await cp(new URL("../apps/web/dist-preview/", import.meta.url), output, {
   recursive: true,
 });
 await cp(new URL("../NOTICE", import.meta.url), new URL("NOTICE", output));
+await cp(new URL("../apps/desktop/dist-live/", import.meta.url), new URL("shell/", output), {
+  recursive: true,
+});
 for (const name of ["model-settings.html", "model-settings.css", "model-settings.js", "starting.html", "starting.css"]) {
   await cp(new URL(`../apps/desktop-dev/${name}`, import.meta.url), new URL(name, output));
 }
