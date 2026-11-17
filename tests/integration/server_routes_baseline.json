@@ -2392,5 +2392,17 @@
     "methods": [
       "GET"
     ]
+  },
+  {
+    "path": "/api/app/sign-in-options",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/device-accounts/sign-out",
+    "methods": [
+      "POST"
+    ]
   }
 ]

@@ -156,6 +156,39 @@ def test_token_gates_everything_but_the_sign_in_surface(client, monkeypatch):
     assert client.get("/api/app/me").status_code == 401
 
 
+def test_email_first_sign_in_and_current_account_sign_out(client, monkeypatch):
+    monkeypatch.setenv("VORTOONE_API_TOKEN", "owner-token-for-test")
+    for email in ("owner@example.test", "other@example.test"):
+        options = client.post("/api/app/sign-in-options", json={"email": email})
+        assert options.status_code == 200
+        assert options.json() == {"account": True, "password": True, "providers": [], "canSignUp": False}
+        assert "set-cookie" not in options.headers
+    assert client.get("/api/app/me").status_code == 401
+    wrong = client.post("/api/auth/sign-in/email", json={"email": "owner@example.test", "password": "wrong"})
+    assert wrong.status_code == 401
+    assert client.get("/api/app/me").status_code == 401
+    signed = client.post("/api/auth/sign-in/email",
+                         json={"email": "owner@example.test", "password": "owner-token-for-test"})
+    assert signed.status_code == 200
+    assert client.get("/api/app/me").status_code == 200
+    left = client.post("/api/app/device-accounts/sign-out", json={})
+    assert left.status_code == 200 and left.json() == {"signedIn": False}
+    assert client.get("/api/app/me").status_code == 401
+
+
+def test_old_same_second_messages_expose_their_transcript_order(client, home):
+    _seed_main_chat(home, [
+        {"role": "user", "text": "先问", "rid": "r1", "at": "2026-11-10T01:00:00Z"},
+        {"role": "assistant", "text": "再答", "rid": "r1", "at": "2026-11-10T01:00:00Z"},
+        {"role": "user", "text": "再问", "rid": "r2", "at": "2026-11-10T01:00:00Z"},
+    ])
+    from src.web import app_views as views
+    rows = views.main_messages(str(home))
+    assert [row["sequence"] for row in rows] == [1, 2, 3]
+    assert [row["body"] for row in rows] == ["先问", "再答", "再问"]
+    assert len({row["createdAt"] for row in rows}) == 1
+
+
 def test_socket_handshake_heartbeat_and_subscription(client):
     org = _org(client)
     channel = client.get(f"/api/app/organizations/{org}/dms").json()["dms"][0]["channelId"]

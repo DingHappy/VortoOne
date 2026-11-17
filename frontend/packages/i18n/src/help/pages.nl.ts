@@ -4,190 +4,23 @@ import type { HelpDocument } from "./types";
 /** The help pages in nl: a page not here shows in English. */
 export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
   "run-on-your-computer": {
-    title: "agentes.chat op je eigen computer draaien",
-    summary:
-      "De agentes.chat-app kan ook agentes.chat zelf draaien, op een Mac, een pc of een Linux-computer, voor jou of een klein team.",
-    sections: [
-      {
-        id: "download",
-        heading: "Download de app",
-        blocks: [
-          "[Download de agentes.chat-app](/download) voor je Mac, pc of Linux-computer en open hem. Kies **Op je eigen server**, druk op **Verder met mijn server** en dan op **agentes.chat draaien op deze computer**.",
-        ],
-      },
-      {
-        id: "how",
-        heading: "Hoe het draait",
-        blocks: [
-          "Het draait in de app, met een eigen ingebouwde database, en bewaart alles in één map op deze computer: `.agentes` in je thuismap. Verder hoef je niets te installeren: geen Docker, geen database om in te richten.",
-          "Het start met de app en stopt als je de app afsluit. Afsluiten vraagt eerst om bevestiging, want niemand kan agentes.chat gebruiken tot de app weer opent. Wil je het even stoppen zonder de app af te sluiten, klik dan op het agentes.chat-icoon bij de klok en kies **Stoppen** in het **⋯**-menu van de kaart.",
-        ],
-      },
-      {
-        id: "who",
-        heading: "Voor wie het is",
-        blocks: [
-          "Voor jou of een klein team. Een Mac mini, een reserve-pc of een laptop die aan blijft, is een goed thuis: stel hem in zoals in [Aan laten staan](#keep-on). Op een Mac of een pc draai je agentes.chat met de app, zonder Docker.",
-          "Voor een groter team, zie [Welke opzet je kiest](/help/install-on-a-server#choose). Je gegevens kunnen later naar een server verhuizen.",
-        ],
-      },
-      {
-        id: "keep-on",
-        heading: "Aan laten staan",
-        blocks: [
-          "Op een computer die anderen gebruiken, stel je dit één keer in. **Laten draaien**, in **Voorkeuren\u00a0›\u00a0Servers**, laat zien wat er nog ontbreekt en opent de juiste instellingen:",
-          {
-            list: [
-              "**Openen bij inloggen** gaat na de installatie vanzelf aan.",
-              "Zet op een Mac **Automatisch inloggen** aan in **Systeeminstellingen › Gebruikers en groepen**, zodat de app na een herstart opent. FileVault zet automatisch inloggen uit.",
-              "Zet op een Mac **Start automatisch op na een stroomstoring** aan in **Systeeminstellingen › Energie**.",
-              "Een Mac blijft wakker zolang de server draait en **Bereik het vanaf je telefoon en je teamgenoten** aanstaat. Zet op Windows en Linux de slaapstand uit in de energie-instellingen van het systeem.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "agents",
-        heading: "Je agents werken hier ook",
-        blocks: [
-          "Je agents werken ook op deze computer, in hun eigen mappen, met een browser, en met Claude Code of Codex als die hier zijn geïnstalleerd.",
-          "Agents draaien hier onder jouw naam. **Opdrachten** staan standaard aan, en daarmee kunnen de agents van elke werkruimte die deze computer gebruikt bij alles op deze computer, ook bij de gegevens van de server. Zet ze uit in **Voorkeuren\u00a0›\u00a0Tools**. Zie [Waar agents bij kunnen](/help/computers#reach).",
-        ],
-      },
-      {
-        id: "another-workspace",
-        heading: "Leen hem ook uit aan een andere werkruimte",
-        blocks: [
-          "De werkruimtes van de server die je hier draait, gebruiken deze computer vanzelf. Wil je dat een werkruimte ergens anders hem ook gebruikt, zoals een op agentes.chat Cloud, druk dan op **Werkruimte toevoegen…** onderaan de eerste kaart in **Voorkeuren\u00a0›\u00a0Algemeen**, of op **Een server toevoegen…** in **Voorkeuren\u00a0›\u00a0Servers**. Meld je aan bij die werkruimte en druk op **Toestaan** als de app het vraagt.",
-          "Elke werkruimte krijgt hier eigen agents en mappen. Ook daar staan **Opdrachten** standaard aan. Zet ze uit in de vraag van de app voordat je op **Toestaan** drukt, of later in **Voorkeuren\u00a0›\u00a0Tools**, waar elke werkruimte een eigen schakelaar heeft en de app het eerst vraagt voordat er een weer aangaat.",
-        ],
-      },
-      {
-        id: "reach",
-        heading: "Vanaf je telefoon en voor je team",
-        blocks: [
-          "**Bereik het vanaf je telefoon en je teamgenoten** zet agentes.chat op Tailscale, een privénetwerk voor je apparaten: je telefoon en de mensen die je uitnodigt doen mee, en verder kan niemand agentes.chat bereiken. Tailscale is gratis: https://tailscale.com/download. Staat het uit, dan werkt agentes.chat alleen op deze computer.",
-          "Deelt deze computer al iets anders op poort 443 van Tailscale, dan neemt agentes.chat 8443, en eindigt het adres op `:8443`.",
-        ],
-      },
-      {
-        id: "password",
-        heading: "Inloggen vanaf andere apparaten",
-        blocks: [
-          "De eigenaar begint zonder wachtwoord: de app logt je in op deze computer. Om in te loggen vanuit een browser op een andere computer, stel je er een in bij **Instellingen\u00a0›\u00a0Je account**. Tot je dat doet, meldt **Voorkeuren\u00a0›\u00a0Servers** het, en **Wachtwoord toevoegen** opent die pagina. De telefoonapp maakt verbinding als je de QR-code scant onder **Op je telefoon**, in **Voorkeuren\u00a0›\u00a0Servers**. Daarvoor moet **Bereik het vanaf je telefoon en je teamgenoten** aan staan.",
-          "Als de eigenaar zijn account verwijdert, bij **Instellingen\u00a0›\u00a0Je account**, is het 7 dagen later voorgoed weg, en de werkruimtes waar alleen hij in zat gaan mee. Tot dan log je in en druk je op **Account herstellen** om het terug te halen. Is het weg en is er geen account meer over, dan opent de app het welkomstvenster om een nieuwe eigenaar aan te maken. Hebben anderen nog een account, dan logt ieder in met zijn eigen e-mailadres.",
-        ],
-      },
-      {
-        id: "updates",
-        heading: "Updates",
-        blocks: [
-          "De app zoekt zelf naar updates. Met **Updates 's nachts vanzelf installeren** aan, in **Voorkeuren\u00a0›\u00a0Updates**, installeert hij ze tussen 3:00 en 5:00 zolang de app open is. Dat staat standaard aan als de server hier draait. Anders druk je op **Bijwerken en opnieuw openen**. De server en alle agents starten mee opnieuw op. Eerst wordt de database gekopieerd, en als de nieuwe versie niet binnen 3 minuten reageert, gaat de app vanzelf terug naar de vorige versie en de gegevens daarvan.",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "Back-ups",
-        blocks: [
-          "Met **Elke nacht een back-up maken** aan (app 0.8.1 en nieuwer), in **Voorkeuren\u00a0›\u00a0Servers**, bewaart de app elke nacht om 3:00 de database, de bestanden en `.env` in `.agentes/backups`, in je thuismap. Een computer die toen sliep, maakt de back-up zodra hij wakker is. **Nu een back-up maken** doet hetzelfde meteen. Elke back-up stopt de server even, en de twee nieuwste blijven bewaard.",
-          "**Kopiëren naar** zet elke nieuwe back-up ook in een map die je kiest, zoals een USB-stick of iCloud Drive, waar de twee nieuwste blijven. Ze bevatten je sleutels: houd ze privé. **Terugzetten…** zet agentes.chat terug naar een back-up: berichten, bestanden en instellingen. Het stopt een minuut, en wat er eerst stond, blijft bewaard in de back-upmap.",
-        ],
-      },
-      {
-        id: "uninstall",
-        heading: "Opnieuw beginnen of de-installeren",
-        blocks: [
-          "Alles wat agentes.chat op deze computer bewaart, staat in mappen in je thuismap, niet in de app. Als je de app naar de prullenmand sleept, verdwijnt daar dus niets van, en stopt agentes.chat niet als het draait.",
-          "Wil je opnieuw beginnen, druk dan op **Wissen en opnieuw beginnen…** in **Voorkeuren\u00a0›\u00a0Servers**. agentes.chat stopt hier en alles wat erin staat gaat naar een nieuwe map in je thuismap, `agentes.chat erased` met de datum van die dag, waar het blijft tot je de map verwijdert. Wat de agenten op deze computer bewaarden, zoals hun browsers en logins, wordt uit `.agentes-runner` verwijderd. Zijn werkruimtes verdwijnen voor iedereen die ze gebruikt. Daarna opent het welkomstvenster en stel je het opnieuw in met een nieuw eigenaarsaccount. De bestanden van de agenten, in `agentes` in je thuismap, blijven waar ze zijn.",
-          "Wil je het later terughalen, sluit dan de app af, zet een nieuwere map `.agentes` opzij als die er is, hernoem de map `agentes.chat erased` naar `.agentes`, open de app en stel het opnieuw in op deze computer. Het start met zijn werkruimtes en zijn eigenaar zoals ze waren. Wat de agenten op deze computer bewaarden komt niet terug, dus ze moeten opnieuw inloggen.",
-          "Zo haal je agentes.chat helemaal van deze computer:",
-          {
-            list: [
-              "Zet **Openen bij inloggen** uit in **Voorkeuren\u00a0›\u00a0Algemeen**.",
-              "Sluit de app af. Het venster sluiten is niet genoeg. Klik op een Mac op het icoon in het Dock en kies **agentes.chat afsluiten** in het menu agentes.chat bovenaan het scherm, of druk op ⌘Q. Klik op Windows en Linux op het agentes.chat-icoon bij de klok en kies **agentes.chat afsluiten**. Vraagt hij **agentes.chat afsluiten?**, druk dan op **Afsluiten**.",
-              "Verwijder de app. Sleep hem op een Mac naar de prullenmand. Verwijder hem op Windows en Linux zoals elke andere app.",
-              "Verwijder deze mappen in je thuismap. Ze bevatten je gegevens, en eenmaal verwijderd komen die niet terug, dus bewaar eerst ergens anders een back-up als je ze misschien nog wilt: `.agentes` (berichten, bestanden, accounts, instellingen en back-ups), elke map `agentes.chat erased`, `.agentes-runner` (wat de agenten op deze computer bewaren, zoals hun browsers en logins) en `agentes` (de bestanden van de agenten). Mappen waarvan de naam met een punt begint, zijn verborgen. Open op een Mac je thuismap in de Finder en druk op ⇧⌘. (Shift, Command en de punttoets) om ze te tonen.",
-              "Verwijder de mappen van de app zelf. Daarin staan alleen de instellingen, de logins van het venster en de logboeken. Op een Mac: alles waarvan de naam begint met `chat.agentes.desktop` in de mappen Application Support, Caches, HTTPStorages, Logs, Preferences en WebKit van `~/Library`, en `agentes.chat.plist` in `~/Library/LaunchAgents`. Op Windows: `%APPDATA%\\chat.agentes.desktop` en `%LOCALAPPDATA%\\chat.agentes.desktop`. Op Linux: `~/.config/chat.agentes.desktop` en `~/.local/share/chat.agentes.desktop`. Open op een Mac een van deze mappen door in de Finder op ⇧⌘G te drukken en het pad te typen, zoals `~/Library/Caches`.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "ai-programs",
-        heading: "Claude Code en Codex",
-        blocks: [
-          "De app vindt Claude Code en Codex via de `PATH` van je login-shell, plus de gebruikelijke mappen zoals `~/.local/bin`, `/opt/homebrew/bin` en `/usr/local/bin`. Staat er in **Voorkeuren\u00a0›\u00a0Tools** **Niet gevonden**, dan zie je daar de regel die het installeert. Voer die uit in Terminal en druk daarna op **Opnieuw controleren**.",
-        ],
-      },
-      {
-        id: "moving",
-        heading: "Verhuizen naar een server",
-        blocks: [
-          {
-            list: [
-              "Sluit de app af en maak dan een dump van de database met de eigen kopie van de server in de app. Op een Mac:",
-            ],
-          },
-          {
-            code: "BUN_BE_BUN=1 /Applications/agentes.chat.app/Contents/MacOS/agentes-runner \\\n  ~/.agentes/app/current/server/native.js db dump --data ~/.agentes --out agentes.sql",
-          },
-          {
-            list: [
-              "[Installeer agentes.chat op een server](/help/install-on-a-server), maar start het nog niet. Zet in de `.env` ervan het `AGENTES_SECRET` uit `~/.agentes/.env` en start dan alleen de database: `docker compose up -d postgres`.",
-              "Laad de dump: `docker compose exec -T postgres psql -U agentes -d agentes -v ON_ERROR_STOP=1 < agentes.sql`.",
-              "Start het met `docker compose up -d`, kopieer `~/.agentes/files` erin zoals de volledige gids laat zien, en log in zoals eerst.",
-            ],
-          },
-        ],
-      },
-    ],
-  },
+  "title": "VortoOne op je eigen computer draaien",
+  "summary": "Gebruik het installatiepakket en de verbindingsinstructies van de huidige VortoOne Desktop-versie. Deze versie biedt geen gehoste clouddienst of serverinstallatie met één opdracht.",
+  "sections": []
+},
   "workspace-computer": {
-    title: "De computer van de werkruimte",
-    summary: "Elke werkruimte krijgt een eigen computer die altijd aanstaat, waar de agents werken.",
-    sections: [
-      {
-        id: "what",
-        heading: "Wat het is",
-        blocks: [
-          "Een computer alleen voor deze werkruimte, die altijd aanstaat. Elke agent heeft er een eigen gebruiker, met een eigen map, scherm, browser en bestanden. Op de pagina van een agent kun je meekijken terwijl hij werkt, en de controle overnemen als dat nodig is.",
-        ],
-      },
-      {
-        id: "own",
-        heading: "Je eigen computers en telefoons",
-        blocks: [
-          "Agents kunnen ook werken op computers en telefoons die je zelf meebrengt: een Mac of een pc met de agentes.chat-app, een server, een Android-telefoon of een iPhone. Zie [Je computers en telefoons](/help/computers).",
-        ],
-      },
-      {
-        id: "plans",
-        heading: "Je AI-abonnementen",
-        blocks: [
-          "Je agents kunnen denken met je eigen AI-abonnement, zoals Claude, ChatGPT, GLM of Kimi, ingelogd op deze computer: geen API-sleutel nodig. Het account blijft op deze computer, en agentes.chat ziet nooit het wachtwoord of de toegang.",
-          "De abonnementen AI Pro en Ultra van Google werken hier niet: de voorwaarden van Google staan ze niet toe in andere producten. Een Gemini-API-sleutel wel.",
-        ],
-      },
-      {
-        id: "size",
-        heading: "Hoe groot hij is",
-        blocks: ["De CPU's, het geheugen en de schijf staan in **Instellingen › Apparaten**."],
-      },
-      {
-        id: "trouble",
-        heading: "Als hij niet meer reageert",
-        blocks: ["Meestal is hij binnen een paar minuten terug, en we zijn ermee bezig: je hoeft zelf niets te doen."],
-      },
-    ],
-  },
+  "title": "De computer van de werkruimte",
+  "summary": "Gebruik het installatiepakket en de verbindingsinstructies van de huidige VortoOne Desktop-versie. Deze versie biedt geen gehoste clouddienst of serverinstallatie met één opdracht.",
+  "sections": []
+},
   computers: {
     title: "Je computers en telefoons",
     summary:
-      "Breng een Mac, een pc, een Linux-computer, een server of een telefoon mee, en je agents werken erop. Op agentes.chat Cloud net zo goed als op een eigen server.",
+      "Breng een Mac, een pc, een Linux-computer, een server of een telefoon mee, en je agents werken erop. Op VortoOne Cloud net zo goed als op een eigen server.",
     sections: [
       {
         id: "app",
-        heading: "Vanuit de agentes.chat-app",
+        heading: "Vanuit de VortoOne-app",
         blocks: [
           "Installeer de app op de computer, open hem en meld je aan bij je werkruimte. Hij vraagt **Agents van <workspace> deze Mac laten gebruiken?** (deze pc op Windows, deze computer op Linux). Kies wie hem mag gebruiken en druk op **Toestaan**. Dat is alles.",
           "Al aangemeld? Open **Voorkeuren\u00a0›\u00a0Algemeen** en druk op **Toestaan** in de rij van de werkruimte, in de eerste kaart. Staat hij er niet? Druk op **Werkruimte toevoegen…** onderaan die kaart en meld je aan.",
@@ -226,14 +59,14 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "open",
         heading: "Zolang de app open is",
         blocks: [
-          "Agents werken alleen op een computer zolang de app daar draait en de computer wakker is. Als de app het vraagt, laat **Klaar houden: agentes.chat openen bij inloggen** aangevinkt. Een computer die uit staat of slaapt, toont **Offline**, en agents wachten tot hij terug is.",
+          "Agents werken alleen op een computer zolang de app daar draait en de computer wakker is. Als de app het vraagt, laat **Klaar houden: VortoOne openen bij inloggen** aangevinkt. Een computer die uit staat of slaapt, toont **Offline**, en agents wachten tot hij terug is.",
         ],
       },
       {
         id: "pausing",
         heading: "Pauzeren en loskoppelen",
         blocks: [
-          "Op de computer pauzeert het agentes.chat-icoon bij de klok de agents van alle werkruimtes, of van één. In **Voorkeuren\u00a0›\u00a0Algemeen** pauzeert de schakelaar van elke werkruimte alleen die ene, en **Verlaten**, in het **⋯**-menu ervan, koppelt hem los. Tijdens een pauze start er niets nieuws, en wat al liep, maakt het af. Na het loskoppelen blijven de mappen van de agents op de schijf staan.",
+          "Op de computer pauzeert het VortoOne-icoon bij de klok de agents van alle werkruimtes, of van één. In **Voorkeuren\u00a0›\u00a0Algemeen** pauzeert de schakelaar van elke werkruimte alleen die ene, en **Verlaten**, in het **⋯**-menu ervan, koppelt hem los. Tijdens een pauze start er niets nieuws, en wat al liep, maakt het af. Na het loskoppelen blijven de mappen van de agents op de schijf staan.",
           "Op de website koppel je een apparaat los met **Verwijderen** op de pagina ervan.",
         ],
       },
@@ -241,7 +74,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "organizations",
         heading: "Meerdere werkruimtes, één computer",
         blocks: [
-          "Meld je in dezelfde app aan bij elke werkruimte en druk voor elk op **Toestaan**. Werkruimtes op agentes.chat Cloud en op je eigen servers kunnen een computer delen (app 0.6.1 en nieuwer). Elk heeft er eigen agents en mappen, en als je er een loskoppelt, blijven de andere ongemoeid.",
+          "Meld je in dezelfde app aan bij elke werkruimte en druk voor elk op **Toestaan**. Werkruimtes op VortoOne Cloud en op je eigen servers kunnen een computer delen (app 0.6.1 en nieuwer). Elk heeft er eigen agents en mappen, en als je er een loskoppelt, blijven de andere ongemoeid.",
           "Een server die de app op deze computer draait, is al gekoppeld en heeft niets nodig. Om die computer ook uit te lenen aan een werkruimte ergens anders, zie [Leen hem ook uit aan een andere werkruimte](/help/run-on-your-computer#another-workspace).",
           "Gebruik je de app op een laptop alleen als venster op je werkruimte? Als hij vraagt of agents de laptop mogen gebruiken, houdt **Niet nu** het bij een gewoon venster.",
           "Een server die met de terminalregel is verbonden, werkt voor één workspace. Verbind je hem vanuit een andere workspace, dan gaat de server naar die workspace en bereikt de eerste hem niet meer. Gebruik de app voor meerdere workspaces op één computer.",
@@ -272,10 +105,10 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
               "je bestanden en logins",
               "de mappen van andere agents, ook die van andere werkruimtes, en de logins die hun browsers bewaren",
               "het token dat deze computer koppelt",
-              "op een computer die ook agentes.chat draait, de database en sleutels ervan in `.agentes`",
+              "op een computer die ook VortoOne draait, de database en sleutels ervan in `.agentes`",
             ],
           },
-          "agentes.chat weigert opdrachten die zijn sleutels, tokens en aanmeldingen noemen, maar dat is een regel, geen muur. **Opdrachten** staan standaard aan. Zet ze uit in de vraag van de app voordat je op **Toestaan** drukt, of later in **Voorkeuren\u00a0›\u00a0Tools**, waar elke werkruimte een eigen schakelaar heeft (app 0.8.1 en nieuwer) en de app het eerst vraagt voordat er een weer aangaat. Claude Code en Codex voeren hun eigen opdrachten uit in de map van de agent, volgens hun eigen regels, ook als Opdrachten uit staan.",
+          "VortoOne weigert opdrachten die zijn sleutels, tokens en aanmeldingen noemen, maar dat is een regel, geen muur. **Opdrachten** staan standaard aan. Zet ze uit in de vraag van de app voordat je op **Toestaan** drukt, of later in **Voorkeuren\u00a0›\u00a0Tools**, waar elke werkruimte een eigen schakelaar heeft (app 0.8.1 en nieuwer) en de app het eerst vraagt voordat er een weer aangaat. Claude Code en Codex voeren hun eigen opdrachten uit in de map van de agent, volgens hun eigen regels, ook als Opdrachten uit staan.",
           "Voor een echte muur gebruik je een Linux-server. Op Debian 13, geïnstalleerd met `--system`, is elke agent een eigen gebruiker. Op Ubuntu delen agents één gebruiker, `agentes`: ze zien elkaars mappen, niet die van jou of van de server. Of geef de agents een eigen computer.",
         ],
       },
@@ -284,7 +117,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
   import: {
     title: "Je agents meenemen",
     summary:
-      "Neem agents mee uit een andere app, of uit een andere agentes.chat-werkruimte, met hun instructies, skills, routines en geheugen.",
+      "Neem agents mee uit een andere app, of uit een andere VortoOne-werkruimte, met hun instructies, skills, routines en geheugen.",
     sections: [
       {
         id: "comes",
@@ -470,7 +303,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
   },
   "who-answers": {
     title: "Wie een bericht beantwoordt",
-    summary: "Een vermelding kiest de agent. Zonder vermelding kiest agentes.chat voor je, in deze volgorde.",
+    summary: "Een vermelding kiest de agent. Zonder vermelding kiest VortoOne voor je, in deze volgorde.",
     sections: [
       {
         id: "order",
@@ -492,7 +325,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "jev",
         heading: "Jev",
         blocks: [
-          "Als agentes.chat je werkruimte host, zit Jev erbij inbegrepen. Op een server die je zelf beheert, gebruikt hij de TypeSafe-sleutel van de eigenaar, ongeveer US$ 0,0001 per bericht: [Jev instellen](/help/jev#setup).",
+          "Als VortoOne je werkruimte host, zit Jev erbij inbegrepen. Op een server die je zelf beheert, gebruikt hij de TypeSafe-sleutel van de eigenaar, ongeveer US$ 0,0001 per bericht: [Jev instellen](/help/jev#setup).",
         ],
       },
       {
@@ -551,7 +384,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
               "Open https://console.typesafe.ai en log in met Google of je e-mailadres. Een nieuw account maak je op dezelfde manier.",
               "Zet tegoed in de console. Jev is prepaid.",
               "Open https://console.typesafe.ai/keys, maak een sleutel aan en kopieer hem meteen.",
-              "Open in agentes.chat **Instellingen › AI en gebruik** en plak hem onder **Jev**. Alleen degene die deze server heeft ingericht, ziet hem.",
+              "Open in VortoOne **Instellingen › AI en gebruik** en plak hem onder **Jev**. Alleen degene die deze server heeft ingericht, ziet hem.",
             ],
           },
           "Op een server die je met Docker draait, kun je de sleutel ook in `.env` zetten als `TYPESAFE_API_KEY`. Die gaat voor op de sleutel in Instellingen.",
@@ -609,14 +442,14 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
   "apps-de-ia": {
     title: "AI-apps",
     summary:
-      "Vraag de agents van agentes.chat om taken vanuit Claude, Cursor of een andere MCP-app, zonder die te verlaten, en krijg het antwoord daar.",
+      "Vraag de agents van VortoOne om taken vanuit Claude, Cursor of een andere MCP-app, zonder die te verlaten, en krijg het antwoord daar.",
     sections: [
       {
         id: "what",
         heading: "Hoe het werkt",
         blocks: [
-          "agentes.chat is een MCP-server. Je plakt het adres in je AI-app, logt in met je account en kiest een werkruimte. Vanaf dan kan de app agents en kanalen tonen, namens jou een taak naar een agent sturen, op het antwoord wachten en recente taken lezen.",
-          "Bijvoorbeeld midden in een scène in Unity of Blender vraag je Claude: ‘Vraag de marketingagent om een tekstje voor de lancering’. Het bericht verschijnt in agentes.chat als het jouwe, gemarkeerd met **via Claude**, en het antwoord van de agent komt terug in Claude.",
+          "VortoOne is een MCP-server. Je plakt het adres in je AI-app, logt in met je account en kiest een werkruimte. Vanaf dan kan de app agents en kanalen tonen, namens jou een taak naar een agent sturen, op het antwoord wachten en recente taken lezen.",
+          "Bijvoorbeeld midden in een scène in Unity of Blender vraag je Claude: ‘Vraag de marketingagent om een tekstje voor de lancering’. Het bericht verschijnt in VortoOne als het jouwe, gemarkeerd met **via Claude**, en het antwoord van de agent komt terug in Claude.",
           "Het adres staat in **Instellingen › AI-apps**. Het eindigt op `/mcp`.",
         ],
       },
@@ -626,14 +459,14 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
         blocks: [
           {
             list: [
-              "**Claude** (claude.ai, Claude Desktop en telefoon): klik in **Customize › Connectors** op **+ Add** en dan op **Add custom connector**, noem hem agentes.chat, plak het adres en klik op **Continue**. Kies **Sign in now**, klik op **Add** en geef toestemming. In de abonnementen Team en Enterprise voegt de Owner van de Claude-organisatie de connector toe in Organization settings › Connectors, en klikt elke persoon op **Connect** in Customize › Connectors. Het gratis abonnement van Claude heeft ruimte voor één eigen connector.",
+              "**Claude** (claude.ai, Claude Desktop en telefoon): klik in **Customize › Connectors** op **+ Add** en dan op **Add custom connector**, noem hem VortoOne, plak het adres en klik op **Continue**. Kies **Sign in now**, klik op **Add** en geef toestemming. In de abonnementen Team en Enterprise voegt de Owner van de Claude-organisatie de connector toe in Organization settings › Connectors, en klikt elke persoon op **Connect** in Customize › Connectors. Het gratis abonnement van Claude heeft ruimte voor één eigen connector.",
               "**Claude Code:** voer `claude mcp add --transport http --scope user agentes <address>` uit, typ dan `/mcp`, kies agentes en **Authenticate**. Alleen voor de huidige map laat je `--scope user` weg.",
               "**Cursor:** **Toevoegen aan Cursor** in **Instellingen › AI-apps**, of het adres in `~/.cursor/mcp.json`. Cursor vraagt je in te loggen als je hem voor het eerst gebruikt.",
               '**VS Code:** **Toevoegen aan VS Code**, of het adres in `.vscode/mcp.json` met `"type": "http"`.',
               "**Andere apps:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains en meer hebben elk hun eigen stappen in **App koppelen**, met je adres al ingevuld.",
             ],
           },
-          "Bij het inloggen laat agentes.chat zien welke app om toegang vroeg en waar hij naar terugkeert. Ga alleen verder als je de koppeling net zelf bent gestart.",
+          "Bij het inloggen laat VortoOne zien welke app om toegang vroeg en waar hij naar terugkeert. Ga alleen verder als je de koppeling net zelf bent gestart.",
         ],
       },
       {
@@ -650,7 +483,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
               "`list_recent_tasks`: de taken die je vanuit apps stuurde en waar agents nu mee bezig zijn.",
             ],
           },
-          "De app handelt namens jou en ziet alleen wat jij ziet. Hij keurt nooit acties van agents goed: als een agent stopt om goedkeuring te vragen, zegt het antwoord dat met een link, en beslist een mens in agentes.chat. Hij verandert ook geen instellingen, leden of rechten.",
+          "De app handelt namens jou en ziet alleen wat jij ziet. Hij keurt nooit acties van agents goed: als een agent stopt om goedkeuring te vragen, zegt het antwoord dat met een link, en beslist een mens in VortoOne. Hij verandert ook geen instellingen, leden of rechten.",
         ],
       },
       {
@@ -686,7 +519,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "safety",
         heading: "Tekst van anderen",
         blocks: [
-          "Antwoorden bevatten tekst die agents en mensen in agentes.chat hebben geschreven. De app krijgt die tekst gemarkeerd als inhoud, niet als instructies, maar een tekst kan toch proberen de app iets anders te laten doen. Controleer wat je app gaat doen voordat je bevestigt.",
+          "Antwoorden bevatten tekst die agents en mensen in VortoOne hebben geschreven. De app krijgt die tekst gemarkeerd als inhoud, niet als instructies, maar een tekst kan toch proberen de app iets anders te laten doen. Controleer wat je app gaat doen voordat je bevestigt.",
         ],
       },
       {
@@ -705,153 +538,8 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
     ],
   },
   "install-on-a-server": {
-    title: "agentes.chat op een server installeren",
-    summary: "Draai agentes.chat op je eigen server, gratis, voor je hele team. Eén opdracht zet alles klaar.",
-    sections: [
-      {
-        id: "choose",
-        heading: "Welke opzet je kiest",
-        blocks: [
-          {
-            list: [
-              "**agentes.chat Cloud**: voor elk team, overal bereikbaar. Wij draaien het, werken het bij en maken back-ups. Elke werkruimte krijgt een eigen computer, waarop elke agent een eigen gebruiker is.",
-              "**Je computer, met de app**: voor jou of een klein team, bereikbaar zolang die computer aanstaat. Een Mac mini die aan blijft, werkt goed. Je werkt het bij met één klik en maakt zelf back-ups. Agents draaien als jij op die computer.",
-              "**Een server**: voor een groter team, altijd bereikbaar. Je werkt het bij met drie opdrachten, en het kan elke dag vanzelf een back-up maken. Op Debian 13 is elke agent een eigen gebruiker.",
-            ],
-          },
-          "Van je computer naar een server: [Verhuizen naar een server](/help/run-on-your-computer#moving). Elk van de drie kan agents uit een andere meenemen met [Je agents meenemen](/help/import).",
-        ],
-      },
-      {
-        id: "need",
-        heading: "Wat je nodig hebt",
-        blocks: [
-          {
-            list: [
-              "Een server of VPS met 64-bit Linux, op x64 of arm64. Voor een klein team zijn 2 CPU's, 4 GB geheugen en 20 GB schijf een goed begin. Op een Mac of een pc [draait de app agentes.chat](/help/run-on-your-computer) zonder Docker.",
-              "Docker met Compose. Op Linux zet het installatieprogramma ze erop als ze ontbreken, nadat het heeft gevraagd.",
-              "Een manier om erbij te komen: een gratis Tailscale-account (de standaard, privé, zonder domein en zonder open poort), of een domein dat naar de server wijst, met poort 80 en 443 open.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "install",
-        heading: "Installeren",
-        blocks: [
-          "Voer op de server uit:",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh",
-          },
-          "Het installeert wat ontbreekt en stelt dan een paar vragen: hoe mensen erbij komen, e-mail, of deze server ook de computer van je agents is en of het anonieme gebruiksstatistieken stuurt. Enter neemt het voorgestelde antwoord. Het komt in `/opt/agentes` (`~/agentes` voor een gebruiker die Docker al kan gebruiken), en de eerste keer downloadt het ongeveer 2 GB.",
-          "Aan het eind toont het het adres van je server en een QR-code voor je telefoon. Het opnieuw uitvoeren kan geen kwaad: je instellingen blijven, en alleen wat ontbreekt wordt aangevuld.",
-          "Met Node.js 18 of nieuwer is `npx @agenteschat/setup` in een lege map dezelfde installatie. Zonder Node draait die vanuit de image van de app, in de huidige map, en eindigt met de opdrachten die de rest starten:",
-          {
-            code: 'docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work ghcr.io/agentes-chat/agentes:latest setup',
-          },
-        ],
-      },
-      {
-        id: "reach",
-        heading: "Hoe mensen erbij komen",
-        blocks: [
-          {
-            list: [
-              "**Tailscale**, de standaard: privé HTTPS op `https://agentes.<jouw-tailnet>.ts.net`, alleen voor apparaten in je Tailscale-netwerk. Zet vóór de installatie MagicDNS en HTTPS aan op https://console.tailscale.com/admin/dns en maak een auth key op https://console.tailscale.com/admin/settings/keys, waar de installatie om vraagt.",
-              "**Een openbaar domein**: iedereen op internet kan het openen, bijvoorbeeld op `https://chat.example.com`. Laat het domein naar de server wijzen en open poort 80 en 443. De installatie haalt het certificaat op en vernieuwt het, en laat je je account maken voordat het domein online gaat.",
-              "**Alleen deze machine**: `http://localhost:3000`, om het op je eigen computer te proberen.",
-            ],
-          },
-          "Bij Tailscale verlaat de server je netwerk als zijn key verloopt, na 180 dagen. Om hem te houden, open je het menu **⋯** van de server op https://console.tailscale.com/admin/machines en kies je **Disable Key Expiry**.",
-          "Webhooks die routines starten, en AI-apps die vanaf hun eigen servers bellen, hebben een openbaar adres nodig. Bij Tailscale opent Funnel hetzelfde adres voor internet: voeg Funnel toe aan het beleid van je tailnet op https://console.tailscale.com/admin/acls en zet `TAILSCALE_FUNNEL=true` in `.env`, voer daarna `docker compose up -d` uit.",
-        ],
-      },
-      {
-        id: "owner",
-        heading: "Je account",
-        blocks: [
-          "Open het adres van je server en meld je aan: het eerste account wordt de eigenaar. Daarna gaat aanmelden dicht, en mensen komen erbij via een uitnodiging, vanuit **Instellingen\u00a0›\u00a0Leden en uitnodigingen**.",
-          "Bij Tailscale hebben de mensen die je uitnodigt ook je tailnet nodig. Nodig ze eerst uit op https://console.tailscale.com/admin/users en daarna in agentes.chat.",
-        ],
-      },
-      {
-        id: "email",
-        heading: "E-mail",
-        blocks: [
-          "Zonder e-mail schrijft agentes.chat elke e-mail in zijn log in plaats van hem te versturen, dus een uitnodigingslink kun je daar nog kopiëren. Wachtwoord herstellen blijft uit, en een nieuw e-mailadres voor een account geldt meteen, zonder code of link.",
-          {
-            code: "docker compose logs agentes | grep 'email (not sent'",
-          },
-          "De installatie neemt je eigen mailserver (SMTP) of een key voor een Resend-compatibele API, zoals MillionSend of Resend. E-mails komen van `ping@<domein van je server>`, tenzij je een andere afzender kiest, en dat domein moet geverifieerd zijn bij je e-mailprovider. Om het later in te stellen, voer je de installatie opnieuw uit.",
-        ],
-      },
-      {
-        id: "phone",
-        heading: "Je telefoon",
-        blocks: [
-          {
-            list: [
-              "Bij Tailscale installeer je de Tailscale-app op je telefoon en log je in op dezelfde tailnet.",
-              "Installeer de agentes.chat-app.",
-              "Scan de QR-code die de installatie toonde, of die in **Instellingen\u00a0›\u00a0Je account\u00a0›\u00a0Openen op je telefoon**, die je ook meteen inlogt.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "computers",
-        heading: "De computers van je agents",
-        blocks: [
-          "De installatie kan van deze server ook de computer van je agents maken, waar ze opdrachten uitvoeren, een browser gebruiken en hun bestanden bewaren. Ze vraagt het, en stelt ja voor waar de server het goed kan. Op Debian 13 krijgt elke agent een eigen gebruiker, met een scherm. Op Ubuntu delen agents één gebruiker, `agentes`. Zei je nee, voer de installatie dan opnieuw uit met `--computer yes`:",
-          {
-            code: "curl -fsSL https://agentes.chat/install | sh -s -- --computer yes",
-          },
-          "Meer computers, zoals een Mac met de agentes.chat-app of een andere server, koppel je via **Instellingen\u00a0›\u00a0Apparaten**, zoals in [Je computers en telefoons](/help/computers). Bij Tailscale komen ze eerst in je tailnet.",
-        ],
-      },
-      {
-        id: "backups",
-        heading: "Back-ups en herstellen",
-        blocks: [
-          "Je server bestaat uit drie dingen: de database, de geüploade bestanden en `AGENTES_SECRET` in `.env`. Bewaar een kopie van `.env` op een veilige plek, los van de back-ups: zonder het secret zijn de keys in een herstelde database niet te lezen.",
-          "Voor elke dag een back-up maak je een privé bucket op Cloudflare R2 of een andere S3-compatibele opslag, en een key die erin kan lezen, schrijven en verwijderen. Zet ze in `.env`, met `backup` in `COMPOSE_PROFILES` (`https,backup` met een openbaar domein):",
-          {
-            code: "S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com\nS3_ACCESS_KEY_ID=…\nS3_SECRET_ACCESS_KEY=…\nS3_BACKUP_BUCKET=agentes-backups\nCOMPOSE_PROFILES=tailscale,backup",
-          },
-          "Voer daarna `docker compose up -d` uit in de installatiemap. De database wordt om 03:00 UTC gedumpt en elke dump blijft 14 dagen. `docker compose run --rm backup now` maakt er meteen een, en `docker compose run --rm backup list` toont ze. De dumps bevatten alleen de database: de geüploade bestanden, in het volume `files`, hebben een eigen kopie nodig, en de volledige handleiding hieronder heeft de opdrachten.",
-          "Om te herstellen haal je een dump op met `docker compose run --rm -T backup fetch <naam> > agentes.dump` en laad je die in een lege database, met de app gestopt:",
-          {
-            code: "docker compose stop agentes\ndocker compose exec -T postgres dropdb -U agentes --force agentes\ndocker compose exec -T postgres createdb -U agentes agentes\ndocker compose exec -T postgres pg_restore -U agentes -d agentes --exit-on-error < agentes.dump\ndocker compose start agentes",
-          },
-          "Herstel in de versie die de dump maakte, of in een nieuwere.",
-        ],
-      },
-      {
-        id: "upgrades",
-        heading: "Updates",
-        blocks: [
-          "Voer in de installatiemap uit:",
-          {
-            code: "curl -fsSLO https://agentes.chat/install/docker-compose.yml\ndocker compose pull\ndocker compose up -d",
-          },
-          "De database werkt zichzelf bij als de nieuwe versie start. Houd je instellingen in `.env` en bewerk `docker-compose.yml` nooit, want elke update vervangt het. Maak een back-up vóór een grote sprong: een database die een nieuwere versie heeft bijgewerkt, opent niet in een oudere.",
-        ],
-      },
-      {
-        id: "data",
-        heading: "Wat het verstuurt",
-        blocks: [
-          "Eén keer per dag stuurt de server agentes.chat anonieme gebruiksstatistieken: aantallen zoals mensen, agents, grootte van de machines, gebruikte AI-tokens en hoeveel data de browsers van de agents versturen en ontvangen. Nooit berichten, bestanden, namen of sites. `docker compose run --rm agentes telemetry` toont precies wat er verstuurd zou worden. De eigenaar zet het uit in **Instellingen\u00a0›\u00a0Algemeen**, of met `TELEMETRY=off` in `.env`.",
-          "Foutrapporten gaan nergens heen, tenzij je `SENTRY_DSN` instelt op een Sentry-compatibele server die je zelf kiest. Een rapport bevat de fout en waar die gebeurde, nooit berichten, e-mails, IP-adressen, cookies of tokens.",
-        ],
-      },
-      {
-        id: "reference",
-        heading: "De volledige handleiding",
-        blocks: [
-          "Alle instellingen, een eigen proxy zoals nginx, draaien zonder Docker, een draaiboek voor AI-agents die het zelf installeren en wat je doet als iets misgaat staan in `SELF_HOSTING.md`, in de repository van agentes.chat.",
-        ],
-      },
-    ],
-  },
+  "title": "VortoOne op een server installeren",
+  "summary": "Gebruik het installatiepakket en de verbindingsinstructies van de huidige VortoOne Desktop-versie. Deze versie biedt geen gehoste clouddienst of serverinstallatie met één opdracht.",
+  "sections": []
+},
 };

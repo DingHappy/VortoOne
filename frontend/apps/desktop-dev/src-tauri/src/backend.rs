@@ -19,6 +19,7 @@ const START_WITHIN: Duration = Duration::from_secs(90);
 const IO_WAIT: Duration = Duration::from_secs(5);
 /// 模型凭据等只从这些前缀里取，免得把配置文件当成往后端塞任意环境变量的口子。
 const ENV_PREFIXES: [&str; 3] = ["OPENAI_", "VORTOONE_MODEL", "VORTOONE_LLM_"];
+const MODEL_NAMES: [&str; 4] = ["DEFAULT_MODEL", "LLM_MODEL_CHEAP", "LLM_MODEL_BALANCED", "LLM_MODEL_POWERFUL"];
 
 #[derive(Debug, PartialEq)]
 pub struct Config {
@@ -79,17 +80,9 @@ pub fn parse_config(text: &str) -> Result<Config, String> {
 
 /// 环境文件里允许带给后端的几项（`KEY=VALUE`，可带引号；其余行忽略）。
 pub fn allowed_env(text: &str) -> Vec<(String, String)> {
-    text.lines()
-        .filter_map(|line| {
-            let line = line.trim().strip_prefix("export ").unwrap_or(line.trim());
-            let (key, value) = line.split_once('=')?;
-            let key = key.trim();
-            if line.starts_with('#') || !ENV_PREFIXES.iter().any(|p| key.starts_with(p)) || key == "VORTOONE_API_TOKEN" {
-                return None;
-            }
-            let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
-            Some((key.to_string(), value.to_string()))
-        })
+    dotenvy::from_read_iter(text.as_bytes())
+        .filter_map(Result::ok)
+        .filter(|(key, _)| ENV_PREFIXES.iter().any(|p| key.starts_with(p)) || MODEL_NAMES.contains(&key.as_str()))
         .collect()
 }
 
@@ -214,15 +207,28 @@ mod tests {
 
     #[test]
     fn only_model_settings_pass_from_the_env_file() {
-        let text = "# c\nOPENAI_API_KEY=\"k1\"\nexport OPENAI_API_BASE='http://x/v1'\nPATH=/evil\nVORTOONE_API_TOKEN=mine\nVORTOONE_ENABLE_SHELL=1\nVORTOONE_MODEL=m\nnot a line\n";
+        let text = "# c\nOPENAI_API_KEY=\"k1\"\nexport OPENAI_API_BASE='http://x/v1'\nPATH=/evil\nVORTOONE_API_TOKEN=mine\nVORTOONE_ENABLE_SHELL=1\nVORTOONE_MODEL=m\nDEFAULT_MODEL=chosen\nLLM_MODEL_CHEAP=small\nLLM_MODEL_BALANCED=medium\nLLM_MODEL_POWERFUL=large\nLLM_MODEL_OTHER=no\nnot a line\n";
         assert_eq!(
             allowed_env(text),
             vec![
                 ("OPENAI_API_KEY".to_string(), "k1".to_string()),
                 ("OPENAI_API_BASE".to_string(), "http://x/v1".to_string()),
                 ("VORTOONE_MODEL".to_string(), "m".to_string()),
+                ("DEFAULT_MODEL".to_string(), "chosen".to_string()),
+                ("LLM_MODEL_CHEAP".to_string(), "small".to_string()),
+                ("LLM_MODEL_BALANCED".to_string(), "medium".to_string()),
+                ("LLM_MODEL_POWERFUL".to_string(), "large".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn dotenv_comments_do_not_become_part_of_the_model_url() {
+        assert_eq!(allowed_env("OPENAI_API_BASE=http://example.test/v1   # gateway\nOPENAI_API_KEY=\"key#part\" # note\nDEFAULT_MODEL='chosen model' # note\n"), vec![
+            ("OPENAI_API_BASE".into(), "http://example.test/v1".into()),
+            ("OPENAI_API_KEY".into(), "key#part".into()),
+            ("DEFAULT_MODEL".into(), "chosen model".into()),
+        ]);
     }
 
     #[test]

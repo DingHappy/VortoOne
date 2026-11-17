@@ -1427,6 +1427,8 @@ export interface Message {
   /** Client only, on a `failed` one the server refused: why (`sendFailureText`). */
   sendFailure?: { status: number; code: string; message: string; params?: Record<string, unknown> };
   createdAt: string;
+  /** Order in a gateway's transcript; independent of clock precision and message-id format. */
+  sequence?: number;
 }
 
 /** How an agent's question to another agent (`ask_agent`), or the work it handed it (`tell_agent`), ended. */
