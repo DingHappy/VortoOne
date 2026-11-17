@@ -165,7 +165,7 @@ export type ServerCheck =
 /** What `GET /api/instance` answered: an agentes.chat server these apps can use, or why not. */
 export function readInstance(server: string, body: unknown): ServerCheck {
   const instance = (body ?? {}) as Partial<Instance>;
-  if (instance.name !== "agentes.chat" || typeof instance.api !== "number")
+  if (!["VortoOne", "agentes.chat"].includes(instance.name ?? "") || typeof instance.api !== "number")
     return { ok: false, server, problem: "not-agentes" };
   if (instance.api < APP_API) return { ok: false, server, problem: "server-too-old" };
   if ((instance.minApi ?? 1) > APP_API) return { ok: false, server, problem: "app-too-old" };

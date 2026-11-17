@@ -1,10 +1,5 @@
 # Desktop 模型连接
 
-2026-11-14，主人再次确认：保留 Apache-2.0，独立实现 agentes.chat 的连接操作流程。
-本次参考其 [ConnectAi](https://github.com/agentes-chat/agentes-chat/blob/745d26cde30d6acff732c46c652ed1a385a72a80/apps/web/src/components/ConnectAi.tsx) 与
-[EndpointForm](https://github.com/agentes-chat/agentes-chat/blob/745d26cde30d6acff732c46c652ed1a385a72a80/apps/web/src/components/ai/EndpointForm.tsx)，
-不迁入上游代码、样式、翻译、图标、依赖或服务端；仓库许可不变。
-
 ## 操作流程
 
 在「设置 → 模型与执行」点击「连接 AI」：
