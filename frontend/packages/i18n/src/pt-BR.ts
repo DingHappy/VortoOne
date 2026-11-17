@@ -16216,7 +16216,7 @@ export const ptBR = {
       },
       claudeCode: {
         step1: "Rode no terminal:",
-        step2: "No Claude Code, digite <code>/mcp</code>, escolha agentes e Authenticate.",
+        step2: "No Claude Code, digite <code>/mcp</code>, escolha vortoone e Authenticate.",
         scope: "Ele fica disponível em todas as pastas. Para só a pasta atual, tire <code>--scope user</code>.",
       },
       cursor: {
@@ -16343,7 +16343,7 @@ export const ptBR = {
       error: {
         app_desconhecido: "Não reconhecemos este app",
         app_desconhecidoText:
-          "O app guardou um registro que não vale mais. Apague a conexão salva nele e conecte de novo. No Claude Code, digite /mcp, escolha agentes e Clear authentication. No Cursor, saia do servidor agentes em Configurações\u00a0›\u00a0MCP.",
+          "O app guardou um registro que não vale mais. Apague a conexão salva nele e conecte de novo. No Claude Code, digite /mcp, escolha vortoone e Clear authentication. No Cursor, saia do servidor vortoone em Configurações\u00a0›\u00a0MCP.",
         endereco_de_retorno: "Endereço de retorno não registrado",
         endereco_de_retornoText:
           "Este app pediu para voltar a um endereço que ele não registrou. Por segurança, paramos aqui.",

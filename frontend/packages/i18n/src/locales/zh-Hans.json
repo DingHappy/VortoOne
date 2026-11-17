@@ -15507,7 +15507,7 @@
       },
       "claudeCode": {
         "step1": "在终端中运行：",
-        "step2": "在 Claude Code 中输入 <code>/mcp</code>，选择 agentes，然后选择 Authenticate。",
+        "step2": "在 Claude Code 中输入 <code>/mcp</code>，选择 vortoone，然后选择 Authenticate。",
         "scope": "它在所有文件夹中都有效。如只用于当前文件夹，请去掉 <code>--scope user</code>。"
       },
       "cursor": {
@@ -15629,7 +15629,7 @@
       "language": "语言",
       "error": {
         "app_desconhecido": "无法识别这个应用",
-        "app_desconhecidoText": "该应用保存的注册信息已失效。请清除它保存的连接后重新连接。在 Claude Code 中，输入 /mcp，选择 agentes，然后选择 Clear authentication。在 Cursor 中，前往 设置 › MCP 退出 agentes 服务器的登录。",
+        "app_desconhecidoText": "该应用保存的注册信息已失效。请清除它保存的连接后重新连接。在 Claude Code 中，输入 /mcp，选择 vortoone，然后选择 Clear authentication。在 Cursor 中，前往 设置 › MCP 退出 vortoone 服务器的登录。",
         "endereco_de_retorno": "返回地址未注册",
         "endereco_de_retornoText": "该应用请求返回到一个未注册的地址。为了安全，我们在这里停止了。",
         "pedido_invalido": "无法使用这个请求",

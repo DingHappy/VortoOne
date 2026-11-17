@@ -16995,7 +16995,7 @@
       },
       "claudeCode": {
         "step1": "Выполните в терминале:",
-        "step2": "В Claude Code введите <code>/mcp</code>, выберите agentes и Authenticate.",
+        "step2": "В Claude Code введите <code>/mcp</code>, выберите vortoone и Authenticate.",
         "scope": "Работает в любой папке. Только для текущей папки уберите <code>--scope user</code>."
       },
       "cursor": {
@@ -17117,7 +17117,7 @@
       "language": "Язык",
       "error": {
         "app_desconhecido": "Мы не узнаём это приложение",
-        "app_desconhecidoText": "Приложение хранит регистрацию, которая больше не действует. Удалите его сохранённое подключение и подключитесь снова. В Claude Code введите /mcp, выберите agentes и Clear authentication. В Cursor выйдите из сервера agentes в Settings › MCP.",
+        "app_desconhecidoText": "Приложение хранит регистрацию, которая больше не действует. Удалите его сохранённое подключение и подключитесь снова. В Claude Code введите /mcp, выберите vortoone и Clear authentication. В Cursor выйдите из сервера vortoone в Settings › MCP.",
         "endereco_de_retorno": "Адрес возврата не зарегистрирован",
         "endereco_de_retornoText": "Приложение попросило вернуться на адрес, который оно не регистрировало. Ради безопасности мы остановились.",
         "pedido_invalido": "Мы не смогли обработать этот запрос",

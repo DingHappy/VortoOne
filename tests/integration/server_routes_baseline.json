@@ -2452,5 +2452,175 @@
     "methods": [
       "POST"
     ]
+  },
+  {
+    "path": "/.well-known/oauth-authorization-server",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-authorization-server",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource/mcp",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource/mcp",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/.well-known/openid-configuration",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/openid-configuration",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/app/authorize/{request_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/authorize/{request_id}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/apps",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/apps/{grant_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/tokens",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/tokens/{grant_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/oauth/authorize",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/oauth/register",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/oauth/register",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/oauth/revoke",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/oauth/revoke",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/oauth/token",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/oauth/token",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/mcp",
+    "methods": [
+      "DELETE",
+      "GET"
+    ]
+  },
+  {
+    "path": "/mcp",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/mcp",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/mcp/",
+    "methods": [
+      "DELETE",
+      "GET"
+    ]
+  },
+  {
+    "path": "/mcp/",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/mcp/",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/authorize-requests",
+    "methods": [
+      "GET"
+    ]
   }
 ]

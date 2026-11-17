@@ -53,6 +53,11 @@ def _conversations(root: str):
 
 def send(root: str, member_id: str, body: str, client_id: Optional[str]) -> Dict[str, Any]:
     """调用方已核对过主人证明。岗位、实例或额度不符时 StaffConversations 抛 ValueError，原样交给路由。"""
+    return views.member_owner_message(root, member_id, send_task(root, member_id, body), client_id)
+
+
+def send_task(root: str, member_id: str, body: str, via: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """所有者交给专员一件事，返回任务。via：经哪个 AI 应用发来（/mcp 认出所有者的连接时）。岗位、实例或额度不符时 StaffConversations 抛 ValueError，原样交给路由。"""
     from src.workflow.staff.owner_confirmation import owner_route
     conversations = _conversations(root)
     current = conversations.read(member_id, limit=1)
@@ -62,8 +67,8 @@ def send(root: str, member_id: str, body: str, client_id: Optional[str]) -> Dict
         result = conversations.submit(member_id, {
             "request_id": uuid.uuid4().hex, "prompt": body, "acceptance": [], "delivery": "notify",
             "member_revision": current["member"]["revision"], "role_revision": current["role"]["revision"],
-            "instance": current["instance"], "identity_digest": current["identity_digest"]})
-    return views.member_owner_message(root, member_id, result["task"], client_id)
+            "instance": current["instance"], "identity_digest": current["identity_digest"]}, via=via)
+    return result["task"]
 
 
 def stop(root: str, task_id: str) -> bool:

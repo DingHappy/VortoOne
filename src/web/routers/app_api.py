@@ -157,7 +157,12 @@ async def reset_password(body: _Reset, request: Request):
     if not views.owner_connection() or not member_auth.same_origin(request):
         return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
     try:
-        await asyncio.to_thread(MemberAccounts(os.getcwd()).reset_password, body.token, body.newPassword)
+        accounts = MemberAccounts(os.getcwd())
+        account_id = await asyncio.to_thread(accounts.reset_password, body.token, body.newPassword)
+        member_id = str((await asyncio.to_thread(accounts.get, account_id) or {}).get("member") or "")
+        if member_id:                                   # 换了密码：他连上来的 AI 应用和个人令牌一并作废
+            from src.workflow.ai_apps.store import AiApps
+            await asyncio.to_thread(AiApps(os.getcwd()).disconnect_person, member_id)
     except LookupError:
         return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
     except ValueError as error:
