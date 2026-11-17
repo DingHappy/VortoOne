@@ -214,15 +214,56 @@ def act_level(held: Iterable[str], posts: Mapping[str, Post], *, owner: bool = F
                key=ACT_LEVELS.index, default="none")
 
 
+AUDIENCE_MODES = ("everyone", "people", "owner")
+MAX_AUDIENCE = 500
+
+
+def check_audience(value: object, members: Iterable[str], groups: Iterable[str]) -> Dict[str, object]:
+    """agent 的受众（谁能和它对话）：所有人、指定的人和身份组、只有所有者。返回整理好的记录。
+
+    指定的人只能是在册成员；指定的身份组不能是「所有人」（那就是所有人这一档）。"""
+    if not isinstance(value, Mapping) or value.get("mode") not in AUDIENCE_MODES:
+        raise ValueError("受众只能是所有人、指定的人或只有所有者")
+    mode = str(value["mode"])
+    if mode != "people":
+        return {"mode": mode, "userIds": [], "roleIds": []}
+    known_people, known_groups = set(members), set(groups) - {EVERYONE}
+    people, posts = value.get("userIds") or [], value.get("roleIds") or []
+    if not isinstance(people, list) or not isinstance(posts, list) or len(people) + len(posts) > MAX_AUDIENCE:
+        raise ValueError("指定的人和身份组太多或格式不对")
+    if any(not isinstance(x, str) or x not in known_people for x in people):
+        raise ValueError("指定的人里有不在册的成员")
+    if any(not isinstance(x, str) or x not in known_groups for x in posts):
+        raise ValueError("指定的身份组不存在，或者是「所有人」")
+    return {"mode": mode, "userIds": sorted(set(people)), "roleIds": sorted(set(posts))}
+
+
+def in_audience(audience: object, person: str, held: Iterable[str]) -> bool:
+    """这个成员在不在 agent 的受众里（所有者不经过这里）。没设受众按所有人；读不懂的按不在。"""
+    if not audience:
+        return True
+    if not isinstance(audience, Mapping):
+        return False
+    mode = audience.get("mode")
+    if mode == "everyone":
+        return True
+    if mode == "people":
+        return person in (audience.get("userIds") or []) or bool(set(held) & set(audience.get("roleIds") or []))
+    return False
+
+
 def act_level_on(agent_levels: Mapping[str, str], person: str, group_level: str, *, owner: bool = False,
-                 talks: bool = True) -> str:
+                 talks: bool = True, audience: object = None, held: Iterable[str] = ()) -> str:
     """这个人对这一个 agent 的办事级别。
 
+    先看受众：不在 agent 受众里的成员不能对话，单独定的级别也不例外（受众是「谁能用」，级别是「能做到哪一步」）。
     agent_levels 是该 agent 上单独给人定的级别（人 → 级别）：定了就用它，可以比身份组的高也可以低，
     包括「不能对话」。没单独定的用身份组的级别；连「和 agent 对话」这项权限都没有的（talks=False）
     一律不能对话，除非在这个 agent 上被单独点了名。读到不认识的级别按不能对话。"""
     if owner:
         return ACT_LEVELS[-1]
+    if not in_audience(audience, person, held):
+        return "none"
     if person in agent_levels:
         level = agent_levels[person]
         return level if level in ACT_LEVELS else "none"

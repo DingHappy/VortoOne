@@ -83,6 +83,7 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/usage", {"usage": []}),
     (_ORG + r"/approvals", {"approvals": []}),
     (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
+    (_ORG + r"/former-agents", {"agents": []}),          # 不在团队里的 agent 是所有者的事
 )
 
 

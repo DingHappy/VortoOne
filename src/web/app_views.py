@@ -122,20 +122,68 @@ def agents(root: str) -> List[Dict[str, Any]]:
     staff = _staff(root)
     titles = {str(role.get("id")): str(role.get("title") or role.get("id")) for role in staff.get("roles") or []}
     briefs = {str(role.get("id")): str(role.get("brief") or "") for role in staff.get("roles") or []}
+    profiles, audiences = _agent_extras(root)
     for member in staff.get("members") or []:
         if member.get("status") == "retired":
             continue
         member_id = str(member.get("id") or "")
         if not member_id:
             continue
-        rows.append({
+        extra = profiles.get(member_id) or {}
+        if extra.get("archived") or extra.get("deleted"):
+            continue                                    # 归档的、删掉的不在团队里（former-agents 里还有它）
+        audience = audiences.get(member_id) or {"mode": "everyone", "userIds": [], "roleIds": []}
+        row = {
             "id": member_agent_id(root, member_id), "name": str(member.get("name") or member_id),
             "handle": member_id, "role": titles.get(str(member.get("role")), str(member.get("role") or "")),
             "instructions": briefs.get(str(member.get("role")), ""),    # 岗位登记的职责说明
             "model": str(member.get("model") or ""), "ownerUserId": owner,
-            "hasCredential": model_connected(), "createdAt": created, "audienceMode": "everyone",
+            "hasCredential": model_connected(), "createdAt": str(extra.get("created") or created),
+            "audience": {**audience, "consultable": False}, "audienceMode": audience["mode"],
             "canTalk": member.get("status", "active") == "active", "seesDetails": True,
-        })
+        }
+        if extra.get("appearance"):
+            row["appearance"] = dict(extra["appearance"])
+        setup = extra.get("setup")
+        if isinstance(setup, dict):
+            row["setup"] = {"role": setup.get("role"), "done": list(setup.get("confirmed") or []),
+                            **{key: setup[key] for key in ("hello", "starter", "apps") if key in setup}}
+        rows.append(row)
+    return rows
+
+
+def _agent_extras(root: str):
+    """agent 的样子（AgentProfiles）和谁能和它对话（成员登记处）。读不出来就当没有：样子缺了只是显示默认，
+    受众缺了这里显示「所有人」——真正放不放行由内核按登记处判定，读不出登记处时成员一律进不来。"""
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow.staff.agent_profiles import AgentProfiles
+    try:
+        profiles = AgentProfiles(root).all()
+    except (OSError, ValueError):
+        profiles = {}
+    try:
+        audiences = MemberRegistry(root).snapshot().get("agent_audiences") or {}
+    except (OSError, ValueError):
+        audiences = {}
+    return profiles, audiences
+
+
+def former_agents(root: str) -> List[Dict[str, Any]]:
+    """不在团队里的 agent：归档的（还能恢复）和删掉的。只给名字、角色和样子，留给它们留下的消息显示用。"""
+    staff = _staff(root)
+    titles = {str(role.get("id")): str(role.get("title") or role.get("id")) for role in staff.get("roles") or []}
+    profiles, _ = _agent_extras(root)
+    rows = []
+    for member in staff.get("members") or []:
+        member_id = str(member.get("id") or "")
+        extra = profiles.get(member_id) or {}
+        deleted = member.get("status") == "retired" or bool(extra.get("deleted"))
+        if not member_id or not (deleted or extra.get("archived")):
+            continue
+        rows.append({"id": member_agent_id(root, member_id), "name": str(member.get("name") or member_id),
+                     "role": titles.get(str(member.get("role")), str(member.get("role") or "")),
+                     "appearance": dict(extra["appearance"]) if extra.get("appearance") else None,
+                     "deleted": deleted})
     return rows
 
 

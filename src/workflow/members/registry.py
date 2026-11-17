@@ -75,6 +75,7 @@ def _fresh() -> Dict[str, Any]:
         "invitations": {},
         "agent_levels": {},
         "plans_shared": {},
+        "agent_audiences": {},
     }
 
 
@@ -139,7 +140,8 @@ class MemberRegistry:
             if not isinstance(value.get(key), kind):
                 raise Damaged("成员登记文件结构无效")
         value.setdefault("plans_shared", {})          # 早于这一项的登记文件没有它：一个都没打开
-        if not isinstance(value["plans_shared"], dict):
+        value.setdefault("agent_audiences", {})       # 早于这一项的：没设受众，按所有人
+        if not isinstance(value["plans_shared"], dict) or not isinstance(value["agent_audiences"], dict):
             raise Damaged("成员登记文件结构无效")
         try:
             self._check(value)
@@ -271,7 +273,8 @@ class MemberRegistry:
         posts = self._posts(state)
         held = member.get("groups") or []
         return rules.act_level_on(state["agent_levels"].get(str(agent_id)) or {}, principal.id,
-                                  rules.act_level(held, posts), talks=rules.has("roles.talk", held, posts))
+                                  rules.act_level(held, posts), talks=rules.has("roles.talk", held, posts),
+                                  audience=state["agent_audiences"].get(str(agent_id)), held=held)
 
     # ── 身份组 ────────────────────────────────────────────────────────────────
 
@@ -397,6 +400,9 @@ class MemberRegistry:
                 state["agent_levels"][agent_id].pop(str(member_id), None)
                 if not state["agent_levels"][agent_id]:
                     del state["agent_levels"][agent_id]
+            for audience in state["agent_audiences"].values():
+                if str(member_id) in audience.get("userIds", []):
+                    audience["userIds"].remove(str(member_id))
 
     # ── 邀请 ──────────────────────────────────────────────────────────────────
 
@@ -498,6 +504,37 @@ class MemberRegistry:
 
     # ── 对单个 agent 单独定级别 ───────────────────────────────────────────────
 
+    def audience(self, agent_id: str) -> Dict[str, Any]:
+        """这个 agent 的受众；没设过是所有人。"""
+        found = self.snapshot()["agent_audiences"].get(str(agent_id))
+        return dict(found) if isinstance(found, dict) else {"mode": "everyone", "userIds": [], "roleIds": []}
+
+    def set_audience(self, actor: Principal, agent_id: str, audience: Mapping[str, Any]) -> Dict[str, Any]:
+        """定谁能和这个 agent 对话。现在只有所有者能定（agent 都是所有者的）。"""
+        agent = str(agent_id)
+        if not _AGENT.fullmatch(agent):
+            raise ValueError("agent 标识无效")
+        with self._change() as state:
+            owner, _held = self._actor(state, actor)
+            if not owner:
+                raise Refused("只有所有者能定谁能和 agent 对话")
+            checked = rules.check_audience(audience, state["members"], state["groups"])
+            if checked["mode"] == "everyone":
+                state["agent_audiences"].pop(agent, None)
+            else:
+                state["agent_audiences"][agent] = checked
+            return dict(checked)
+
+    def forget_agent(self, actor: Principal, agent_id: str) -> None:
+        """agent 彻底删除时：它的受众、单独定的级别、「也回应别人」一并清掉。"""
+        agent = str(agent_id)
+        with self._change() as state:
+            owner, _held = self._actor(state, actor)
+            if not owner:
+                raise Refused("只有所有者能删除 agent")
+            for key in ("agent_audiences", "agent_levels", "plans_shared"):
+                state[key].pop(agent, None)
+
     def set_act_level_on(self, actor: Principal, agent_id: str, member_id: str, level: Optional[str], *,
                          responsible: bool = False) -> None:
         """在一个 agent 上给某个成员单独定办事级别；level 为 None 是撤掉单独定的、回到按身份组算。
@@ -513,7 +550,8 @@ class MemberRegistry:
             posts = self._posts(state)
             levels = state["agent_levels"].get(agent) or {}
             mine = rules.act_level_on(levels, actor.id, rules.act_level(held, posts), owner=owner,
-                                      talks=rules.has("roles.talk", held, posts, owner=owner))
+                                      talks=rules.has("roles.talk", held, posts, owner=owner),
+                                      audience=state["agent_audiences"].get(agent), held=held)
             target = member.get("groups") or []
             result = level if level is not None else rules.act_level_on(
                 {}, str(member_id), rules.act_level(target, posts), talks=rules.has("roles.talk", target, posts))

@@ -347,7 +347,9 @@ def member_agents(root: str, actor: Principal) -> List[Dict[str, Any]]:
             continue
         if usable_level(root, staff_id, actor, roles_by_staff[staff_id]) == "none":
             continue
-        shown.append({**agent, "seesDetails": False, "audienceMode": "people"})
+        # 受众里还有谁是所有者的事：成员只看到自己在受众里
+        shown.append({**{key: value for key, value in agent.items() if key != "audience"},
+                      "seesDetails": False, "audienceMode": "people"})
     return shown
 
 
