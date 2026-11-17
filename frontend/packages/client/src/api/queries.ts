@@ -1574,14 +1574,24 @@ export function startThreadCache(qc: ReturnType<typeof useQueryClient>, orgId: s
 export function useSendDm(orgId: string) {
   const api = useApi();
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation(sendDmMutation(api, qc, orgId));
+}
+
+/** Also usable by a MutationObserver: finish reading the accepted conversation before opening it. */
+export function sendDmMutation(api: ApiClient, qc: QueryClient, orgId: string) {
+  return mutationOptions({
     mutationFn: async ({ body, ...target }: DmTarget & { body: string }) => {
       const { channelId } = await api.dms.open(orgId, target);
       return api.chat.post(orgId, channelId, { body, clientId: newClientId() });
     },
-    onSuccess: (message) => {
+    onSuccess: async (message) => {
       cacheMessage(qc, orgId, message);
       void qc.invalidateQueries({ queryKey: keys.dms(orgId) });
+      // A fast reply may predate this view's subscription. Read its canonical timestamps/order before navigating.
+      // A failed read must not fail the successful send or invite a duplicate POST; opening will try the read again.
+      await qc.fetchQuery({ ...messagesQuery(api, orgId, message.channelId), staleTime: 0 }).catch(() => {
+        void qc.invalidateQueries({ queryKey: keys.messages(orgId, message.channelId) });
+      });
     },
   });
 }

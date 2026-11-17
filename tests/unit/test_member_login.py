@@ -98,6 +98,13 @@ def test_sign_out_then_sign_in_again(home):
     assert browser.get("/api/app/me").json()["organizations"][0]["role"] == "member"
 
 
+def test_the_screens_sign_out_works_for_a_member(home):
+    browser = _join(home)
+    left = browser.post("/api/app/device-accounts/sign-out", json={})
+    assert left.status_code == 200 and left.json() == {"signedIn": False}
+    assert browser.get("/api/app/me").status_code == 401
+
+
 def test_a_stolen_cookie_dies_with_sign_out(home):
     browser = _join(home)
     stolen = TestClient(home["app"], headers=ORIGIN, cookies=dict(browser.cookies))

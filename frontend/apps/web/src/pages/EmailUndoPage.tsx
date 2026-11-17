@@ -46,7 +46,7 @@ export function EmailUndoPage({ token }: { token?: string }) {
       <form className="auth__form" onSubmit={submit} noValidate>
         <header className="auth__ask">
           <AgentAvatar
-            name="agentes.chat"
+            name="VortoOne"
             size="lg"
             state={undo.isPending ? "writing" : undefined}
             expression={back ? "happy" : undefined}

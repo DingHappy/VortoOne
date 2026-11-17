@@ -25,6 +25,7 @@ _ORG = r"/api/app/organizations/[^/]+"
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
+    ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("GET", _ORG + r"/roles"),
     ("GET", _ORG + r"/members"),
     ("GET", _ORG + r"/invitations"),

@@ -2406,18 +2406,6 @@
     ]
   },
   {
-    "path": "/api/app/invitations/{token}",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/app/invitations/{token}/accept",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
     "path": "/api/auth/handover",
     "methods": [
       "POST"
@@ -2427,6 +2415,30 @@
     "path": "/api/auth/handover/{code}",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/sign-in-options",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/device-accounts/sign-out",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/accept",
+    "methods": [
+      "POST"
     ]
   },
   {

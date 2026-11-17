@@ -170,7 +170,10 @@ class MainChatBridge:
             self.client_ids[rid] = client_id
         message = views.owner_message(self.root, rid, body, client_id=client_id)
         await realtime.client_message(self, {"type": P.AGENT, "text": body, "rid": rid, "mode": "plan"})
-        return message
+        # 应答和实时/重读用同一条记录，不能用接收请求的时刻覆盖它的时间与顺序。
+        recorded = next((row for row in views.main_messages(self.root, limit=400)
+                         if row["id"] == message["id"]), None)
+        return {**(recorded or message), **({"clientId": client_id} if client_id else {})}
 
     async def stop(self, rid: str) -> bool:
         from src.web.routers import realtime

@@ -52,7 +52,8 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",
                  # 新版 Desktop 界面在登录前要读的服务信息与登录入口（routers/app_api.py）：不含任何数据
-                 "/api/instance", "/api/app/auth-config", "/api/auth/sign-in/email", "/api/auth/sign-out",
+                 "/api/instance", "/api/app/auth-config", "/api/app/sign-in-options",
+                 "/api/auth/sign-in/email", "/api/auth/sign-out",
                  # 成员凭邀请注册、凭重置链接改密码：各自核对邀请令牌 / 重置令牌
                  "/api/auth/sign-up/email", "/api/auth/reset-password",
                  # 小智语音端点用自己的专用令牌（routers/voice.py），不收也不放行主 API 令牌

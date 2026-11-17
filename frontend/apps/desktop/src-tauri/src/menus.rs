@@ -205,10 +205,6 @@ fn build_app_menu(
     let about = AboutMetadataBuilder::new()
         .name(Some(app.package_info().name.clone()))
         .version(Some(app.package_info().version.to_string()))
-        .copyright(Some(
-            "Based on agentes.chat by Codari Global, LLC\n\
-             Copyright © 2026 Codari Global, LLC and contributors",
-        ))
         .build();
 
     let app_menu = SubmenuBuilder::new(app, app.package_info().name.clone())
@@ -309,7 +305,7 @@ pub fn servers_menu(
     for (n, server) in file.servers.iter().enumerate() {
         // Named as everywhere else in the app: agentes.chat, the server here by what it is, any other by its host.
         let here = crate::local_server::is_here(app, server).then(|| l("serverTitle"));
-        let name = crate::workspaces::server_name(server, "agentes.chat", here.as_deref());
+        let name = crate::workspaces::server_name(server, "VortoOne", here.as_deref());
         let current = file.current.as_deref() == Some(server.as_str());
         if here.is_some() {
             menu = menu.item(&here_menu(app, l, &name, n, current)?);
