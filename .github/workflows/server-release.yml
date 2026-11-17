@@ -11,6 +11,8 @@ on:
       - "deploy/Dockerfile"
       - "deploy/docker-compose.yml"
       - "scripts/build-server-release.sh"
+      - "scripts/check-server-upgrade.sh"
+      - "src/workflow/home_backup.py"
       - ".github/workflows/server-release.yml"
   push:
     tags: ["server-v*"]
@@ -65,6 +67,8 @@ jobs:
           curl -fsS -o /dev/null http://127.0.0.1:18080/login
           # 没有令牌进不去
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/app/me)" = 401
+      - name: Smoke - upgrade, and roll back from a broken version
+        run: scripts/check-server-upgrade.sh 18081
       - uses: actions/upload-artifact@v4
         with:
           name: server-release
