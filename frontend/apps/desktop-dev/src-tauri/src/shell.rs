@@ -7,14 +7,14 @@
 //! 每个命令先核对调用的窗口：只认随包页面 `shell/index.html` 里标签是 welcome / prefs 的窗口。
 //! 主窗口打开的是服务的网页，它调不到这里的任何命令。
 
-use crate::{backend, places};
+use crate::{backend, places, reach};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub const PAGE: &str = "shell/index.html";
@@ -29,6 +29,9 @@ pub struct ShellState {
     link: Mutex<Option<String>>,
     installing: AtomicBool,
     cancel: AtomicBool,
+    /// 正在打开或关掉「让别的设备连进来」；人点了不等了。
+    reaching: AtomicBool,
+    reach_stop: AtomicBool,
 }
 
 fn now_ms() -> u64 {
@@ -80,9 +83,22 @@ pub fn local_started(app: &tauri::AppHandle, port: u16) -> Result<(), String> {
     }
     local.url = Some(url);
     local.installed = true;
+    let reshare = local.public_url.is_some() && local.reach_port != Some(port);
     places::write_local(&config, &local)?;
     places::write_servers(&config, &list)?;
     set_phase(app, "running");
+    if reshare {
+        // 端口换了（上次的被占了）：Tailscale 那边改分享新端口；要人去开 HTTPS 的不在这里等
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            if reach::serve(port, &mut |_| {}, &|| true).is_ok() {
+                let Ok((config, data)) = dirs(&handle) else { return };
+                let mut local = places::read_local(&config, &data);
+                local.reach_port = Some(port);
+                let _ = places::write_local(&config, &local);
+            }
+        });
+    }
     Ok(())
 }
 
@@ -106,6 +122,9 @@ pub fn status(app: &tauri::AppHandle) -> Value {
     let bundled = app.path().resource_dir().map(|r| r.join("runtime").join("vortocode-runtime").is_file()).unwrap_or(false);
     let phase = phase(app);
     let url = if phase == "running" { local.url.clone() } else { None };
+    let reach = local.public_url.is_some();
+    // 开着却连不上 Tailscale：别人这会儿连不进来
+    let tailnet_down = reach && reach::tailnet()["state"] != "on";
     json!({
         "bundled": bundled,
         "installed": if local.installed { "app" } else { "none" },
@@ -114,8 +133,8 @@ pub fn status(app: &tauri::AppHandle) -> Value {
         "owner": local.installed,
         "phase": phase,
         "url": url,
-        "publicUrl": Value::Null,
-        "reach": false,
+        "publicUrl": local.public_url,
+        "reach": reach,
         "usage": false,
         "version": app.package_info().version.to_string(),
         "dir": data.display().to_string(),
@@ -125,7 +144,7 @@ pub fn status(app: &tauri::AppHandle) -> Value {
         "backTo": Value::Null,
         "held": local.held,
         "heldUntil": local.held_until,
-        "tailnetDown": false,
+        "tailnetDown": tailnet_down,
         "backups": {"nightly": local.nightly, "copyTo": local.copy_to, "files": backups(&data, local.copy_to.as_deref()),
                     "problem": Value::Null},
         "awake": false,
@@ -197,7 +216,8 @@ fn choose(app: &tauri::AppHandle, server: &str, page: Option<&str>) -> Result<()
     list.choose(&origin)?;
     places::write_servers(&config, &list)?;
     let local = places::read_local(&config, &data);
-    if local.url.as_deref() == Some(origin.as_str()) || (places::is_loopback(&origin) && local.installed) {
+    if local.url.as_deref() == Some(origin.as_str()) || local.is_public(&origin)
+        || (places::is_loopback(&origin) && local.installed) {
         if phase(app) == "running" {
             let key = backend::owner_key(&data.join(places::OWNER_KEY_FILE))?;
             let port: u16 = origin.rsplit(':').next().and_then(|p| p.parse().ok()).ok_or("地址不对")?;
@@ -281,10 +301,75 @@ fn install(app: &tauri::AppHandle, choice: LocalChoice) -> Result<(), String> {
     // 这台电脑就是它的 agent 干活的电脑：服务本来就跑在这里
     emit_step(app, "computer", "done", None);
     if choice.reach {
-        // 让手机和别的电脑经 Tailscale 连进来：第 1 步的第 3 个 PR 做
-        emit_step(app, "reach", "warn", Some(json!({"reason": "serve"})));
+        emit_step(app, "reach", "active", None);
+        let answer = set_reach(app, true);
+        if answer["ok"] == true {
+            emit_step(app, "reach", "done", None);
+        } else {
+            // 没打开不算装失败：服务照样能在这台电脑上用，之后在偏好设置里再开
+            emit_step(app, "reach", "warn", Some(answer["problem"].clone()));
+        }
     }
     Ok(())
+}
+
+// ── 让别的设备经 Tailscale 连进来 ─────────────────────────────────────────────
+
+fn reach_stage(app: &tauri::AppHandle, stage: Value) {
+    let _ = app.emit("local-server://reach", stage);
+}
+
+fn write_public(data: &Path, url: Option<&str>) -> Result<(), String> {
+    let path = data.join(places::PUBLIC_URL_FILE);
+    match url {
+        Some(url) => std::fs::write(&path, url).map_err(|e| e.to_string()),
+        None => match std::fs::remove_file(&path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.to_string()),
+            _ => Ok(()),
+        },
+    }
+}
+
+/// 打开或关掉；答复照窗口认的 `ReachResult`。打开后服务带着对外地址重启一次。
+fn set_reach(app: &tauri::AppHandle, on: bool) -> Value {
+    let problem = |reason: Value| json!({"ok": false, "problem": reason});
+    let Ok((config, data)) = dirs(app) else { return problem(json!({"reason": "serve"})) };
+    let state = app.state::<ShellState>();
+    state.reach_stop.store(false, Ordering::SeqCst);
+    let mut local = places::read_local(&config, &data);
+    let running = phase(app) == "running";
+    if !on {
+        if let Some(url) = local.public_url.take() { reach::unserve(&url); }
+        local.reach_port = None;
+        if write_public(&data, None).and_then(|_| places::write_local(&config, &local)).is_err() {
+            return problem(json!({"reason": "back"}));
+        }
+        if running {
+            reach_stage(app, json!({"stage": "restarting"}));
+            if crate::connect_now(app).is_err() { return problem(json!({"reason": "back"})); }
+        }
+        let back = places::read_local(&config, &data).url.unwrap_or_default();
+        return json!({"ok": true, "url": back});
+    }
+    let Some(port) = local.url.as_deref().filter(|_| running).and_then(|u| u.rsplit(':').next()?.parse::<u16>().ok()) else {
+        return problem(json!({"reason": "start"}));
+    };
+    reach_stage(app, json!({"stage": "sharing"}));
+    let stop = || app.state::<ShellState>().reach_stop.load(Ordering::SeqCst);
+    let public = match reach::serve(port, &mut |url| reach_stage(app, json!({"stage": "approve", "url": url})), &stop) {
+        Ok(public) => public,
+        Err(why) => return problem(why.to_json()),
+    };
+    local.public_url = Some(public.clone());
+    local.reach_port = Some(port);
+    if write_public(&data, Some(&public)).and_then(|_| places::write_local(&config, &local)).is_err() {
+        return problem(json!({"reason": "serve"}));
+    }
+    reach_stage(app, json!({"stage": "restarting"}));
+    if crate::connect_now(app).is_err() {
+        return problem(json!({"reason": "start"}));
+    }
+    json!({"ok": true, "url": public})
 }
 
 fn stop_local(app: &tauri::AppHandle) {
@@ -498,42 +583,6 @@ pub fn move_in(app: tauri::AppHandle) {
 
 // ── Tailscale：只读状态（让别的设备连进来在第 3 个 PR 做） ─────────────────────
 
-fn output_within(mut command: Command, limit: Duration) -> Option<String> {
-    let mut child = command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
-            _ => { let _ = child.kill(); let _ = child.wait(); return None; }
-        }
-    }
-    let mut text = String::new();
-    use std::io::Read as _;
-    child.stdout.take()?.read_to_string(&mut text).ok()?;
-    Some(text)
-}
-
-fn tailnet() -> Value {
-    let app = Path::new("/Applications/Tailscale.app").is_dir();
-    let cli = places::find_command("tailscale", std::env::var_os("HOME").as_deref().map(Path::new)).or_else(|| {
-        let bundled = PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/Tailscale");
-        bundled.is_file().then_some(bundled)
-    });
-    let Some(cli) = cli else {
-        return if app { json!({"state": "off", "app": true}) } else { json!({"state": "missing"}) };
-    };
-    let mut command = Command::new(cli);
-    command.args(["status", "--json"]);
-    let parsed: Option<Value> = output_within(command, Duration::from_secs(2)).and_then(|t| serde_json::from_str(&t).ok());
-    match parsed {
-        Some(v) if v["BackendState"] == "Running" => {
-            let device = v["Self"]["DNSName"].as_str().unwrap_or_default().trim_end_matches('.').to_string();
-            json!({"state": "on", "device": device})
-        }
-        _ => json!({"state": "off", "app": app}),
-    }
-}
 
 // ── 命令 ────────────────────────────────────────────────────────────────────
 
@@ -603,12 +652,16 @@ pub fn welcome_add(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Resul
 }
 
 #[tauri::command]
-pub fn discover(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<Vec<Candidate>, String> {
+pub async fn discover(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<Vec<Candidate>, String> {
     check(&window)?;
     let mut found = Vec::new();
     if phase(&app) == "running" {
         if let Some(url) = local_origin(&app) { found.push(Candidate { server: url, place: "here" }); }
     }
+    // tailnet 里按约定起名的设备（`tailscale status` 最多等 3 秒：放到后台线程）
+    let tailnet = tauri::async_runtime::spawn_blocking(|| reach::status_json().map(|s| reach::candidates(&s)))
+        .await.ok().flatten().unwrap_or_default();
+    found.extend(tailnet.into_iter().map(|server| Candidate { server, place: "tailnet" }));
     Ok(found)
 }
 
@@ -761,10 +814,21 @@ pub fn local_server_restart(window: tauri::WebviewWindow, app: tauri::AppHandle)
 }
 
 #[tauri::command]
-pub fn local_server_reach(window: tauri::WebviewWindow, on: bool) -> Result<Value, String> {
+pub async fn local_server_reach(window: tauri::WebviewWindow, app: tauri::AppHandle, on: bool) -> Result<Value, String> {
     check(&window)?;
-    // 经 Tailscale 让别的设备连进来：第 1 步的第 3 个 PR 做；现在如实回答做不到
-    if on { Ok(json!({"ok": false, "problem": {"reason": "serve"}})) } else { Ok(json!({"ok": true, "url": ""})) }
+    if app.state::<ShellState>().reaching.swap(true, Ordering::SeqCst) { return Err("正在设置".into()); }
+    let handle = app.clone();
+    // 可能要等人去 Tailscale 的管理页打开 HTTPS：放到后台线程，不卡窗口
+    let answer = tauri::async_runtime::spawn_blocking(move || set_reach(&handle, on)).await.map_err(|e| e.to_string());
+    app.state::<ShellState>().reaching.store(false, Ordering::SeqCst);
+    answer
+}
+
+#[tauri::command]
+pub fn local_server_reach_stop(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    check(&window)?;
+    app.state::<ShellState>().reach_stop.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -814,21 +878,24 @@ pub fn local_server_diagnostics(window: tauri::WebviewWindow, app: tauri::AppHan
 }
 
 #[tauri::command]
-pub fn tailscale_status(window: tauri::WebviewWindow) -> Result<Value, String> {
+pub async fn tailscale_status(window: tauri::WebviewWindow) -> Result<Value, String> {
     check(&window)?;
-    Ok(tailnet())
+    tauri::async_runtime::spawn_blocking(reach::tailnet).await.map_err(|e| e.to_string())
 }
 
+/// Tailscale 的 Mac App、下载页，或 tailnet 管理里打开 HTTPS 的那一页。
 #[tauri::command]
 pub fn tailscale_open(window: tauri::WebviewWindow, page: Option<String>) -> Result<(), String> {
     check(&window)?;
-    let _ = page;
-    if Path::new("/Applications/Tailscale.app").is_dir() {
-        Command::new("open").arg("-a").arg("Tailscale").status().map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        tauri_plugin_opener::open_url("https://tailscale.com/download", None::<&str>).map_err(|e| e.to_string())
-    }
+    let url = match page.as_deref() {
+        Some("https") => "https://login.tailscale.com/admin/dns",
+        Some("app") | None if reach::has_app() => {
+            Command::new("open").arg("-a").arg("Tailscale").status().map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        _ => "https://tailscale.com/download",
+    };
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -892,7 +959,6 @@ absent! {
     app_menu_set => Ok(Value::Null),
     this_mac_listening => Ok(Value::Null),
     notify_site_set => Ok(Value::Null),
-    local_server_reach_stop => Ok(Value::Null),
     local_server_usage => Ok(Value::Null),
     local_server_sync => Ok(Value::Null),
     open_system_settings => Ok(Value::Null),

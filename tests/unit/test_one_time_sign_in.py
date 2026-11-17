@@ -116,3 +116,14 @@ def test_other_sites_and_signed_out_callers_get_nothing(home):
     token = home["owner"].post("/api/app/phone-sign-in", json={}).json()["token"]
     elsewhere = TestClient(home["app"], headers={"Origin": "https://evil.example"})
     assert elsewhere.post("/api/auth/sign-in/one-time-token", json={"token": token}).status_code == 401
+
+
+def test_through_the_tailnet_address_the_same_rules_hold(home, monkeypatch):
+    """经 tailscale serve 进来的请求：Host 是 tailnet 里的名字，页面来源一致才算同源，登录 Cookie 带 Secure。"""
+    monkeypatch.setenv("VORTOONE_PUBLIC_URL", "https://box.tail1.ts.net")
+    token = home["owner"].post("/api/app/phone-sign-in", json={}).json()["token"]
+    phone = TestClient(home["app"], base_url="https://box.tail1.ts.net", headers={"Origin": "https://box.tail1.ts.net"})
+    assert phone.get("/api/instance").json()["url"] == "https://box.tail1.ts.net"
+    signed = phone.post("/api/auth/sign-in/one-time-token", json={"token": token})
+    assert signed.status_code == 200 and "secure" in signed.headers["set-cookie"].lower()
+    assert [org["role"] for org in phone.get("/api/app/me").json()["organizations"]] == ["owner"]

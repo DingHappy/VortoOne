@@ -2,6 +2,7 @@
 
 mod backend;
 mod places;
+mod reach;
 mod shell;
 mod model_settings;
 
