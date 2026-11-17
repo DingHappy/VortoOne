@@ -71,6 +71,8 @@ def test_restore_brings_the_home_back_and_keeps_what_was_there(tmp_path):
     assert rows == [("第一句",)]
     aside = Path(result["kept_aside"])
     assert "升级后改坏了" in (aside / "web_sessions" / "sid-1.json").read_text()      # 原来的留着
+    assert (state / "logs" / "server.log").read_text() == "x"                          # 日志和工作副本接着用
+    assert (state / "worktrees" / "team-1" / "file").exists() and not (state / "runtime.lock").exists()
     assert state.stat().st_mode & 0o777 == 0o700
     assert (state / "mobile-devices").stat().st_mode & 0o777 == 0o700
     assert (state / "mobile-devices" / "keys.json").stat().st_mode & 0o777 == 0o600

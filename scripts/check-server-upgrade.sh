@@ -26,7 +26,7 @@ fail() { echo "✗ $*" >&2; [ -f "$INST/server.log" ] && tail -20 "$INST/server.
 release() {   # release <版本> [broken]
   src="$WORK/src-$1"
   mkdir -p "$src/frontend/apps/web" "$src/scripts" "$src/deploy"
-  cp -R "$ROOT/src" "$ROOT/pyproject.toml" "$ROOT/README.md" "$ROOT/constraints.txt" "$src/"
+  cp -R "$ROOT/src" "$ROOT/web" "$ROOT/pyproject.toml" "$ROOT/README.md" "$ROOT/constraints.txt" "$src/"   # web/：审批台页面随包装（pyproject 的 data-files）
   cp -R "$ROOT/frontend/apps/web/dist" "$src/frontend/apps/web/"
   cp "$ROOT/scripts/build-server-release.sh" "$src/scripts/"
   cp "$ROOT/deploy/install.sh" "$src/deploy/"
@@ -76,7 +76,8 @@ sh "$ROOT/deploy/install.sh" --from "$WORK/rel-$v2" --dir "$INST" --background >
 [ "$(field ok)" = true ] && [ "$(field from)" = "$v1" ] || fail "upgrade.json 没记成功"
 ls "$INST/backups"/vortoone-backup-*-upgrade.tar.gz >/dev/null 2>&1 || fail "升级前没有备份"
 [ "$(sign_in)" = 200 ] || fail "升级后所有者登录不了"
-echo "✓ 升级到 ${v2}：先备份、自检通过"
+grep -q "升级到 $v2" "$INST/home/.vortoone/logs/notices.jsonl" 2>/dev/null || fail "升级成功没有进所有者的通知"
+echo "✓ 升级到 ${v2}：先备份、自检通过，通知里有"
 
 "$INST/current/bin/python" - "$INST/home/.vortoone" <<'PYPROOF'
 import json, sqlite3, sys
@@ -107,4 +108,5 @@ assert not (state / "upgrade-fault-ran").exists()
 assert any((aside / "upgrade-fault-ran").exists() for aside in home.glob(".vortoone.before-restore-*")), \
     "故障版本必须实际改过数据，不能只验证版本指向"
 PYVERIFY
-echo "✓ 升级到坏的 ${v3}：退回 ${v2}，原因：$(field reason)"
+grep -q "没有成功" "$INST/home/.vortoone/logs/notices.jsonl" 2>/dev/null || fail "退回后所有者的通知里没有说明"
+echo "✓ 升级到坏的 ${v3}：退回 ${v2}，原因：$(field reason)；所有者的通知里有说明"
