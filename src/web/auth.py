@@ -44,13 +44,18 @@ SESSION_COOKIE = "vortocode_session"
 # 浏览器对话台与 PWA 已于 2026-10-17 退役；剩下的页面只有服务首页 / 与流水线审批台 /review。
 # /api/auth/handover/<一次性交接码>：Desktop 外壳换登录用，凭码本身校验（routers/app_api.py）；
 # 发码的 POST /api/auth/handover 不在此列，仍要主人令牌。
-_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static", "/api/auth/handover/")
+# /api/app/invitations/<邀请令牌>…：收到邀请的人还没有账号，凭令牌本身看邀请；接受邀请那一条由路由自己
+# 核对成员会话（routers/app_api.py）。这个前缀下没有任何按空间读数据的接口。
+_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static", "/api/auth/handover/",
+                    "/api/app/invitations/")
 _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",
                  # 新版 Desktop 界面在登录前要读的服务信息与登录入口（routers/app_api.py）：不含任何数据
                  "/api/instance", "/api/app/auth-config", "/api/app/sign-in-options",
                  "/api/auth/sign-in/email", "/api/auth/sign-out",
+                 # 成员凭邀请注册、凭重置链接改密码：各自核对邀请令牌 / 重置令牌
+                 "/api/auth/sign-up/email", "/api/auth/reset-password",
                  # 小智语音端点用自己的专用令牌（routers/voice.py），不收也不放行主 API 令牌
                  "/api/voice/mcp",
                  # 运维心跳报到与运维消息同样只认自己的专用令牌（routers/ops_heartbeat.py）
@@ -141,8 +146,13 @@ async def auth_middleware(request, call_next):
     path = request.url.path
     exempt = (path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIXES)
               or (request.method, path) in MOBILE_SELF_AUTHENTICATED)
+    refused = 0
     if not exempt and not _token_ok(request):
-        response = JSONResponse({"detail": "Unauthorized"}, status_code=401)
+        # 主人令牌没过：成员的会话只在它自己的白名单接口上算数（web/member_auth.py），其余一律不放行
+        from src.web.member_auth import admit
+        refused = admit(request)
+    if refused:
+        response = JSONResponse({"detail": "Unauthorized" if refused == 401 else "Forbidden"}, status_code=refused)
     else:
         response = await call_next(request)
     if path.startswith("/api/mobile/"):  # 手机数据一律不进浏览器/代理缓存
