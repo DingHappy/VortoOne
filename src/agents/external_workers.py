@@ -64,6 +64,14 @@ DEFAULT_TIMEOUT = 1800
 _EXTRA_STRIPPED = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN"})
 _CLAUDE_READ_TOOLS = ("Read", "Glob", "Grep", "Bash(python -m pytest *)", "Bash(pytest *)")
 _CLAUDE_WRITE_TOOLS = ("Edit", "Write", "MultiEdit")
+# 放行规则里的文件工具一律带上路径，只限工作目录（cwd）。不带路径的 `Read` 等于允许读任何路径：
+# 2026-11-16 本机实测（Claude Code 2.1.326，dontAsk）：放行 `Read` 时它读到了 cwd 以外的文件，
+# 放行 `Read(./**)` 时同一个文件被拒、cwd 里的照常读；写也一样。
+_CLAUDE_FILE_TOOLS = frozenset({"Read", "Glob", "Grep", *_CLAUDE_WRITE_TOOLS})
+
+
+def _claude_rule(tool: str) -> str:
+    return f"{tool}(./**)" if tool in _CLAUDE_FILE_TOOLS else tool
 _CLAUDE_NETWORK_TOOLS = frozenset({"WebFetch", "WebSearch"})
 # 模型名只收这种形状：argv 里一个以 - 开头的值会被 CLI 当成参数，能借此打开别的开关
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,79}")
@@ -382,7 +390,7 @@ def build_argv(worker: str, *, cwd: str, write: bool, system: str = "",
                 *extra]
         if system.strip():
             argv += ["--append-system-prompt", system.strip()]
-        return argv + ["--allowedTools", *tools]
+        return argv + ["--allowedTools", *(_claude_rule(tool) for tool in tools)]
     raise ValueError(f"未知外部执行者 {worker!r}")
 
 

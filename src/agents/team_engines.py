@@ -58,6 +58,12 @@ ENGINE_LABELS = {"opencode": "OpenCode", "deepseek-harness": "DeepSeek Harness",
                  "codex": "Codex"}
 # 登记的开发 agent 用本机 CLI 时，engine 名 → external_workers 里的执行者名
 CLI_WORKERS = {"claude-code": "claude", "codex": "codex"}
+# 能把读写都限定在工作目录里的 CLI。Codex 不在内：2026-11-16 本机实测（codex-cli 0.169.0），它的
+# read-only 和 workspace-write 沙箱都能读到 cwd 以外的文件（主目录里的也能），又没有关掉命令工具的开关。
+# 找到可靠的隔离办法之前，Codex 不当 agent 用；隔离开发流水线里的实验性 Codex 执行者不受这里影响。
+CONFINED_CLI = frozenset({"claude-code"})
+CODEX_UNCONFINED = ("Codex 现在不能当 agent 用：它的沙箱限制不了读取范围，能读到项目副本以外的文件。"
+                    "可以先选 Claude Code 或 OpenCode")
 DEFAULT_MODEL = "deepseek-v4-flash"
 # 一轮结束却没交回文字时追问一次（被拒的动作不要再试，用允许的方式把结果交回来）
 FOLLOWUP = ("你这一轮没有交回任何内容。刚才被拒绝的动作不允许做，不要再试；用你被允许的方式继续，"
@@ -282,6 +288,8 @@ async def run_cli_developer(engine: str, model: str, prompt: str, *, timeout: fl
     """
     from src.agents import external_workers as workers
     from src.agents.backends.execution import ExecutionRef, new_run_id, process_instance
+    if engine not in CONFINED_CLI:
+        raise EngineUnavailable(CODEX_UNCONFINED)
     worker = CLI_WORKERS[engine]
     if check is not None:
         check()
