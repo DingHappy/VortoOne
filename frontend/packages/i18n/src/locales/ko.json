@@ -15435,7 +15435,7 @@
       },
       "claudeCode": {
         "step1": "터미널에서 실행하세요:",
-        "step2": "Claude Code에서 <code>/mcp</code>를 입력하고 agentes를 고른 다음 Authenticate를 선택하세요.",
+        "step2": "Claude Code에서 <code>/mcp</code>를 입력하고 vortoone를 고른 다음 Authenticate를 선택하세요.",
         "scope": "모든 폴더에서 작동해요. 현재 폴더에서만 쓰려면 <code>--scope user</code>를 빼세요."
       },
       "cursor": {
@@ -15557,7 +15557,7 @@
       "language": "언어",
       "error": {
         "app_desconhecido": "알 수 없는 앱이에요",
-        "app_desconhecidoText": "앱이 더 이상 유효하지 않은 등록 정보를 갖고 있어요. 저장된 연결을 지우고 다시 연결하세요. Claude Code에서는 /mcp를 입력하고 agentes를 고른 다음 Clear authentication을 선택하세요. Cursor에서는 설정 › MCP에서 agentes 서버에서 로그아웃하세요.",
+        "app_desconhecidoText": "앱이 더 이상 유효하지 않은 등록 정보를 갖고 있어요. 저장된 연결을 지우고 다시 연결하세요. Claude Code에서는 /mcp를 입력하고 vortoone를 고른 다음 Clear authentication을 선택하세요. Cursor에서는 설정 › MCP에서 vortoone 서버에서 로그아웃하세요.",
         "endereco_de_retorno": "등록되지 않은 반환 주소예요",
         "endereco_de_retornoText": "이 앱이 등록하지 않은 주소로 돌아가려고 했어요. 안전을 위해 여기서 멈췄어요.",
         "pedido_invalido": "이 요청은 사용할 수 없어요",

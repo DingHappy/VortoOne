@@ -15443,7 +15443,7 @@
       },
       "claudeCode": {
         "step1": "ターミナルで実行:",
-        "step2": "Claude Codeで<code>/mcp</code>と入力し、agentesを選んで「Authenticate」を選択します。",
+        "step2": "Claude Codeで<code>/mcp</code>と入力し、vortooneを選んで「Authenticate」を選択します。",
         "scope": "すべてのフォルダで使えます。現在のフォルダだけで使う場合は<code>--scope user</code>を外してください。"
       },
       "cursor": {
@@ -15565,7 +15565,7 @@
       "language": "言語",
       "error": {
         "app_desconhecido": "このアプリを認識できません",
-        "app_desconhecidoText": "アプリに無効になった登録情報が残っています。保存された接続をクリアして、もう一度接続してください。Claude Codeでは、/mcpと入力し、agentesを選んで「Clear authentication」を選択します。Cursorでは、「Settings › MCP」でagentesサーバーからログアウトします。",
+        "app_desconhecidoText": "アプリに無効になった登録情報が残っています。保存された接続をクリアして、もう一度接続してください。Claude Codeでは、/mcpと入力し、vortooneを選んで「Clear authentication」を選択します。Cursorでは、「Settings › MCP」でvortooneサーバーからログアウトします。",
         "endereco_de_retorno": "戻り先のアドレスが登録されていません",
         "endereco_de_retornoText": "このアプリは登録していないアドレスへの戻りを求めました。安全のため、ここで停止しました。",
         "pedido_invalido": "このリクエストは使えませんでした",

@@ -164,6 +164,7 @@ _STATE_ENTRIES = [
     "artifacts/",
     "states/",
     "projects/",
+    "ai_apps/",
     "logs/",
     "vector_memory/",
     "memory/",

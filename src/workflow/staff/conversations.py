@@ -133,7 +133,7 @@ class StaffConversations:
                 'instance': self.instance, 'approval_source': 'owner_role_conversation'}, durable=True):
             raise OSError('主人操作审计未能保存，未放行')
 
-    def submit(self, member_id, body):
+    def submit(self, member_id, body, *, via=None):
         require_owner_route(self.root)
         self._instance(body['instance'])
         self._request(body['request_id'])
@@ -161,7 +161,7 @@ class StaffConversations:
                     raise ValueError('该请求标识已有其它内容，未重复派发')
                 return {'task': self._view(existing), 'replayed': True}
             self._audit('主人交给角色处理任务', task_id, digest(args))
-            task = service.assign(owner, args, expected=(member, role), task_id=task_id)
+            task = service.assign(owner, args, expected=(member, role), task_id=task_id, via=via)
             return {'task': self._view(task), 'replayed': False}
 
     def act(self, member_id, task_id, body):

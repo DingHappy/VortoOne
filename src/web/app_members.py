@@ -191,9 +191,11 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
 
 def remove_member(root: str, actor: Principal, member_id: str) -> None:
     """移出空间，账号和登录一并作废。先删登记：登记里没有他，他的会话就已经不算成员了。"""
+    from src.workflow.ai_apps.store import AiApps
     from src.workflow.members.accounts import MemberAccounts
     MemberRegistry(root).remove_member(actor, member_id)
     MemberAccounts(root).remove_member(member_id)
+    AiApps(root).disconnect_person(member_id)        # 他连上来的 AI 应用和个人令牌一并作废
 
 
 # ── 成员自己看到的「我」──────────────────────────────────────────────────────
@@ -387,6 +389,13 @@ def people(root: str) -> List[Dict[str, Any]]:
 
 def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:
     """成员在私聊里交给 agent 一件事。记下发起人；执行时按他的级别收窄，读以外的每一步都要所有者批准。"""
+    task = member_send_task(root, actor, staff_id, text)
+    return views.member_owner_message(root, staff_id, task, client_id, viewer=actor.id)
+
+
+def member_send_task(root: str, actor: Principal, staff_id: str, text: str,
+                     via: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """member_send 的本体，返回任务。via：经哪个 AI 应用发来（/mcp 认出成员的连接时）。"""
     from src.gateway.audit import append_audit
     from src.gateway.main_conversation import main_chat_key
     from src.scheduling.staff_runner import get_staff_service
@@ -404,8 +413,9 @@ def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id
     task_id = StaffConversations.request_task_id(staff_id, f"{actor.id}:{uuid.uuid4().hex}")
     if not append_audit(root, {"category": "decision", "decision": "allowed", "decision_source": "member",
                                "operation": "成员交给 agent 处理任务", "operation_kind": "execute",
-                               "staff_task": task_id, "initiator": actor.id, "agent": staff_id}, durable=True):
+                               "staff_task": task_id, "initiator": actor.id, "agent": staff_id,
+                               **({"via": via.get("name"), "grant": via.get("grant")} if via else {})}, durable=True):
         raise OSError("审计未能保存，没有派出")
     task = service.assign(owner, {"member": staff_id, "prompt": text, "acceptance": [], "delivery": "notify"},
-                          task_id=task_id, initiator=actor.id)
-    return views.member_owner_message(root, staff_id, task.to_dict(), client_id, viewer=actor.id)
+                          task_id=task_id, initiator=actor.id, via=via)
+    return task.to_dict()

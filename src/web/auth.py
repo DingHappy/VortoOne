@@ -68,7 +68,13 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/assistant/app-relay/teams", "/api/assistant/app-relay/team",
                  "/api/assistant/app-relay/team-op", "/api/assistant/app-relay/side-chats",
                  "/api/assistant/app-relay/side-chat",
-                 '/api/assistant/app-relay/staff-actions', '/api/assistant/app-relay/staff-action'}
+                 '/api/assistant/app-relay/staff-actions', '/api/assistant/app-relay/staff-action',
+                 # AI 应用接入（routers/ai_apps.py）：发现文档与 OAuth 端点各自核对授权码、令牌；
+                 # /mcp 只认它自己发的 Bearer 令牌（主人令牌在那里不算数）。没设主人令牌时这一套整个关着
+                 "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp",
+                 "/.well-known/oauth-authorization-server", "/.well-known/openid-configuration",
+                 "/api/oauth/authorize", "/api/oauth/token", "/api/oauth/register", "/api/oauth/revoke",
+                 "/mcp", "/mcp/"}
 
 
 # 手机端自带凭据的路由：不走管理员令牌，改由路由自己的依赖校验（设备令牌、配对窗口 + 逐次证明、

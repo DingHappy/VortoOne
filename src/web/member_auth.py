@@ -53,6 +53,13 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/channels/[^/]+/threads"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),
+    # AI 应用：只列、只断开他自己的连接和个人令牌（管成员的人能看全部）；授权确认页按他本人答复
+    ("GET", _ORG + r"/apps"),
+    ("DELETE", _ORG + r"/apps/[^/]+"),
+    ("POST", _ORG + r"/tokens"),
+    ("DELETE", _ORG + r"/tokens/[^/]+"),
+    ("GET", r"/api/app/authorize/[^/]+"),
+    ("POST", r"/api/app/authorize/[^/]+"),
     # 回答里没有所有者的数据：空间名和时区、首页的默认版面、电脑接入引导
     ("GET", _ORG + r"/settings"),
     ("GET", _ORG + r"/dashboards/home"),

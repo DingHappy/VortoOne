@@ -18,6 +18,7 @@ struct LiveAddress(std::sync::Arc<std::sync::atomic::AtomicU16>);
 
 impl LiveAddress {
     fn set(&self, port: u16) { self.0.store(port, std::sync::atomic::Ordering::SeqCst); }
+    fn port(&self) -> u16 { self.0.load(std::sync::atomic::Ordering::SeqCst) }
     fn allows(&self, url: &tauri::Url) -> bool {
         backend::own_page(url, self.0.load(std::sync::atomic::Ordering::SeqCst))
     }
@@ -105,6 +106,7 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
     app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
     app.state::<LiveAddress>().set(port);
+    watch_consents(app.clone(), port, token.clone());
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if let Some(window) = handle.get_webview_window(LIVE) {
@@ -155,6 +157,69 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| e.to_string())
+}
+
+const CONSENT: &str = "consent";
+
+/// Claude Code 这类本机 AI 应用登录时会打开 `/autorizar` 确认页，可主人在系统浏览器里登录不了
+/// （主人令牌只在本进程手里）。这里盯着后端：本机应用一发起授权，就在已登录的小窗口里打开确认页。
+/// 点「允许」后页面跳往应用的回调地址，那是别的地址，交给系统浏览器送到应用手里，小窗口随即关掉。
+/// 后端换了端口（重连）就停下，由新连接自己的线程接着看。
+fn watch_consents(app: tauri::AppHandle, port: u16, token: String) {
+    std::thread::spawn(move || {
+        let mut opened = std::collections::HashSet::new();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            if app.state::<LiveAddress>().port() != port {
+                return;
+            }
+            for id in backend::consent_requests(port, &token) {
+                if opened.insert(id.clone()) {
+                    open_consent(&app, port, &id);
+                }
+            }
+        }
+    });
+}
+
+fn open_consent(app: &tauri::AppHandle, port: u16, id: &str) {
+    let Ok(url) = backend::consent_url(port, id).parse::<tauri::Url>() else { return; };
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(window) = handle.get_webview_window(CONSENT) {
+            let _ = window.navigate(url);
+            let _ = window.show();
+            let _ = window.set_focus();
+            return;
+        }
+        let closer = handle.clone();
+        let built = WebviewWindowBuilder::new(&handle, CONSENT, WebviewUrl::External(url))
+            .title("连接 AI 应用")
+            .inner_size(560.0, 760.0)
+            .center()
+            .on_navigation(move |target| {
+                if backend::own_page(target, port) {
+                    return true;
+                }
+                // 应用的回调（本机回环或 cursor://）：交给系统去打开，确认页的事办完了
+                if matches!(target.scheme(), "https" | "http" | "cursor") {
+                    let _ = tauri_plugin_opener::open_url(target.as_str(), None::<&str>);
+                    let later = closer.clone();
+                    let _ = closer.run_on_main_thread(move || {
+                        if let Some(window) = later.get_webview_window(CONSENT) {
+                            let _ = window.close();
+                        }
+                    });
+                }
+                false
+            })
+            .on_new_window(|_, _| NewWindowResponse::Deny)
+            .build();
+        match built {
+            Ok(window) => { let _ = window.set_focus(); }
+            Err(error) => eprintln!("无法打开授权确认窗口: {error}"),
+        }
+    });
 }
 
 fn main() {
