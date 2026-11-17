@@ -19,8 +19,14 @@ export const CLOUD_SERVER = "http://localhost:3000";
 export const helpUrl = (slug: string, locale: string, section?: string) =>
   docsUrl(appLocale([locale], true) ?? "en", slug, section);
 
-/** The app API contract these apps speak; a server serves its `minApi` up to its `api` (`GET /api/instance`). */
+/**
+ * The app API contract these apps speak, newest first: `APP_API` is this build's, `APP_API_MIN` the oldest a server
+ * may still answer with and be used (HOME_AND_MEMBERS_DESIGN §4: ranges, not equality). A server serves its `minApi`
+ * up to its `api` (`GET /api/instance`); they work together when the two ranges overlap. Raise `APP_API` when the app
+ * starts using something new, and `APP_API_MIN` only when it stops working without it.
+ */
 export const APP_API = 1;
+export const APP_API_MIN = 1;
 
 /** A workspace's Settings section on the server's website (from the phone, which has no such screen). */
 export const webSettingsUrl = (server: string, orgId: string, section: string) =>
@@ -174,9 +180,23 @@ export function readInstance(server: string, body: unknown): ServerCheck {
   const instance = (body ?? {}) as Partial<Instance>;
   if (!["VortoOne", "agentes.chat"].includes(instance.name ?? "") || typeof instance.api !== "number")
     return { ok: false, server, problem: "not-agentes" };
-  if (instance.api < APP_API) return { ok: false, server, problem: "server-too-old" };
-  if ((instance.minApi ?? 1) > APP_API) return { ok: false, server, problem: "app-too-old" };
+  const fits = apiFits(instance.api, instance.minApi ?? 1);
+  if (!fits.ok) return { ok: false, server, problem: fits.problem };
   return { ok: true, server, instance: instance as Instance };
+}
+
+/**
+ * Whether a server's range (`minApi`…`api`) and this app's (`APP_API_MIN`…`APP_API`) overlap, and which side to update
+ * when they don't: a server older than the oldest this app speaks, or an app older than the oldest the server serves.
+ */
+export function apiFits(
+  api: number,
+  minApi: number,
+  app: { api: number; min: number } = { api: APP_API, min: APP_API_MIN },
+): { ok: true } | { ok: false; problem: "server-too-old" | "app-too-old" } {
+  if (api < app.min) return { ok: false, problem: "server-too-old" };
+  if (minApi > app.api) return { ok: false, problem: "app-too-old" };
+  return { ok: true };
 }
 
 // ponytail: a failed request reaches JavaScript only as text (localized on iOS), so a certificate problem is

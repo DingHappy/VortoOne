@@ -23,3 +23,14 @@ test("a secret in the query, another scheme, or plain http elsewhere is no link"
   assert.deepEqual(parseConnectLink(here, { allowHttp: "loopback" }), { server: "http://127.0.0.1:8080" });
   assert.equal(parseConnectLink(here), null);
 });
+
+test("an app and a server work together while their api ranges overlap", async () => {
+  const { apiFits } = await import("../packages/client/src/lib/server");
+  // The app updated first (speaks 3, still 2): a server on 2 is fine, one on 1 is too old.
+  const app = { api: 3, min: 2 };
+  assert.deepEqual(apiFits(2, 1, app), { ok: true });
+  assert.deepEqual(apiFits(1, 1, app), { ok: false, problem: "server-too-old" });
+  // The server updated first (serves 3, no longer below 3): this app on 2 is too old.
+  assert.deepEqual(apiFits(4, 3, { api: 2, min: 1 }), { ok: false, problem: "app-too-old" });
+  assert.deepEqual(apiFits(4, 2, { api: 2, min: 1 }), { ok: true });
+});

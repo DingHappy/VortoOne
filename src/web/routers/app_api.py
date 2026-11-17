@@ -27,7 +27,11 @@ from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 router = APIRouter(tags=["app"])
 
 _ORG = "/api/app/organizations/{org_id}"
+# 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
+# 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
+# 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
 API_CONTRACT = 1
+MIN_API = 1
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -66,7 +70,7 @@ async def instance(request: Request):
         except metadata.PackageNotFoundError:
             continue
     # 公开信息，不带凭据：Desktop 的首次引导要从它自己的窗口核对一个地址是不是 VortoOne（跨域读取）
-    return JSONResponse({"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": API_CONTRACT,
+    return JSONResponse({"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": MIN_API,
                          "url": server_url(request),
                          "signIn": {"email": bool(get_api_token()), "google": False, "github": False, "apple": False},
                          "signup": "invite", "cloud": False, "ownerClaim": _claim_waiting()},
