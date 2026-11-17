@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import shutil
 import sqlite3
 import tarfile
 import tempfile
@@ -36,7 +38,9 @@ class BackupError(ValueError):
 
 
 def _skipped(relative: PurePosixPath) -> bool:
-    return relative.parts[0] in NOT_DATA or relative.name.endswith((".lock", "-wal", "-shm", "-journal"))
+    return (relative.parts[0] in NOT_DATA
+            or relative.name.endswith((".lock", "-wal", "-shm", "-journal", ".tmp", ".part"))
+            or relative.name.startswith(".pending-"))
 
 
 def _is_sqlite(path: Path) -> bool:
@@ -78,6 +82,17 @@ def backups(folder: str) -> List[Path]:
     return sorted(found, key=lambda p: p.name, reverse=True)
 
 
+def _add_file(archive: tarfile.TarFile, source: Path, name: str) -> None:
+    """大小与内容必须来自同一个打开的文件，不能在原子替换前后各读一次路径。"""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    with os.fdopen(os.open(source, flags), "rb") as handle:
+        info = archive.gettarinfo(fileobj=handle, arcname=name)
+        if info is None or not info.isfile():
+            raise BackupError(f"备份文件不是普通文件：{name[:120]}")
+        info.mode = 0o600
+        archive.addfile(info, handle)
+
+
 def backup(root: str, folder: str, *, keep: int = KEEP_DEFAULT, reason: str = "daily") -> Dict[str, Any]:
     """把 root 这个家备份到 folder，只留最新的 keep 份（这一份算在内）。返回这份备份的说明。"""
     if keep < 1:
@@ -95,7 +110,7 @@ def backup(root: str, folder: str, *, keep: int = KEEP_DEFAULT, reason: str = "d
     temporary = target.with_name(target.name + ".part")
     files = 0
     try:
-        with tempfile.TemporaryDirectory() as scratch, tarfile.open(temporary, "w:gz") as archive:
+        with tempfile.TemporaryDirectory() as scratch, tarfile.open(temporary, "w:gz", dereference=True) as archive:
             manifest = {"format": FORMAT, "version": VERSION, "created": created, "reason": reason,
                         "vortoone": _version()}
             data = json.dumps(manifest, ensure_ascii=False).encode("utf-8")
@@ -107,7 +122,7 @@ def backup(root: str, folder: str, *, keep: int = KEEP_DEFAULT, reason: str = "d
                 if _skipped(relative) or path.is_symlink() or not path.is_file():
                     continue
                 source = _snapshot(path, Path(scratch)) if _is_sqlite(path) else path
-                archive.add(source, arcname=f".vortoone/{relative}", recursive=False)
+                _add_file(archive, source, f".vortoone/{relative}")
                 files += 1
         temporary.chmod(0o600)
         temporary.replace(target)
@@ -151,15 +166,18 @@ def restore(root: str, archive_path: str) -> Dict[str, Any]:
         if manifest.get("version") != VERSION:
             raise BackupError("这份备份的格式这里认不得")
         members = _checked(archive)
-        staging = state.with_name(f"{state.name}.restoring-{int(time.time())}")
+        state.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f"{state.name}.restoring-", dir=state.parent))
         try:
             for member in members:
                 relative = PurePosixPath(*PurePosixPath(member.name).parts[1:])
                 destination = staging.joinpath(*relative.parts)
+                parent = staging
+                for part in relative.parts if member.isdir() else relative.parts[:-1]:
+                    parent = parent / part
+                    parent.mkdir(mode=0o700, exist_ok=True)
                 if member.isdir():
-                    destination.mkdir(parents=True, exist_ok=True)
                     continue
-                destination.parent.mkdir(parents=True, exist_ok=True)
                 source = archive.extractfile(member)
                 if source is None:
                     raise BackupError(f"备份里的文件读不出来：{member.name[:120]}")
@@ -168,13 +186,20 @@ def restore(root: str, archive_path: str) -> Dict[str, Any]:
                         out.write(chunk)
                 destination.chmod(0o600)
         except Exception:
-            import shutil
             shutil.rmtree(staging, ignore_errors=True)
             raise
     aside: Optional[Path] = None
-    if state.exists():
-        aside = state.with_name(f"{state.name}.before-restore-{int(time.time())}")
-        state.rename(aside)
-    staging.rename(state)
+    try:
+        if state.exists():
+            aside = state.with_name(f"{state.name}.before-restore-{time.time_ns()}")
+            state.rename(aside)
+        try:
+            staging.rename(state)
+        except Exception:
+            if aside is not None and not state.exists():
+                aside.rename(state)
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return {"restored": str(archive_path), "kept_aside": str(aside) if aside else None,
             "created": manifest.get("created")}
