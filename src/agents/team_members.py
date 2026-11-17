@@ -128,6 +128,28 @@ async def _run_external(work: Any, child: Any, number: int, dispatch: dict, engi
     return work.finish(child.id, number, text, error=error, tainted=tainted)
 
 
+def continued_branch(root: str, repo_root: str, member_id: str, viewer: Optional[str], current_task: str) -> str:
+    """私聊里这个人上一件交回的分支，能接着改就返回它（还在、还没合进项目），否则空串。
+
+    只看最近一件交回了分支的：它被删了（表示不要）或已经合进项目，就从项目最新的代码开始，不再往前找。"""
+    from src.agents import team_delivery
+    from src.workflow.staff.conversations import StaffConversations
+    if not repo_root:
+        return ""
+    try:
+        tasks = StaffConversations(root).read(member_id, limit=20, initiator=viewer)["tasks"]
+    except (ValueError, OSError):
+        return ""
+    for task in tasks:                                   # 新的在前
+        collaboration = task.get("collaboration") or {}
+        if task.get("id") == current_task or (collaboration.get("dispatch") or {}).get("source") != "staff":
+            continue
+        branch = str((collaboration.get("delivery") or {}).get("branch") or "")
+        if branch:
+            return branch if team_delivery.continuable(repo_root, branch) else ""
+    return ""
+
+
 def _previous_branch(child: Any) -> str:
     delivery = child.collaboration.get("delivery") or {}
     return str(delivery.get("branch") or "")
@@ -145,8 +167,11 @@ async def _run_developer(service: Any, root: Any, work: Any, child: Any, number:
 
 async def execute_development(work, child, dispatch, engine, project, tainted, *, record_delivery,
                               check=None, run_external=None, run_tests=None, execution_ref=None, on_snapshot=None,
-                              execute_backend=None):
-    """Shared isolated-copy execution; no coordinator or second task is required."""
+                              execute_backend=None, continue_from: str = "", lead: str = ""):
+    """Shared isolated-copy execution; no coordinator or second task is required.
+
+    continue_from：私聊里接着上一件交回的分支改（第一轮才用；返工轮用本任务自己的上一轮分支）。
+    lead：放在要求前面的开头（之前的对话）。"""
     from src.agents import team_delivery, team_engines
     number = child.collaboration['round']
     repo_root = str(project.get("repo_root") or "")
@@ -157,15 +182,20 @@ async def execute_development(work, child, dispatch, engine, project, tainted, *
     try:
         if check is not None:
             check()
-        path = await asyncio.to_thread(team_delivery.prepare, repo_root, child.id, number, _previous_branch(child))
+        base = _previous_branch(child) or (continue_from if number == 1 else "")
+        path = await asyncio.to_thread(team_delivery.prepare, repo_root, child.id, number, base)
+        prompt = lead + external_developer_prompt(child, work)
+        if continue_from and number == 1 and base == continue_from:
+            prompt = (lead + f"【副本里已经放上你上一件交回的改动（分支 {continue_from}），在它的基础上接着改】\n"
+                      + external_developer_prompt(child, work))
         options = {'check': check} if check is not None else {}
         if execution_ref is not None:
             options.update(execution_ref=execution_ref, on_snapshot=on_snapshot)
         if execute_backend is not None:
-            result = await execute_backend(external_developer_prompt(child, work),
+            result = await execute_backend(prompt,
                 timeout=dispatch["timeout_seconds"], child_id=child.id, workdir=str(path), **options)
         else:
-            result = await runner(engine, "developer", dispatch.get("model", ""), external_developer_prompt(child, work),
+            result = await runner(engine, "developer", dispatch.get("model", ""), prompt,
                 timeout=dispatch["timeout_seconds"], child_id=child.id, workdir=str(path), **options)
         tainted = tainted or result.networked
         if check is not None:
@@ -175,6 +205,8 @@ async def execute_development(work, child, dispatch, engine, project, tainted, *
                                error=f"{team_engines.ENGINE_LABELS.get(engine, engine)}：{result.error}")
         delivery = await asyncio.to_thread(team_delivery.finish_round, repo_root, path, child_id=child.id,
                                            number=number, objective=child.prompt, run_tests=run_tests)
+        if continue_from and number == 1 and base == continue_from and delivery.get("branch"):
+            delivery["continues"] = continue_from
         record_delivery(delivery)
         text = (str(result.text or "").strip() + "\n\n" + team_delivery.describe(delivery, project.get("name", ""))).strip()
         return work.finish(child.id, number, text, error=delivery.get("error", ""), tainted=tainted)
