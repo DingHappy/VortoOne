@@ -83,4 +83,3 @@ docker compose logs vortoone      # 第一次启动时这里有认领链接
 - 升级失败的原因还只写在 `upgrade.json` 和安装命令的输出里，Desktop 里还不显示。
 - Docker 的升级就是换镜像，没有自动退回；备份用 `docker compose exec -w /data/home vortoone /opt/vortoone/venv/bin/vc home-backup --dir /data/backups --reason manual`。
 - Windows。
-- `/review` 审批页还从源码目录读页面文件，用安装包装的家里打不开它。
