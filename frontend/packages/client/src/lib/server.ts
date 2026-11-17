@@ -27,10 +27,11 @@ export const webSettingsUrl = (server: string, orgId: string, section: string) =
   `${server.replace(/\/+$/, "")}/org/${encodeURIComponent(orgId)}/settings/${section}`;
 
 /**
- * `agenteschat://connect?server=<origin>[&token=<one-time sign-in>][&claim=<owner claim>]` opens the phone or
- * the desktop app on that server.
+ * `vortoone://connect?server=<origin>[#token=<one-time sign-in>][&claim=<owner claim>]` opens the phone or
+ * the desktop app on that server. The one-time secrets go only in the fragment (HOME_AND_MEMBERS_DESIGN §4).
  */
-const CONNECT_LINK = /^agenteschat:\/\/\/?connect\/?(?:\?(.*))?$/i;
+const LINK_SCHEME = "vortoone";
+const CONNECT_LINK = /^vortoone:\/\/\/?connect\/?(?:\?([^#]*))?(?:#(.*))?$/i;
 /** A one-time sign-in or an owner claim inside a connect link. */
 const LINK_SECRET = /^[A-Za-z0-9_-]{20,200}$/;
 const MAX_LINK = 2048;
@@ -114,16 +115,19 @@ export type ConnectLink = {
 
 export function connectLink(server: string, { token, claim }: Omit<ConnectLink, "server"> = {}): string {
   const query = new URLSearchParams({ server });
-  if (token) query.set("token", token);
-  if (claim) query.set("claim", claim);
-  return `agenteschat://connect?${query}`;
+  const secrets = new URLSearchParams();
+  if (token) secrets.set("token", token);
+  if (claim) secrets.set("claim", claim);
+  const fragment = secrets.toString();
+  return `${LINK_SCHEME}://connect?${query}${fragment ? `#${fragment}` : ""}`;
 }
 
 /**
  * The desktop app connects this computer with a connect link (`link`, as `ABCD-EFGH`) of `server`, after the
  * person confirms in the app; the link's maker still lets it join on the web.
  */
-export const pairLink = (server: string, link: string) => `agenteschat://pair?${new URLSearchParams({ server, link })}`;
+export const pairLink = (server: string, link: string) =>
+  `${LINK_SCHEME}://pair?${new URLSearchParams({ server, link })}`;
 
 /**
  * Whether the desktop app takes a `pairLink` of `server`: https, and not on this computer itself. The app drops any
@@ -136,7 +140,8 @@ export const plainHttpServer = (server: string) => /^http:\/\//i.test(server.tri
 
 /**
  * The server, one-time sign-in and owner claim of a connect link; null for any other text or code, a link over
- * 2 KB, or a token or claim that isn't one. Other parameters are ignored.
+ * 2 KB, or a token or claim that isn't one. A token or claim in the query instead of the fragment makes it no link
+ * either: a secret there would show wherever the address is logged. Other parameters are ignored.
  */
 export function parseConnectLink(raw: string, opts: { allowHttp?: boolean | "loopback" } = {}): ConnectLink | null {
   const text = raw.trim();
@@ -144,11 +149,13 @@ export function parseConnectLink(raw: string, opts: { allowHttp?: boolean | "loo
   const match = CONNECT_LINK.exec(text);
   if (!match) return null;
   const query = new URLSearchParams(match[1] ?? "");
+  if (query.has("token") || query.has("claim")) return null;
   const server = normalizeServer(query.get("server") ?? "", opts);
   if (!server) return null;
+  const secrets = new URLSearchParams(match[2] ?? "");
   const link: ConnectLink = { server };
   for (const key of ["token", "claim"] as const) {
-    const value = query.get(key)?.trim();
+    const value = secrets.get(key)?.trim();
     if (!value) continue;
     if (!LINK_SECRET.test(value)) return null;
     link[key] = value;

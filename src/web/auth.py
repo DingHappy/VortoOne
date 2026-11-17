@@ -56,6 +56,8 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/auth/sign-in/email", "/api/auth/sign-out",
                  # 成员凭邀请注册、凭重置链接改密码：各自核对邀请令牌 / 重置令牌
                  "/api/auth/sign-up/email", "/api/auth/reset-password",
+                 # 另一台设备凭一次性登录换登录：核对它自己的一次性凭据（members/one_time.py）
+                 "/api/auth/sign-in/one-time-token",
                  # 小智语音端点用自己的专用令牌（routers/voice.py），不收也不放行主 API 令牌
                  "/api/voice/mcp",
                  # 运维心跳报到与运维消息同样只认自己的专用令牌（routers/ops_heartbeat.py）

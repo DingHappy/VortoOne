@@ -2418,6 +2418,18 @@
     ]
   },
   {
+    "path": "/api/app/phone-sign-in",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/sign-in/one-time-token",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/sign-in-options",
     "methods": [
       "POST"

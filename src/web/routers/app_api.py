@@ -56,6 +56,7 @@ def install_error_handler(app) -> None:
 @router.get("/api/instance")
 async def instance(request: Request):
     from src.web.auth import get_api_token
+    from src.web.routers.ai_apps import server_url      # 设了 VORTOONE_PUBLIC_URL（专用网络里的地址）就报它
     from importlib import metadata
     version = "dev"
     for package in ("vortoone", "vortocode"):  # 包名改名（ADR-018 批次 E）前后都认
@@ -66,7 +67,7 @@ async def instance(request: Request):
             continue
     # 公开信息，不带凭据：Desktop 的首次引导要从它自己的窗口核对一个地址是不是 VortoOne（跨域读取）
     return JSONResponse({"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": API_CONTRACT,
-                         "url": str(request.base_url).rstrip("/"),
+                         "url": server_url(request),
                          "signIn": {"email": bool(get_api_token()), "google": False, "github": False, "apple": False},
                          "signup": "invite", "cloud": False},
                         headers={"Access-Control-Allow-Origin": "*"})
@@ -161,6 +162,8 @@ async def reset_password(body: _Reset, request: Request):
     try:
         accounts = MemberAccounts(os.getcwd())
         account_id = await asyncio.to_thread(accounts.reset_password, body.token, body.newPassword)
+        from src.workflow.members.one_time import PENDING
+        PENDING.forget("account:" + str(account_id))     # 还没用掉的一次性登录也作废
         member_id = str((await asyncio.to_thread(accounts.get, account_id) or {}).get("member") or "")
         if member_id:                                   # 换了密码：他连上来的 AI 应用和个人令牌一并作废
             from src.workflow.ai_apps.store import AiApps
@@ -223,6 +226,59 @@ async def handover_finish(code: str, request: Request):
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
+
+
+# ── 一次性登录：给自己的另一台设备（手机扫码、连接链接）──────────────────────────
+# 已经登录的人开，只换得到开它的那个人（src/workflow/members/one_time.py）。
+
+@router.post("/api/app/phone-sign-in")
+async def phone_sign_in(request: Request):
+    """界面「在手机上打开」：给调用人自己开一个 5 分钟、只能用一次的登录。server 是别的设备该连的地址。"""
+    from src.web.routers.ai_apps import server_url
+    from src.workflow.members.one_time import OWNER, PENDING, TooMany
+    if not views.owner_connection() or not member_auth.same_origin(request):
+        return _error(403, "forbidden", "这里开不了一次性登录")
+    account = getattr(request.state, "member_account", None)
+    try:
+        token, seconds = PENDING.mint(OWNER if account is None else "account:" + str(account["id"]))
+    except TooMany as error:
+        return _error(429, "too_many", str(error))
+    return {"token": token, "server": server_url(request), "expiresIn": seconds}
+
+
+class _OneTime(BaseModel):
+    token: str = ""
+
+
+@router.post("/api/auth/sign-in/one-time-token")
+async def one_time_sign_in(body: _OneTime, request: Request, response: Response):
+    """另一台设备凭一次性登录换自己的登录。错的、过期的、用过的回同一句话。"""
+    from src.web.auth import SESSION_COOKIE, get_api_token
+    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.members.one_time import OWNER, PENDING
+    refused = JSONResponse({"code": "INVALID_TOKEN", "message": "这个登录链接不对、过期或已经用过"}, status_code=401)
+    owner_token = get_api_token()
+    if not owner_token or not member_auth.same_origin(request):
+        return refused
+    who = PENDING.redeem(body.token)
+    root = os.getcwd()
+    if who == OWNER:
+        response.set_cookie(SESSION_COOKIE, owner_token, httponly=True, samesite="lax",
+                            secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
+        return {"redirect": False, "token": None, "user": views.me(root)["user"]}
+    if not who or not who.startswith("account:"):
+        return refused
+    account_id = who[len("account:"):]
+    accounts = MemberAccounts(root)
+    try:
+        session = await asyncio.to_thread(accounts.open_session, account_id)
+        account = await asyncio.to_thread(accounts.get, account_id) or {}
+    except (LookupError, ValueError, OSError):
+        return refused                                  # 账号已经删了（被移出空间）
+    member_auth.set_cookie(request, response, session)
+    return {"redirect": False, "token": None,
+            "user": {"id": account.get("member") or account_id, "name": account.get("name"),
+                     "email": account.get("email")}}
 
 
 @router.post("/api/auth/sign-out")
