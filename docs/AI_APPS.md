@@ -17,6 +17,8 @@ Claude Code、Cursor、VS Code 这类 AI 应用连到 VortoOne，以连接者本
 | 发给主助理的回合 | `src/web/ai_app_turns.py` |
 | Desktop 外壳：固定端口、在已登录的窗口里打开确认页 | `frontend/apps/desktop-dev/src-tauri/src/{backend,main}.rs` |
 
+OAuth 端点在 General 范围（新版 Desktop 就是）里放行（`gateway/workspace_scope.py` 的 `/api/oauth/`）；`/mcp` 与发现文档不在 `/api/` 下，不受范围限制。
+
 地址都由 `server_url` 一处给出：设了 `VORTOONE_PUBLIC_URL` 就用它，否则用这次请求自己的地址。
 应用里填的是 `<地址>/mcp`。
 
@@ -26,6 +28,8 @@ Claude Code、Cursor、VS Code 这类 AI 应用连到 VortoOne，以连接者本
   （及 `openid-configuration`）。公布的权限只有 `read write`：「创建和管理」这一档还没有工具。
 - 动态注册 `POST /api/oauth/register`：回调地址只收 https、本机回环 http、Cursor 固定的 `cursor://` 地址；
   其它自定义协议一律拒绝。只存洗干净的名字和回调地址，一律登记成公开客户端。
+- 按地址登记（Client ID Metadata Document，第 2 阶段）：应用不来注册，直接拿一个 https 地址当 `client_id`，
+  那里放着它的说明文件（ChatGPT 这样连）。见下一节。
 - 授权 `GET /api/oauth/authorize`：必须带 PKCE（S256）；`resource` 要对得上本服务的 `/mcp`。参数不对
   停在 `/autorizar?erro=…`，不发回应用（任何人都能登记任意 https 回调，往回发错误等于替人跳转）。
 - 确认页 `/autorizar?req=…`（界面已有）：选权限后点允许。一个请求只答一次，第二次 409。
@@ -33,6 +37,26 @@ Claude Code、Cursor、VS Code 这类 AI 应用连到 VortoOne，以连接者本
   （Cursor 8 小时），续期令牌 90 天、每次用完就换；旧续期令牌 60 秒内又来且新令牌没用过，当作应用的重试；
   其余情况整串作废。库里只存 sha256 摘要。
 - 撤销 `POST /api/oauth/revoke`：作废令牌所在的一整串，总是 200。
+
+### 按地址登记（第 2 阶段）
+
+- `client_id` 是 https、带路径、主机不是 IP 也不是本机名时，当作说明文件的地址。授权请求进来时在锁外去取：
+  只走 https、目的地必须是公网地址（复用 `agents/web_fetch.fetch_bytes` 的防内网判定）、不跟重定向、3 秒、64 KB。
+- 文件必须把自己的地址写成 `client_id`，否则任何网页都能冒充别的应用；回调地址按动态注册同一套规则核对；
+  `token_endpoint_auth_method` 只收 `none` 和 `private_key_jwt`（后者照样按公开客户端 + PKCE 连，签名断言不看）。
+- 取到的存 5 分钟；再取失败时一天内的旧副本照用，超过一天不再认；取失败的 20 秒内不再试；同时最多取 3 份。
+- 发现文档声明 `client_id_metadata_document_supported`。
+
+应用怎么显示（`clients.display`），由这次请求的回调地址和说明文件所在的地址决定，不信应用自报的：
+
+| 情形 | displayKind | 品牌标志 |
+|---|---|---|
+| Cursor 的固定回调 | `app_scheme` | Cursor |
+| 本机回环回调（不管拿的是谁的说明文件：任何本机程序都能拿知名应用的 client_id 配自己的端口） | `loopback` | 无 |
+| 说明文件在已知应用自己的域名上（claude.ai、chatgpt.com、cursor.com、vscode.dev） | `verified` | 有 |
+| 其余 https；授权码回到已知应用的域名时带品牌标志（码只会交到那里） | `https` | 视回调域名 |
+
+名字里带知名应用的字样、地址却不是那家的，确认页提醒一句。
 
 ### 连接、个人令牌与权限
 
@@ -89,11 +113,11 @@ Streamable HTTP，只收 POST，回 JSON，不开 SSE、不留会话，不收批
 - 本机部署：Claude Code、Cursor、Codex、VS Code、Gemini CLI 等用本机回环登录的应用；Warp、Continue、
   JetBrains 里的 Copilot 等用个人令牌。
 - claude.ai、ChatGPT、Gemini、Grok、Perplexity、Le Chat 这类从自己服务器连过来的应用，要公网 https 地址，
-  本机部署连不上；设置页的 `serverPublic` 会如实返回。
+  本机部署连不上；设置页的 `serverPublic` 会如实返回。代码上动态注册和按地址登记都已支持，有了公网地址就能连。
 
 ## 以后
 
-- 「去 https 地址取应用说明文件」那种登记方式（claude.ai、ChatGPT 用），带防内网访问；配合公网地址。
+- 公网地址：部署到一台能从外网用 https 访问的服务上（97 的对外入口要改 Caddy，先问主人）。
 - 「创建和管理」一档的工具（导入 agent、技能、例行工作）。
 - 主助理回合里要确认的动作送到 VortoOne 里等人批，而不是直接拒绝。
 - 帮助页（界面底部「How AI apps work」现在指向占位地址）。

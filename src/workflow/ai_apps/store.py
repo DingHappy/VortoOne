@@ -39,6 +39,11 @@ MAX_CLIENTS = 2000
 MAX_OPEN_REQUESTS = 500
 TOKEN_DAYS = (30, 90, 365)
 _TOUCH_EVERY = 60
+# 按地址登记的应用：说明文件存 5 分钟；再取失败时，一天内的旧副本照用；取失败的 20 秒内不再试（只在进程内）。
+# 同时最多取 3 份，其余等最多 3 秒，还轮不到就当这次「忙」。
+DOCUMENT_FRESH, DOCUMENT_STALE, DOCUMENT_RETRY = 300, 86400, 20
+_DOCUMENT_FAILURES: Dict[str, float] = {}
+_DOCUMENT_SLOTS = threading.BoundedSemaphore(3)
 _FILE = "state.json"
 _MAX_BYTES = 8 * 1024 * 1024
 _LOCK = threading.RLock()
@@ -136,11 +141,25 @@ def _iso(moment: Optional[float]) -> Optional[str]:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(moment))
 
 
+def fetch_document(url: str) -> bytes:
+    """取应用的说明文件：只走 https、目的地必须是公网地址（防内网访问）、不跟重定向、3 秒、64 KB。"""
+    from src.agents.web_fetch import fetch_bytes
+    # 带请求头时 fetch_bytes 不跟重定向：说明文件必须就在 client_id 那个地址上
+    return fetch_bytes(url, max_bytes=C.DOCUMENT_BYTES, timeout=3, headers={"Accept": "application/json"})
+
+
+def reset_document_failures() -> None:
+    """测试用。"""
+    _DOCUMENT_FAILURES.clear()
+
+
 class AiApps:
-    def __init__(self, root: str, *, clock: Callable[[], float] = time.time):
+    def __init__(self, root: str, *, clock: Callable[[], float] = time.time,
+                 fetch: Optional[Callable[[str], bytes]] = None):
         self.root = str(root)
         self.directory = state_dir(root) / "ai_apps"
         self.clock = clock
+        self.fetch = fetch
 
     # ── 存取 ──────────────────────────────────────────────────────────────────
 
@@ -236,6 +255,47 @@ class AiApps:
                 "redirect_uris": checked["redirect_uris"], "token_endpoint_auth_method": "none",
                 "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"]}
 
+    # ── 按地址登记的应用 ──────────────────────────────────────────────────────
+
+    def _refresh_document(self, client_id: str) -> None:
+        """client_id 是说明文件的地址时，必要的话去取一份、核对后存下。在锁外取：取一次可能要几秒。"""
+        url = C.cimd_url(client_id)
+        if url is None:
+            return
+        now = self.clock()
+        known = self._read()["clients"].get(client_id)
+        if known is not None and known.get("kind") == "cimd" and now - known.get("fetched", 0) < DOCUMENT_FRESH:
+            return
+        failed = _DOCUMENT_FAILURES.get(client_id)
+        if failed is not None and now - failed < DOCUMENT_RETRY:
+            return
+        if not _DOCUMENT_SLOTS.acquire(timeout=3):
+            return                                      # 忙：有一天内的旧副本就用旧的
+        try:
+            document = C.parse_document(client_id, (self.fetch or fetch_document)(url))
+        except Exception:  # noqa: BLE001 —— 取不到、不是 JSON、内容不对：都当这次没取到
+            if len(_DOCUMENT_FAILURES) > 10000:
+                _DOCUMENT_FAILURES.clear()
+            _DOCUMENT_FAILURES[client_id] = now
+            return
+        finally:
+            _DOCUMENT_SLOTS.release()
+        _DOCUMENT_FAILURES.pop(client_id, None)
+        with self._change() as state:
+            previous = state["clients"].get(client_id)
+            if previous is None and len(state["clients"]) >= MAX_CLIENTS:
+                return
+            state["clients"][client_id] = {**document, "kind": "cimd", "fetched": now,
+                                           "created": (previous or {}).get("created", now),
+                                           "last_used": (previous or {}).get("last_used", now)}
+
+    def _usable_client(self, state: Dict[str, Any], client_id: str) -> Optional[Dict[str, Any]]:
+        client = state["clients"].get(client_id)
+        if client is not None and client.get("kind") == "cimd" \
+                and self.clock() - client.get("fetched", 0) >= DOCUMENT_STALE:
+            return None                                 # 一天都没能重新取到：不再认
+        return client
+
     # ── 授权请求与确认 ────────────────────────────────────────────────────────
 
     def start(self, query: Dict[str, Any], resource: str) -> str:
@@ -246,9 +306,10 @@ class AiApps:
         def text(key: str) -> str:
             value = query.get(key)
             return value if isinstance(value, str) else ""
+        self._refresh_document(text("client_id"))
         now = self.clock()
         with self._change() as state:
-            client = state["clients"].get(text("client_id"))
+            client = self._usable_client(state, text("client_id"))
             if client is None:
                 raise StartError("app_desconhecido")
             redirect = text("redirect_uri")
@@ -292,7 +353,8 @@ class AiApps:
             request, client = self._open_request(state, request_id)
         return {"id": request_id, "expiresAt": _iso(request["expires"]),
                 "access": {"requested": list(request["scopes"])},
-                "client": {"name": client["name"], **C.display(request["redirect_uri"], client["name"])}}
+                "client": {"name": client["name"],
+                           **C.display(request["redirect_uri"], client["name"], request["client"])}}
 
     def recent_local(self, seconds: int = 120) -> List[Dict[str, Any]]:
         """最近 seconds 秒里、还没答复的本机应用（回调回到这台电脑：本机回环或 Cursor）的授权请求，新的在前。
@@ -343,7 +405,7 @@ class AiApps:
     @staticmethod
     def _grant_for(state, person, client_id, client, redirect_uri, scopes, now) -> str:
         """这个人和这个应用的连接：已有就沿用（权限取较宽的，连接时间往前挪），断开过的重新启用。"""
-        shown = C.display(redirect_uri, client["name"])
+        shown = C.display(redirect_uri, client["name"], client_id)
         for grant_id, grant in state["grants"].items():
             if grant["kind"] == "oauth" and grant["person"] == person and grant["client"] == client_id:
                 if grant.get("revoked"):

@@ -118,7 +118,9 @@ def _authorization_server(issuer: str) -> Dict[str, Any]:
             "response_types_supported": ["code"], "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"], "token_endpoint_auth_methods_supported": ["none"],
             "revocation_endpoint_auth_methods_supported": ["none"], "scopes_supported": list(ADVERTISED_SCOPES),
-            "authorization_response_iss_parameter_supported": True}
+            "authorization_response_iss_parameter_supported": True,
+            # 应用可以直接拿一个 https 地址当 client_id（那里放着它的说明文件）：ChatGPT 这样连
+            "client_id_metadata_document_supported": True}
 
 
 def _document(request: Request, build) -> Response:
