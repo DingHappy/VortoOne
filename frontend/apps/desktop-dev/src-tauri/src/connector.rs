@@ -35,6 +35,12 @@ struct Registration {
     enabled: bool,
 }
 impl Registration {
+    fn binding(&self) -> Value {
+        json!({"home_instance_id":self.home_instance_id, "connector_id":self.connector_id,
+            "paired_principal_id":self.paired_principal_id, "credential_epoch":self.credential_epoch,
+            "trust_epoch":self.trust_epoch})
+    }
+
     fn key(&self) -> SecretRef {
         SecretRef {
             home: self.home_instance_id.clone(),
@@ -308,7 +314,11 @@ fn wait_frame(
     }
 }
 impl WorkerProcess {
-    fn spawn(mut command: Command, request: &Value) -> Result<(Self, Frames), String> {
+    fn spawn(command: Command, request: &Value) -> Result<(Self, Frames), String> {
+        Self::spawn_with_limit(command, request, MAX_FRAME)
+    }
+
+    fn spawn_with_limit(mut command: Command, request: &Value, response_limit: usize) -> Result<(Self, Frames), String> {
         let encoded = serde_json::to_vec(request).map_err(|_| "连接器配置无效")?;
         if encoded.len() > MAX_FRAME {
             return Err("连接器配置过长".into());
@@ -329,7 +339,7 @@ impl WorkerProcess {
         std::thread::spawn(move || {
             let mut output = BufReader::new(output);
             loop {
-                let frame = read_frame(&mut output);
+                let frame = read_frame_with_limit(&mut output, response_limit);
                 let done = frame.is_err();
                 if sender.send(frame).is_err() || done {
                     return;
@@ -378,6 +388,10 @@ impl Drop for WorkerProcess {
 }
 
 fn read_frame(reader: &mut impl BufRead) -> Result<Value, ()> {
+    read_frame_with_limit(reader, MAX_FRAME)
+}
+
+fn read_frame_with_limit(reader: &mut impl BufRead, limit: usize) -> Result<Value, ()> {
     let mut line = Vec::new();
     loop {
         let available = reader.fill_buf().map_err(|_| ())?;
@@ -389,7 +403,7 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Value, ()> {
             .position(|c| *c == b'\n')
             .map(|n| n + 1)
             .unwrap_or(available.len());
-        if line.len() + count > MAX_FRAME {
+        if line.len() + count > limit {
             return Err(());
         }
         line.extend_from_slice(&available[..count]);
@@ -401,13 +415,34 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Value, ()> {
 }
 
 fn exchange(source: &WorkerSource, directory: &Path, request: &Value) -> Result<Value, String> {
-    let (mut process, frames) = WorkerProcess::spawn(source.command(directory), request)?;
+    exchange_command(source.command(directory), request, MAX_FRAME)
+}
+
+fn exchange_command(command: Command, request: &Value, response_limit: usize) -> Result<Value, String> {
+    let (mut process, frames) = WorkerProcess::spawn_with_limit(command, request, response_limit)?;
     let result = frames
         .recv_timeout(Duration::from_secs(30))
         .map_err(|_| "电脑连接器没有及时应答")?
         .map_err(|_| "电脑连接器应答无效")?;
     process.stop()?;
     Ok(result)
+}
+
+fn folder_identity(path: &Path) -> Result<[String; 2], String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = fs::symlink_metadata(path).map_err(|_| "所选文件夹不可用")?;
+        if !metadata.is_dir() {
+            return Err("所选文件夹已变化，请重新选择".into());
+        }
+        Ok([metadata.dev().to_string(), metadata.ino().to_string()])
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err("此系统尚未支持本机文件授权".into())
+    }
 }
 
 fn load(directory: &Path) -> Result<Configuration, String> {
@@ -1107,6 +1142,77 @@ pub async fn computers_get(
     })
     .await
     .map_err(|_| "无法读取电脑状态")?
+}
+
+#[tauri::command]
+pub async fn computer_folder_settings(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    registration_id: String,
+    operation: String,
+    folder_id: Option<String>,
+    read: Option<bool>,
+    write: Option<bool>,
+) -> Result<Value, String> {
+    check(&window)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let manager = app.state::<ConnectorManager>();
+        let _gate = manager.gate.lock().map_err(|_| "电脑配置忙，请重试")?;
+        let directory = directory(&app)?;
+        manager.ensure(&directory)?;
+        let lookup = || {
+            let inner = manager.inner.lock().map_err(|_| "电脑配置忙，请重试")?;
+            inner.config.as_ref().and_then(|config| config.registrations.iter().find(|record|
+                record.home_instance_id == registration_id && record.enabled)).cloned()
+                .ok_or("电脑配对已移除或停用")
+        };
+        let record = lookup()?;
+        let binding = record.binding();
+        let request = match operation.as_str() {
+            "list" if folder_id.is_none() && read.is_none() && write.is_none() =>
+                json!({"operation":"list", "binding":binding}),
+            "revoke" if read.is_none() && write.is_none() => {
+                let folder = folder_id.filter(|id| secrets::identifier(id)).ok_or("文件夹授权无效")?;
+                json!({"operation":"revoke", "binding":binding, "folder_id":folder})
+            }
+            "grant" if folder_id.is_none() => {
+                let (read, write) = (read.unwrap_or(false), write.unwrap_or(false));
+                if !read && !write { return Err("请至少选择一项文件权限".into()); }
+                let chosen = app.dialog().file().set_title("选择在这台电脑上开放的文件夹")
+                    .blocking_pick_folder().ok_or("未选择文件夹")?;
+                let folder = chosen.into_path().map_err(|_| "文件夹必须位于本机")?
+                    .canonicalize().map_err(|_| "所选文件夹不可用")?;
+                let path = folder.to_str().ok_or("文件夹名称不是有效文本")?;
+                let alias = folder.file_name().and_then(|name| name.to_str()).ok_or("请选择具体目录")?;
+                let directory_identity = folder_identity(&folder)?;
+                let permissions = match (read, write) {
+                    (true, true) => "读取小文本、安全新建和生成补丁",
+                    (true, false) => "读取小文本",
+                    (false, true) => "安全新建小文本",
+                    _ => unreachable!(),
+                };
+                if !ask(&app, "保存此文件夹的本机授权",
+                    format!("家：{}\n文件夹：{}\n权限：{}\n\n本版本只保存授权。接通文件功能后，该家可按以上范围请求访问。",
+                            record.origin, path, permissions), "保存授权") {
+                    return Err("已取消文件夹授权".into());
+                }
+                json!({"operation":"grant", "binding":binding, "directory":path, "alias":alias,
+                       "read":read, "write":write, "directory_identity":directory_identity})
+            }
+            _ => return Err("文件夹设置请求无效".into()),
+        };
+        if lookup()?.binding() != binding || manager.closing.load(Ordering::Acquire) {
+            return Err("电脑配对已变化，请重新打开设置".into());
+        }
+        let mut command = WorkerSource::for_app(&app)?.base_command(&directory);
+        command.arg("computer-folder-settings");
+        let answer = exchange_command(command, &request, 128 * 1024)?;
+        if answer["ok"] != true {
+            return Err(answer["error"].as_str().unwrap_or("无法保存本机文件夹设置").into());
+        }
+        Ok(answer)
+    }).await.map_err(|_| "本机文件夹设置无法完成")?
 }
 
 #[tauri::command]

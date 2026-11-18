@@ -18,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("computer-connector", help="native-managed outbound computer control worker")
+    commands.add_parser("computer-folder-settings", help="manage local folder grants through the native settings pipe")
     desktop_restore = commands.add_parser("desktop-home-restore", help="restore native Desktop home data without reviving computer trust")
     desktop_restore.add_argument("--data-dir", required=True)
     desktop_restore.add_argument("--archive", required=True)
@@ -62,6 +63,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "computer-connector":
         from src.gateway.computer_connector import main as connector_main
         return connector_main()
+    if args.command == "computer-folder-settings":
+        from src.gateway.computer_folder_settings import main as folder_settings
+        return folder_settings()
     if args.command == "desktop-home-restore":
         return run_desktop_restore(args.data_dir, args.archive)
     if args.command in {"legacy-inventory", "legacy-verify"}:

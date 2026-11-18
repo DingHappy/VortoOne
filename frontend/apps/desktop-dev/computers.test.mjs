@@ -29,6 +29,36 @@ async function page(handler) {
 }
 const text = (element) => [element.textContent, ...element.children.map(text)].join(" ");
 
+test("folder grants are scoped to the selected registration and let the native picker choose the path", async () => {
+  const id = "a".repeat(32);
+  let grants = [];
+  const ui = await page(async (name, args) => {
+    if (name === "computers_get") return { computers: [{ registrationId: HOME,
+      homeInstanceId: HOME, name: "This Mac", origin: "https://home.example",
+      state: "online", secretStorage: "keychain", enabled: true }] };
+    assert.equal(name, "computer_folder_settings");
+    assert.equal(args.registrationId, HOME);
+    assert.equal(args.directory, undefined);
+    if (args.operation === "grant") {
+      assert.equal(args.read, true);
+      assert.equal(args.write, false);
+      grants = [{ folder_id: id, alias: "Docs", directory: "/selected/Docs", read: true, write: false }];
+    }
+    if (args.operation === "revoke") {
+      assert.equal(args.folderId, id);
+      grants = [];
+    }
+    return { folders: grants };
+  });
+  await ui.element("connections").children[0].children.at(-2).fire("click");
+  assert.equal(ui.element("folder-panel").hidden, false);
+  await ui.element("folder-choose").fire("click");
+  assert.match(text(ui.element("folder-list")), /Docs · 读取/);
+  assert.match(text(ui.element("folder-list")), /\/selected\/Docs/);
+  await ui.element("folder-list").children[0].children.at(-1).fire("click");
+  assert.match(text(ui.element("folder-list")), /还没有开放的文件夹/);
+});
+
 test("pairing binds the preview, clears the code and never supplies a replacement origin", async () => {
   const ui = await page(async (name, args, element) => {
     if (name === "computers_get") return [];

@@ -4,6 +4,7 @@ const status = element("status");
 let preview = null;
 let busy = false;
 let reading = false;
+let folderTarget = null;
 const states = { connecting: "正在连接", online: "已连接 · 全能力未就绪", disconnected: "当前未连接", revoked: "已停用", replaced: "连接已由另一进程接替", error: "连接不可用，请检查版本或重新配对" };
 function message(error) { status.textContent = typeof error === "string" ? error : "操作未完成，请重试。"; }
 function node(tag, text, className) {
@@ -26,6 +27,22 @@ async function refresh() {
       const card = node("article", "", "connection");
       card.append(node("h3", record.name), node("span", states[record.state] || "状态未知", "badge"), node("p", record.origin), node("p", `家身份：${record.homeInstanceId}`, "identity"));
       card.append(node("p", record.enabled === false ? "本机配对已停用；移除这条记录可重试清理残留凭据。" : record.secretStorage === "private_file" ? "降级存储：本机私有文件（0700 目录 / 0600 文件）" : "凭据保存在此开发版独立的系统钥匙串项中。", "muted"));
+      if (record.enabled === true) {
+        const configure = node("button", "本机文件夹", "secondary");
+        configure.type = "button";
+        configure.addEventListener("click", async () => {
+          if (busy) return;
+          folderTarget = record.registrationId;
+          element("folder-home").textContent = record.origin;
+          element("folder-panel").hidden = false;
+          element("folder-list").replaceChildren();
+          element("folder-read").checked = true;
+          element("folder-write").checked = false;
+          await folderSettings("list");
+          element("folder-choose").focus();
+        });
+        card.append(configure);
+      }
       const remove = node("button", "移除本机连接", "secondary");
       remove.type = "button";
       remove.addEventListener("click", async () => {
@@ -48,6 +65,45 @@ function reset() {
   element("preview-form").hidden = false;
   element("pair-form").hidden = true;
 }
+async function folderSettings(operation, extra = {}) {
+  if (!folderTarget || busy) return;
+  busy = true;
+  element("folder-choose").disabled = true;
+  element("folder-status").textContent = "";
+  try {
+    const answer = await invoke("computer_folder_settings", { registrationId: folderTarget, operation, ...extra });
+    const list = element("folder-list");
+    list.replaceChildren();
+    for (const folder of answer.folders) {
+      const row = node("div", "", "folder-grant");
+      const permissions = [folder.read ? "读取" : "", folder.write ? "新建" : ""].filter(Boolean).join("、");
+      const remove = node("button", "撤销授权", "secondary");
+      remove.type = "button";
+      remove.addEventListener("click", () => folderSettings("revoke", { folderId: folder.folder_id }));
+      const details = node("div", "");
+      details.append(node("span", `${folder.alias} · ${permissions}`), node("p", folder.directory, "muted"));
+      row.append(details, remove);
+      list.append(row);
+    }
+    if (!answer.folders.length) list.append(node("p", "还没有开放的文件夹。", "muted"));
+    if (operation === "grant") element("folder-status").textContent = "已保存本机文件夹授权。";
+    if (operation === "revoke") element("folder-status").textContent = "已撤销本机文件夹授权。";
+  } catch (error) {
+    element("folder-status").textContent = typeof error === "string" ? error : "本机文件夹设置暂时不可用。";
+  } finally {
+    busy = false;
+    element("folder-choose").disabled = false;
+  }
+}
+element("folder-choose").addEventListener("click", () => folderSettings("grant", {
+  read: element("folder-read").checked, write: element("folder-write").checked,
+}));
+element("folder-close").addEventListener("click", () => {
+  if (busy) return;
+  folderTarget = null;
+  element("folder-panel").hidden = true;
+  element("folder-list").replaceChildren();
+});
 element("refresh").addEventListener("click", refresh);
 element("cancel").addEventListener("click", () => { if (!busy) { reset(); status.textContent = ""; } });
 element("preview-form").addEventListener("submit", async (event) => {
