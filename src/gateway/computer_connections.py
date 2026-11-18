@@ -194,6 +194,13 @@ class Connections:
                 return found
         return None
 
+    def replacement(self, previous: Connection) -> Connection | None:
+        with self._lock:
+            candidate = self._current.get((previous.root, previous.binding["connector_id"]))
+            if candidate is not previous:
+                return candidate
+        return None
+
     def file_connection(self, root: str, connector_id: str, identity: dict) -> Connection | None:
         with self._lock:
             found = self._current.get((root, connector_id))
