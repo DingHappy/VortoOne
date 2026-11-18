@@ -1,4 +1,4 @@
-"""Bounded C1 computer control protocol; contains no tool execution authority."""
+"""Bounded computer control protocol. Negotiation does not grant file access."""
 from __future__ import annotations
 
 import ipaddress
@@ -7,7 +7,9 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 MAX_FRAME_BYTES = 256 * 1024
-PROTOCOL_MIN = PROTOCOL_MAX = 1
+PROTOCOL_MIN = 1
+PROTOCOL_MAX = 2
+FILES_PROTOCOL = 2
 FEATURES = ("control-only",)
 CAPABILITIES = {key: False for key in ("read", "write", "command", "browser", "codex")}
 BINDING_FIELDS = ("home_instance_id", "connector_id", "paired_principal_id", "credential_epoch", "trust_epoch")
@@ -74,9 +76,9 @@ def binding_fields(binding: dict) -> dict:
     return {key: identifier(binding.get(key)) for key in BINDING_FIELDS}
 
 
-def hello(binding: dict) -> dict:
+def hello(binding: dict, *, files: bool = False) -> dict:
     return {"type": "hello", **binding_fields(binding), "protocol_min": PROTOCOL_MIN,
-            "protocol_max": PROTOCOL_MAX, "features": list(FEATURES)}
+            "protocol_max": PROTOCOL_MAX if files else PROTOCOL_MIN, "features": list(FEATURES)}
 
 
 def validate_hello(frame: dict, binding: dict) -> dict:
@@ -91,18 +93,20 @@ def validate_hello(frame: dict, binding: dict) -> dict:
     return {"protocol": min(high, PROTOCOL_MAX)}
 
 
-def welcome(binding: dict, generation: str) -> dict:
+def welcome(binding: dict, generation: str, protocol: int = PROTOCOL_MIN) -> dict:
     return {"type": "welcome", **binding_fields(binding), "generation": identifier(generation),
-            "protocol": PROTOCOL_MAX, "features": list(FEATURES), "capabilities": dict(CAPABILITIES), "folders": []}
+            "protocol": protocol, "features": list(FEATURES), "capabilities": dict(CAPABILITIES), "folders": []}
 
 
-def validate_welcome(frame: dict, binding: dict) -> str:
+def validate_welcome(frame: dict, binding: dict, *, files: bool = False) -> str:
     generation = identifier(frame.get("generation"))
     capabilities = frame.get("capabilities")
-    if (type(frame.get("protocol")) is not int or not isinstance(capabilities, dict)
+    protocol = frame.get("protocol")
+    if (type(protocol) is not int or protocol not in ((1, 2) if files else (1,))
+            or not isinstance(capabilities, dict)
             or set(capabilities) != set(CAPABILITIES)
             or any(type(v) is not bool or v for v in capabilities.values())
-            or frame != welcome(binding, generation)):
+            or frame != welcome(binding, generation, protocol)):
         raise ComputerProtocolError("invalid computer welcome")
     return generation
 

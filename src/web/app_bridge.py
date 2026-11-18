@@ -161,7 +161,7 @@ class MainChatBridge:
 
     # ── 界面 → 会话 ───────────────────────────────────────────────────────────
 
-    async def post(self, body: str, client_id: Optional[str]) -> Dict[str, Any]:
+    async def post(self, body: str, client_id: Optional[str], *, file_owner: bool = False) -> Dict[str, Any]:
         from src.web.routers import realtime
         if not views.model_connected():
             raise NoModel()
@@ -169,7 +169,22 @@ class MainChatBridge:
         if client_id:
             self.client_ids[rid] = client_id
         message = views.owner_message(self.root, rid, body, client_id=client_id)
-        await realtime.client_message(self, {"type": P.AGENT, "text": body, "rid": rid, "mode": "plan"})
+        owner_turn = None
+        if file_owner:
+            from src.gateway.computer_file_authority import OwnerFileTurn
+            from src.gateway.connected_computers import ConnectedComputers, ComputerUnavailable
+            try:
+                identity = await asyncio.to_thread(ConnectedComputers(self.root).identity)
+                if identity.get("ownership_state") == "claimed":
+                    owner_turn = OwnerFileTurn(self.root, self.key, rid, identity["home_instance_id"],
+                                               identity["owner_subject"], identity["trust_epoch"])
+            except (ComputerUnavailable, OSError):
+                pass  # Ordinary chat can proceed when the home identity cannot be checked.
+        event = {"type": P.AGENT, "text": body, "rid": rid, "mode": "plan"}
+        if owner_turn is None:
+            await realtime.client_message(self, event)
+        else:
+            await realtime.client_message(self, event, owner_turn=owner_turn)
         # 应答和实时/重读用同一条记录，不能用接收请求的时刻覆盖它的时间与顺序。
         recorded = next((row for row in views.main_messages(self.root, limit=400)
                          if row["id"] == message["id"]), None)
@@ -182,15 +197,18 @@ class MainChatBridge:
         await realtime.client_message(self, {"type": P.AGENT_CANCEL})
         return True
 
-    async def decide(self, cid: str, approve: bool) -> Optional[Dict[str, Any]]:
+    async def decide(self, cid: str, approve: bool, *, file_owner: bool = False) -> Optional[Dict[str, Any]]:
         """主人的决定按原协议交回会话，范围固定为「仅这一次」。返回决定后的审批；确认已不在等则 None。"""
         from src.web.routers import realtime
         pending = self.pending(cid)
-        if pending is None:
+        if pending is None or (realtime.requires_file_owner(cid) and not file_owner):
             return None
         self.decisions[cid] = approve
-        await realtime.client_message(
-            self, {"type": P.AGENT_CONFIRM_RESPONSE, "id": cid, "ok": approve, "scope": "once"})
+        event = {"type": P.AGENT_CONFIRM_RESPONSE, "id": cid, "ok": approve, "scope": "once"}
+        if file_owner:
+            await realtime.client_message(self, event, owner_confirmation=True)
+        else:
+            await realtime.client_message(self, event)
         return views.approval(self.root, pending, status="approved" if approve else "refused", decided=True)
 
     def pending(self, cid: str) -> Optional[Dict[str, Any]]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
 import random
 import re
 import ssl
@@ -17,10 +18,13 @@ from typing import Awaitable, Callable
 import aiohttp
 
 from src.gateway.computer_protocol import (
-    BINDING_FIELDS, FEATURES, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN,
+    BINDING_FIELDS, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN,
     ComputerProtocolError, binding_fields, control_frame, decode_frame, hello,
     identifier, origin_url, validate_welcome,
 )
+from src.gateway.computer_file_store import ComputerFiles, FileStateUnavailable
+from src.gateway.computer_file_wire import digest_value, native_file_request, object_fields
+from src.utils.home_maintenance import HomeMaintenanceError
 
 _TOKEN = re.compile(r"vcc_[A-Za-z0-9_-]{43}\Z")
 _CONFIG_BYTES = 8192
@@ -77,9 +81,11 @@ def configuration(value: dict) -> dict:
         if not isinstance(value.get("code"), str) or not re.fullmatch(r"[A-Z2-7]{12}", value["code"]):
             raise ConnectorFailure("invalid pairing code")
     elif operation == "connect":
-        allowed = common | set(BINDING_FIELDS) | {"token"}
-        required = allowed - {"allow_loopback_http"}
+        allowed = common | set(BINDING_FIELDS) | {"token", "file_access"}
+        required = allowed - {"allow_loopback_http", "file_access"}
         binding_fields(value)
+        if type(value.get("file_access", False)) is not bool:
+            raise ConnectorFailure("invalid file access configuration")
         if not isinstance(value.get("token"), str) or not _TOKEN.fullmatch(value["token"]):
             raise ConnectorFailure("invalid computer credential")
     else:
@@ -129,12 +135,16 @@ def _status(emit: Callable[[dict], None], config: dict, state: str) -> None:
     emit({"type": "status", "state": state, **{key: config[key] for key in ("home_instance_id", "connector_id")}})
 
 
-async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_persisted: asyncio.Event) -> bool:
-    await ws.send_json(hello(config))
+async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_persisted: asyncio.Event,
+                   stop: asyncio.Event) -> bool:
+    files = config.get("file_access", False)
+    await ws.send_json(hello(config, files=files))
     message = await ws.receive(timeout=15)
     if message.type != aiohttp.WSMsgType.TEXT:
         raise ComputerProtocolError("computer handshake refused")
-    generation = validate_welcome(decode_frame(message.data), config)
+    frame = decode_frame(message.data)
+    generation = validate_welcome(frame, config, files=files)
+    store = ComputerFiles(Path.cwd() / "file-access", config) if frame["protocol"] == FILES_PROTOCOL else None
     _status(emit, config, "online")
     clock = asyncio.get_running_loop().time
     next_ping = clock()
@@ -144,6 +154,13 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
         if pong_deadline is not None and now >= pong_deadline:
             raise asyncio.TimeoutError
         if pong_deadline is None and now >= next_ping:
+            if store is not None:
+                try:
+                    receipts = await asyncio.to_thread(store.pending)
+                except (FileStateUnavailable, HomeMaintenanceError, OSError):
+                    receipts = []
+                for receipt in receipts:
+                    await ws.send_json({"type": "file_receipt", "generation": generation, "receipt": receipt})
             await ws.send_json({"type": "ping", "generation": generation})
             pong_deadline = clock() + 20
         # Keep receiving between heartbeats: revocation must not wait for a sleep.
@@ -157,6 +174,21 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
         if message.type != aiohttp.WSMsgType.TEXT:
             raise ComputerProtocolError("invalid computer control frame")
         frame = decode_frame(message.data)
+        if store is not None and frame.get("type") == "file_request":
+            reply = await asyncio.to_thread(native_file_request, store, frame, generation, config,
+                                            active=lambda: not stop.is_set())
+            await ws.send_json(reply)
+            continue
+        if store is not None and frame.get("type") == "file_ack":
+            object_fields(frame, ("type", "generation", "action_id", "digest"))
+            if frame["generation"] != generation:
+                raise ComputerProtocolError("stale file acknowledgement")
+            action_id, digest = identifier(frame["action_id"]), digest_value(frame["digest"])
+            try:
+                await asyncio.to_thread(store.acknowledge, action_id, digest)
+            except (FileStateUnavailable, OSError):
+                pass
+            continue
         if frame.get("type") == "revoked":
             if set(frame) != {"type", "generation", "reason", "credentialRevoked"} or frame["generation"] != generation or type(frame["credentialRevoked"]) is not bool:
                 raise ComputerProtocolError("invalid computer revocation")
@@ -202,14 +234,14 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
             # aiohttp follows WS redirects internally. Trace veto below rejects them before sending a second request.
             async with session.ws_connect(url, headers={"Authorization": "Bearer " + config["token"]},
                                           max_msg_size=MAX_FRAME_BYTES, autoping=True) as ws:
-                if await _control(ws, config, emit, revocation_persisted):
+                if await _control(ws, config, emit, revocation_persisted, stop):
                     return
                 delay = 1.0
         except aiohttp.WSServerHandshakeError as error:
             if error.status in {401, 403}:
                 _status(emit, config, "revoked")
                 return
-        except (ComputerProtocolError, ConnectorFailure):
+        except (ValueError, TypeError, KeyError, ConnectorFailure):
             _status(emit, config, "error")
             return
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError):

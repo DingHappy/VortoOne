@@ -10,7 +10,7 @@ import stat
 import unicodedata
 import uuid
 
-from src.agents.capabilities import is_sensitive_repo_path
+from src.utils.paths import is_sensitive_repo_path
 
 MAX_TEXT_BYTES = 32 * 1024
 _TEMP_PREFIX = ".vortoone-create-"
@@ -188,7 +188,7 @@ class PinnedFile:
         text_bytes(patch)
         return patch
 
-    def create(self, data: bytes, version: str) -> None:
+    def create(self, data: bytes, version: str, *, before_publish) -> None:
         with self.parent() as (parent, chain):
             if version != "absent:" + _fingerprint(chain):
                 raise FileDenied("父目录在确认后变化，请重新发起")
@@ -202,6 +202,7 @@ class PinnedFile:
                     self._check_parent(chain)
                     if _version(os.stat(token, dir_fd=parent, follow_symlinks=False)) != _version(os.fstat(stream.fileno())):
                         raise FileDenied("新建暂存文件已变化")
+                    before_publish()
                     # A hard link creates the destination only if it does not already exist.
                     os.link(token, self.name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
                     try:

@@ -84,7 +84,7 @@ test("pairing binds the preview, clears the code and never supplies a replacemen
   await ui.element("pair-form").fire("submit");
   assert.equal(ui.element("code").value, "");
   assert.equal(ui.element("pair-form").hidden, true);
-  assert.match(ui.element("status").textContent, /全部执行能力尚未就绪/);
+  assert.match(ui.element("status").textContent, /可为这个家设置本机文件夹授权/);
   assert.equal(ui.calls.filter((call) => call.name === "computer_pair_confirm").length, 1);
 });
 

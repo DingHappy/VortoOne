@@ -274,7 +274,7 @@ def test_socket_rejects_protocol_mismatch_and_every_execution_frame(home, mutati
     with connect(socket_client(home), grant) as ws:
         first = hello(grant)
         if mutation == 'protocol':
-            first.update(protocol_min=2, protocol_max=2)
+            first.update(protocol_min=3, protocol_max=3)
         elif mutation == 'identity':
             first['home_instance_id'] = 'f' * 32
         elif mutation == 'oversize':

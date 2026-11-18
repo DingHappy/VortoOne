@@ -1,0 +1,132 @@
+"""Closed protocol for folder metadata and approved small-file actions."""
+from __future__ import annotations
+
+from dataclasses import asdict
+import json
+import re
+
+from src.gateway.computer_file_paths import FileDenied, relative_parts, text_bytes
+from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable, MAX_GRANTS
+from src.gateway.computer_protocol import MAX_FRAME_BYTES, binding_fields, identifier
+
+_DIGEST = re.compile(r"[a-f0-9]{64}\Z")
+_VERSION = re.compile(r"(?:absent:)?[a-f0-9]{64}\Z")
+TERMINAL_RECEIPTS = frozenset({"created", "blocked", "unknown"})
+
+
+def object_fields(value, keys):
+    if not isinstance(value, dict) or set(value) != set(keys):
+        raise ValueError("invalid computer file fields")
+    return value
+
+
+def digest_value(value):
+    if not isinstance(value, str) or not _DIGEST.fullmatch(value):
+        raise ValueError("invalid file action digest")
+    return value
+
+
+def bounded_frame(value: dict) -> dict:
+    # Validate the byte budget in the same encoding used by both websocket writers.
+    if len(json.dumps(value, ensure_ascii=True)) > MAX_FRAME_BYTES:
+        raise ValueError("oversized computer file frame")
+    return value
+
+
+def policy_value(value: dict) -> dict:
+    object_fields(value, ("policy_revision", "folders"))
+    identifier(value["policy_revision"])
+    folders = value["folders"]
+    if not isinstance(folders, list) or len(folders) > MAX_GRANTS:
+        raise ValueError("invalid computer folder list")
+    seen = set()
+    for entry in folders:
+        object_fields(entry, ("folder_id", "alias", "read", "write"))
+        folder_id = identifier(entry["folder_id"])
+        alias = entry["alias"]
+        if (folder_id in seen or not isinstance(alias, str) or not 1 <= len(alias) <= 80
+                or not alias.isprintable() or type(entry["read"]) is not bool
+                or type(entry["write"]) is not bool or not (entry["read"] or entry["write"])):
+            raise ValueError("invalid computer folder")
+        seen.add(folder_id)
+    return value
+
+
+def preview_value(body: dict) -> dict:
+    object_fields(body, ("operation", "folder_id", "policy_revision", "path"))
+    identifier(body["folder_id"])
+    identifier(body["policy_revision"])
+    relative_parts(body["path"])
+    if body["operation"] not in ("read", "create", "patch"):
+        raise ValueError("unsupported file operation")
+    return body
+
+
+def version_value(value: dict, operation: str) -> str:
+    object_fields(value, ("version",))
+    version = value["version"]
+    if (not isinstance(version, str) or not _VERSION.fullmatch(version)
+            or version.startswith("absent:") != (operation == "create")):
+        raise ValueError("invalid preview version")
+    return version
+
+
+def receipt_value(value: dict) -> dict:
+    object_fields(value, ("action_id", "digest", "status"))
+    identifier(value["action_id"])
+    digest_value(value["digest"])
+    if not isinstance(value["status"], str) or value["status"] not in TERMINAL_RECEIPTS:
+        raise ValueError("invalid file receipt")
+    return value
+
+
+def result_value(value: dict, action: FileAction) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("invalid file action result")
+    status = value.get("status")
+    keys = {"action_id", "digest", "status"}
+    if (value.get("action_id"), value.get("digest")) != (action.action_id, action.digest):
+        raise ValueError("file result does not match action")
+    if status in ("read", "patch"):
+        if action.operation != status:
+            raise ValueError("invalid read/patch result")
+        object_fields(value, keys | {"text"})
+        text_bytes(value["text"])
+    else:
+        object_fields(value, keys)
+        if status not in ("blocked", "busy", "unknown") and (action.operation, status) != ("create", "created"):
+            raise ValueError("unsupported file result")
+    return value
+
+
+def native_file_request(store: ComputerFiles, frame: dict, generation: str, binding: dict, *, active) -> dict:
+    object_fields(frame, ("type", "generation", "request_id", "binding", "method", "payload"))
+    if frame["generation"] != generation or frame["binding"] != binding_fields(binding):
+        raise ValueError("stale file request")
+    request_id = identifier(frame["request_id"])
+    method = frame["method"]
+    body = frame["payload"]
+    action = None
+    if method == "policy":
+        object_fields(body, ())
+    elif method == "preview":
+        preview_value(body)
+    elif method == "perform" and isinstance(body, dict):
+        action = FileAction(**body)
+        if set(body) != set(asdict(action)):
+            raise ValueError("missing file action field")
+    else:
+        raise ValueError("unsupported file request")
+    reply = {"type": "file_reply", "generation": generation, "request_id": request_id}
+    try:
+        if action is not None:
+            data = store.execute(action, active=active)
+        elif method == "policy":
+            data = policy_value(store.policy())
+        else:
+            data = {"version": store.preview(**body)}
+        return bounded_frame({**reply, "ok": True, "result": data})
+    except FileDenied:
+        return {**reply, "ok": False, "result": {}}
+    except (FileStateUnavailable, OSError):
+        return {**reply, "ok": False, "result": {}}

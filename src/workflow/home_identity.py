@@ -279,11 +279,12 @@ def prepare_replaced_home(staging_state, reason: str) -> dict:
     value = _ensure(state)
     value["trust_epoch"] = uuid.uuid4().hex
     _save_json(state / IDENTITY_DIRECTORY / "identity.json", value)
-    # 电脑登记是可丢弃的授权，不是用户资料；恢复/搬家一律要求重新配对。
-    computer_directory = state / "connected-computers"
-    if computer_directory.is_symlink():
-        raise HomeIdentityError("电脑授权目录不可用")
-    if computer_directory.exists():
-        import shutil
-        shutil.rmtree(computer_directory)
+    # 恢复/搬家要求重新配对，旧派发不能在新信任代次续跑。
+    for name in ("connected-computers", "computer-file-intents"):
+        computer_directory = state / name
+        if computer_directory.is_symlink():
+            raise HomeIdentityError("电脑状态目录不可用")
+        if computer_directory.exists():
+            import shutil
+            shutil.rmtree(computer_directory)
     return dict(value)
