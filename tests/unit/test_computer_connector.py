@@ -761,7 +761,8 @@ async def test_actual_worker_persists_revocation_before_ack_and_exits_with_stdin
     assert not list(user_home.iterdir())
 
 
-async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tmp_path, monkeypatch):
+@pytest.mark.parametrize("file_access", [False, True], ids=["control-v1", "file-process-v2"])
+async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tmp_path, monkeypatch, file_access):
     """Cover the real mounted auth/routes, not just the transport test adapter."""
     import uvicorn
     from src.web import app_views
@@ -804,13 +805,41 @@ async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tm
             pairs = []
             await worker.run(config(origin, 'pair', home_instance_id=pairing['home_instance_id'], code=pairing['code']), pairs.append)
             grant = {key: value for key, value in pairs[0].items() if key != 'type'}
-            worker_task = asyncio.create_task(worker.run(config(origin, **grant), emit, stop, persisted))
+            worker_task = asyncio.create_task(worker.run(config(origin, **grant, file_access=file_access), emit, stop, persisted))
             await event_before(connected)
             async with owner.get(origin + base + '/machines') as response:
                 machines = (await response.json())['machines']
                 machine = next(row for row in machines if row['id'] == grant['connector_id'])
                 assert machine['online'] and not machine['execAllowed']
                 assert machine['access']['folders'] == [] and not any(machine['access']['tools'].values())
+            if file_access:
+                from dataclasses import asdict
+                import time
+                import uuid
+
+                from src.gateway.computer_file_intents import HomeFileIntents
+                from src.gateway.computer_file_store import ComputerFiles, FileAction
+                from src.gateway.computer_file_wire import result_value, version_value
+
+                root = str(tmp_path.resolve())
+                account = ConnectedComputers(root).identity()
+                connection = connections.file_connection(root, grant["connector_id"], account)
+                assert connection is not None
+                node = ComputerFiles(tmp_path / "file-access", grant)
+                folder = tmp_path / "selected"
+                folder.mkdir()
+                selection = node.grant(str(folder.resolve()), "Selected", read=True, write=True)
+                target = {"operation": "create", "path": "child.txt", "folder_id": selection["folder_id"],
+                          "policy_revision": node.policy()["policy_revision"]}
+                version = version_value(await connection.file_request("preview", target), "create")
+                action = FileAction(uuid.uuid4().hex, **target, version=version, deadline=int(time.time()) + 60,
+                                    session_id="session", turn_id="turn", call_id="call", content="child data")
+                intents = HomeFileIntents(root)
+                intents.record(grant, action)
+                receipt = result_value(await connection.file_request("perform", asdict(action)), action)
+                assert receipt["status"] == "created" and await connection.receipt(receipt)
+                assert (folder / action.path).read_text() == action.content
+                assert intents.status(action.action_id, account) == "created"
             async with owner.delete(origin + base + '/machines/' + grant['connector_id']) as response:
                 assert response.status == 204
             await event_before(revoked)
@@ -828,6 +857,18 @@ async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tm
         server.should_exit = True
         await asyncio.wait_for(server_task, 3)
         listener.close()
+
+
+def inline_file_actions(monkeypatch):
+    """Keep fault injection inside the test process for deterministic network timing."""
+    from src.gateway.computer_file_store import ComputerFiles
+
+    async def execute(directory, binding, action, *, stop, revoked):
+        store = ComputerFiles(directory / "file-access", binding)
+        return await asyncio.to_thread(store.execute, action,
+                                        active=lambda: not stop.is_set() and not revoked.is_set())
+
+    monkeypatch.setattr(worker, "run_file_action", execute)
 
 
 async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp_path, monkeypatch):
@@ -851,6 +892,7 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     monkeypatch.setenv("OPENAI_API_KEY", "unused-test-key")
     monkeypatch.setenv("VORTOONE_TURN_DIGEST", "0")
     monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
+    inline_file_actions(monkeypatch)
     store = ConnectedComputers(root)
     pairing = store.create_pairing(legacy_confirmed=True)
     grant = store.pair(pairing["code"], BINDING["connector_id"], "测试电脑")
@@ -1058,19 +1100,19 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
 @pytest.mark.parametrize("disconnect", [True, False], ids=["reconnect", "revoke"])
 async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_path, monkeypatch, disconnect):
     from dataclasses import asdict
-    import threading
     import time
     import uuid
 
     from src.gateway.computer_connections import FileConnectionUnavailable
     from src.gateway.computer_file_intents import HomeFileIntents
-    from src.gateway.computer_file_paths import PinnedFile
     from src.gateway.computer_file_store import ComputerFiles, FileAction
     from src.utils.home_maintenance import HomeMaintenanceError
+    from tests.unit.test_computer_file_process import park_file_child
 
     root = str(tmp_path.resolve())
     monkeypatch.chdir(root)
     monkeypatch.setenv("VORTOONE_API_TOKEN", "synthetic-owner")
+    _, spawned = park_file_child(monkeypatch)
     monkeypatch.setattr(worker, "_HEARTBEAT_INTERVAL", 0.1)
     store = ConnectedComputers(root)
     pairing = store.create_pairing(legacy_confirmed=True)
@@ -1086,24 +1128,12 @@ async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_pa
                         int(time.time()) + 60, "session", "turn", "call", "approved text")
     intents = HomeFileIntents(root)
     intents.record(grant, action)
-    staged = asyncio.Event()
-    resume = threading.Event()
+    staged = tmp_path / "staged.pid"
+    resume = tmp_path / "continue"
     pongs = asyncio.Queue()
     acknowledged = asyncio.Event()
     persisted = asyncio.Event()
     stop = asyncio.Event()
-    published = []
-    loop = asyncio.get_running_loop()
-    create = PinnedFile.create
-
-    def staging(target, *args, **kwargs):
-        loop.call_soon_threadsafe(staged.set)
-        if not resume.wait(10):
-            raise RuntimeError("test did not finish the control action")
-        create(target, *args, **kwargs)
-        published.append(True)
-
-    monkeypatch.setattr(PinnedFile, "create", staging)
     send_json = aiohttp.ClientWebSocketResponse.send_json
 
     async def observe_pong(ws, frame, **kwargs):
@@ -1127,6 +1157,10 @@ async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_pa
                 return connection
             await asyncio.sleep(0.01)
 
+    async def until(predicate):
+        while not predicate():
+            await asyncio.sleep(0.01)
+
     async def terminal():
         while True:
             if disconnect:
@@ -1147,7 +1181,9 @@ async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_pa
         try:
             first = await asyncio.wait_for(current(), 2)
             dispatch = asyncio.create_task(first.file_request("perform", asdict(action)))
-            await event_before(staged)
+            process = await asyncio.wait_for(spawned.get(), 3)
+            await asyncio.wait_for(until(lambda: staged.exists() and staged.stat().st_size > 0), 3)
+            assert int(staged.read_text()) == process.pid
             await first.send({"type": "ping", "generation": first.generation})
             assert await asyncio.wait_for(pongs.get(), 2) == first.generation
             assert not (folder / "staged.txt").exists()
@@ -1155,20 +1191,23 @@ async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_pa
                 await asyncio.wait_for(first.socket.close(), 2)
                 second = await asyncio.wait_for(current(except_connection=first), 3)
                 assert second.generation != first.generation
+                assert process.returncode is None and not process.stdin.is_closing()
             else:
                 store.revoke(grant["connector_id"])
                 persisted.set()
                 connections.revoked(root, grant["connector_id"])
                 await event_before(acknowledged)
+                await asyncio.wait_for(until(process.stdin.is_closing), 2)
             with pytest.raises(FileConnectionUnavailable):
                 await asyncio.wait_for(dispatch, 3)
-            resume.set()
+            resume.touch()
             await asyncio.wait_for(terminal(), 4)
             if disconnect:
-                assert (folder / "staged.txt").read_text() == "approved text" and published == [True]
+                assert (folder / "staged.txt").read_text() == "approved text"
+                assert spawned.empty()
             else:
-                assert not (folder / "staged.txt").exists() and not published
+                assert not (folder / "staged.txt").exists()
         finally:
-            resume.set()
+            resume.touch()
             stop.set()
             await asyncio.gather(running, *([dispatch] if dispatch is not None else []), return_exceptions=True)
