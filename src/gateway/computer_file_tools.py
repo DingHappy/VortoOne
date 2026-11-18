@@ -11,7 +11,7 @@ import time
 import uuid
 
 from src.agents.tool import PreparedToolCall, Tool, ToolResult
-from src.agents.tool_runtime import current_tool_call_id
+from src.agents.tool_runtime import check_tool_execution, current_tool_call_id
 from src.agents.trust import READ, WRITE
 from src.gateway.computer_connections import FileConnectionUnavailable, connections
 from src.gateway.computer_file_authority import current_owner_turn, file_confirmation
@@ -26,14 +26,45 @@ _SOURCE = {"external_content": True, "untrusted_source": True, "serial": True}
 _OFFLINE = "电脑离线、未启用文件协议，或配对已变化。"
 _OWNER = "请由所有者在家的主要聊天发起这项操作。"
 _STATUS = {"created": "已新建", "blocked": "电脑已拒绝操作", "unknown": "结果未知",
-           "busy": "电脑正处理另一项操作"}
+           "waiting": "电脑已确认尚未开始"}
+FILE_ACTION_SECONDS = 90
+FILE_QUEUE_POLL_SECONDS = 3
 
 
 def _blocked(message: str) -> ToolResult:
     return ToolResult(message, "blocked")
 
 
-def computer_file_tools(root: str) -> list[Tool]:
+async def _perform(connection, action: FileAction, intents: HomeFileIntents, still_current, on_wait):
+    payload = asdict(action)
+    write = action.operation == "create"
+    monotonic_deadline = time.monotonic() + FILE_ACTION_SECONDS
+    waiting = False
+    while True:
+        result = result_value(await connection.file_request("perform", payload), action)
+        if result["status"] != "busy":
+            return result
+        # Only an exact, authenticated busy reply can authorize retrying this dispatch.
+        if write and not await asyncio.to_thread(intents.set_waiting, connection.binding, action, waiting=True):
+            raise FileConnectionUnavailable("派发状态已变化")
+        if not waiting and on_wait is not None:
+            try:
+                on_wait()
+            except Exception:  # UI observers cannot change an approved action.
+                pass
+        waiting = True
+        remaining = min(action.deadline - time.time(), monotonic_deadline - time.monotonic())
+        if remaining <= FILE_QUEUE_POLL_SECONDS:
+            return None
+        await asyncio.sleep(FILE_QUEUE_POLL_SECONDS)
+        if min(action.deadline - time.time(), monotonic_deadline - time.monotonic()) <= 0 or not await still_current():
+            return None
+        check_tool_execution()
+        if write and not await asyncio.to_thread(intents.set_waiting, connection.binding, action, waiting=False):
+            raise FileConnectionUnavailable("原动作已过期或已有最终回执")
+
+
+def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
     root = str(Path(root).resolve())
     store = ConnectedComputers(root)
     intents = HomeFileIntents(root)
@@ -77,7 +108,7 @@ def computer_file_tools(root: str) -> list[Tool]:
         except (ComputerUnavailable, FileConnectionUnavailable, FileIntentUnavailable, OSError, ValueError):
             return _blocked("无法核对文件动作回执。")
 
-    async def prepare(operation, args):
+    async def prepare(operation, name, args):
         try:
             owner, account = await identity()
             call_id = current_tool_call_id()
@@ -118,13 +149,21 @@ def computer_file_tools(root: str) -> list[Tool]:
             message += (f"\n文本 {len(data)} 字节，SHA-256 {hashlib.sha256(data).hexdigest()}"
                         f"\n{'文本前 320 字' if len(body) > 320 else '文本'} {excerpt}")
 
-        async def invoke():
+        async def still_current():
             try:
                 active_owner, active_account = await identity()
-                if active_owner != owner or connections.file_connection(root, computer_id, active_account) is not connection:
+                return (active_owner == owner
+                        and connections.file_connection(root, computer_id, active_account) is connection
+                        and await connection.valid())
+            except (ComputerUnavailable, FileConnectionUnavailable, OSError):
+                return False
+
+        async def invoke():
+            try:
+                if not await still_current():
                     return _blocked(_OFFLINE)
                 action = FileAction(uuid.uuid4().hex, folder_id, target["policy_revision"], operation, path,
-                                    version, int(time.time()) + 90, owner.session, owner.rid, call_id, body)
+                                    version, int(time.time()) + FILE_ACTION_SECONDS, owner.session, owner.rid, call_id, body)
             except (ComputerUnavailable, FileConnectionUnavailable, OSError, ValueError):
                 return _blocked("家的身份或文件确认已失效。")
             if operation == "create":
@@ -133,16 +172,16 @@ def computer_file_tools(root: str) -> list[Tool]:
                 except FileIntentUnavailable:
                     return _blocked("家的派发记录不可用，未向电脑发送操作。")
             try:
-                result = result_value(await connection.file_request("perform", asdict(action)), action)
+                notify = partial(on_wait, call_id, name) if on_wait is not None else None
+                result = await _perform(connection, action, intents, still_current, notify)
+                if result is None:
+                    return _blocked(f"本次等待已结束，电脑尚未开始。动作编号 {action.action_id}。")
                 status = result["status"]
                 if "text" in result:
                     return result["text"]
                 receipt = {key: result[key] for key in ("action_id", "digest", "status")}
-                if operation == "create":
-                    if status == "busy":  # This response confirms nothing started; the computer has no outbox item.
-                        await asyncio.to_thread(intents.accept, connection.binding, {**receipt, "status": "blocked"})
-                    elif not await connection.receipt(receipt):
-                        status = "unknown"
+                if operation == "create" and not await connection.receipt(receipt):
+                    status = "unknown"
             except (ComputerUnavailable, FileConnectionUnavailable, FileIntentUnavailable, OSError, ValueError):
                 status = "unknown"
             if operation != "create" and status == "unknown":
@@ -158,7 +197,7 @@ def computer_file_tools(root: str) -> list[Tool]:
         args = dict(target_args)
         if operation != "read":
             args["text"] = "不超过 32 KiB 的 UTF-8 文本"
-        return Tool.prepared(name, description, args, partial(prepare, operation),
+        return Tool.prepared(name, description, args, partial(prepare, operation, name),
                              operation_kind=WRITE if operation == "create" else READ,
                              read_only=operation != "create", always_confirm=True, required_args=tuple(args), **_SOURCE)
 

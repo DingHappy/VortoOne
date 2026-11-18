@@ -587,7 +587,12 @@ def _new_agent():
                           on_workspace_required=bindings.emit_workspace_required)
     if file_tools:
         from src.gateway.computer_file_tools import computer_file_tools
-        agent.add_tools(computer_file_tools(repo_root))
+
+        def waiting_for_computer(call_id, name):
+            bindings.emit_tool_event("progress", {"id": call_id, "name": name,
+                                                  "summary": "电脑暂时没有可用资源，已在家中等待"})
+
+        agent.add_tools(computer_file_tools(repo_root, on_wait=waiting_for_computer))
     _TURN_BINDINGS[agent] = bindings
     return agent
 
@@ -1610,7 +1615,7 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
 
         raw_args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
         name = str(payload.get("name") or "tool")
-        if stage == "start":
+        if stage in {"start", "progress"}:
             start_working()
             status = "running"
         else:
@@ -1619,10 +1624,10 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
             "id": str(payload.get("id") or f"tool-{uuid.uuid4().hex[:12]}"),
             "name": name,
             "status": status,
-            "summary": tool_summary(name, raw_args),
+            "summary": payload["summary"] if stage == "progress" else tool_summary(name, raw_args),
             "args": sanitize_audit_value(raw_args),
         }
-        if stage != "start":
+        if stage == "finish":
             fields["result"] = sanitize_audit_value(payload.get("result"))
             fields["duration_ms"] = max(0, int(payload.get("duration_ms") or 0))
             if type(payload.get('source_untrusted')) is bool:

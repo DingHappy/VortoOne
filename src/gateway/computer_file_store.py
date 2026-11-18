@@ -16,6 +16,7 @@ import uuid
 from src.gateway.computer_file_paths import (
     FileDenied, PinnedFile, relative_parts, select_directory, text_bytes,
 )
+from src.gateway.computer_file_capacity import has_file_capacity
 from src.gateway.computer_protocol import binding_fields, identifier
 from src.utils.home_maintenance import FileLease, HomeMaintenanceError
 
@@ -243,10 +244,11 @@ class ComputerFiles:
                 if row[1] == "started":
                     self._terminal(db, action, "unknown")
                     return "unknown"
-                if row[1] not in _STATUSES:
+                if row[1] in _STATUSES:
+                    return row[1]
+                if row[1] != "waiting":
                     raise FileStateUnavailable("动作记录无效")
-                return row[1]
-            if db.execute("SELECT count(*) FROM actions").fetchone()[0] >= MAX_ACTIONS:
+            elif db.execute("SELECT count(*) FROM actions").fetchone()[0] >= MAX_ACTIONS:
                 raise FileStateUnavailable("本机动作记录已达上限")
             try:
                 self._check_deadline(action)
@@ -254,10 +256,16 @@ class ComputerFiles:
                     raise FileDenied("本机已停止连接")
                 self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
             except FileDenied:
-                db.execute("INSERT INTO actions VALUES (?, ?, ?, 'blocked', 0)",
-                           (self.scope, action.action_id, action.digest))
-                return "blocked"
-            db.execute("INSERT INTO actions VALUES (?, ?, ?, 'started', 0)", (self.scope, action.action_id, action.digest))
+                status = "blocked"
+            else:
+                status = "started" if has_file_capacity(action.operation) else "waiting"
+            db.execute("INSERT INTO actions VALUES (?, ?, ?, ?, 0)"
+                       " ON CONFLICT(scope, action_id) DO UPDATE SET status = excluded.status",
+                       (self.scope, action.action_id, action.digest, status))
+            if status == "waiting":
+                return "busy"
+            if status == "blocked":
+                return status
 
         with self._db(write=True) as db:
             try:
@@ -278,7 +286,7 @@ class ComputerFiles:
         base = {"action_id": action.action_id, "digest": action.digest}
         try:
             self._private_directory()
-            # One effect or read in flight across every pairing on this computer.
+            # The lock reserves capacity across every pairing, from admission through the effect and its receipt.
             with FileLease(self.directory / "file-action.lock", private=True):
                 if action.operation == "create":
                     return {**base, "status": self._create(action, active)}
@@ -287,6 +295,8 @@ class ComputerFiles:
                     raise FileDenied("本机已停止连接")
                 with self._db(write=True) as db:
                     target = self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
+                    if not has_file_capacity(action.operation):
+                        return {**base, "status": "busy"}
                     value = (target.read(action.version) if action.operation == "read"
                              else target.patch(action.version, action.content))
                 return {**base, "status": action.operation, "text": value}

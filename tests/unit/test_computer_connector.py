@@ -835,11 +835,12 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     import uvicorn
 
     from src.agents.agent_loop import MainAgent
-    from src.gateway import protocol as P
+    from src.gateway import computer_file_capacity, computer_file_tools, protocol as P
+    from src.gateway.computer_connections import Connection
     from src.gateway.computer_file_intents import HomeFileIntents
     from src.gateway.computer_file_store import ComputerFiles
     from src.web import app_views
-    from src.web.app_bridge import existing_bridge
+    from src.web.app_bridge import MainChatBridge, existing_bridge
     from src.web.auth import SESSION_COOKIE
     from src.web.routers import realtime
     from src.web.server import app
@@ -869,6 +870,27 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
         "断线后补报": ("connected_computer_create", {**args, "path": "durable.txt", "text": "只写一次\n"}),
         "清单": ("connected_computer_folders", {"computer_id": grant["connector_id"]}),
     }
+    memory = [None]
+    monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: memory[0])
+    monkeypatch.setattr(computer_file_tools, "FILE_QUEUE_POLL_SECONDS", 0.08)
+    attempts = []
+    request = Connection.file_request
+
+    async def observe_request(self, method, payload):
+        if method == "perform":
+            attempts.append(payload.copy())
+        return await request(self, method, payload)
+
+    monkeypatch.setattr(Connection, "file_request", observe_request)
+    queued = asyncio.Event()
+    bridge_emit = MainChatBridge._emit
+
+    async def observe_app_event(self, kind, **fields):
+        if kind == "agent.tool" and "已在家中等待" in (fields.get("detail") or ""):
+            queued.set()
+        await bridge_emit(self, kind, **fields)
+
+    monkeypatch.setattr(MainChatBridge, "_emit", observe_app_event)
 
     async def scripted_turn(self, prompt, *, mode, say, emit, owner_text, **_):
         self._tool_turn_state.reset_escalation()
@@ -883,8 +905,9 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     dropped_receipt = {}
 
     async def drop_create_result_once(ws, data, **kwargs):
-        if data.get("type") == "file_reply" and data.get("result", {}).get("status") == "created":
-            assert not dropped_reply.is_set(), "create must never be sent twice"
+        if (data.get("type") == "file_reply" and data.get("result", {}).get("status") == "created"
+                and attempts[-1]["path"] == "durable.txt"):
+            assert not dropped_reply.is_set(), "unknown creates must never be sent twice"
             dropped_receipt.update(data["result"])
             dropped_reply.set()
             await ws.close()
@@ -999,6 +1022,30 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
                 "type": P.AGENT, "text": "清单", "rid": "unscoped-old-client",
             })
             assert (await asyncio.wait_for(outcomes.get(), 3)).status == "blocked"
+
+            for should_create in (True, False):
+                filename = "capacity.txt" if should_create else "queued-revoked.txt"
+                operations["等待资源"] = ("connected_computer_create", {
+                    **args, "folder_id": restored["folder_id"], "path": filename, "text": "原批准的文本",
+                })
+                queued.clear()
+                memory[0] = 0
+                await send("等待资源")
+                await decide(await card_for("授权执行本回合"))
+                await decide(await card_for(filename))
+                await event_before(queued)
+                action = attempts[-1]
+                assert action["path"] == filename and home_intents.status(action["action_id"], account) == "waiting"
+                assert not (folder / filename).exists()
+                if not should_create:
+                    local.revoke(restored["folder_id"])
+                memory[0] = None
+                outcome = await asyncio.wait_for(outcomes.get(), 3)
+                repeated = [attempt for attempt in attempts if attempt["path"] == filename]
+                assert len(repeated) >= 2 and all(item == action for item in repeated)
+                assert outcome.status == ("succeeded" if should_create else "blocked")
+                assert home_intents.status(action["action_id"], account) == ("created" if should_create else "blocked")
+                assert (folder / filename).exists() == should_create
     finally:
         stop.set()
         if worker_task is not None:

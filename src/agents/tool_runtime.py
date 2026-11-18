@@ -37,6 +37,13 @@ def current_tool_call_id() -> str | None:
     return _CALL_ID.get()
 
 
+def check_tool_execution() -> None:
+    """Recheck the current invocation before resuming an awaiting side effect."""
+    context = _EXECUTION_CONTEXT.get()
+    if context is not None:
+        context.check_execution()
+
+
 def pending_tool_approval() -> dict | None:
     """Frozen call metadata for a trusted host's deferred human-confirmation transport."""
     from copy import deepcopy
