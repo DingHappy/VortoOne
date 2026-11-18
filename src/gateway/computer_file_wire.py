@@ -99,6 +99,15 @@ def result_value(value: dict, action: FileAction) -> dict:
     return value
 
 
+def action_value(value: dict) -> FileAction:
+    if not isinstance(value, dict):
+        raise ValueError("invalid file action")
+    action = FileAction(**value)
+    if set(value) != set(asdict(action)):
+        raise ValueError("missing file action field")
+    return action
+
+
 def native_file_request(frame: dict, generation: str, binding: dict) -> tuple[str, str, dict | FileAction]:
     object_fields(frame, ("type", "generation", "request_id", "binding", "method", "payload"))
     if frame["generation"] != generation or frame["binding"] != binding_fields(binding):
@@ -110,30 +119,27 @@ def native_file_request(frame: dict, generation: str, binding: dict) -> tuple[st
         object_fields(body, ())
     elif method == "preview":
         preview_value(body)
-    elif method == "perform" and isinstance(body, dict):
-        action = FileAction(**body)
-        if set(body) != set(asdict(action)):
-            raise ValueError("missing file action field")
-        body = action
+    elif method == "perform":
+        body = action_value(body)
     else:
         raise ValueError("unsupported file request")
     return request_id, method, body
 
 
-def native_file_reply(store: ComputerFiles, request, generation: str, *, active, busy=False) -> dict:
+def file_reply(request_id: str, generation: str, result: dict | None) -> dict:
+    return bounded_frame({"type": "file_reply", "generation": generation, "request_id": request_id,
+                          "ok": result is not None, "result": result if result is not None else {}})
+
+
+def native_file_preflight(store: ComputerFiles, request, generation: str) -> dict:
     request_id, method, body = request
-    reply = {"type": "file_reply", "generation": generation, "request_id": request_id}
-    failure = {**reply, "ok": False, "result": {}}
     try:
-        if isinstance(body, FileAction):
-            data = ({"action_id": body.action_id, "digest": body.digest, "status": "busy"}
-                    if busy else store.execute(body, active=active))
-        elif busy:
-            return failure
-        elif method == "policy":
+        if method == "policy":
             data = policy_value(store.policy())
-        else:
+        elif method == "preview":
             data = {"version": store.preview(**body)}
-        return bounded_frame({**reply, "ok": True, "result": data})
+        else:
+            raise ValueError("invalid file preflight")
     except (FileDenied, FileStateUnavailable, OSError):
-        return failure
+        data = None
+    return file_reply(request_id, generation, data)

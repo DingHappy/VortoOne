@@ -22,8 +22,9 @@ from src.gateway.computer_protocol import (
     ComputerProtocolError, binding_fields, control_frame, decode_frame, hello,
     identifier, origin_url, validate_welcome,
 )
-from src.gateway.computer_file_store import ComputerFiles, FileStateUnavailable
-from src.gateway.computer_file_wire import digest_value, native_file_reply, native_file_request, object_fields
+from src.gateway.computer_file_process import FileProcessUnavailable, run_file_action
+from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable
+from src.gateway.computer_file_wire import digest_value, file_reply, native_file_preflight, native_file_request, object_fields
 from src.utils.home_maintenance import HomeMaintenanceError
 
 _TOKEN = re.compile(r"vcc_[A-Za-z0-9_-]{43}\Z")
@@ -139,23 +140,38 @@ def _status(emit: Callable[[dict], None], config: dict, state: str) -> None:
 class _FileWork:
     """One worker slot follows the local process across its control reconnects."""
 
-    def __init__(self, stop: asyncio.Event):
+    def __init__(self, stop: asyncio.Event, binding: dict):
         self.stop = stop
-        self.revoked = False
+        self.binding = binding_fields(binding)
+        self.revoked = asyncio.Event()
         self.task: asyncio.Task | None = None
 
-    def active(self) -> bool:
-        return not self.revoked and not self.stop.is_set()
+    async def close(self):
+        self.revoked.set()
+        if self.task is not None:
+            await asyncio.gather(self.task, return_exceptions=True)
 
     async def dispatch(self, ws, store, request, generation):
         if self.task is not None and not self.task.done():
-            await ws.send_json(native_file_reply(store, request, generation, active=self.active, busy=True))
+            request_id, _, body = request
+            busy = ({"action_id": body.action_id, "digest": body.digest, "status": "busy"}
+                    if isinstance(body, FileAction) else None)
+            await ws.send_json(file_reply(request_id, generation, busy))
             return
         self.task = asyncio.create_task(self._run(ws, store, request, generation))
 
     async def _run(self, ws, store, request, generation):
         try:
-            reply = await asyncio.to_thread(native_file_reply, store, request, generation, active=self.active)
+            request_id, _, body = request
+            if isinstance(body, FileAction):
+                try:
+                    data = await run_file_action(store.directory.parent, self.binding, body,
+                                                 stop=self.stop, revoked=self.revoked)
+                except FileProcessUnavailable:
+                    data = None  # The durable local journal may still contain a terminal receipt.
+                reply = file_reply(request_id, generation, data)
+            else:
+                reply = await asyncio.to_thread(native_file_preflight, store, request, generation)
         except Exception:  # The dispatch outcome is unknown; let the next connection drain durable receipts.
             try:
                 if not ws.closed:
@@ -231,7 +247,7 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             if (reason, frame["credentialRevoked"]) not in {("authorization_revoked", True), ("connection_replaced", False)}:
                 raise ComputerProtocolError("invalid computer revocation")
             if frame["credentialRevoked"]:
-                file_work.revoked = True
+                file_work.revoked.set()
             _status(emit, config, "revoked" if frame["credentialRevoked"] else "replaced")
             if frame["credentialRevoked"]:
                 # ACK means the trusted parent has durably disabled this pairing.
@@ -264,31 +280,34 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                   retry_wait: Callable[[asyncio.Event, float], Awaitable[bool]] = _retry_wait,
                   jitter: Callable[[float, float], float] = random.uniform) -> None:
     delay = 1.0
-    file_work = _FileWork(stop)
-    while not stop.is_set():
-        _status(emit, config, "connecting")
-        try:
-            url = config["origin"].replace("https://", "wss://", 1).replace("http://", "ws://", 1) + "/api/computers/ws"
-            # aiohttp follows WS redirects internally. Trace veto below rejects them before sending a second request.
-            async with session.ws_connect(url, headers={"Authorization": "Bearer " + config["token"]},
-                                          max_msg_size=MAX_FRAME_BYTES, autoping=True) as ws:
-                if await _control(ws, config, emit, revocation_persisted, file_work):
+    file_work = _FileWork(stop, config)
+    try:
+        while not stop.is_set():
+            _status(emit, config, "connecting")
+            try:
+                url = config["origin"].replace("https://", "wss://", 1).replace("http://", "ws://", 1) + "/api/computers/ws"
+                # aiohttp follows WS redirects internally. Trace veto below rejects them before sending a second request.
+                async with session.ws_connect(url, headers={"Authorization": "Bearer " + config["token"]},
+                                              max_msg_size=MAX_FRAME_BYTES, autoping=True) as ws:
+                    if await _control(ws, config, emit, revocation_persisted, file_work):
+                        return
+                    delay = 1.0
+            except aiohttp.WSServerHandshakeError as error:
+                if error.status in {401, 403}:
+                    file_work.revoked.set()
+                    _status(emit, config, "revoked")
                     return
-                delay = 1.0
-        except aiohttp.WSServerHandshakeError as error:
-            if error.status in {401, 403}:
-                file_work.revoked = True
-                _status(emit, config, "revoked")
+            except (ValueError, TypeError, KeyError, ConnectorFailure):
+                _status(emit, config, "error")
                 return
-        except (ValueError, TypeError, KeyError, ConnectorFailure):
-            _status(emit, config, "error")
-            return
-        except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
-            pass
-        _status(emit, config, "disconnected")
-        if await retry_wait(stop, min(60.0, max(1.0, delay * jitter(0.8, 1.2)))):
-            return
-        delay = min(60.0, delay * 2)
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+                pass
+            _status(emit, config, "disconnected")
+            if await retry_wait(stop, min(60.0, max(1.0, delay * jitter(0.8, 1.2)))):
+                return
+            delay = min(60.0, delay * 2)
+    finally:
+        await file_work.close()
 
 
 async def run(config: dict, emit: Callable[[dict], None], stop: asyncio.Event | None = None,

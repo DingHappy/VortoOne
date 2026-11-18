@@ -32,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("computer-connector", help="native-managed outbound computer control worker")
     subcommands.add_parser("computer-folder-settings", help="manage local folder grants through the native settings pipe")
+    subcommands.add_parser("computer-file-action", help=argparse.SUPPRESS)
     desktop_restore = subcommands.add_parser("desktop-home-restore", help="restore native Desktop home data without reviving computer trust")
     desktop_restore.add_argument("--data-dir", required=True)
     desktop_restore.add_argument("--archive", required=True)
@@ -79,6 +80,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "computer-folder-settings":
         from src.gateway.computer_folder_settings import main as folder_settings
         return folder_settings()
+    if args.command == "computer-file-action":
+        from src.gateway.computer_file_process import main as file_action
+        return file_action()
     if args.command == "desktop-home-restore":
         from src.runtime_entry import run_desktop_restore
         return run_desktop_restore(args.data_dir, args.archive)
