@@ -225,6 +225,11 @@ class ComputerFiles:
         if not 0 < action.deadline - self.clock() <= ACTION_SECONDS:
             raise FileDenied("文件动作已过期或期限无效")
 
+    def _check_active(self, action: FileAction, active) -> None:
+        self._check_deadline(action)
+        if not active():
+            raise FileDenied("本机已停止连接或配对已撤销")
+
     def _action_row(self, db, action_id):
         return db.execute("SELECT digest, status, acknowledged FROM actions WHERE scope = ? AND action_id = ?",
                           (self.scope, action_id)).fetchone()
@@ -251,9 +256,7 @@ class ComputerFiles:
             elif db.execute("SELECT count(*) FROM actions").fetchone()[0] >= MAX_ACTIONS:
                 raise FileStateUnavailable("本机动作记录已达上限")
             try:
-                self._check_deadline(action)
-                if not active():
-                    raise FileDenied("本机已停止连接")
+                self._check_active(action, active)
                 self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
             except FileDenied:
                 status = "blocked"
@@ -269,9 +272,10 @@ class ComputerFiles:
 
         with self._db(write=True) as db:
             try:
-                self._check_deadline(action)
+                self._check_active(action, active)
                 target = self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
-                target.create(text_bytes(action.content), action.version, before_publish=lambda: self._check_deadline(action))
+                target.create(text_bytes(action.content), action.version,
+                              before_publish=lambda: self._check_active(action, active))
                 status = "created"
             except (FileDenied, FileExistsError):
                 status = "blocked"
@@ -290,9 +294,7 @@ class ComputerFiles:
             with FileLease(self.directory / "file-action.lock", private=True):
                 if action.operation == "create":
                     return {**base, "status": self._create(action, active)}
-                self._check_deadline(action)
-                if not active():
-                    raise FileDenied("本机已停止连接")
+                self._check_active(action, active)
                 with self._db(write=True) as db:
                     target = self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
                     if not has_file_capacity(action.operation):

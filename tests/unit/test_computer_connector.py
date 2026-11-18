@@ -1053,3 +1053,122 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
         server.should_exit = True
         await asyncio.wait_for(server_task, 3)
         listener.close()
+
+
+@pytest.mark.parametrize("disconnect", [True, False], ids=["reconnect", "revoke"])
+async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_path, monkeypatch, disconnect):
+    from dataclasses import asdict
+    import threading
+    import time
+    import uuid
+
+    from src.gateway.computer_connections import FileConnectionUnavailable
+    from src.gateway.computer_file_intents import HomeFileIntents
+    from src.gateway.computer_file_paths import PinnedFile
+    from src.gateway.computer_file_store import ComputerFiles, FileAction
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = str(tmp_path.resolve())
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("VORTOONE_API_TOKEN", "synthetic-owner")
+    monkeypatch.setattr(worker, "_HEARTBEAT_INTERVAL", 0.1)
+    store = ConnectedComputers(root)
+    pairing = store.create_pairing(legacy_confirmed=True)
+    grant = store.pair(pairing["code"], BINDING["connector_id"], "Test computer")
+    account = store.identity()
+    local = ComputerFiles(tmp_path / "file-access", grant)
+    folder = tmp_path / "selected"
+    folder.mkdir()
+    folder_id = local.grant(str(folder.resolve()), "Selected", read=True, write=True)["folder_id"]
+    revision = local.policy()["policy_revision"]
+    action = FileAction(uuid.uuid4().hex, folder_id, revision, "create", "staged.txt",
+                        local.preview("create", folder_id, "staged.txt", revision),
+                        int(time.time()) + 60, "session", "turn", "call", "approved text")
+    intents = HomeFileIntents(root)
+    intents.record(grant, action)
+    staged = asyncio.Event()
+    resume = threading.Event()
+    pongs = asyncio.Queue()
+    acknowledged = asyncio.Event()
+    persisted = asyncio.Event()
+    stop = asyncio.Event()
+    published = []
+    loop = asyncio.get_running_loop()
+    create = PinnedFile.create
+
+    def staging(target, *args, **kwargs):
+        loop.call_soon_threadsafe(staged.set)
+        if not resume.wait(10):
+            raise RuntimeError("test did not finish the control action")
+        create(target, *args, **kwargs)
+        published.append(True)
+
+    monkeypatch.setattr(PinnedFile, "create", staging)
+    send_json = aiohttp.ClientWebSocketResponse.send_json
+
+    async def observe_pong(ws, frame, **kwargs):
+        await send_json(ws, frame, **kwargs)
+        if frame.get("type") == "pong":
+            pongs.put_nowait(frame["generation"])
+
+    monkeypatch.setattr(aiohttp.ClientWebSocketResponse, "send_json", observe_pong)
+
+    async def handler(request):
+        binding = store.authenticate(request.headers["Authorization"].removeprefix("Bearer "))
+        socket = web.WebSocketResponse(max_msg_size=MAX_FRAME_BYTES)
+        await socket.prepare(request)
+        await serve(ServerSocket(socket, acknowledged), root, store, binding)
+        return socket
+
+    async def current(*, except_connection=None):
+        while True:
+            connection = connections.file_connection(root, grant["connector_id"], account)
+            if connection is not None and connection is not except_connection:
+                return connection
+            await asyncio.sleep(0.01)
+
+    async def terminal():
+        while True:
+            if disconnect:
+                if intents.status(action.action_id, account) == "created":
+                    return
+            else:
+                try:
+                    if local.pending() == [{"action_id": action.action_id, "digest": action.digest, "status": "blocked"}]:
+                        return
+                except HomeMaintenanceError:
+                    pass
+            await asyncio.sleep(0.02)
+
+    async with service([("GET", "/api/computers/ws", handler)]) as origin:
+        running = asyncio.create_task(worker.run(config(origin, **grant, file_access=True), lambda _: None,
+                                                 stop, persisted))
+        dispatch = None
+        try:
+            first = await asyncio.wait_for(current(), 2)
+            dispatch = asyncio.create_task(first.file_request("perform", asdict(action)))
+            await event_before(staged)
+            await first.send({"type": "ping", "generation": first.generation})
+            assert await asyncio.wait_for(pongs.get(), 2) == first.generation
+            assert not (folder / "staged.txt").exists()
+            if disconnect:
+                await asyncio.wait_for(first.socket.close(), 2)
+                second = await asyncio.wait_for(current(except_connection=first), 3)
+                assert second.generation != first.generation
+            else:
+                store.revoke(grant["connector_id"])
+                persisted.set()
+                connections.revoked(root, grant["connector_id"])
+                await event_before(acknowledged)
+            with pytest.raises(FileConnectionUnavailable):
+                await asyncio.wait_for(dispatch, 3)
+            resume.set()
+            await asyncio.wait_for(terminal(), 4)
+            if disconnect:
+                assert (folder / "staged.txt").read_text() == "approved text" and published == [True]
+            else:
+                assert not (folder / "staged.txt").exists() and not published
+        finally:
+            resume.set()
+            stop.set()
+            await asyncio.gather(running, *([dispatch] if dispatch is not None else []), return_exceptions=True)
