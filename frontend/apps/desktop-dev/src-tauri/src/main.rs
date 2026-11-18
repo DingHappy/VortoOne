@@ -284,7 +284,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             model_settings::model_settings_get, model_settings::model_settings_save,
             connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
-            connector::computer_remove, connector::computers_open,
+            connector::computer_remove, connector::computers_open, connector::computer_folder_settings,
             shell::servers_get, shell::server_choose, shell::server_remove, shell::server_sign_out, shell::workspaces_get,
             shell::welcome_mode_take, shell::welcome_add, shell::discover, shell::link_take, shell::open_external,
             shell::show_window, shell::hide_window, shell::app_info, shell::quit_app, shell::reveal_folder,
