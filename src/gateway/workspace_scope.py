@@ -125,8 +125,10 @@ def http_workspace_requirement(path: str, scope: str | None = None) -> str | Non
     normalized = "/" + str(path or "").lstrip("/")
     if normalized == "/api/trust" and os.getenv("VORTOONE_DESKTOP_SIDECAR") == "1":
         return None  # Desktop General can select read approval without gaining a project.
-    if normalized in ("/api/computers/identity", "/api/computers/pair", "/api/computers/native-pair", "/api/computers/ws"):
-        return None  # C1 control-only computer authentication; never file or command execution.
+    from src.gateway.computer_protocol import TRANSFER_PATH
+    if normalized in ("/api/computers/identity", "/api/computers/pair", "/api/computers/native-pair",
+                      "/api/computers/ws", TRANSFER_PATH):
+        return None  # These routes authenticate each computer directly.
     if normalized in ("/", "/mobile", "/mobile/", "/mobile/manage", "/ws", "/api/extensions/mcp", "/api/extensions/mcp/connect"):
         return None
     if any(normalized == prefix.rstrip("/") or normalized.startswith(prefix)

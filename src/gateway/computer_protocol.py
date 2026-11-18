@@ -7,6 +7,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 MAX_FRAME_BYTES = 256 * 1024
+TRANSFER_PATH = "/api/computers/transfer"
 PROTOCOL_MIN = 1
 PROTOCOL_MAX = 2
 FILES_PROTOCOL = 2

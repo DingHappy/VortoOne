@@ -295,7 +295,7 @@ def test_computer_http_exemptions_are_exact_and_general_scope_routes_exist(home)
     routes = {(method, path) for path, methods in _live_routes() for method in methods}
     assert COMPUTER_SELF_AUTHENTICATED <= routes
     assert COMPUTER_SELF_AUTHENTICATED == {('GET', '/api/computers/identity'), ('POST', '/api/computers/pair'),
-                                           ('POST', '/api/computers/native-pair')}
+                                           ('POST', '/api/computers/native-pair'), ('PUT', '/api/computers/transfer')}
     for _, path in COMPUTER_SELF_AUTHENTICATED:
         assert http_workspace_requirement(path, 'general') is None
     assert http_workspace_requirement('/api/computers/execute', 'general') == 'scratch'
@@ -580,3 +580,167 @@ def test_native_ticket_cannot_cross_owner_reclaim_between_primitive_and_store_ch
     assert raced[0]['trust_epoch'] != before['trust_epoch']
     assert native._pending is None and home['store'].list() == []
     assert native_request(native_client(home)).status_code == 403
+
+
+@pytest.fixture
+def transfer_home(home, monkeypatch):
+    from src.gateway.computer_transfers import ComputerTransfers
+    from src.web.routers import computers
+
+    registry = ComputerTransfers()
+    monkeypatch.setattr(computers, "computer_transfers", registry)
+    monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
+    return home, registry
+
+
+async def _read_staged(registry, connection, transfer_id, action_id):
+    async with registry.take_staged(connection, transfer_id, action_id) as (file, handle):
+        return file, handle.read()
+
+
+def test_transfer_http_accepts_only_its_computer_and_consumes_ticket_once(transfer_home):
+    import hashlib
+    import time
+    from functools import partial
+
+    from src.gateway.computer_connections import connections
+    from src.gateway.computer_protocol import TRANSFER_PATH
+    from src.gateway.computer_transfers import TransferDenied, TransferFile, TransferUnavailable
+
+    home, registry = transfer_home
+    grant = paired(home)
+    other = paired(home, connector="b" * 32)
+    body = b"binary\x00file" * 8192
+    file = TransferFile("1" * 32, "2" * 32, "3" * 32, "4" * 64, len(body), hashlib.sha256(body).hexdigest())
+    client = socket_client(home)
+    with connect(client, grant) as ws:
+        ws.send_json(hello(grant, files=True))
+        ready = ws.receive_json()
+        connection = connections.file_connection(home["root"], grant["connector_id"], home["store"].identity())
+        assert connection.generation == ready["generation"]
+        issue = partial(registry.issue, connection, file, action_deadline=time.time() + 30)
+        ticket = ws.portal.call(issue)
+        with pytest.raises(TransferUnavailable):
+            ws.portal.call(issue)
+        headers = {"Authorization": "Bearer " + grant["token"],
+                   "X-VortoOne-Transfer-Ticket": ticket["ticket"],
+                   "Content-Type": "application/octet-stream"}
+        for mutated in ({"Authorization": "Bearer " + other["token"]},
+                        {"Authorization": "Bearer " + OWNER},
+                        {"Origin": ORIGIN}, {"Cookie": "test=cookie"},
+                        {"X-VortoOne-Transfer-Ticket": "vct_" + "a" * 43}):
+            denied = client.put(TRANSFER_PATH, headers={**headers, **mutated}, content=body)
+            assert denied.status_code == 403 and denied.headers["cache-control"] == "no-store"
+        assert client.put(TRANSFER_PATH + "?ticket=test", headers=headers, content=body).status_code == 403
+        assert client.post(TRANSFER_PATH, headers=headers, content=body).status_code == 401
+        assert client.put(TRANSFER_PATH + "/extra", headers=headers, content=body).status_code == 409
+        assert client.put(TRANSFER_PATH, headers={**headers, "Content-Encoding": "gzip"}, content=body).status_code == 400
+        assert client.put(TRANSFER_PATH, headers=headers, content=body[:-1]).status_code == 403
+
+        staged = client.put(TRANSFER_PATH, headers=headers, content=body)
+        assert staged.status_code == 201
+        assert staged.json() == {"transfer_id": ticket["transfer_id"], "size": len(body),
+                                 "sha256": file.sha256, "status": "staged"}
+        assert client.put(TRANSFER_PATH, headers=headers, content=body).status_code == 403
+        with pytest.raises(TransferDenied):
+            ws.portal.call(_read_staged, registry, connection, ticket["transfer_id"], "5" * 32)
+        bound, received = ws.portal.call(_read_staged, registry, connection, ticket["transfer_id"], file.action_id)
+        assert bound == file and received == body
+        with pytest.raises(TransferDenied):
+            ws.portal.call(_read_staged, registry, connection, ticket["transfer_id"], file.action_id)
+
+
+@pytest.mark.parametrize("failure", ["truncated", "oversized", "wrong-digest", "revoked", "expired", "disk"])
+def test_failed_transfer_discards_stage_and_burns_claimed_ticket(transfer_home, monkeypatch, failure):
+    import asyncio
+    import hashlib
+    import time
+    from functools import partial
+
+    from src.gateway.computer_connections import connections
+    from src.gateway import computer_transfers as transfer_module
+    from src.gateway.computer_transfers import TransferDenied, TransferFile, TransferUnavailable
+
+    home, registry = transfer_home
+    grant = paired(home)
+    body = b"file bytes"
+    file = TransferFile("1" * 32, "2" * 32, "3" * 32, "4" * 64, len(body), hashlib.sha256(body).hexdigest())
+    client = socket_client(home)
+    with connect(client, grant) as ws:
+        ws.send_json(hello(grant, files=True))
+        ws.receive_json()
+        connection = connections.file_connection(home["root"], grant["connector_id"], home["store"].identity())
+        deadline = time.time() + (0.25 if failure == "expired" else 20)
+        ticket = ws.portal.call(partial(registry.issue, connection, file, action_deadline=deadline))
+        if failure == "disk":
+            from types import SimpleNamespace
+            monkeypatch.setattr(transfer_module.shutil, "disk_usage", lambda _: SimpleNamespace(free=0))
+
+        async def chunks():
+            if failure == "revoked":
+                yield body
+                await asyncio.to_thread(home["store"].revoke, grant["connector_id"])
+            elif failure == "expired":
+                await asyncio.sleep(0.4)
+                yield body
+            elif failure == "truncated":
+                yield body[:-1]
+            elif failure == "oversized":
+                yield body + b"x"
+            else:
+                yield b"x" * len(body)
+
+        with pytest.raises(TransferUnavailable if failure == "disk" else TransferDenied):
+            ws.portal.call(registry.receive, home["root"], grant, ticket["ticket"], len(body), chunks())
+        with pytest.raises(TransferDenied):
+            ws.portal.call(_read_staged, registry, connection, ticket["transfer_id"], file.action_id)
+        with pytest.raises(TransferDenied):
+            ws.portal.call(registry.receive, home["root"], grant, ticket["ticket"], len(body), chunks())
+        spool = Path(home["root"]) / ".vortoone" / "computer-file-intents"
+        assert not spool.exists() or not list(spool.iterdir())
+
+
+def test_transfer_stream_has_one_receiver_and_rejects_stale_generation(transfer_home):
+    import hashlib
+    import time
+    from functools import partial
+
+    from src.gateway.computer_connections import connections
+    from src.gateway.computer_transfers import TransferDenied, TransferFile
+
+    home, registry = transfer_home
+    grant = paired(home)
+    body = b"chunks across one request"
+    file = TransferFile("1" * 32, "2" * 32, "3" * 32, "4" * 64, len(body), hashlib.sha256(body).hexdigest())
+    client = socket_client(home)
+
+    def open_generation(ws):
+        ws.send_json(hello(grant, files=True))
+        ws.receive_json()
+        return connections.file_connection(home["root"], grant["connector_id"], home["store"].identity())
+
+    with connect(client, grant) as first:
+        initial = open_generation(first)
+        stale = first.portal.call(partial(registry.issue, initial, file, action_deadline=time.time() + 30))
+        with connect(client, grant) as second:
+            current = open_generation(second)
+            assert current.generation != initial.generation
+
+            async def unneeded_data():
+                pytest.fail("the receiver must reject a stale or already-claimed ticket before reading")
+                yield body
+
+            with pytest.raises(TransferDenied):
+                second.portal.call(registry.receive, home["root"], grant, stale["ticket"], len(body), unneeded_data())
+            ticket = second.portal.call(partial(registry.issue, current, file, action_deadline=time.time() + 30))
+
+            async def chunks():
+                yield body[:4]
+                with pytest.raises(TransferDenied):
+                    await registry.receive(home["root"], grant, ticket["ticket"], len(body), unneeded_data())
+                yield body[4:]
+
+            receipt = second.portal.call(registry.receive, home["root"], grant, ticket["ticket"], len(body), chunks())
+            assert receipt["transfer_id"] == ticket["transfer_id"]
+            bound, received = second.portal.call(_read_staged, registry, current, ticket["transfer_id"], file.action_id)
+            assert bound == file and received == body

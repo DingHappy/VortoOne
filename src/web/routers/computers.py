@@ -1,4 +1,4 @@
-"""C1 computer identity, owner-managed pairing and a separate control-only WSS channel."""
+"""Owner-managed pairing and authenticated computer control and transfer routes."""
 from __future__ import annotations
 
 import asyncio
@@ -14,12 +14,14 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from starlette.requests import ClientDisconnect
 
 from src.gateway.computer_connections import connections, serve
 from src.gateway.computer_native import (
     ComputerNativeDenied, ComputerNativeUnclaimed, ComputerNativeUnavailable, redeem,
 )
-from src.gateway.computer_protocol import FEATURES, PROTOCOL_MIN, decode_frame
+from src.gateway.computer_protocol import FEATURES, PROTOCOL_MIN, TRANSFER_PATH, decode_frame
+from src.gateway.computer_transfers import MAX_TRANSFER_BYTES, TransferDenied, TransferUnavailable, computer_transfers
 from src.gateway.connected_computers import ConnectedComputers, ComputerDenied, ComputerUnavailable
 from src.web import app_views as views
 from src.web.auth import SESSION_COOKIE, ct_eq, get_api_token
@@ -326,3 +328,33 @@ async def computer_socket(socket: WebSocket):
         return
     await socket.accept()
     await serve(socket, root, store, binding)
+
+
+@router.put(TRANSFER_PATH, status_code=201)
+async def receive_transfer(request: Request, response: Response):
+    response.headers.update(_PRIVATE)
+    credentials = request.headers.getlist("authorization")
+    tickets = request.headers.getlist("x-vortoone-transfer-ticket")
+    if (not get_api_token() or not _secure(request) or request.scope.get("query_string")
+            or any(name in request.headers for name in ("origin", "cookie", "x-api-token"))
+            or len(credentials) != 1 or not re.fullmatch(r"Bearer vcc_[A-Za-z0-9_-]{43}", credentials[0])
+            or len(tickets) != 1 or not re.fullmatch(r"vct_[A-Za-z0-9_-]{43}", tickets[0])):
+        raise _error(403, "computer_transfer_denied")
+    lengths = request.headers.getlist("content-length")
+    encodings = request.headers.getlist("content-encoding")
+    if (len(lengths) != 1 or not re.fullmatch(r"0|[1-9][0-9]{0,9}", lengths[0])
+            or int(lengths[0]) > MAX_TRANSFER_BYTES or encodings not in ([], ["identity"])
+            or "transfer-encoding" in request.headers
+            or request.headers.getlist("content-type") != ["application/octet-stream"]):
+        raise _error(400, "invalid_transfer_body")
+    root = str(Path(os.getcwd()).resolve())
+    store = ConnectedComputers(root)
+    try:
+        binding = await asyncio.to_thread(store.authenticate, credentials[0][len("Bearer "):])
+        return await computer_transfers.receive(root, binding, tickets[0], int(lengths[0]), request.stream())
+    except (ComputerDenied, TransferDenied, ValueError):
+        raise _error(403, "computer_transfer_denied") from None
+    except (ComputerUnavailable, TransferUnavailable, OSError):
+        raise _error(503, "computer_transfer_unavailable") from None
+    except ClientDisconnect:
+        raise _error(400, "transfer_disconnected") from None

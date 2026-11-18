@@ -2714,6 +2714,12 @@
     ]
   },
   {
+    "path": "/api/computers/transfer",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/computers/ws",
     "methods": []
   }
