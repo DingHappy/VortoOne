@@ -17,12 +17,14 @@ from typing import BinaryIO
 
 from src.gateway.computer_connections import Connection, connections
 from src.gateway.computer_file_wire import digest_value
-from src.gateway.computer_protocol import FILES_PROTOCOL, binding_fields, identifier
+from src.gateway.computer_protocol import (
+    FILES_PROTOCOL, MAX_TRANSFER_BYTES, TRANSFER_SECONDS, binding_fields, identifier,
+)
 from src.utils.state_dir import state_dir
 
-MAX_TRANSFER_BYTES = 1024 ** 3
 MIN_DISK_FREE = 128 * 1024 ** 2
 TICKET_SECONDS = 300
+DOWNLOAD_SECONDS = 600
 READ_TIMEOUT = 10
 MAX_HOMES = 16
 
@@ -64,6 +66,9 @@ class _Transfer:
     ticket_expiry: float
     claimed: bool = False
     staged: BinaryIO | None = None
+    filename: str | None = None
+    downloading: bool = False
+    aborted: bool = False
     expiry_handle: asyncio.TimerHandle | None = None
 
 
@@ -103,10 +108,10 @@ class ComputerTransfers:
 
     async def issue(self, connection: Connection, file: TransferFile, *, action_deadline: float) -> dict:
         """Called by the trusted adapter after the owner approves a specific file."""
-        if connection.protocol != FILES_PROTOCOL or not await connection.valid():
+        if connection.protocol < FILES_PROTOCOL or not await connection.valid():
             raise TransferDenied("transfer is outside the current action")
         remaining = action_deadline - time.time()
-        if not 0 < remaining <= 1800:
+        if not 0 < remaining <= TRANSFER_SECONDS:
             raise TransferDenied("transfer is outside the current action")
         ticket = "vct_" + secrets.token_urlsafe(32)
         loop = asyncio.get_running_loop()
@@ -131,17 +136,18 @@ class ComputerTransfers:
                 transfer.expiry_handle = asyncio.get_running_loop().call_later(expiry - now, self._expire, transfer)
                 return
             # An active reader or handoff still owns the descriptor and releases it itself.
-            if not transfer.claimed or transfer.staged is not None:
+            if not transfer.downloading and (not transfer.claimed or transfer.staged is not None):
                 self._drop(transfer)
 
     def _prune(self) -> None:
         now = time.monotonic()
         for transfer in list(self._by_home.values()):
-            if transfer.claimed and transfer.staged is None:
+            if transfer.downloading or (transfer.claimed and transfer.staged is None):
                 continue
             connection = transfer.connection
+            stale = (connection.revoking or connection.finished or not connections.current(connection))
             if (now >= (transfer.deadline if transfer.claimed else transfer.ticket_expiry)
-                    or connection.revoking or connection.finished or not connections.current(connection)):
+                    or (transfer.filename is None and stale)):
                 self._drop(transfer)
 
     def _drop(self, transfer: _Transfer) -> None:
@@ -158,7 +164,7 @@ class ComputerTransfers:
         with self._lock:
             self._prune()
             transfer = self._by_home.get(root)
-            if (transfer is None or transfer.claimed or transfer.binding != binding_fields(binding)
+            if (transfer is None or transfer.claimed or transfer.aborted or transfer.binding != binding_fields(binding)
                     or not hmac.compare_digest(provided, transfer.ticket_digest) or transfer.file.size != size):
                 raise TransferDenied("transfer ticket invalid")
             transfer.claimed = True
@@ -170,7 +176,7 @@ class ComputerTransfers:
         retained = False
 
         async def check():
-            if time.monotonic() >= transfer.deadline or not await transfer.connection.valid():
+            if transfer.aborted or time.monotonic() >= transfer.deadline or not await transfer.connection.valid():
                 raise TransferDenied("transfer authorization changed")
 
         try:
@@ -206,7 +212,7 @@ class ComputerTransfers:
             await check()
             handle.seek(0)
             with self._lock:
-                if self._by_home.get(root) is not transfer or time.monotonic() >= transfer.deadline:
+                if transfer.aborted or self._by_home.get(root) is not transfer or time.monotonic() >= transfer.deadline:
                     raise TransferDenied("transfer expired")
                 transfer.staged = handle
                 retained = True
@@ -222,16 +228,32 @@ class ComputerTransfers:
                     with self._lock:
                         self._drop(transfer)
 
-    @asynccontextmanager
-    async def take_staged(self, connection: Connection, transfer_id: str, action_id: str):
-        """Hand the private bytes back to the approving adapter once, after its final checks."""
+    def abort(self, connection: Connection, transfer_id: str) -> None:
+        with self._lock:
+            transfer = self._by_home.get(connection.root)
+            if (transfer is not None and transfer.connection is connection
+                    and transfer.transfer_id == transfer_id and transfer.filename is None):
+                transfer.aborted = True
+                if not transfer.claimed or transfer.staged is not None:
+                    self._drop(transfer)
+
+    async def _verified_stage(self, connection: Connection, transfer_id: str, action_id: str) -> _Transfer:
         if not await connection.valid():
             raise TransferDenied("transfer authorization changed")
         with self._lock:
             self._prune()
             transfer = self._by_home.get(connection.root)
             if (transfer is None or transfer.connection is not connection or transfer.staged is None
-                    or transfer.transfer_id != transfer_id or transfer.file.action_id != action_id):
+                    or transfer.aborted or transfer.filename is not None or transfer.transfer_id != transfer_id
+                    or transfer.file.action_id != action_id):
+                raise TransferDenied("staged transfer unavailable")
+            return transfer
+
+    @asynccontextmanager
+    async def take_staged(self, connection: Connection, transfer_id: str, action_id: str):
+        transfer = await self._verified_stage(connection, transfer_id, action_id)
+        with self._lock:
+            if transfer.staged is None:
                 raise TransferDenied("staged transfer unavailable")
             handle = transfer.staged
             transfer.staged = None
@@ -243,6 +265,41 @@ class ComputerTransfers:
             finally:
                 with self._lock:
                     self._drop(transfer)
+
+    async def publish(self, connection: Connection, transfer_id: str, action_id: str, filename: str) -> None:
+        transfer = await self._verified_stage(connection, transfer_id, action_id)
+        with self._lock:
+            if transfer.staged is None or transfer.filename is not None:
+                raise TransferDenied("staged transfer unavailable")
+            transfer.filename = filename
+            transfer.deadline = time.monotonic() + DOWNLOAD_SECONDS
+            if transfer.expiry_handle is not None:
+                transfer.expiry_handle.cancel()
+            transfer.expiry_handle = asyncio.get_running_loop().call_later(DOWNLOAD_SECONDS, self._expire, transfer)
+
+    @staticmethod
+    def owned_download(transfer: _Transfer, identity: dict) -> bool:
+        return (identity.get("ownership_state") == "claimed"
+                and identity["home_instance_id"] == transfer.binding["home_instance_id"]
+                and identity["owner_subject"] == transfer.binding["paired_principal_id"]
+                and identity["trust_epoch"] == transfer.binding["trust_epoch"]
+                and time.monotonic() < transfer.deadline)
+
+    def begin_download(self, root: str, identity: dict, transfer_id: str) -> _Transfer:
+        with self._lock:
+            self._prune()
+            transfer = self._by_home.get(root)
+            if (transfer is None or transfer.transfer_id != transfer_id or transfer.filename is None
+                    or transfer.staged is None or transfer.downloading or not self.owned_download(transfer, identity)):
+                raise TransferDenied("download unavailable")
+            transfer.downloading = True
+            return transfer
+
+    def end_download(self, transfer: _Transfer, *, completed: bool) -> None:
+        with self._lock:
+            transfer.downloading = False
+            if completed or time.monotonic() >= transfer.deadline:
+                self._drop(transfer)
 
 
 computer_transfers = ComputerTransfers()

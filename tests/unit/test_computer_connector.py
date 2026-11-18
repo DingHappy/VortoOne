@@ -761,7 +761,7 @@ async def test_actual_worker_persists_revocation_before_ack_and_exits_with_stdin
     assert not list(user_home.iterdir())
 
 
-@pytest.mark.parametrize("file_access", [False, True], ids=["control-v1", "file-process-v2"])
+@pytest.mark.parametrize("file_access", [False, True], ids=["control-v1", "file-process-v3"])
 async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tmp_path, monkeypatch, file_access):
     """Cover the real mounted auth/routes, not just the transport test adapter."""
     import uvicorn
@@ -912,16 +912,20 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
         "断线后补报": ("connected_computer_create", {**args, "path": "durable.txt", "text": "只写一次\n"}),
         "清单": ("connected_computer_folders", {"computer_id": grant["connector_id"]}),
     }
+    binary = folder / "manual.bin"
+    binary_bytes = bytes(range(256)) * 4096
+    binary.write_bytes(binary_bytes)
+    operations["发送文件"] = ("connected_computer_transfer", {**args, "path": binary.name})
     memory = [None]
     monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: memory[0])
     monkeypatch.setattr(computer_file_tools, "FILE_QUEUE_POLL_SECONDS", 0.08)
     attempts = []
     request = Connection.file_request
 
-    async def observe_request(self, method, payload):
+    async def observe_request(self, method, payload, **kwargs):
         if method == "perform":
             attempts.append(payload.copy())
-        return await request(self, method, payload)
+        return await request(self, method, payload, **kwargs)
 
     monkeypatch.setattr(Connection, "file_request", observe_request)
     queued = asyncio.Event()
@@ -1026,6 +1030,37 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
             patch = await asyncio.wait_for(outcomes.get(), 3)
             assert "-本地原文" in patch.text and "+提议内容" in patch.text
             assert target.read_text(encoding="utf-8") == "本地原文\n"
+
+            await send("发送文件")
+            card = await card_for("发送文件到家")
+            assert "manual.bin" in card["text"] and str(len(binary_bytes)) in card["text"]
+            await decide(card)
+            transfer = await asyncio.wait_for(outcomes.get(), 6)
+            assert transfer.status == "succeeded"
+            download_path = re.search(r"/api/computers/downloads/[a-f0-9]{32}", transfer.text).group()
+            assert "vct_" not in transfer.text
+            async with aiohttp.ClientSession() as other:
+                async with other.get(origin + download_path,
+                                     headers={"Authorization": "Bearer " + grant["token"]}) as response:
+                    assert response.status == 401
+            async with aiohttp.ClientSession(headers={"Cookie": f"{SESSION_COOKIE}=synthetic-file-owner"}) as browser:
+                async with browser.get(origin + download_path, headers={"Sec-Fetch-Site": "cross-site"}) as response:
+                    assert response.status == 403
+                async with browser.get(origin + download_path, headers={"Sec-Fetch-Site": "same-origin"}) as response:
+                    assert response.status == 200
+                    assert response.headers["Content-Disposition"].endswith("manual.bin")
+                    assert response.headers["Cache-Control"] == "no-store"
+                    assert response.headers["X-Content-Type-Options"] == "nosniff"
+                    assert await response.read() == binary_bytes
+            async with owner.get(origin + download_path) as response:
+                assert response.status == 404
+
+            await send("发送文件")
+            card = await card_for("发送文件到家")
+            binary.write_bytes(binary_bytes[::-1])
+            await decide(card)
+            altered = await asyncio.wait_for(outcomes.get(), 3)
+            assert altered.status == "blocked" and "downloads/" not in altered.text
 
             await send("撤权后写入")
             await decide(await card_for("授权执行本回合"))

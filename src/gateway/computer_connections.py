@@ -63,8 +63,8 @@ class Connection:
                 and await asyncio.to_thread(self.store.check, self.binding)
                 and not self.finished and not self.revoking and connections.current(self))
 
-    async def file_request(self, method: str, payload: dict) -> dict:
-        if self.protocol != FILES_PROTOCOL or self.loop is not asyncio.get_running_loop() or self.pending_file is not None:
+    async def file_request(self, method: str, payload: dict, *, timeout: float = FILE_REQUEST_SECONDS) -> dict:
+        if self.protocol < FILES_PROTOCOL or self.loop is not asyncio.get_running_loop() or self.pending_file is not None:
             raise FileConnectionUnavailable("电脑暂不可用或正在处理文件")
         request_id = uuid.uuid4().hex
         reply = self.loop.create_future()
@@ -78,7 +78,7 @@ class Connection:
                              "request_id": request_id, "method": method, "payload": payload}
                     await self.socket.send_json(bounded_frame(frame))
                 return await reply
-            result = await asyncio.wait_for(dispatch(), FILE_REQUEST_SECONDS)
+            result = await asyncio.wait_for(dispatch(), timeout)
             if result is None or not await self.valid():
                 raise FileConnectionUnavailable("文件应答无法核对")
             return result
@@ -184,7 +184,7 @@ class Connections:
     def file_connection(self, root: str, connector_id: str, identity: dict) -> Connection | None:
         with self._lock:
             found = self._current.get((root, connector_id))
-            if (found is not None and found.protocol == FILES_PROTOCOL
+            if (found is not None and found.protocol >= FILES_PROTOCOL
                     and not found.revoking and not found.finished
                     and found.binding["paired_principal_id"] == identity["owner_subject"]
                     and found.binding["home_instance_id"] == identity["home_instance_id"]
@@ -235,7 +235,7 @@ async def serve(socket, root: str, store, binding: dict) -> None:
                 connections._schedule(connection)
                 continue
             last_received = time.monotonic()
-            if selected == FILES_PROTOCOL and frame.get("type") == "file_reply":
+            if selected >= FILES_PROTOCOL and frame.get("type") == "file_reply":
                 object_fields(frame, ("type", "generation", "request_id", "ok", "result"))
                 request_id = identifier(frame["request_id"])
                 if (type(frame["ok"]) is not bool or not isinstance(frame["result"], dict)
@@ -245,7 +245,7 @@ async def serve(socket, root: str, store, binding: dict) -> None:
                 if pending and pending[0] == request_id and not pending[1].done():
                     pending[1].set_result(frame["result"] if frame["ok"] else None)
                 continue
-            if selected == FILES_PROTOCOL and frame.get("type") == "file_receipt":
+            if selected >= FILES_PROTOCOL and frame.get("type") == "file_receipt":
                 object_fields(frame, ("type", "generation", "receipt"))
                 try:
                     await connection.receipt(receipt_value(frame["receipt"]))

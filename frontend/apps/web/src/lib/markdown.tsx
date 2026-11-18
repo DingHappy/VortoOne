@@ -4,6 +4,7 @@ import { linkPill } from "@agenteschat/client/lib/link-pills";
 import {
   codeAndBoldParts,
   headingId,
+  COMPUTER_DOWNLOAD,
   INLINE,
   MENTION,
   parseMarkdown,
@@ -176,7 +177,11 @@ export function renderInline(
       const href = parts?.[2] ?? "";
       const label = parts?.[1] ?? "";
       const own = renderInline(label, k, mention, wiki, undefined, undefined, false);
-      out.push(SAFE_URL.test(href) ? link(href, k, own, pills && label === href) : tok);
+      if (COMPUTER_DOWNLOAD.test(href)) {
+        out.push(<a key={k} href={href} download className="ac-link">{own}</a>);
+      } else {
+        out.push(SAFE_URL.test(href) ? link(href, k, own, pills && label === href) : tok);
+      }
     } else if (m[6]) {
       const { title, label } = parseWikiToken(tok);
       out.push(

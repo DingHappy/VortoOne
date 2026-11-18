@@ -234,6 +234,7 @@ export function parseMarkdown(source: string, options: ParseOptions & { ranges?:
 export const INLINE =
   /(`[^`]+`)|(\*\*[^*]+?\*\*|__[^_]+?__)|((?<![\w*])\*[^*\s][^*]*?\*(?![\w*])|(?<![\w_])_[^_\s][^_]*?_(?![\w_]))|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])|(\[\[[^[\]\n]+\]\])|(~~[^~\s](?:[^~]*?[^~\s])?~~)/;
 export const SAFE_URL = /^(https?:|mailto:)/i;
+export const COMPUTER_DOWNLOAD = /^\/api\/computers\/downloads\/[0-9a-f]{32}$/;
 
 /**
  * A short line's `code` and **bold** spans in order, the rest as typed (a task's title, an option's label): only the

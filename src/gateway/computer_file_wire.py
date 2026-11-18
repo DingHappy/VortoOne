@@ -7,7 +7,7 @@ import re
 
 from src.gateway.computer_file_paths import FileDenied, relative_parts, text_bytes
 from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable, MAX_GRANTS
-from src.gateway.computer_protocol import MAX_FRAME_BYTES, binding_fields, identifier
+from src.gateway.computer_protocol import MAX_FRAME_BYTES, MAX_TRANSFER_BYTES, binding_fields, identifier
 
 _DIGEST = re.compile(r"[a-f0-9]{64}\Z")
 _VERSION = re.compile(r"(?:absent:)?[a-f0-9]{64}\Z")
@@ -108,7 +108,51 @@ def action_value(value: dict) -> FileAction:
     return action
 
 
-def native_file_request(frame: dict, generation: str, binding: dict) -> tuple[str, str, dict | FileAction]:
+def transfer_manifest(value: dict, *, hashed: bool = False) -> dict:
+    keys = {"version", "size"}
+    if hashed:
+        keys.add("sha256")
+    object_fields(value, keys)
+    digest_value(value["version"])
+    if type(value["size"]) is not int or not 0 <= value["size"] <= MAX_TRANSFER_BYTES:
+        raise ValueError("invalid transfer size")
+    if hashed:
+        digest_value(value["sha256"])
+    return value
+
+
+def transfer_payload(body: dict, method: str) -> dict:
+    keys = {"folder_id", "policy_revision", "path"}
+    if method != "transfer_preview":
+        keys.update(("version", "size", "deadline"))
+    if method == "transfer_upload":
+        keys.update(("sha256", "transfer_id", "ticket"))
+    object_fields(body, keys)
+    identifier(body["folder_id"])
+    identifier(body["policy_revision"])
+    relative_parts(body["path"])
+    if method != "transfer_preview":
+        transfer_manifest({"version": body["version"], "size": body["size"]})
+        if type(body["deadline"]) is not int or not 0 < body["deadline"] < 2 ** 53:
+            raise ValueError("invalid transfer deadline")
+    if method == "transfer_upload":
+        digest_value(body["sha256"])
+        identifier(body["transfer_id"])
+        if not isinstance(body["ticket"], str) or not re.fullmatch(r"vct_[A-Za-z0-9_-]{43}", body["ticket"]):
+            raise ValueError("invalid transfer ticket")
+    return body
+
+
+def staged_transfer(value: dict, *, transfer_id: str, size: int, sha256: str) -> dict:
+    object_fields(value, ("transfer_id", "size", "sha256", "status"))
+    if (type(value["size"]) is not int or
+            value != {"transfer_id": transfer_id, "size": size, "sha256": sha256, "status": "staged"}):
+        raise ValueError("transfer receipt mismatch")
+    return value
+
+
+def native_file_request(frame: dict, generation: str, binding: dict, *,
+                        transfers: bool = False) -> tuple[str, str, dict | FileAction]:
     object_fields(frame, ("type", "generation", "request_id", "binding", "method", "payload"))
     if frame["generation"] != generation or frame["binding"] != binding_fields(binding):
         raise ValueError("stale file request")
@@ -121,6 +165,8 @@ def native_file_request(frame: dict, generation: str, binding: dict) -> tuple[st
         preview_value(body)
     elif method == "perform":
         body = action_value(body)
+    elif transfers and method in ("transfer_preview", "transfer_hash", "transfer_upload"):
+        transfer_payload(body, method)
     else:
         raise ValueError("unsupported file request")
     return request_id, method, body

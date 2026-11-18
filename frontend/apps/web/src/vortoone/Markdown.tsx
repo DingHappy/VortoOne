@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { INLINE, parseMarkdown, SAFE_URL } from "@agenteschat/ui/markdown";
+import { COMPUTER_DOWNLOAD, INLINE, parseMarkdown, SAFE_URL } from "@agenteschat/ui/markdown";
 import { CodeBlock } from "../components/CodeBlock";
 
 // Reuse the upstream Markdown parser and code viewer, without its organization-specific link resolvers.
@@ -19,9 +19,12 @@ function inline(text: string): ReactNode {
       parts.push(<s key={index}>{value.slice(2, -2)}</s>);
     else if (value.startsWith("[")) {
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(value);
+      const href = link?.[2] ?? "";
       parts.push(
-        link && SAFE_URL.test(link[2] ?? "") ? (
-          <a key={index} href={link[2]} target="_blank" rel="noreferrer">
+        link && COMPUTER_DOWNLOAD.test(href) ? (
+          <a key={index} href={href} download>{link[1]}</a>
+        ) : link && SAFE_URL.test(href) ? (
+          <a key={index} href={href} target="_blank" rel="noreferrer">
             {link[1]}
           </a>
         ) : (

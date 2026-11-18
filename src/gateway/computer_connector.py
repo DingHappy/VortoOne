@@ -18,13 +18,15 @@ from typing import Awaitable, Callable
 import aiohttp
 
 from src.gateway.computer_protocol import (
-    BINDING_FIELDS, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN,
+    BINDING_FIELDS, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PROTOCOL,
     ComputerProtocolError, binding_fields, control_frame, decode_frame, hello,
     identifier, origin_url, validate_welcome,
 )
 from src.gateway.computer_file_process import FileProcessUnavailable, run_file_action
+from src.gateway.computer_file_paths import FileDenied
 from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable
 from src.gateway.computer_file_wire import digest_value, file_reply, native_file_preflight, native_file_request, object_fields
+from src.gateway.computer_transfer_sender import native_transfer
 from src.utils.home_maintenance import HomeMaintenanceError
 
 _TOKEN = re.compile(r"vcc_[A-Za-z0-9_-]{43}\Z")
@@ -140,9 +142,11 @@ def _status(emit: Callable[[dict], None], config: dict, state: str) -> None:
 class _FileWork:
     """One worker slot follows the local process across its control reconnects."""
 
-    def __init__(self, stop: asyncio.Event, binding: dict):
+    def __init__(self, stop: asyncio.Event, config: dict, session):
         self.stop = stop
-        self.binding = binding_fields(binding)
+        self.config = config
+        self.session = session
+        self.binding = binding_fields(config)
         self.revoked = asyncio.Event()
         self.task: asyncio.Task | None = None
 
@@ -162,13 +166,22 @@ class _FileWork:
 
     async def _run(self, ws, store, request, generation):
         try:
-            request_id, _, body = request
+            request_id, method, body = request
             if isinstance(body, FileAction):
                 try:
                     data = await run_file_action(store.directory.parent, self.binding, body,
                                                  stop=self.stop, revoked=self.revoked)
                 except FileProcessUnavailable:
                     data = None  # The durable local journal may still contain a terminal receipt.
+                reply = file_reply(request_id, generation, data)
+            elif method in ("transfer_preview", "transfer_hash", "transfer_upload"):
+                def active():
+                    return not (ws.closed or self.stop.is_set() or self.revoked.is_set())
+                try:
+                    data = await native_transfer(self.session, self.config, store, method, body, active)
+                except (FileDenied, ValueError, FileStateUnavailable, HomeMaintenanceError,
+                        OSError, aiohttp.ClientError, asyncio.TimeoutError):
+                    data = None
                 reply = file_reply(request_id, generation, data)
             else:
                 reply = await asyncio.to_thread(native_file_preflight, store, request, generation)
@@ -189,13 +202,14 @@ class _FileWork:
 async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_persisted: asyncio.Event,
                    file_work: _FileWork) -> bool:
     files = config.get("file_access", False)
-    await ws.send_json(hello(config, files=files))
+    await ws.send_json(hello(config, files=files, transfers=files))
     message = await ws.receive(timeout=15)
     if message.type != aiohttp.WSMsgType.TEXT:
         raise ComputerProtocolError("computer handshake refused")
     frame = decode_frame(message.data)
-    generation = validate_welcome(frame, config, files=files)
-    store = ComputerFiles(Path.cwd() / "file-access", config) if frame["protocol"] == FILES_PROTOCOL else None
+    generation = validate_welcome(frame, config, files=files, transfers=files)
+    selected = frame["protocol"]
+    store = ComputerFiles(Path.cwd() / "file-access", config) if selected >= FILES_PROTOCOL else None
     _status(emit, config, "online")
     clock = asyncio.get_running_loop().time
     next_ping = clock()
@@ -227,7 +241,7 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             raise ComputerProtocolError("invalid computer control frame")
         frame = decode_frame(message.data)
         if store is not None and frame.get("type") == "file_request":
-            request = native_file_request(frame, generation, config)
+            request = native_file_request(frame, generation, config, transfers=selected >= TRANSFER_PROTOCOL)
             await file_work.dispatch(ws, store, request, generation)
             continue
         if store is not None and frame.get("type") == "file_ack":
@@ -280,7 +294,7 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                   retry_wait: Callable[[asyncio.Event, float], Awaitable[bool]] = _retry_wait,
                   jitter: Callable[[float, float], float] = random.uniform) -> None:
     delay = 1.0
-    file_work = _FileWork(stop, config)
+    file_work = _FileWork(stop, config, session)
     try:
         while not stop.is_set():
             _status(emit, config, "connecting")
