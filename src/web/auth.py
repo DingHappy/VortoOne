@@ -14,6 +14,8 @@ from typing import Optional
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
+from src.gateway.computer_protocol import TRANSFER_PATH
+
 
 def resolve_within(base, rel) -> Optional[Path]:
     """把 rel 安全解析到 base 目录内；越界返回 None。**实现在 src/utils/paths，全仓唯一一份。**
@@ -127,6 +129,7 @@ COMPUTER_SELF_AUTHENTICATED = frozenset({
     ("GET", "/api/computers/identity"),
     ("POST", "/api/computers/pair"),
     ("POST", "/api/computers/native-pair"),
+    ("PUT", TRANSFER_PATH),
 })
 
 

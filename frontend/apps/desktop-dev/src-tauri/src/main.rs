@@ -10,12 +10,19 @@ mod connector_secrets;
 
 use tauri::{
     menu::{Menu, SubmenuBuilder},
-    webview::NewWindowResponse,
+    webview::{DownloadEvent, NewWindowResponse},
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
 const RELEASES: &str = "https://github.com/DingHappy/VortoOne/releases";
 const STABLE: &str = "https://github.com/DingHappy/VortoOne/releases/latest";
+
+fn computer_download(url: &tauri::Url) -> bool {
+    url.query().is_none() && url.fragment().is_none()
+        && url.path().strip_prefix("/api/computers/downloads/").is_some_and(|id| {
+            id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        })
+}
 #[derive(Default)]
 struct ConnectionGate(std::sync::Mutex<()>);
 /// 主窗口现在打开的服务（scheme://host[:port]）。导航闸据此放行：只在这个服务自己的页面里走，别的交给系统浏览器。
@@ -160,6 +167,7 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result
             return;
         }
         let address = handle.state::<LiveAddress>().inner().clone();
+        let download_address = address.clone();
         let builder = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
             .title("VortoOne Dev")
             .initialization_script(include_str!("../../desktop-titlebar.js"))
@@ -176,7 +184,16 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result
                 }
                 false
             })
-            .on_new_window(|_, _| NewWindowResponse::Deny);
+            .on_new_window(|_, _| NewWindowResponse::Deny)
+            .on_download(move |window, event| match event {
+                DownloadEvent::Requested { url, destination } => {
+                    download_address.allows(&url) && computer_download(&url)
+                        && window.app_handle().path().download_dir().ok()
+                            .is_some_and(|directory| destination.parent() == Some(directory.as_path()))
+                        && !destination.exists()
+                }
+                _ => true,
+            });
         #[cfg(target_os = "macos")]
         let builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
@@ -446,6 +463,17 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_matches_only_a_transfer_id_without_parameters() {
+        let id = "a".repeat(32);
+        let prefix = "https://home.example/api/computers/downloads/";
+        let url = tauri::Url::parse(&format!("{prefix}{id}")).unwrap();
+        assert!(computer_download(&url));
+        for tail in [format!("{id}/extra"), format!("{id}?next=1"), format!("{id}#preview"), "x".repeat(32)] {
+            assert!(!computer_download(&tauri::Url::parse(&format!("{prefix}{tail}")).unwrap()));
+        }
+    }
 
     #[test]
     fn reconnect_navigation_uses_the_current_backend_and_rejects_the_old_port() {

@@ -7,9 +7,14 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 MAX_FRAME_BYTES = 256 * 1024
+TRANSFER_PATH = "/api/computers/transfer"
+DOWNLOAD_PREFIX = "/api/computers/downloads/"
+MAX_TRANSFER_BYTES = 1024 ** 3
+TRANSFER_SECONDS = 1800
 PROTOCOL_MIN = 1
-PROTOCOL_MAX = 2
 FILES_PROTOCOL = 2
+TRANSFER_PROTOCOL = 3
+PROTOCOL_MAX = TRANSFER_PROTOCOL
 FEATURES = ("control-only",)
 CAPABILITIES = {key: False for key in ("read", "write", "command", "browser", "codex")}
 BINDING_FIELDS = ("home_instance_id", "connector_id", "paired_principal_id", "credential_epoch", "trust_epoch")
@@ -76,9 +81,10 @@ def binding_fields(binding: dict) -> dict:
     return {key: identifier(binding.get(key)) for key in BINDING_FIELDS}
 
 
-def hello(binding: dict, *, files: bool = False) -> dict:
+def hello(binding: dict, *, files: bool = False, transfers: bool = False) -> dict:
+    maximum = TRANSFER_PROTOCOL if transfers else FILES_PROTOCOL if files else PROTOCOL_MIN
     return {"type": "hello", **binding_fields(binding), "protocol_min": PROTOCOL_MIN,
-            "protocol_max": PROTOCOL_MAX if files else PROTOCOL_MIN, "features": list(FEATURES)}
+            "protocol_max": maximum, "features": list(FEATURES)}
 
 
 def validate_hello(frame: dict, binding: dict) -> dict:
@@ -98,11 +104,12 @@ def welcome(binding: dict, generation: str, protocol: int = PROTOCOL_MIN) -> dic
             "protocol": protocol, "features": list(FEATURES), "capabilities": dict(CAPABILITIES), "folders": []}
 
 
-def validate_welcome(frame: dict, binding: dict, *, files: bool = False) -> str:
+def validate_welcome(frame: dict, binding: dict, *, files: bool = False, transfers: bool = False) -> str:
     generation = identifier(frame.get("generation"))
     capabilities = frame.get("capabilities")
     protocol = frame.get("protocol")
-    if (type(protocol) is not int or protocol not in ((1, 2) if files else (1,))
+    maximum = TRANSFER_PROTOCOL if transfers else FILES_PROTOCOL if files else PROTOCOL_MIN
+    if (type(protocol) is not int or not PROTOCOL_MIN <= protocol <= maximum
             or not isinstance(capabilities, dict)
             or set(capabilities) != set(CAPABILITIES)
             or any(type(v) is not bool or v for v in capabilities.values())

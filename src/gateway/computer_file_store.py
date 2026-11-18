@@ -221,6 +221,16 @@ class ComputerFiles:
             except OSError:
                 raise FileDenied("目标文件或文件夹不可用") from None
 
+    def transfer_source(self, folder_id: str, path: str, policy_revision: str) -> PinnedFile:
+        with self._db() as db:
+            return self._target(db, "read", folder_id, path, policy_revision)
+
+    @contextmanager
+    def transfer_lease(self):
+        self._private_directory()
+        with FileLease(self.directory / "file-action.lock", private=True):
+            yield
+
     def _check_deadline(self, action: FileAction) -> None:
         if not 0 < action.deadline - self.clock() <= ACTION_SECONDS:
             raise FileDenied("文件动作已过期或期限无效")

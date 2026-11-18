@@ -2696,6 +2696,12 @@
     ]
   },
   {
+    "path": "/api/computers/downloads/{transfer_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/computers/identity",
     "methods": [
       "GET"
@@ -2711,6 +2717,12 @@
     "path": "/api/computers/pair",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/computers/transfer",
+    "methods": [
+      "PUT"
     ]
   },
   {

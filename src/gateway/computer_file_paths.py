@@ -135,11 +135,11 @@ class PinnedFile:
             if observed != chain:
                 raise FileDenied("父目录已变化，请重新发起操作")
 
-    def _observed_file(self, parent: int) -> os.stat_result:
+    def _observed_file(self, parent: int, limit: int = MAX_TEXT_BYTES) -> os.stat_result:
         info = os.stat(self.name, dir_fd=parent, follow_symlinks=False)
         if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_dev != os.fstat(parent).st_dev
-                or not _private_to_owner(info) or info.st_size > MAX_TEXT_BYTES):
-            raise FileDenied("只支持所属用户拥有的普通小文本文件")
+                or not _private_to_owner(info) or info.st_size > limit):
+            raise FileDenied("文件类型、权限或大小不符合本机约束")
         return info
 
     def preview(self, operation: str) -> str:
@@ -155,9 +155,16 @@ class PinnedFile:
             self._check_parent(chain)
             return _fingerprint((chain, _version(info)))
 
-    def read(self, version: str) -> str:
+    def transfer_info(self, limit: int) -> dict:
         with self.parent() as (parent, chain):
-            before = self._observed_file(parent)
+            info = self._observed_file(parent, limit)
+            self._check_parent(chain)
+            return {"version": _fingerprint((chain, _version(info))), "size": info.st_size}
+
+    @contextmanager
+    def open_version(self, version: str, limit: int):
+        with self.parent() as (parent, chain):
+            before = self._observed_file(parent, limit)
             observed = _fingerprint((chain, _version(before)))
             if observed != version:
                 raise FileDenied("文件在确认后变化，请重新发起")
@@ -165,10 +172,14 @@ class PinnedFile:
             with os.fdopen(fd, "rb") as stream:
                 if _version(os.fstat(stream.fileno())) != _version(before):
                     raise FileDenied("文件在确认后变化，请重新发起")
-                data = stream.read(MAX_TEXT_BYTES + 1)
-                if not (_version(os.fstat(stream.fileno())) == _version(self._observed_file(parent)) == _version(before)):
+                yield stream, before.st_size
+                if not (_version(os.fstat(stream.fileno())) == _version(self._observed_file(parent, limit)) == _version(before)):
                     raise FileDenied("文件在读取期间变化")
             self._check_parent(chain)
+
+    def read(self, version: str) -> str:
+        with self.open_version(version, MAX_TEXT_BYTES) as (stream, _):
+            data = stream.read(MAX_TEXT_BYTES + 1)
         if len(data) > MAX_TEXT_BYTES or b"\0" in data:
             raise FileDenied("文件不在允许的文本范围内")
         try:
