@@ -7,9 +7,9 @@ export interface ChannelAccess {
   roleIds: string[];
 }
 
-type Visible = { visibility: string; audienceRoleIds?: readonly string[]; seenAsAdmin?: boolean };
+type Visible = { visibility: string; audienceRoleIds?: readonly string[]; department?: boolean; seenAsAdmin?: boolean };
 
-const limited = (c: Visible) => c.visibility === "private" && (c.audienceRoleIds?.length ?? 0) > 0;
+const limited = (c: Visible) => c.visibility === "private" && (c.department === true || (c.audienceRoleIds?.length ?? 0) > 0);
 
 export const accessOf = (c: Visible): ChannelAccess => ({
   mode: c.visibility === "public" ? "public" : limited(c) ? "roles" : "private",

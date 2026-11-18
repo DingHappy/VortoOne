@@ -195,7 +195,7 @@ export function routineChannelOf(target: RoutineTarget): string | null {
  * left or can't post there anymore → someone takes it over; failing, or paused by a person → resume.
  * An archived agent has no fix here (null), nor does an active routine.
  */
-export function pausedFix(r: Pick<Routine, "active" | "pausedReason" | "target">): RoutineFix | null {
+export function pausedFix(r: Pick<Routine, "active" | "pausedReason" | "target" | "canTakeOver">): RoutineFix | null {
   if (r.active) return null;
   switch (r.pausedReason) {
     case "agent_not_in_channel":
@@ -203,7 +203,7 @@ export function pausedFix(r: Pick<Routine, "active" | "pausedReason" | "target">
     case "creator_left":
     case "creator_no_access":
     case "audience":
-      return "take_over";
+      return r.canTakeOver === false ? null : "take_over";
     case "agent_archived":
       return null;
     default:

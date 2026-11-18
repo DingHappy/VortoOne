@@ -5,6 +5,7 @@ import type {
   ApiClient,
   BlockState,
   BudgetEvent,
+  Channel,
   ChannelEvent,
   IssueColumn,
   MachineTask,
@@ -771,6 +772,20 @@ export function useChannelRealtime(orgId: string, channelId: string, enabled: bo
     const offSubscribed = connection.onSubscribed((id) => {
       if (id === channelId) resync();
     });
+    const offError = connection.onError((code, id) => {
+      if (code !== "channel_access_lost" || id !== channelId) return;
+      const channelQueries = { queryKey: ["org", orgId, "channel", channelId] as const };
+      qc.setQueryData<Channel[]>(keys.channels(orgId), (rows) => rows?.filter((row) => row.id !== channelId));
+      void qc.cancelQueries(channelQueries);
+      qc.removeQueries(channelQueries);
+      qc.removeQueries({ queryKey: keys.olderPages(orgId, channelId) });
+      qc.removeQueries({
+        queryKey: keys.threads(orgId),
+        predicate: (query) => (query.state.data as ThreadInfo | undefined)?.channelId === channelId ||
+          (query.queryKey[3] === "channel" && query.queryKey[4] === channelId),
+      });
+      void qc.invalidateQueries({ queryKey: keys.channels(orgId) });
+    });
     // Back to the tab after a while: read it again at once. The socket may have died in the meantime (its check takes
     // seconds), or stayed up while events never reached it (a sleeping tab, the server's pub/sub reconnecting).
     let hiddenAt: number | null = null;
@@ -788,6 +803,7 @@ export function useChannelRealtime(orgId: string, channelId: string, enabled: bo
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       offSubscribed();
+      offError();
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [connection, enabled, orgId, channelId, qc, streams, api]);

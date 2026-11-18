@@ -176,7 +176,9 @@ def test_accepting_needs_a_signed_in_account_and_our_own_page(home):
 
 # ── 成员会话只在白名单上算数 ──────────────────────────────────────────────────
 
-def _fill(path):
+def _fill(path, *, team_channel=False):
+    if team_channel:
+        path = path.replace("{channel_id}", "ch_" + "0" * 32)
     return re.sub(r"\{[^}]+\}", "x", path)
 
 
@@ -214,7 +216,8 @@ def test_a_member_session_reaches_nothing_outside_the_allow_list(home):
 def test_every_allow_listed_route_exists(home):
     from src.web import member_auth
     from tests.integration.test_server_smoke import _live_routes
-    live = {(method, _fill(path)) for path, methods in _live_routes() for method in methods}
+    live = {(method, _fill(path, team_channel=team_channel))
+            for path, methods in _live_routes() for method in methods for team_channel in (False, True)}
     for method, pattern in member_auth.MEMBER_ROUTES:
         assert any(method == m and pattern.match(path) for m, path in live), pattern.pattern
 

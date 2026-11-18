@@ -814,8 +814,9 @@ function ChannelView({
   const rightHandLook = useRightHandLook();
   const rightHandId = useMemo(() => dir.agents.find(isRightHand)?.id, [dir.agents]);
   const isMember = channel.isMember;
-  // An administrator reads every channel without joining it (ADR 0151): only what needs being in it waits for Entrar.
-  const readable = isMember || (!chrome && can(org, "administrator"));
+  // Older servers allow administrators to read without joining. Team homes return their access explicitly.
+  const teamChannel = channel.canRead !== undefined;
+  const readable = channel.canRead ?? (isMember || (!chrome && can(org, "administrator")));
   const members = useChannelMembers(org.id, channel.id, readable);
   const channelMessages = useMessages(org.id, channel.id, readable);
   // A DM with a person: their face on my latest message once they read it (live: `channel.read`).
@@ -2818,7 +2819,7 @@ function ChannelView({
                                       ))
                                     : undefined
                                 }
-                                onFiles={chrome?.locked ? undefined : addFiles}
+                                onFiles={chrome?.locked || teamChannel ? undefined : addFiles}
                                 canSendEmpty={attached.length > 0}
                                 sendBlocked={uploading || tooLongToSend(draft)}
                                 notice={
@@ -2826,15 +2827,15 @@ function ChannelView({
                                     <LongDraftNotice
                                       length={draft.trim().length}
                                       onAsFile={
-                                        chrome?.locked || files.length >= MAX_ATTACHMENTS ? undefined : draftAsFile
+                                        chrome?.locked || teamChannel || files.length >= MAX_ATTACHMENTS ? undefined : draftAsFile
                                       }
                                     />
                                   ) : undefined
                                 }
                                 format={formatLabels}
-                                emoji={mediaTabs ? { ...emojiLabels, button: mediaTabs.button } : emojiLabels}
-                                pickerTabs={mediaTabs?.tabs}
-                                pickerLabels={mediaTabs?.labels}
+                                emoji={mediaTabs && !teamChannel ? { ...emojiLabels, button: mediaTabs.button } : emojiLabels}
+                                pickerTabs={teamChannel ? undefined : mediaTabs?.tabs}
+                                pickerLabels={teamChannel ? undefined : mediaTabs?.labels}
                                 id={`composer-${thread?.id ?? channel.id}`}
                                 textareaRef={composer}
                                 keepsEsc={Boolean(stopTarget) && !chrome?.panel}
@@ -2846,7 +2847,7 @@ function ChannelView({
                                 onSend={onSend}
                                 working={chrome?.locked ? null : working}
                                 agentBusy={Boolean(busyTarget)}
-                                voice={voice}
+                                voice={teamChannel ? undefined : voice}
                                 disabled={Boolean(chrome?.locked)}
                                 label={
                                   chrome?.composerLabel ??
@@ -5120,7 +5121,7 @@ function ChannelDetails({
   // While one of them runs, none of them can be pressed.
   const busy = leaving.pending || archive.pending;
   // Deleting is for owners and admins, never #general; archiving is also for whoever made the channel.
-  const deletable = can(org, "manage_channels") && channel.name !== "general";
+  const deletable = !org.teamChannels && can(org, "manage_channels") && channel.name !== "general";
   const [deleting, setDeleting] = useState(false);
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: keys.roster(org.id, channel.id) });
@@ -5412,9 +5413,9 @@ function ChannelDetails({
                       maxLength={250}
                     />
                   </Field>
-                  <Field label={t("channelCategories.category")} id="channel-edit-category">
+                  {!org.teamChannels && <Field label={t("channelCategories.category")} id="channel-edit-category">
                     <CategorySelect value={channel.categoryId ?? null} onChange={moveTo} canCreate={editable} />
-                  </Field>
+                  </Field>}
                 </DialogBody>
               )}
               {section === "permissions" && (
@@ -5525,6 +5526,7 @@ function AddMembersDialog({
   const { t } = useTranslation();
   const { org } = useOrg();
   const api = useApi();
+  const toast = useToast();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<PickKey>>(new Set());
   useEffect(() => {
@@ -5541,15 +5543,21 @@ function AddMembersDialog({
       onAdded();
       onClose();
     },
+    onError: (error) => {
+      onAdded();
+      toast.show(errorText(t, error), "error");
+    },
   });
   // Who was in before Adicionar, also while it closes: the ones being added keep their rows.
-  const rows = useMemberRows(q, useHeldWhile(exclude, add.isPending || !open), undefined, { channel: true });
+  const rows = useMemberRows(q, useHeldWhile(exclude, add.isPending || !open), undefined,
+    { channel: true, peopleOnly: org.teamChannels });
   // An address nobody here has: invite them to the workspace and this channel (ADR 0090).
-  const invite = useInviteOffer(q);
+  const offer = useInviteOffer(q);
+  const invite = org.teamChannels ? null : offer;
   const inviteDialog = useInviteDialog();
   const newAgent = useNewAgent();
   const navigate = useNavigate();
-  const creates = makesAgents(org);
+  const creates = !org.teamChannels && makesAgents(org);
   return (
     <Dialog
       open={open}
@@ -5586,7 +5594,7 @@ function AddMembersDialog({
             }
           />
           {invite && <InviteOfferRow email={invite} channel={channel} onPick={onInvite} />}
-          {!invite && inviteDialog && can(org, "invite_people") && (
+          {!org.teamChannels && !invite && inviteDialog && can(org, "invite_people") && (
             <button
               type="button"
               className="member-row member-row--add"

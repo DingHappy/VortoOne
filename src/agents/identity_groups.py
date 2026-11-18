@@ -52,6 +52,8 @@ ACT_LEVELS = ("none", "read", "write", "execute")
 ACT_DEFAULT = "read"
 _LEVEL_DROPS = {"none": None, "read": None, "write": frozenset({"execute"}), "execute": frozenset()}
 
+CHANNEL_PERMISSIONS = {"post": "chat.speak", "talk_to_agents": "roles.talk", "manage_channels": "chat.manage_channels"}
+
 
 @dataclass(frozen=True)
 class Post:
@@ -106,6 +108,41 @@ def has(permission: str, held: Iterable[str], posts: Mapping[str, Post], *, owne
     return permission in PERMISSIONS and permission in permissions_of(held, posts, owner=owner)
 
 
+def channel_visible(kind: str, audience: Iterable[str], held: Iterable[str], *, joined: bool,
+                    privileged: bool) -> bool:
+    """Role exceptions never grant visibility. Only explicit membership grants access to messages."""
+    if privileged:
+        return True
+    if kind == "department":
+        return bool(set(audience).intersection(held))
+    return kind == "public" or (kind == "private" and joined)
+
+
+def channel_permissions(actor_id: str, held: Iterable[str], posts: Mapping[str, Post],
+                        overrides: Iterable[Mapping], *, owner: bool = False,
+                        creator: bool = False) -> FrozenSet[str]:
+    """Resolve channel actions by person, then held roles, then workspace permissions."""
+    groups = {post.id for post in _held(held, posts)}
+    workspace = permissions_of(groups, posts, owner=owner)
+    if owner or ADMIN in workspace:
+        return frozenset(CHANNEL_PERMISSIONS)
+    individual_allow, individual_deny, group_allow, group_deny = set(), set(), set(), set()
+    for override in overrides:
+        target = override["target"]
+        if target["type"] == "person" and target["id"] == actor_id:
+            individual_allow.update(override["allow"])
+            individual_deny.update(override["deny"])
+        elif target["type"] == "role" and target["id"] in groups:
+            group_allow.update(override["allow"])
+            group_deny.update(override["deny"])
+    defaults = {key for key, item in CHANNEL_PERMISSIONS.items() if item in workspace}
+    if creator:
+        defaults.add("manage_channels")
+    after_roles = (defaults | group_allow) - group_deny
+    allowed = (after_roles | individual_allow) - individual_deny
+    return frozenset(allowed & CHANNEL_PERMISSIONS.keys())
+
+
 def computer_level(held: Iterable[str], posts: Mapping[str, Post], *, owner: bool = False) -> str:
     if owner:
         return COMPUTER_LEVELS[-1]
@@ -144,19 +181,24 @@ def may_change_post(actor_held: Iterable[str], post_id: str, posts: Mapping[str,
             and (before ^ after) <= mine)
 
 
+def _holds_post_clearance(held: Iterable[str], post: Post, posts: Mapping[str, Post]) -> bool:
+    return (post.items <= permissions_of(held, posts)
+            and act_level_at_most(post.act, act_level(held, posts)))
+
+
 def may_grant(actor_held: Iterable[str], post_id: str, posts: Mapping[str, Post], order: Sequence[str], *,
               target_held: Iterable[str] = (), owner: bool = False) -> bool:
     """能不能把这个身份组授予（或收回）某个人。
 
-    要有「管理成员」，身份组排在自己之后且它的权限项全被自己持有，对方现有的最高身份组也要排在自己之后。
+    要有「管理成员」，身份组排在自己之后，它的权限项和办事级别都不能超过自己，对方也要排在自己之后。
     「所有人」是自动持有的，不能授予也不能收回。"""
     if post_id == EVERYONE or post_id not in posts:
         return False
     if owner:
         return True
-    mine = permissions_of(actor_held, posts)
-    return ("space.manage_members" in mine and outranks(actor_held, post_id, order)
-            and posts[post_id].items <= mine and _top(actor_held, order) < _top(target_held, order))
+    held = tuple(actor_held)
+    return (has("space.manage_members", held, posts) and outranks(held, post_id, order)
+            and _holds_post_clearance(held, posts[post_id], posts) and _top(held, order) < _top(target_held, order))
 
 
 def may_reorder(actor_held: Iterable[str], before: Sequence[str], after: Sequence[str],
@@ -189,12 +231,13 @@ def may_remove_member(actor_held: Iterable[str], target_held: Iterable[str], pos
 def invite_posts(actor_held: Iterable[str], wanted: Iterable[str], posts: Mapping[str, Post],
                  order: Sequence[str], *, owner: bool = False) -> List[str]:
     """发邀请时核对：邀请带的身份组必须都是邀请人授予得了的。返回可带上的身份组；有一个不行就抛错。"""
-    if not has("space.invite", actor_held, posts, owner=owner):
+    held = tuple(actor_held)
+    if not has("space.invite", held, posts, owner=owner):
         raise PermissionError("没有邀请成员的权限")
     chosen = list(dict.fromkeys(str(post_id) for post_id in wanted if post_id != EVERYONE))
     for post_id in chosen:
-        if post_id not in posts or not (owner or (outranks(actor_held, post_id, order)
-                                                  and posts[post_id].items <= permissions_of(actor_held, posts))):
+        if post_id not in posts or not (owner or (outranks(held, post_id, order)
+                                                  and _holds_post_clearance(held, posts[post_id], posts))):
             raise PermissionError(f"不能在邀请里带上身份组 {post_id}")
     return chosen
 
@@ -272,6 +315,11 @@ def act_level_on(agent_levels: Mapping[str, str], person: str, group_level: str,
     return group_level if group_level in ACT_LEVELS else "none"
 
 
+def act_level_at_most(level: str, ceiling: str) -> bool:
+    return (level in ACT_LEVELS and ceiling in ACT_LEVELS
+            and ACT_LEVELS.index(level) <= ACT_LEVELS.index(ceiling))
+
+
 def may_set_act_level(level: str, *, actor_level: str, responsible: bool = False, manages_all: bool = False,
                       owner: bool = False) -> bool:
     """能不能在一个 agent 上给某个人单独定级别。
@@ -282,9 +330,7 @@ def may_set_act_level(level: str, *, actor_level: str, responsible: bool = False
         return False
     if owner:
         return True
-    if not (responsible or manages_all) or actor_level not in ACT_LEVELS:
-        return False
-    return ACT_LEVELS.index(level) <= ACT_LEVELS.index(actor_level)
+    return (responsible or manages_all) and act_level_at_most(level, actor_level)
 
 
 def operations_at(level: str, role_operations: Iterable[str]) -> FrozenSet[str]:
@@ -297,3 +343,11 @@ def operations_at(level: str, role_operations: Iterable[str]) -> FrozenSet[str]:
         return mine & {"read"}
     drops = _LEVEL_DROPS.get(level)
     return frozenset() if drops is None else mine - drops
+
+
+def may_set_act_for_members(level: str, operations: Iterable[str], *, holds_permission: bool,
+                            private: bool, owner: bool) -> bool:
+    """Only a member who holds the whole role's authority may delegate it to others."""
+    required = frozenset(operations)
+    return owner or (holds_permission and level in ACT_LEVELS[1:] and not private
+                     and operations_at(level, required) == required)

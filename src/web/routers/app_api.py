@@ -17,12 +17,13 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_members, app_staff, member_auth
+from src.web import app_channels, app_members, app_staff, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
+from src.workflow.members.channels import is_team_channel
 
 router = APIRouter(tags=["app"])
 
@@ -30,7 +31,7 @@ _ORG = "/api/app/organizations/{org_id}"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 1
+API_CONTRACT = 3
 MIN_API = 1
 
 
@@ -712,8 +713,178 @@ def _staff_read(action):
         return _error(409, "staff_unavailable", str(error))
 
 
+async def _team_call(request, org_id, action, *, channel_id=None, listing=False):
+    from src.gateway.session_store import ChannelNameConflict
+    from src.workflow.members.registry import Damaged, Missing, Refused
+
+    if channel_id is not None and not is_team_channel(channel_id):
+        return None
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        if listing and not views.owner_connection():
+            return {"channels": []}
+        return _error(403, "owner_proof_required", "团队频道需要已认证的同源会话")
+    try:
+        return await asyncio.to_thread(lambda: action(app_channels.channels(root), actor))
+    except (Refused, PermissionError) as error:
+        return _error(403, "forbidden", str(error))
+    except (Missing, LookupError) as error:
+        return _error(404, "not_found", str(error))
+    except (Damaged, OSError):
+        return _error(409, "unavailable", "读取或保存频道记录失败")
+    except ChannelNameConflict as error:
+        return _error(409, "channel.name_taken", str(error))
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+
+
+def _team_response(response):
+    return _error(404, "not_found", "没有这个频道") if response is None else response
+
+
+def _team_receipt(action):
+    action()
+    return Response(status_code=204)
+
+
+class _TeamChannelChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = None
+    topic: str | None = None
+    visibility: str | None = None
+    audienceRoleIds: list[str] | None = Field(default=None, max_length=64)
+
+
+class _TeamChannelCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    topic: str = ""
+    visibility: str = "public"
+    audienceRoleIds: list[str] = Field(default_factory=list, max_length=64)
+    userIds: list[str] = Field(default_factory=list, max_length=500)
+    categoryId: None = None
+
+
+class _ChannelPerson(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    userId: str
+
+
+class _ChannelOverrideTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: str
+    id: str
+
+
+class _ChannelOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: _ChannelOverrideTarget
+    allow: list[str] = Field(max_length=3)
+    deny: list[str] = Field(max_length=3)
+
+
+@router.get(_ORG + "/channels")
+async def list_team_channels(org_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor)}, listing=True)
+
+
+@router.get(_ORG + "/archived-channels")
+async def list_archived_team_channels(org_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor, archived=True)}, listing=True)
+
+
+@router.post(_ORG + "/channels", status_code=201)
+async def create_team_channel(org_id: str, body: _TeamChannelCreate, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: service.create(
+        actor, body.name, body.topic, body.visibility, body.audienceRoleIds, body.userIds))
+
+
+@router.patch(_ORG + "/channels/{channel_id}")
+async def update_team_channel(org_id: str, channel_id: str, body: _TeamChannelChange, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        service.update(actor, channel_id, body.model_dump(exclude_none=True)) or Response(status_code=204),
+        channel_id=channel_id))
+
+
+@router.get(_ORG + "/channels/{channel_id}/card")
+async def team_channel_card(org_id: str, channel_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor: service.card(actor, channel_id),
+                                          channel_id=channel_id))
+
+
+@router.delete(_ORG + "/channels/{channel_id}", status_code=204)
+@router.post(_ORG + "/channels/{channel_id}/unarchive", status_code=204)
+async def archive_team_channel(org_id: str, channel_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.archive(actor, channel_id, request.method == "DELETE")), channel_id=channel_id))
+
+
+@router.post(_ORG + "/channels/{channel_id}/join", status_code=204)
+@router.post(_ORG + "/channels/{channel_id}/leave", status_code=204)
+async def join_team_channel(org_id: str, channel_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.join(actor, channel_id, request.url.path.endswith("/join"))), channel_id=channel_id))
+
+
+@router.post(_ORG + "/channels/{channel_id}/members", status_code=204)
+async def add_team_channel_member(org_id: str, channel_id: str, body: _ChannelPerson, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.set_person(actor, channel_id, body.userId, True)), channel_id=channel_id))
+
+
+@router.delete(_ORG + "/channels/{channel_id}/members/people/{person_id}", status_code=204)
+async def remove_team_channel_member(org_id: str, channel_id: str, person_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.set_person(actor, channel_id, person_id, False)), channel_id=channel_id))
+
+
+@router.get(_ORG + "/channels/{channel_id}/roster")
+async def team_channel_roster(org_id: str, channel_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        {"members": service.roster(actor, channel_id)}, channel_id=channel_id))
+
+
+@router.get(_ORG + "/channels/{channel_id}/permissions")
+async def team_channel_permissions(org_id: str, channel_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        {"overrides": service.overrides(actor, channel_id)}, channel_id=channel_id))
+
+
+@router.put(_ORG + "/channels/{channel_id}/permissions")
+async def set_team_channel_permission(org_id: str, channel_id: str, body: _ChannelOverride, request: Request):
+    if body.target.type not in ("person", "role"):
+        return _error(400, "invalid", "频道权限例外的对象必须是成员或身份组")
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        service.set_override(actor, channel_id, body.target.model_dump(), body.allow, body.deny)
+        or Response(status_code=204), channel_id=channel_id))
+
+
+@router.post(_ORG + "/channels/{channel_id}/read", status_code=204)
+async def mark_team_channel_read(org_id: str, channel_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.read(actor, channel_id)), channel_id=channel_id))
+
+
+@router.get(_ORG + "/messages/{message_id}/card")
+async def team_message_card(org_id: str, message_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, message_id))
+
+
+@router.get(_ORG + "/threads/{thread_id}")
+async def team_thread_detail(org_id: str, thread_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, thread_id, thread=True))
+
+
 @router.get(_ORG + "/channels/{channel_id}/members")
 async def channel_members(org_id: str, channel_id: str, request: Request):
+    team = await _team_call(request, org_id, lambda service, actor: {"members": [
+        {"type": person["type"], "id": person["id"]} for person in service.roster(actor, channel_id)]},
+        channel_id=channel_id)
+    if team is not None:
+        return team
     answer = await _as_member(request, org_id, channel_id, lambda root, staff, who: {"members": [
         {"type": "person", "id": who.id}, {"type": "agent", "id": views.member_agent_id(root, staff)}]})
     if answer is not None:
@@ -731,6 +902,10 @@ async def channel_members(org_id: str, channel_id: str, request: Request):
 @router.get(_ORG + "/channels/{channel_id}/messages")
 async def channel_messages(org_id: str, channel_id: str, request: Request, before: str = "", limit: int = 100,
                            threadId: str = ""):  # noqa: N803 —— 界面的查询参数名
+    team = await _team_call(request, org_id, lambda service, actor: {"messages": service.messages(
+        actor, channel_id, before=before, limit=limit, thread=threadId or None)}, channel_id=channel_id)
+    if team is not None:
+        return team
     answer = await _as_member(request, org_id, channel_id, lambda root, staff, who: {
         "messages": [] if threadId else views.member_messages(root, staff, before=before, limit=limit,
                                                               viewer=who.id)})
@@ -756,27 +931,37 @@ async def channel_messages(org_id: str, channel_id: str, request: Request, befor
 
 
 class _Post(BaseModel):
+    model_config = ConfigDict(extra="allow")
     body: str = ""
     clientId: str | None = None
     threadId: str | None = None
+    replyTo: str | None = None
+    openThread: bool = False
 
 
 @router.post(_ORG + "/channels/{channel_id}/messages")
 async def post_message(org_id: str, channel_id: str, body: _Post, request: Request):
     """主人在私聊里发一条：交给主要聊天开一个回合（前面还有回合就排队）。应答是这条消息本身，
     助理的回复之后经实时连接或下一次读取出现。"""
-    root = _main_channel(org_id, channel_id)
-    member = _member_channel(org_id, channel_id) if root is None else None
-    if root is None and member is None:
+    team_channel = is_team_channel(channel_id)
+    root = None if team_channel else _main_channel(org_id, channel_id)
+    member = _member_channel(org_id, channel_id) if root is None and not team_channel else None
+    if not team_channel and root is None and member is None:
         return _error(404, "not_found", "没有这个对话")
     text = body.body.strip()
     if not text:
         return _error(400, "empty_message", "消息不能为空")
     if len(text) > 20000:
         return _error(413, "message_too_long", "消息太长")
+    client_id = (body.clientId or "")[:120] or None
+    if team_channel:
+        if any(value for value in (body.model_extra or {}).values()):
+            return _error(400, "invalid", "团队频道目前支持文字、引用和线程回复")
+        return await _team_call(request, org_id, lambda service, actor: service.post(
+            actor, channel_id, text, client_id=client_id, thread=body.threadId or None,
+            reply_to=body.replyTo or None, opened=bool(body.threadId and body.openThread)))
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
-    client_id = (body.clientId or "")[:120] or None
     answer = await _as_member(request, org_id, channel_id,
                               lambda root, staff, who: app_members.member_send(root, who, staff, text, client_id))
     if answer is not None:
@@ -796,6 +981,14 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
 
 @router.get(_ORG + "/channels/{channel_id}/active-runs")
 async def channel_active_runs(org_id: str, channel_id: str, request: Request):
+    def team_runs(service, actor):
+        if not service.can_read(actor, channel_id):
+            raise LookupError("没有这个频道")
+        return {"runs": []}
+
+    team = await _team_call(request, org_id, team_runs, channel_id=channel_id)
+    if team is not None:
+        return team
     answer = await _as_member(request, org_id, channel_id,
                               lambda root, staff, who: {"runs": views.member_runs(root, staff, viewer=who.id)})
     if answer is not None:
@@ -888,6 +1081,10 @@ async def refuse(org_id: str, approval_id: str, body: _Approve, request: Request
 
 @router.get(_ORG + "/channels/{channel_id}/pins")
 async def channel_pins(org_id: str, channel_id: str, request: Request):
+    team = await _team_call(request, org_id, lambda service, actor: {"pins": service.pins(actor, channel_id)},
+                            channel_id=channel_id)
+    if team is not None:
+        return team
     answer = await _as_member(request, org_id, channel_id, lambda *_found: {"pins": []})
     if answer is not None:
         return answer
@@ -896,8 +1093,21 @@ async def channel_pins(org_id: str, channel_id: str, request: Request):
     return {"pins": []}
 
 
+@router.post(_ORG + "/channels/{channel_id}/pins/{message_id}")
+@router.delete(_ORG + "/channels/{channel_id}/pins/{message_id}", status_code=204)
+async def set_team_channel_pin(org_id: str, channel_id: str, message_id: str, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        service.set_pin(actor, channel_id, message_id, request.method == "POST") or Response(status_code=204),
+        channel_id=channel_id))
+
+
 @router.get(_ORG + "/channels/{channel_id}/threads")
-async def channel_threads(org_id: str, channel_id: str, request: Request):
+async def channel_threads(org_id: str, channel_id: str, request: Request, tab: str = "all", limit: int = 100):
+    team = await _team_call(request, org_id, lambda service, actor: {
+        "threads": service.threads(actor, channel_id, tab=tab, limit=limit), "nextCursor": None},
+        channel_id=channel_id)
+    if team is not None:
+        return team
     answer = await _as_member(request, org_id, channel_id, lambda *_found: {"threads": [], "nextCursor": None})
     if answer is not None:
         return answer
@@ -910,9 +1120,7 @@ async def channel_threads(org_id: str, channel_id: str, request: Request):
 
 _EMPTY: Dict[str, Any] = {
     "/agent-groups": {"groups": []},
-    "/channels": {"channels": []},
     "/channel-categories": {"categories": []},
-    "/archived-channels": {"channels": []},
     "/unread-tasks": {"tasks": []},
     "/unread-threads": {"count": 0},
     "/notifications/count": {"unread": 0, "waiting": 0},
@@ -998,6 +1206,123 @@ async def routines(org_id: str):
     return _listing(lambda: {"routines": views.routines(root)})
 
 
+def _routine_proposal_row(item: Dict[str, Any]) -> Dict[str, Any]:
+    snapshot = item["snapshot"]
+    data = snapshot["data"]
+    return {"id": item["id"], "name": data["name"], "agentName": snapshot["member_snapshot"]["name"],
+            "schedule": data["schedule"], "timezone": data["timezone"],
+            "createdAt": item["created_at"], "status": item["status"]}
+
+
+@router.get(_ORG + "/routines/proposals")
+async def member_routine_proposals(org_id: str, request: Request):
+    """只给成员自己的提议状态，不返回所有者的审批凭证或岗位登记。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_member:
+        return _error(403, "forbidden", "需要已加入空间的成员会话")
+
+    def read():
+        from src.workflow.staff.approvals import StaffApprovals
+        return {"proposals": [_routine_proposal_row(item)
+                              for item in StaffApprovals(root).member_routine_proposals(who.id)]}
+
+    return await _members_call(read)
+
+
+@router.post(_ORG + "/routines/proposals", status_code=201)
+async def propose_member_routine(org_id: str, body: Dict[str, Any], request: Request):
+    """成员只提交提议。发起人来自登录，排期仍须所有者按原流程批准。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_member:
+        return _error(403, "forbidden", "需要已加入空间的成员会话")
+    definition = body.get("definition")
+    if (set(body) != {"agentId", "definition", "reason"} or not isinstance(body["agentId"], str)
+            or not isinstance(definition, dict) or "member" in definition):
+        return _error(400, "invalid", "需要指定智能体、例行工作内容和提议理由")
+
+    def propose():
+        from src.gateway.main_conversation import main_chat_key
+        from src.workflow.members.registry import Refused
+        from src.workflow.staff.approvals import StaffApprovals
+        if "manage_routines" not in app_members.permission_keys(root, who):
+            raise Refused("你没有管理例行工作的权限")
+        staff_id = app_members.member_staff(root, who, body["agentId"])
+        if staff_id is None:
+            raise LookupError("没有这个智能体")
+        owner = main_chat_key(root)
+        if not owner:
+            raise ValueError("所有者尚未登记主要聊天，无法提交例行工作提议")
+        result = StaffApprovals(root).propose(
+            owner, "routine", {**definition, "member": staff_id}, body["reason"], initiator=who.id)
+        return {"id": result["id"], "status": result["status"]}
+
+    return await _members_call(propose, write=True)
+
+
+@router.get(_ORG + "/routines/proposals/review")
+async def routine_proposal_reviews(org_id: str, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "核对例行工作提议需要已认证的所有者")
+
+    def read():
+        from src.workflow.members.registry import MemberRegistry
+        from src.workflow.staff.approvals import StaffApprovals
+        members = MemberRegistry(root).snapshot()["members"]
+        proposals = []
+        for item in StaffApprovals(root).pending_member_routine_reviews():
+            snapshot = item["snapshot"]
+            data = snapshot["data"]
+            grants = snapshot["role_snapshot"]["grants"]
+            submitter = members.get(snapshot["initiator"])
+            proposals.append({**_routine_proposal_row(item),
+                              "submitterName": submitter["name"] if submitter else None, "reason": item["reason"],
+                              "prompt": data["prompt"], "acceptance": data["acceptance"],
+                              "delivery": data["delivery"], "tokenBudget": data["token_budget"],
+                              "enabled": data["enabled"],
+                              "operations": grants["operations"], "tools": grants["tools"],
+                              "proof": {key: item[key] for key in ("digest", "nonce", "round", "instance")}})
+        return JSONResponse({"proposals": proposals}, headers={"Cache-Control": "no-store"})
+
+    try:
+        return await asyncio.to_thread(read)
+    except (ValueError, OSError):
+        return _error(409, "unavailable", "暂时无法读取例行工作提议")
+
+
+class _RoutineProposalDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    approve: bool
+    digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    nonce: str = Field(min_length=1, max_length=64)
+    round: int = Field(ge=1)
+    instance: str = Field(min_length=1, max_length=64)
+
+
+@router.post(_ORG + "/routines/proposals/{proposal_id}/decision")
+async def decide_routine_proposal(org_id: str, proposal_id: str, body: _RoutineProposalDecision, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "审批例行工作提议需要已认证的所有者")
+
+    def decide():
+        from src.workflow.staff.approvals import StaffApprovals
+        from src.workflow.staff.owner_confirmation import owner_route
+        with owner_route(root):
+            item = StaffApprovals(root).decide_member_routine(
+                proposal_id, body.approve, body.digest, nonce=body.nonce, round=body.round, instance=body.instance)
+        return {"id": item["id"], "status": item["status"]}
+
+    try:
+        return await asyncio.to_thread(decide)
+    except LookupError as error:
+        return _error(404, "not_found", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "conflict", str(error))
+
+
 @router.get(_ORG + "/skills")
 async def skills(org_id: str):
     root = _root(org_id)
@@ -1055,6 +1380,44 @@ async def delete_routine(org_id: str, routine_id: str):
     root = _root(org_id)
     result = await asyncio.to_thread(_routine_write, root, routine_id, retire=True)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+def _routine_takeover(root: str, routine_id: str, request: Request, approval: Optional[str]):
+    from src.gateway.main_conversation import main_chat_key
+    from src.workflow.staff.owner_confirmation import owner_route
+    from src.workflow.staff.routines import Routines
+    who = member_auth.principal(request, root)
+    if not who.is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "接手例行工作需要已认证的所有者")
+    owner_session = main_chat_key(root)
+    if not owner_session:
+        return _error(409, "conflict", "所有者尚未登记主要聊天")
+    registry = Routines(root)
+    try:
+        if approval is None:
+            return registry.takeover_preview(routine_id, who.id, owner_session)
+        with owner_route(root):
+            registry.take_over(routine_id, who.id, owner_session, approval)
+        return next((row for row in views.routines(root) if row["id"] == routine_id),
+                    _error(404, "not_found", "没有这条例行工作"))
+    except LookupError:
+        return _error(404, "not_found", "没有这条例行工作")
+    except (ValueError, OSError) as error:
+        return _error(409, "conflict", str(error))
+
+
+@router.get(_ORG + "/routines/{routine_id}/take-over")
+async def routine_takeover_preview(org_id: str, routine_id: str, request: Request):
+    return await asyncio.to_thread(_routine_takeover, _root(org_id), routine_id, request, None)
+
+
+@router.post(_ORG + "/routines/{routine_id}/take-over")
+async def routine_takeover_confirm(org_id: str, routine_id: str, body: Dict[str, Any], request: Request):
+    root = _root(org_id)
+    approval = body.get("digest")
+    if set(body) != {"digest"} or not isinstance(approval, str) or len(approval) != 64:
+        return _error(400, "invalid", "请先核对这条例行工作的接手内容")
+    return await asyncio.to_thread(_routine_takeover, root, routine_id, request, approval)
 
 
 @router.get(_ORG + "/skills/{skill_id}")
@@ -1149,6 +1512,60 @@ def _staff_of(root: str, agent_id: str) -> Optional[str]:
     except (OSError, ValueError):
         return None
     return next((m["id"] for m in members if views.member_agent_id(root, m["id"]) == agent_id), None)
+
+
+@router.get(_ORG + "/agents/{agent_id}/member-action-levels")
+async def agent_member_action_levels(org_id: str, agent_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "需要已认证的成员或所有者会话")
+
+    def run():
+        staff_id = _staff_of(root, agent_id) if who.is_owner else app_members.member_staff(root, who, agent_id)
+        if staff_id is None:
+            raise LookupError("没有这个智能体")
+        return app_members.agent_member_action_levels(root, who, staff_id)
+
+    return await _members_call(run)
+
+
+@router.put(_ORG + "/agents/{agent_id}/member-action-levels/{member_id}", status_code=204)
+async def set_agent_member_action_level(org_id: str, agent_id: str, member_id: str, body: Dict[str, Any],
+                                        request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "需要已认证的成员或所有者会话")
+
+    def run():
+        staff_id = _staff_of(root, agent_id) if who.is_owner else app_members.member_staff(root, who, agent_id)
+        if staff_id is None:
+            raise LookupError("没有这个智能体")
+        app_members.set_agent_member_action_level(root, who, staff_id, member_id, body)
+
+    result = await _members_call(run, write=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.get(_ORG + "/agents/{agent_id}/member-policy")
+@router.put(_ORG + "/agents/{agent_id}/member-policy")
+async def agent_member_policy(org_id: str, agent_id: str, request: Request, body: Optional[Dict[str, Any]] = None):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "需要已认证的成员或所有者会话")
+    writing = request.method == "PUT"
+    if writing and body is None:
+        return _error(400, "invalid", "缺少成员权限设置")
+
+    def run():
+        staff_id = _staff_of(root, agent_id) if who.is_owner else app_members.member_staff(root, who, agent_id)
+        if staff_id is None:
+            raise LookupError("没有这个智能体")
+        return app_members.agent_member_policy(root, who, staff_id, body if writing else None)
+
+    return await _members_call(run, write=writing)
 
 
 async def _body(request: Request) -> Dict[str, Any]:
@@ -1343,6 +1760,7 @@ async def app_socket(websocket: WebSocket):
     实时只是尽力而为，界面在重连和订阅确认后会重新读取，内容以读取为准。"""
     from src.web.auth import ws_token_ok
     from src.web import app_member_realtime
+    from src.agents.principal import OWNER, Principal
     root = os.getcwd()
     owner = ws_token_ok(websocket)
     member = None if owner else app_member_realtime.identity(websocket, root)
@@ -1356,6 +1774,11 @@ async def app_socket(websocket: WebSocket):
     await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=views.owner_id(root)))
     bridge = None
     watches: Dict[str, asyncio.Task] = {}
+    actor = Principal(OWNER, views.owner_id(root), root)
+
+    def team_session_valid():
+        return app_staff.owner_proof(websocket)
+
     try:
         while True:
             try:
@@ -1367,7 +1790,17 @@ async def app_socket(websocket: WebSocket):
                 await websocket.send_json(F.make_app_frame(F.PONG))
             elif kind == "subscribe":
                 channel = str(frame.get("channelId") or "")
-                if views.is_main_dm(root, channel):
+                if is_team_channel(channel):
+                    if not team_session_valid():
+                        await websocket.send_json(F.make_app_frame(F.ERROR, code="owner_proof_required", channelId=channel))
+                    elif channel in watches and not watches[channel].done():
+                        await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
+                    else:
+                        subscription = await app_channels.subscribe(websocket, app_channels.channels(root), actor, channel,
+                                                                    session_valid=team_session_valid)
+                        if subscription is not None:
+                            watches[channel] = subscription
+                elif views.is_main_dm(root, channel):
                     bridge = await main_chat_bridge(root)
                     bridge.subscribe(websocket)
                     await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
@@ -1394,5 +1827,6 @@ async def app_socket(websocket: WebSocket):
     finally:
         for watch in watches.values():
             watch.cancel()
+        await asyncio.gather(*watches.values(), return_exceptions=True)
         if bridge is not None:
             bridge.unsubscribe(websocket)

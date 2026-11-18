@@ -7,6 +7,7 @@ import {
 } from "@agenteschat/client/lib/channel-access";
 import { useHeldWhile } from "@agenteschat/client/lib/hold";
 import { can } from "@agenteschat/client/lib/permissions";
+import { errorText } from "@agenteschat/client/lib/errors";
 import { rolePicksInSight } from "@agenteschat/client/lib/personal-view";
 import { isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
 import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
@@ -274,9 +275,13 @@ export function NewChannelDialog({
         name,
         topic: topic.trim() || undefined,
         ...accessInput(access),
-        ...(categoryId ? { categoryId } : {}),
+        ...(org.teamChannels
+          ? { userIds: [...selected].filter((key) => key.startsWith("person:")).map((key) => key.slice(7)) }
+          : categoryId ? { categoryId } : {}),
       });
-      for (const key of selected) await api.chat.addMember(org.id, channel.id, memberOf(key));
+      if (!org.teamChannels) {
+        for (const key of selected) await api.chat.addMember(org.id, channel.id, memberOf(key));
+      }
       return channel;
     },
     onSuccess: async (channel) => {
@@ -343,9 +348,10 @@ export function NewChannelDialog({
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 placeholder={t("newChannel.topicPlaceholder")}
+                maxLength={org.teamChannels ? 300 : undefined}
               />
             </Field>
-            <Field
+            {!org.teamChannels && <Field
               label={t("channelCategories.category")}
               id="ch-category"
               hint={{
@@ -354,8 +360,8 @@ export function NewChannelDialog({
               }}
             >
               <CategorySelect value={categoryId} onChange={setCategoryId} canCreate={can(org, "manage_channels")} />
-            </Field>
-            {!(solo && access.mode === "public") && (
+            </Field>}
+            {(org.teamChannels || !(solo && access.mode === "public")) && (
               <ChannelAccessChoice value={access} onChange={setAccess} idPrefix="ch" showError={touched} />
             )}
             <PeoplePicker
@@ -365,7 +371,9 @@ export function NewChannelDialog({
               selected={selected}
               onChange={setSelected}
               channel
+              peopleOnly={org.teamChannels}
             />
+            {create.isError && <p role="alert" className="ac-field__error">{errorText(t, create.error)}</p>}
           </DialogBody>
         </Locked>
         <DialogFooter bar note={t("newChannel.selected", { count: selected.size })}>

@@ -21,6 +21,7 @@ import pytest
 
 from src.agents import gate, taint
 from src.agents.main_agent import make_confirm_gate
+from src.agents.principal import MEMBER, NOBODY, OWNER, Principal, current_principal, reset_principal, set_principal
 
 ALL_ENDS = ["cli", "web", "im"]
 
@@ -175,6 +176,46 @@ async def test_mcp_allow_follows_each_session_kernel_gate(kind, tmp_path, mcp_pe
         assert captured[1].calls == expected
     finally:
         await agent.mcp.manager.shutdown()
+
+
+@pytest.mark.parametrize("end", ALL_ENDS + ["desktop"])
+@pytest.mark.parametrize("member,allowance,operation,external,prompt_ends", [
+    pytest.param(False, (), "write", False, {"im", "desktop"}, id="owner-write"),
+    pytest.param(True, (), "write", False, {"cli", "web", "im", "desktop"}, id="member-write"),
+    pytest.param(True, ("write",), "write", False, {"im"}, id="member-approved-write"),
+    pytest.param(True, ("write",), "execute", False, {"cli", "web", "im", "desktop"}, id="member-execute"),
+    pytest.param(True, ("write",), "write", True, {"cli", "web", "im", "desktop"}, id="external-context"),
+    pytest.param(True, ("deliver",), "deliver", False, {"cli", "web", "im", "desktop"}, id="member-deliver"),
+])
+async def test_principal_confirmation_contract(end, member, allowance, operation, external, prompt_ends, tmp_path):
+    from src.gateway.agent_session import build_session
+
+    asked, observed = [], []
+
+    async def human(_message, kind):
+        asked.append(kind)
+        return False
+
+    class LLM:
+        async def chat(self, _messages, **_kwargs):
+            observed.append((current_principal(), taint.is_tainted(),
+                             await session._confirm_gate("检查确认规则", operation)))
+            return {"content": "done"}
+
+    session = build_session(str(tmp_path), kind="web" if end == "desktop" else end, llm=LLM(),
+                            confirm=human, can_ask_human=True, auto_approve=True,
+                            allow_local_files=end == "desktop", workspace_scope="general", with_dev=False)
+    if member:
+        # 成员身份由宿主声明。测试共用回合装配，不在各端增加成员登录。
+        session.principal = Principal(MEMBER, "member-contract")
+        session.member_allowed = allowance
+    else:
+        assert (session.principal.kind if session.principal else None) == (None if end == "im" else OWNER)
+
+    await session.run_turn("<vortocode_untrusted_memory>外部输入" if external else "检查", mode="plan")
+
+    assert observed == [(session.principal or NOBODY, external or end == "im", end not in prompt_ends)]
+    assert asked == ([operation] if end in prompt_ends else [])
 
 
 @pytest.fixture(autouse=True)
@@ -364,14 +405,23 @@ async def test_repo_memory_reaches_unattended_isolated_session(tmp_path):
     class _LLM:
         def __init__(self):
             self.messages = None
+            self.principal = None
 
         async def chat(self, messages, **kwargs):
             self.messages = messages
+            self.principal = current_principal()
             return {"content": "ok", "tool_calls": None}
 
     llm = _LLM()
     # light=True（心跳"值班"最省 token 的那档）也必须带上仓库记忆——它正是为流水线失忆而立。
-    await run_isolated_session(str(tmp_path), "check", mode="plan", light=True, llm=llm)
+    parent = Principal(MEMBER, "member-contract")
+    token = set_principal(parent)
+    try:
+        await run_isolated_session(str(tmp_path), "check", mode="plan", light=True, llm=llm)
+        assert current_principal() == parent
+    finally:
+        reset_principal(token)
+    assert llm.principal == NOBODY
     system = next(m["content"] for m in llm.messages if m["role"] == "system")
     assert "make test" in system, "无人值守隔离会话没拿到仓库记忆（B5-7 回归）"
 

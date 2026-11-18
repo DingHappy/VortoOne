@@ -26,6 +26,8 @@ import type {
   IssuePatch,
   IssueProjectRef,
   IssueStatus,
+  MemberRoutineProposal,
+  MemberRoutineProposalInput,
   Routine,
   RoutineHook,
   RoutineRun,
@@ -215,6 +217,7 @@ export function createMockPlanning(
   record: (method: string, ...args: unknown[]) => void = () => {},
 ): Pick<ApiClient, "issues" | "routines" | "calendar"> {
   const me = async (): Promise<Actor> => ({ type: "person", id: (await ctx.lookup.me())?.user.id ?? "me" });
+  const memberSubmissions = new Map<string, { input: MemberRoutineProposalInput; row: MemberRoutineProposal }[]>();
   const store = perOrg<Store>(async (orgId) => {
     const s: Store = {
       issues: [],
@@ -795,6 +798,25 @@ export function createMockPlanning(
     },
     routines: {
       list: async (orgId) => clone((await store(orgId)).routines),
+      proposalReviews: async () => [],
+      decideProposal: async () => { throw new MockNotFoundError(); },
+      memberProposals: async (orgId) =>
+        clone((memberSubmissions.get(`${orgId}/${(await me()).id}`) ?? []).map(({ row }) => row)),
+      proposeForMember: async (orgId, input) => {
+        const key = `${orgId}/${(await me()).id}`;
+        const submissions = memberSubmissions.get(key) ?? [];
+        const existing = submissions.find((item) => item.input.definition.id === input.definition.id);
+        if (existing) return { id: existing.row.id, status: existing.row.status };
+        const agent = (await ctx.lookup.agents(orgId)).find((a) => a.id === input.agentId);
+        if (!agent) throw new MockNotFoundError();
+        const { name, schedule, timezone } = input.definition;
+        const row: MemberRoutineProposal = {
+          id: mockId("routine-proposal"), name, agentName: agent.name, schedule, timezone,
+          createdAt: ctx.now().toISOString(), status: "pending",
+        };
+        memberSubmissions.set(key, [{ input, row }, ...submissions]);
+        return { id: row.id, status: row.status };
+      },
       parseSchedule: async (_orgId, phrase, timezone) => parseSchedulePhrase(phrase, timezone),
       parseRule: async (_orgId, phrase, timezone = "America/Sao_Paulo") => {
         const rule = PHRASES[phrase.trim().toLowerCase()];
@@ -927,6 +949,7 @@ export function createMockPlanning(
         r.lastRun = stopped;
         return clone(r);
       },
+      takeoverPreview: async () => { throw new MockNotFoundError(); },
       takeOver: async (orgId, id) => {
         record("routines.takeOver", id);
         const r = await findRoutine(orgId, id);

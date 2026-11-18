@@ -80,6 +80,10 @@ export const keys = {
   consultation: (orgId: string, channelId: string, consultationId: string) =>
     ["org", orgId, "channel", channelId, "consultations", consultationId] as const,
   agentDetail: (orgId: string, agentId: string) => ["org", orgId, "agent", agentId, "detail"] as const,
+  agentMemberActionLevels: (orgId: string, agentId: string) =>
+    ["org", orgId, "agent", agentId, "member-action-levels"] as const,
+  agentMemberPolicy: (orgId: string, agentId: string) =>
+    ["org", orgId, "agent", agentId, "member-policy"] as const,
   agentBrain: (orgId: string, agentId: string) => ["org", orgId, "agent", agentId, "brain"] as const,
   /** Every single agent's reads (its page, its brain). */
   agentPages: (orgId: string) => ["org", orgId, "agent"] as const,
@@ -198,7 +202,10 @@ export const keys = {
   threadMission: (orgId: string, threadId: string) => ["org", orgId, "missions", "thread", threadId] as const,
   threadTasks: (orgId: string, threadId: string) => ["org", orgId, "missions", "tasks", threadId] as const,
   routines: (orgId: string) => ["org", orgId, "routines"] as const,
+  memberRoutineProposals: (orgId: string, userId: string) => ["org", orgId, "routines", "proposals", userId] as const,
+  routineProposalReviews: (orgId: string, userId: string) => ["org", orgId, "routine-proposal-reviews", userId] as const,
   routineRuns: (orgId: string, id: string) => ["org", orgId, "routines", "runs", id] as const,
+  routineTakeover: (orgId: string, id: string, userId: string) => ["org", orgId, "routine-takeover", id, userId] as const,
   routineHook: (orgId: string, id: string) => ["org", orgId, "routines", "hook", id] as const,
   webhookSetup: (orgId: string, provider: string) => ["org", orgId, "routines", "webhook", provider] as const,
   calendar: (orgId: string) => ["org", orgId, "calendar"] as const,

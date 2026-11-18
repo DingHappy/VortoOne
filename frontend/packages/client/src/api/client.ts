@@ -52,6 +52,9 @@ import type {
   AgentLineChange,
   AgentMailbox,
   AgentMailboxInput,
+  AgentMemberActionLevels,
+  AgentMemberPolicy,
+  AgentMemberPolicyChange,
   AgentPlanUsage,
   AgentProposal,
   AgentQuestion,
@@ -207,6 +210,8 @@ import type {
   MailProviders,
   Me,
   Member,
+  MemberRoutineProposal,
+  MemberRoutineProposalInput,
   Memory,
   Message,
   MessageCard,
@@ -246,6 +251,7 @@ import type {
   Organization,
   OrgOverview,
   OrgPlanUsage,
+  OrgRoleActLevel,
   OrgRoles,
   OrgSettings,
   PageTarget,
@@ -275,6 +281,9 @@ import type {
   RoleMailLoss,
   RosterMember,
   Routine,
+  RoutineProposalProof,
+  RoutineProposalReview,
+  RoutineTakeoverPreview,
   RoutineHook,
   RoutineInput,
   RoutinePatch,
@@ -713,6 +722,10 @@ export interface ApiClient {
   };
   agents: {
     list(orgId: string): Promise<Agent[]>;
+    memberActionLevels(orgId: string, agentId: string): Promise<AgentMemberActionLevels>;
+    setMemberActionLevel(orgId: string, agentId: string, userId: string, level: OrgRoleActLevel | null): Promise<void>;
+    memberPolicy(orgId: string, agentId: string): Promise<AgentMemberPolicy>;
+    setMemberPolicy(orgId: string, agentId: string, change: AgentMemberPolicyChange): Promise<AgentMemberPolicy>;
     /** Its month by account and day, and the account it thinks with now (ADR 0063). */
     planUsage(orgId: string, agentId: string): Promise<AgentPlanUsage>;
     /** The agents as a team: grouped by person, with who consulted whom in the last day. */
@@ -920,7 +933,10 @@ export interface ApiClient {
   };
   chat: {
     channels(orgId: string): Promise<Channel[]>;
-    createChannel(orgId: string, input: ChannelInput & { name: string; categoryId?: string | null }): Promise<Channel>;
+    createChannel(
+      orgId: string,
+      input: ChannelInput & { name: string; categoryId?: string | null; userIds?: string[] },
+    ): Promise<Channel>;
     /** The sidebar's categories, in order (ADR 0080). */
     categories(orgId: string): Promise<ChannelCategory[]>;
     /** Admins: a category at the end, optionally taking `channelIds` along. */
@@ -1598,6 +1614,17 @@ export interface ApiClient {
   };
   routines: {
     list(orgId: string): Promise<Routine[]>;
+    memberProposals(orgId: string): Promise<MemberRoutineProposal[]>;
+    proposalReviews(orgId: string): Promise<RoutineProposalReview[]>;
+    decideProposal(
+      orgId: string,
+      id: string,
+      decision: RoutineProposalProof & { approve: boolean },
+    ): Promise<Pick<MemberRoutineProposal, "id" | "status">>;
+    proposeForMember(
+      orgId: string,
+      input: MemberRoutineProposalInput,
+    ): Promise<Pick<MemberRoutineProposal, "id" | "status">>;
     /** `timezone`: IANA zone to read the phrase in (default: the person's own, then the org's). */
     parseSchedule(orgId: string, phrase: string, timezone?: string): Promise<ScheduleParse>;
     create(orgId: string, input: RoutineInput): Promise<Routine>;
@@ -1606,7 +1633,8 @@ export interface ApiClient {
     /** Stops the run in progress quietly (it ends `canceled`, `stopped` by me). */
     stop(orgId: string, id: string): Promise<Routine>;
     /** An admin or the agent's owner becomes its creator (a routine paused because its creator left). */
-    takeOver(orgId: string, id: string): Promise<Routine>;
+    takeoverPreview(orgId: string, id: string): Promise<RoutineTakeoverPreview>;
+    takeOver(orgId: string, id: string, digest?: string): Promise<Routine>;
     /** Continuar agora on a run paused near its plan's or budget's limit (`usagePause`): it goes on now. */
     continueUsage(orgId: string, id: string): Promise<Routine>;
     runs(orgId: string, id: string): Promise<RoutineRun[]>;

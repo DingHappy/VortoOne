@@ -10,6 +10,13 @@ from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger
 PUBLIC_FIELDS = {'id', 'name', 'member', 'prompt', 'acceptance', 'delivery', 'schedule', 'timezone', 'enabled', 'revision', 'token_budget'}
 
 
+class RoutineCreatorUnavailable(ValueError):
+    def __init__(self, reason, message, *, verified=True):
+        super().__init__(message)
+        self.reason = reason
+        self.verified = verified
+
+
 class Routines:
     def __init__(self, root, *, clock=None, registry=None):
         self.root = str(root)
@@ -29,7 +36,9 @@ class Routines:
             raise ValueError('例行工作记录重复或无效')
         for item in value['routines']:
             required = PUBLIC_FIELDS | {'created_at', 'owner', 'binding', 'retired', 'legacy', 'state'}
-            if (set(item) != required or not isinstance(item['id'], str) or not _ID.fullmatch(item['id'])
+            if (not required <= set(item) <= required | {'initiator'}
+                    or 'initiator' in item and (not isinstance(item['initiator'], str) or not item['initiator'])
+                    or not isinstance(item['id'], str) or not _ID.fullmatch(item['id'])
                     or type(item['revision']) is not int or item['revision'] < 1
                     or type(item['enabled']) is not bool or type(item['retired']) is not bool
                     or type(item['token_budget']) is not int or item['token_budget'] < 0
@@ -106,19 +115,29 @@ class Routines:
                 'enabled': item.get('enabled', True), 'revision': item.get('revision', 1),
                 'token_budget': item.get('token_budget', 0)}, member, role
 
-    def snapshot(self, data):
+    def snapshot(self, data, *, initiator=None):
         item, member, role = self.normalize(data)
         previous = next((x for x in self.definitions() if x['id'] == item['id']), None)
+        if initiator is not None:
+            if previous is not None:
+                raise ValueError('成员只能提议新建例行工作')
+            from src.workflow.staff.initiators import record, role_for_member
+            record(initiator)
+            level = self.check_creator({**item, 'initiator': initiator}, member)
+            role_for_member(self.registry, role, level)
         if previous and (previous['retired'] or type(data.get('revision')) is not int or data['revision'] != previous['revision']):
             raise ValueError('例行工作已删除或版本变化')
-        return {'kind': 'routine', 'data': item, 'previous': previous, 'member_snapshot': member, 'role_snapshot': role}
+        return {'kind': 'routine', 'data': item, 'previous': previous, 'member_snapshot': member, 'role_snapshot': role,
+                **({'initiator': initiator} if initiator is not None else {})}
 
     def target(self, snapshot, at, owner):
         previous = snapshot['previous']
+        initiator = previous.get('initiator') if previous else snapshot.get('initiator')
         return {**snapshot['data'], 'revision': previous['revision'] + 1 if previous else 1,
             'created_at': previous['created_at'] if previous else at, 'owner': previous['owner'] if previous else owner,
             'binding': {'member': snapshot['member_snapshot'], 'role': snapshot['role_snapshot']},
-            'retired': False, 'legacy': previous.get('legacy') if previous else None}
+            'retired': False, 'legacy': previous.get('legacy') if previous else None,
+            **({'initiator': initiator} if initiator is not None else {})}
 
     def apply(self, target, previous):
         with TASK_STATE_LOCK:
@@ -133,7 +152,11 @@ class Routines:
                 raise ValueError('例行工作记录达到上限，请先核对保留的记录')
             state = deepcopy(current['state']) if current else {}
             # Editing/resuming is an explicit new start, not a replay of paused slots.
-            state.update(cursor=instant(self.clock()).isoformat(), task=None, error='')
+            awaiting_takeover = current is not None and self.awaiting_takeover_resume(current)
+            previous_task = state.get('task') if awaiting_takeover else None
+            state.update(cursor=instant(self.clock()).isoformat(), task=previous_task, error='')
+            if target['enabled'] and awaiting_takeover:
+                state['takeover']['awaiting_enable'] = False
             result = {**deepcopy(target), 'state': state}
             value['routines'] = [result if x['id'] == target['id'] else x for x in value['routines']] if current else [*value['routines'], result]
             self.registry._write('routines.json', value)
@@ -154,7 +177,13 @@ class Routines:
             if type(retire) is not bool or enabled is not None and type(enabled) is not bool:
                 raise ValueError('启停参数无效')
             if enabled is True:
-                self.check_binding(item)
+                member, _ = self.check_binding(item)
+                self.check_creator(item, member)
+                if self.awaiting_takeover_resume(item):
+                    once = RoutineSchedule(item['schedule'], item['timezone']).once
+                    if once is not None and once <= instant(self.clock()):
+                        raise ValueError('一次性排期已过去，请先重新排期')
+                    item['state']['takeover']['awaiting_enable'] = False
             item.update(enabled=False if retire else enabled if enabled is not None else item['enabled'],
                         retired=retire, revision=revision + 1)
             item['state'].update(cursor=instant(self.clock()).isoformat(), error='')
@@ -170,18 +199,116 @@ class Routines:
             raise ValueError('部门已暂停')
         return member, role
 
-    def check_task(self, task):
-        reference = task.collaboration['dispatch'].get('routine')
-        if not reference:
+    def check_creator(self, item, member=None):
+        member_id = item.get('initiator')
+        if member_id is None:
             return
+        from src.workflow.members.registry import MemberRegistry, Missing
+        from src.workflow.staff.roles import CLI_ENGINES
+        member = member if member is not None else self.registry.member(item['member'])
+        try:
+            level = MemberRegistry(self.root).member_act_level_on(
+                member['id'], member_id, required_permission='roles.manage_routines',
+                requires_shared_plan=member.get('engine') in CLI_ENGINES)
+        except Missing as error:
+            raise RoutineCreatorUnavailable('creator_left', '例行工作的创建者已离开，等待接手') from error
+        except (OSError, ValueError) as error:
+            raise RoutineCreatorUnavailable('creator_no_access', '无法核对例行工作创建者的权限', verified=False) from error
+        if level == 'none':
+            raise RoutineCreatorUnavailable('creator_no_access', '创建者当前无权运行这条例行工作')
+        return level
+
+    def creator_issue(self, item, member=None):
+        try:
+            self.check_creator(item, member)
+        except RoutineCreatorUnavailable as error:
+            return error
+        except (OSError, ValueError):
+            return RoutineCreatorUnavailable('creator_no_access', '无法核对例行工作创建者的权限', verified=False)
+        return None
+
+    def _takeover_preview(self, item, owner, owner_session):
+        from src.workflow.staff.approvals import digest
+        from src.workflow.staff.owner_confirmation import owner_instance
+        if not item.get('initiator'):
+            raise ValueError('这条例行工作已经由所有者负责')
+        member, role = self.check_binding(item)
+        issue = self.creator_issue(item, member)
+        if issue is None:
+            raise ValueError('创建者仍能运行这条例行工作')
+        if not issue.verified:
+            raise ValueError(str(issue))
+        definition = {key: value for key, value in item.items() if key != 'state'}
+        approval = digest({'definition': definition, 'owner': owner, 'session': owner_session,
+                           'reason': issue.reason, 'instance': owner_instance(self.root)})
+        return {'digest': approval, 'name': item['name'], 'prompt': item['prompt'],
+                'acceptance': item['acceptance'], 'schedule': item['schedule'], 'timezone': item['timezone'],
+                'agentName': member['name'], 'operations': role['grants']['operations'],
+                'tools': role['grants']['tools'], 'sources': role['grants']['sees']}
+
+    def takeover_preview(self, routine_id, owner, owner_session):
+        item = next((row for row in self.list() if row['id'] == routine_id and not row['retired']), None)
+        if item is None:
+            raise LookupError('没有这条例行工作')
+        return self._takeover_preview(item, owner, owner_session)
+
+    @staticmethod
+    def awaiting_takeover_resume(item):
+        receipt = item['state'].get('takeover')
+        return isinstance(receipt, dict) and receipt.get('awaiting_enable') is True
+
+    def take_over(self, routine_id, owner, owner_session, expected_digest):
+        """Transfer future runs after an explicit owner decision on the stored definition."""
+        from src.gateway.audit import append_audit
+        from src.workflow.staff.owner_confirmation import require_owner_route
+        require_owner_route(self.root)
+        with TASK_STATE_LOCK:
+            value = self.read()
+            item = next((row for row in value['routines'] if row['id'] == routine_id and not row['retired']), None)
+            if item is None:
+                raise LookupError('没有这条例行工作')
+            receipt = item['state'].get('takeover')
+            if isinstance(receipt, dict) and receipt.get('digest') == expected_digest and receipt.get('owner') == owner:
+                return
+            if self._takeover_preview(item, owner, owner_session)['digest'] != expected_digest:
+                raise ValueError('接手内容已变化，请重新核对')
+            creator = item['initiator']
+            at = instant(self.clock()).isoformat()
+            if not append_audit(self.root, {
+                'category': 'decision', 'operation': '接手例行工作', 'operation_kind': 'execute',
+                'decision': 'allowed', 'decision_source': 'user', 'approval_scope': 'once',
+                'approval_source': 'routine_takeover', 'action_digest': expected_digest,
+                'routine_id': routine_id, 'initiator': creator, 'actor': owner,
+            }, durable=True):
+                raise OSError('接手审批未能写入审计')
+            item.pop('initiator')
+            item.update(owner=owner_session, enabled=False, revision=item['revision'] + 1)
+            # Keep the previous task for reconciliation. The new revision blocks its tools and rework.
+            item['state'].update(cursor=at, error='',
+                                 takeover={'digest': expected_digest, 'owner': owner, 'from': creator,
+                                           'at': at, 'awaiting_enable': True})
+            self.registry._write('routines.json', value)
+
+    def check_dispatch(self, reference, initiator):
         item = self.get(reference['id'])
         if item['state'].get('error'):
             raise ValueError('例行执行等待主人核对，不能继续旧步骤')
-        if (not item['enabled'] and reference.get('manual') is not True) or item['retired'] or item['revision'] != reference['revision']:
+        if (self.awaiting_takeover_resume(item) or (not item['enabled'] and reference.get('manual') is not True)
+                or item['retired'] or item['revision'] != reference['revision']):
             raise ValueError('例行工作已暂停、删除或改版，旧执行不能继续')
         if reference.get('legacy') != item['legacy'] or reference.get('token_budget', 0) != item['token_budget']:
             raise ValueError('例行工作的原约束已变化')
+        if item.get('initiator') != initiator:
+            raise ValueError('例行工作的发起人记录不一致，未执行')
+        self.check_creator(item)
         self.check_binding(item)
+
+    def check_task(self, task):
+        dispatch = task.collaboration['dispatch']
+        if dispatch.get('routine'):
+            from src.workflow.staff.initiators import initiator_of
+            actor = initiator_of(task)
+            self.check_dispatch(dispatch['routine'], actor.id if actor is not None else None)
 
     def settle(self, task):
         if task.status not in {'done', 'failed', 'cancelled', 'interrupted'}:
@@ -219,9 +346,13 @@ class Routines:
                     continue
                 if (not original['enabled'] and not manual) or original['retired'] or original['state'].get('error'):
                     continue
+                if self.awaiting_takeover_resume(original):
+                    continue
                 value = self.read()
                 item = next(x for x in value['routines'] if x['id'] == original['id'])
+                claimed = None
                 try:
+                    self.check_creator(item)
                     if item['state'].get('task'):
                         task = TaskLedger(self.root).load(item['state']['task'])
                         if task is None:
@@ -236,6 +367,7 @@ class Routines:
                         continue
                     slot = due.isoformat()
                     task_id = 'task-' + hashlib.sha256(f'{item["id"]}:{item["revision"]}:{slot}'.encode()).hexdigest()[:20]
+                    claimed = task_id
                     item['state']['task'] = task_id
                     if not manual:
                         item['state']['cursor'] = slot
@@ -243,11 +375,16 @@ class Routines:
                     task = staff.assign(item['owner'], {k: item[k] for k in ('member', 'prompt', 'acceptance', 'delivery')},
                         expected=(member, role), task_id=task_id,
                         routine={'id': item['id'], 'revision': item['revision'], 'slot': slot, 'legacy': item['legacy'],
-                                 'token_budget': item['token_budget'], 'manual': manual}, after=self.settle)
+                                 'token_budget': item['token_budget'], 'manual': manual}, after=self.settle,
+                        **({'initiator': item['initiator']} if 'initiator' in item else {}))
                     started.append(task.id)
                 except Exception as error:  # noqa: BLE001 - park this claim, then dispatch the other routines.
                     value = self.read(); item = next(x for x in value['routines'] if x['id'] == original['id'])
                     item['state']['error'] = f'{type(error).__name__}: {error}'
+                    if isinstance(error, RoutineCreatorUnavailable):
+                        item['enabled'] = False
+                        if claimed is not None and item['state'].get('task') == claimed and TaskLedger(self.root).load(claimed) is None:
+                            item['state']['task'] = None
                     self.registry._write('routines.json', value)
         return started
 

@@ -1704,9 +1704,6 @@ class MainAgent:
         self._turn_memory_context = ""
         from src.agents.taint import mark_channel_untrusted, mark_tainted, reset_taint
         reset_taint()                       # 回合作用域污点：每回合从"未摄入外部内容"开始（D0）
-        # 发起人也是回合作用域：每回合重新申报，免得同一上下文里上一回合的身份留到这一回合
-        from src.agents.principal import NOBODY, set_principal
-        set_principal(self.principal or NOBODY, member_allowed=self.member_allowed)
         # 端级不可信入口（IM）：用户输入自身就是外部内容，**每回合无条件重新打污点**。
         # 必须在这里、reset 之后打——装配时打一次会被下一个回合的 reset 抹掉（污点是回合作用域的）。
         # 用 channel 档而非 external：拦截强度完全一样，但别把"你自己打了句话"说成"读过网页"。
@@ -1724,6 +1721,8 @@ class MainAgent:
         # 都能在 reset 之后重新标污点。用户伪造该标记只会触发更保守的确认，不会获得权限。
         if "<vortocode_untrusted_memory>" in str(user_text):
             mark_tainted()
+        from src.agents.principal import NOBODY, reset_principal, set_principal
+        principal_token = set_principal(self.principal or NOBODY, member_allowed=self.member_allowed)
         try:
             await self._fire_hook("agent_start", {"text": str(user_text)[:500], "mode": mode})
             text = await self._run_turn_body(
@@ -1747,21 +1746,22 @@ class MainAgent:
             report_error = ExecutionFailure("execution_failed", str(error), effect="possible")
             raise
         finally:
-            close_current_scope()
-            if say is not None:
-                note = self._unverified_writes_note()
-                if note:
-                    try:
-                        say(housekeeping(note))
-                    except Exception:  # noqa: BLE001 —— 提示失败不该影响本回合结果
-                        pass
             try:
+                close_current_scope()
+                if say is not None:
+                    note = self._unverified_writes_note()
+                    if note:
+                        try:
+                            say(housekeeping(note))
+                        except Exception:  # noqa: BLE001 —— 提示失败不该影响本回合结果
+                            pass
                 await self._fire_hook("agent_end", {"mode": mode})
             except asyncio.CancelledError:
                 report_state, report_result = ExecutionState.CANCELLED, None
                 report_error = ExecutionFailure("cancelled", "本机回合清理被取消", effect="possible")
                 raise
             finally:
+                reset_principal(principal_token)
                 if self._execution_report is not None and self._execution_report.ref == ref:
                     self._execution_report = replace(self._execution_report, state=report_state,
                         observed_at=time.time(), native_state=report_state.value,

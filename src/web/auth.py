@@ -183,7 +183,10 @@ async def auth_middleware(request, call_next):
     computer_data = path.startswith("/api/computers/") or (
         path.startswith("/api/app/organizations/") and any(
             f"/{part}" in path for part in ("machines", "computer-pairings")))
-    if path.startswith("/api/mobile/") or computer_data:  # 私有设备数据不进浏览器/代理缓存
+    app_path = path.removeprefix("/api/app/organizations/")
+    channel_data = app_path != path and app_path.partition("/")[2].partition("/")[0] in {
+        "channels", "archived-channels", "messages", "threads"}
+    if path.startswith("/api/mobile/") or computer_data or channel_data:
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

@@ -1,5 +1,6 @@
 """S4: live coroutine, durable action identity, human decisions and pool isolation."""
 import asyncio
+from contextlib import asynccontextmanager
 from copy import deepcopy
 
 import pytest
@@ -72,6 +73,96 @@ async def next_card(waiting):
 
 def decide(service, task, card, approve=True, **kwargs):
     return owner_action(service, task, card, approve, **kwargs)
+
+
+async def test_switching_off_delegation_invalidates_a_pending_owner_approval(tmp_path, monkeypatch):
+    from src.agents.principal import OWNER, Principal
+    from src.web.app_members import agent_member_policy
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow.staff.initiators import role_version
+
+    monkeypatch.setattr("src.workflow.staff.actions.MEMBER_APPROVAL_CHECK_INTERVAL", 0.02)
+    service, member, waiting, _, invoked, _, _ = live_staff(tmp_path, monkeypatch, kind="write")
+    root = str(tmp_path)
+    owner = Principal(OWNER, "owner")
+    registry = MemberRegistry(root)
+    _, invite = registry.invite(owner)
+    who = registry.accept_invitation(invite, "只读成员")
+    version = role_version(service.registry.role(member["role"]))
+    agent_member_policy(root, owner, member["id"], {"roleVersion": version, "actForMembers": True})
+    try:
+        task = service.assign("owner", {"member": member["id"], "prompt": "写入团队资料"}, initiator=who)
+        _, card = await next_card(waiting)
+        agent_member_policy(root, owner, member["id"], {"roleVersion": version, "actForMembers": False})
+        with pytest.raises(ValueError, match="办事权限已变化"):
+            decide(service, task, card)
+        await asyncio.wait_for(service.runner.join(task.id), 2)
+        assert TaskLedger(tmp_path).load(task.id).collaboration["approval"]["status"] == "cancelled"
+        assert not invoked
+    finally:
+        await service.runner.shutdown()
+
+
+async def test_member_downgrade_cancels_pending_owner_approval(tmp_path, monkeypatch):
+    from src.agents.principal import OWNER, Principal
+    from src.workflow.members.registry import MemberRegistry
+
+    monkeypatch.setattr('src.workflow.staff.actions.MEMBER_APPROVAL_CHECK_INTERVAL', 0.02)
+    service, member, waiting, prepared, invoked, _, _ = live_staff(tmp_path, monkeypatch, kind='write')
+    owner = Principal(OWNER, 'owner')
+    registry = MemberRegistry(str(tmp_path))
+    _, invite = registry.invite(owner)
+    initiator = registry.accept_invitation(invite, '测试成员')
+    registry.set_act_level_on(owner, member['id'], initiator, 'write')
+    try:
+        task = service.assign('owner', {'member': member['id'], 'prompt': '等待所有者批准'}, initiator=initiator)
+        _, card = await next_card(waiting)
+        assert prepared and not invoked
+        registry.set_act_level_on(owner, member['id'], initiator, 'read')
+        with pytest.raises(ValueError, match='发起人的办事权限已变化'):
+            decide(service, task, card)
+        await asyncio.wait_for(service.runner.join(task.id), 2)
+        approval = TaskLedger(tmp_path).load(task.id).collaboration['approval']
+        assert approval['status'] == 'cancelled'
+        assert '发起人的办事权限已变化' in approval['reason']
+        assert not invoked
+    finally:
+        await service.runner.shutdown()
+
+
+async def test_member_downgrade_after_approval_prevents_resume(tmp_path, monkeypatch):
+    from src.agents.principal import OWNER, Principal
+    from src.workflow.members.registry import MemberRegistry
+
+    service, member, waiting, _, invoked, _, _ = live_staff(tmp_path, monkeypatch, kind='write')
+    owner = Principal(OWNER, 'owner')
+    registry = MemberRegistry(str(tmp_path))
+    _, invite = registry.invite(owner)
+    initiator = registry.accept_invitation(invite, '测试成员')
+    registry.set_act_level_on(owner, member['id'], initiator, 'write')
+    awaiting_resume, resume = asyncio.Event(), asyncio.Event()
+    waiting_for_owner = service.runner.waiting_for_owner
+
+    @asynccontextmanager
+    async def delay_resume(task_id):
+        async with waiting_for_owner(task_id):
+            yield
+            awaiting_resume.set()
+            await resume.wait()
+
+    monkeypatch.setattr(service.runner, 'waiting_for_owner', delay_resume)
+    try:
+        task = service.assign('owner', {'member': member['id'], 'prompt': '等待恢复执行'}, initiator=initiator)
+        _, card = await next_card(waiting)
+        assert decide(service, task, card)['status'] == 'approved'
+        await asyncio.wait_for(awaiting_resume.wait(), 2)
+        registry.set_act_level_on(owner, member['id'], initiator, 'read')
+        resume.set()
+        await asyncio.wait_for(service.runner.join(task.id), 2)
+        assert not invoked
+        assert TaskLedger(tmp_path).load(task.id).collaboration['approval']['status'] == 'approved'
+    finally:
+        await service.runner.shutdown()
 
 
 @pytest.mark.parametrize('approve', [True, False])

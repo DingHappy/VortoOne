@@ -1,5 +1,5 @@
 import type { OrgRole, OrgRoles, Person } from "@agenteschat/client";
-import { keys, useUpdateRole } from "@agenteschat/client";
+import { keys, ORG_ROLE_ACT_LEVELS, useUpdateRole } from "@agenteschat/client";
 import { errorCode, errorText } from "@agenteschat/client/lib/errors";
 import type { RolePermission } from "@agenteschat/client/lib/permissions";
 import {
@@ -56,6 +56,7 @@ const AREA_ICONS: Record<string, IconName> = {
 
 /** The computers' five steps (`COMPUTER_STEPS`): none, then the person's own agents, then any agent. */
 const STEPS = ["off", "ownBrowser", "ownComputer", "anyBrowser", "anyComputer"] as const;
+const ACT_LEVEL_ROW = "actLevel";
 
 /** Keeps "Salvo" up a moment after a save. */
 function useSaved() {
@@ -101,7 +102,10 @@ export function RolePermissions({ role, data, people }: { role: OrgRole; data: O
     queue.current = queue.current.then(async () => {
       const now = qc.getQueryData<OrgRoles>(keys.roles(org.id))?.roles.find((r) => r.id === role.id) ?? role;
       try {
-        await update.mutateAsync({ roleId: role.id, patch: { permissions: withRow(now.permissions, row, level) } });
+        const patch = row === ACT_LEVEL_ROW
+          ? { actLevel: ORG_ROLE_ACT_LEVELS[level] }
+          : { permissions: withRow(now.permissions, row, level) };
+        await update.mutateAsync({ roleId: role.id, patch });
         setSaved(true);
       } catch (e) {
         if (errorCode(e) === "role.above_you") {
@@ -258,8 +262,37 @@ export function RolePermissions({ role, data, people }: { role: OrgRole; data: O
   const adminLabel = t("permissions.administrator.title");
   const adminShown =
     !base && (!q || fold(`${adminLabel} ${t("rolesPage.adminHint")} ${t("settings.advanced")}`).includes(q));
-  const none = groups.every((g) => g.rows.length === 0) && !adminShown;
+  const actLabel = t("rolesPage.actLevel.title");
+  const actHint = t("rolesPage.actLevel.hint");
+  const actShown = role.actLevel !== undefined && (!q || fold(`${actLabel} ${actHint}`).includes(q));
+  const none = groups.every((g) => g.rows.length === 0) && !adminShown && !actShown;
   const holdersCount = peopleWith(role, people).length;
+
+  const actId = `role-${role.id}-${ACT_LEVEL_ROW}`;
+  const actPending = pending.get(ACT_LEVEL_ROW);
+  const actCard = actShown && (
+    <Card aria-label={actLabel} className="roles-perms">
+      <div className="settings-rows">
+        <PermRow
+          id={actId}
+          title={actLabel}
+          hint={actHint}
+          control={
+            <Select
+              id={actId}
+              size="sm"
+              align="end"
+              value={actPending === undefined ? role.actLevel : ORG_ROLE_ACT_LEVELS[actPending]}
+              disabled={lock || !role.actLevelEditable || actPending !== undefined}
+              aria-label={actLabel}
+              options={ORG_ROLE_ACT_LEVELS.map((value) => ({ value, label: t(`rolesPage.actLevel.options.${value}`) }))}
+              onValueChange={(value) => save(ACT_LEVEL_ROW, ORG_ROLE_ACT_LEVELS.indexOf(value))}
+            />
+          }
+        />
+      </div>
+    </Card>
+  );
 
   const adminCard = !base && (
     <Card aria-label={t("settings.advanced")} className="roles-perms">
@@ -290,6 +323,7 @@ export function RolePermissions({ role, data, people }: { role: OrgRole; data: O
             <Icon name="shield" size={16} />
             <span>{t("rolesPage.adminOn", { name })}</span>
           </p>
+          {actCard}
           {adminCard}
         </>
       ) : (
@@ -309,6 +343,7 @@ export function RolePermissions({ role, data, people }: { role: OrgRole; data: O
             }
             actions={<SavedNote shown={saved} label={t("common.saved")} />}
           />
+          {actCard}
           {none ? (
             <p className="roles-empty ac-actline">
               <span>{t("rolesPage.noPermissionMatch", { q: query.trim() })}</span>

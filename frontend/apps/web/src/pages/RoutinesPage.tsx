@@ -156,6 +156,9 @@ import { useOrg } from "@/components/org-context";
 import { RoutineReachWarnings } from "@/components/RoutineReachWarnings";
 import { RoutineTemplateSelect } from "@/components/RoutineTemplates";
 import { useComputerEdition, useNamesComputers } from "@/components/WorkspaceComputer";
+import { MemberRoutinesPage } from "./MemberRoutinesPage";
+import { RoutineProposalReviews } from "./RoutineProposalReviews";
+import { RoutineTakeoverButton } from "./RoutineTakeoverButton";
 import { ZoneSelect } from "@/components/ZoneSelect";
 import { useDirectory } from "@/hooks/useDirectory";
 import { useEdited } from "@/hooks/useEdited";
@@ -191,7 +194,8 @@ const isRunning = (r: Routine) => r.state === "running";
 const isAtWork = (r: Routine) =>
   isRunning(r) || r.state === "waiting_person" || r.state === "waiting_computer" || r.state === "usage_paused";
 /** A one-off that already fired (or was cancelled): no switch, no "Rodar agora", nothing left to run. */
-export const hasFired = (r: Routine) => r.trigger.type === "once" && !r.active;
+export const hasFired = (r: Routine) =>
+  r.trigger.type === "once" && !r.active && !r.canTakeOver && !r.awaitingTakeoverResume;
 /** A one-off that fired and whose run ended: shown muted, under "Concluídos" (while its run works, it is live). */
 export const isDoneOnce = (r: Routine) => hasFired(r) && !isAtWork(r);
 /** Paused: inactive and not a one-off (a fired one-off is done, or live while its run works). */
@@ -305,6 +309,13 @@ export function useWhen() {
 
 /** Rotinas: scheduled and event-driven agent tasks. */
 export function RoutinesPage() {
+  const { org, me } = useOrg();
+  return org.role === "member" && org.memberRoutineProposals
+    ? <MemberRoutinesPage key={`${org.id}/${me.user.id}`} />
+    : <WorkspaceRoutinesPage />;
+}
+
+function WorkspaceRoutinesPage() {
   const { t } = useTranslation();
   const { org, me } = useOrg();
   const dir = useDirectory(org.id);
@@ -395,6 +406,9 @@ export function RoutinesPage() {
             )
           }
         />
+        {org.role === "owner" && org.routineProposalReview && (
+          <RoutineProposalReviews key={`${org.id}/${me.user.id}`} />
+        )}
         {routines.isLoading && <LoadingCards count={3} />}
         {routines.isError && !routines.data && (
           <ErrorState error={routines.error} onRetry={() => void routines.refetch()} />
@@ -747,6 +761,7 @@ function UsagePausedNote({ routine: r }: { routine: Routine }) {
 function FixButton({ routine: r, fix, size = "sm" }: { routine: Routine; fix: RoutineFix; size?: "sm" }) {
   const { t } = useTranslation();
   const controls = useRoutineControls(r);
+  if (fix === "take_over" && r.canTakeOver === true) return <RoutineTakeoverButton routineId={r.id} size={size} />;
   return (
     <Button
       size={size}

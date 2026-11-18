@@ -1,4 +1,4 @@
-"""成员的界面实时连接：仅订阅有权使用的 agent 私聊，仍只读本人发起的任务。
+"""成员的界面实时连接：仅订阅已加入的团队频道和本人发起的专员对话。
 
 不接主人的主会话桥，不接全空间广播。会话和办事级别在每轮以及每次推送前重读，撤销立即收口。
 """
@@ -13,7 +13,8 @@ from fastapi import WebSocketDisconnect
 
 from src.agents.principal import MEMBER, Principal
 from src.gateway import app_protocol as F
-from src.web import app_members, app_staff, app_views as views, member_auth
+from src.web import app_channels, app_members, app_staff, app_views as views, member_auth
+from src.workflow.members.channels import is_team_channel
 
 
 def identity(socket, root: str) -> Optional[Tuple[str, str]]:
@@ -28,13 +29,17 @@ def identity(socket, root: str) -> Optional[Tuple[str, str]]:
 
 
 async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 1.0) -> None:
+    actor = Principal(MEMBER, bound[0], root)
+
+    def session_valid():
+        return identity(socket, root) == bound
+
     def permitted(channel: str) -> Optional[str]:
-        if identity(socket, root) != bound:
+        if not session_valid():
             return None
         try:
             staff = views.member_for_channel(root, channel)
-            if staff and app_members.member_staff(root, Principal(MEMBER, bound[0], root),
-                                                   views.member_agent_id(root, staff)) == staff:
+            if staff and app_members.member_staff(root, actor, views.member_agent_id(root, staff)) == staff:
                 return staff
         except (ValueError, OSError):
             pass
@@ -53,14 +58,14 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
     watches = {}
     try:
         while True:
-            if identity(socket, root) != bound or any(not permitted(channel) for channel in watches):
+            if not session_valid() or any(not permitted(channel) for channel in watches if not is_team_channel(channel)):
                 await socket.close(code=1008)
                 return
             try:
                 raw = await asyncio.wait_for(socket.receive_text(), timeout=interval)
             except asyncio.TimeoutError:
                 continue
-            if identity(socket, root) != bound:
+            if not session_valid():
                 await socket.close(code=1008)
                 return
             try:
@@ -73,6 +78,16 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
             if kind == "ping":
                 await socket.send_json(F.make_app_frame(F.PONG))
             elif kind == "subscribe":
+                if is_team_channel(channel):
+                    prior = watches.get(channel)
+                    if prior is not None and not prior.done():
+                        await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
+                    else:
+                        subscription = await app_channels.subscribe(socket, app_channels.channels(root), actor, channel,
+                                                                    session_valid=session_valid, interval=interval)
+                        if subscription is not None:
+                            watches[channel] = subscription
+                    continue
                 staff = permitted(channel)
                 if not staff:
                     await socket.send_json(F.make_app_frame(F.ERROR, code="not_found", channelId=channel))

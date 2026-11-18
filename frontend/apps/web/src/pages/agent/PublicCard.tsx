@@ -12,6 +12,8 @@ import { useOrg } from "@/components/org-context";
 import { AgentCover } from "@/components/Sky";
 import { useDirectory } from "@/hooks/useDirectory";
 import { lookOf } from "@/lib/look";
+import { MemberActionLevels } from "./MemberActionLevels";
+import { MemberPolicy } from "./MemberPolicy";
 
 /** "Pedir acesso": a direct message to the agent's owner (none without one: the note names the admins). */
 export function AskAccessButton({ agent, size = "sm" }: { agent: Pick<Agent, "ownerUserId">; size?: "sm" | "md" }) {
@@ -100,6 +102,8 @@ export function AgentPublicCard({
                   </span>
                 </div>
               </div>
+              {agent.canManageMemberActionLevels && <MemberActionLevels agentId={agent.id} />}
+              {agent.canManageMemberPolicy && <MemberPolicy agentId={agent.id} />}
             </Card>
             <Card as="section" className="agp-card" aria-labelledby="pub-where">
               <CardHeader id="pub-where" icon="channel" title={t("agentPage.overview.where", g)} />

@@ -23,10 +23,12 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from src.agents.principal import MEMBER, OWNER, Principal
+from src.workflow.members.channels import TEAM_CHANNEL_ID_PATTERN
 
 MEMBER_COOKIE = "vortoone_member"
 _MAX_AGE = 30 * 24 * 3600
 _ORG = r"/api/app/organizations/[^/]+"
+_TEAM_CHANNEL = _ORG + r"/channels/" + TEAM_CHANNEL_ID_PATTERN
 
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
@@ -34,6 +36,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
+    ("GET", _ORG + r"/routines/proposals"),
+    ("POST", _ORG + r"/routines/proposals"),
     ("GET", _ORG + r"/members"),
     ("GET", _ORG + r"/invitations"),
     ("POST", _ORG + r"/invitations"),
@@ -42,6 +46,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     # 成员和 agent：只列他用得了的 agent，私聊里只有他自己发起的事（web/app_members.py）
     ("GET", _ORG + r"/agents"),
     ("GET", _ORG + r"/agents/[^/]+"),
+    ("GET", _ORG + r"/agents/[^/]+/member-action-levels"),
+    ("PUT", _ORG + r"/agents/[^/]+/member-action-levels/[^/]+"),
+    ("GET", _ORG + r"/agents/[^/]+/member-policy"),
+    ("PUT", _ORG + r"/agents/[^/]+/member-policy"),
     ("GET", _ORG + r"/agent-status"),
     ("GET", _ORG + r"/ai-status"),
     ("GET", _ORG + r"/dms"),
@@ -52,6 +60,19 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/channels/[^/]+/active-runs"),
     ("GET", _ORG + r"/channels/[^/]+/pins"),
     ("GET", _ORG + r"/channels/[^/]+/threads"),
+    ("GET", _ORG + r"/channels"),
+    ("POST", _ORG + r"/channels"),
+    ("GET", _ORG + r"/archived-channels"),
+    ("PATCH", _TEAM_CHANNEL),
+    ("DELETE", _TEAM_CHANNEL),
+    ("POST", _TEAM_CHANNEL + r"/(?:join|leave|read|unarchive|members)"),
+    ("DELETE", _TEAM_CHANNEL + r"/members/people/[^/]+"),
+    ("GET", _TEAM_CHANNEL + r"/(?:card|roster|permissions)"),
+    ("PUT", _TEAM_CHANNEL + r"/permissions"),
+    ("POST", _TEAM_CHANNEL + r"/pins/[^/]+"),
+    ("DELETE", _TEAM_CHANNEL + r"/pins/[^/]+"),
+    ("GET", _ORG + r"/messages/[^/]+/card"),
+    ("GET", _ORG + r"/threads/[^/]+"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),
     # AI 应用：只列、只断开他自己的连接和个人令牌（管成员的人能看全部）；授权确认页按他本人答复

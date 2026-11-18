@@ -1,4 +1,6 @@
-"""身份组与权限项的判定（HOME_AND_MEMBERS_DESIGN 7.2、7.3）。纯函数，还没有登记处和入口使用它。"""
+"""身份组与权限项的判定（HOME_AND_MEMBERS_DESIGN 7.2、7.3）。"""
+
+from dataclasses import replace
 
 import pytest
 
@@ -98,6 +100,15 @@ def test_invites_carry_only_posts_the_inviter_could_grant():
         with pytest.raises(PermissionError):
             R.invite_posts(held, wanted, POSTS, ORDER)
     assert R.invite_posts([], [R.ADMINS], POSTS, ORDER, owner=True) == [R.ADMINS]
+
+
+def test_grants_and_invites_cannot_give_a_higher_act_level():
+    posts = {**POSTS, "leads": replace(POSTS["leads"], act="read")}
+    assert not R.may_grant(["leads"], "ops", posts, ORDER)
+    with pytest.raises(PermissionError):
+        R.invite_posts(["leads"], ["ops"], posts, ORDER)
+    assert R.may_grant([], "ops", posts, ORDER, owner=True)
+    assert R.invite_posts([], ["ops"], posts, ORDER, owner=True) == ["ops"]
 
 
 def test_posts_deleted_after_an_invite_was_sent_are_skipped():
