@@ -8,9 +8,9 @@ import sqlite3
 import stat
 import time
 
-from src.gateway.computer_file_store import ACTION_SECONDS, FileAction
+from src.gateway.computer_file_store import ACTION_SECONDS, FileAction, FileDelivery
 from src.gateway.computer_file_wire import receipt_value
-from src.gateway.computer_protocol import binding_fields, identifier
+from src.gateway.computer_protocol import TRANSFER_SECONDS, binding_fields, identifier
 from src.utils.state_dir import ensure_state_gitignore, state_dir
 
 MAX_INTENTS = 10_000
@@ -61,7 +61,8 @@ class HomeFileIntents:
         return json.dumps(binding_fields(binding), sort_keys=True, separators=(",", ":"))
 
     def record(self, binding: dict, action: FileAction) -> None:
-        if action.operation != "create" or not 0 < action.deadline - time.time() <= ACTION_SECONDS:
+        maximum = TRANSFER_SECONDS if isinstance(action, FileDelivery) else ACTION_SECONDS
+        if action.operation != "create" or not 0 < action.deadline - time.time() <= maximum:
             raise FileIntentUnavailable("新建派发已过期或无效")
         with self._db() as db:
             ensure_state_gitignore(self.root)

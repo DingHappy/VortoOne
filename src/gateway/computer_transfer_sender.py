@@ -9,20 +9,8 @@ import aiohttp
 
 from src.gateway.computer_file_paths import FileDenied
 from src.gateway.computer_file_wire import staged_transfer
+from src.gateway.computer_transfer_io import CHUNK_BYTES, file_io
 from src.gateway.computer_protocol import MAX_TRANSFER_BYTES, TRANSFER_PATH, TRANSFER_SECONDS, decode_frame
-
-CHUNK_BYTES = 256 * 1024
-
-
-async def _read(stream, length):
-    # Closing a descriptor while a background read still owns it can reuse the wrong descriptor.
-    task = asyncio.create_task(asyncio.to_thread(stream.read, length))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        await asyncio.gather(task, return_exceptions=True)
-        raise
-
 
 async def native_transfer(session, config, store, method, body, active):
     def source():
@@ -57,7 +45,7 @@ async def native_transfer(session, config, store, method, body, active):
             nonlocal sent
             while sent < size:
                 await check()
-                piece = await _read(stream, min(CHUNK_BYTES, size - sent))
+                piece = await file_io(stream.read, min(CHUNK_BYTES, size - sent))
                 if not piece:
                     raise FileDenied("文件在传输期间变化")
                 await check()

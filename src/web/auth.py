@@ -130,6 +130,7 @@ COMPUTER_SELF_AUTHENTICATED = frozenset({
     ("POST", "/api/computers/pair"),
     ("POST", "/api/computers/native-pair"),
     ("PUT", TRANSFER_PATH),
+    ("GET", TRANSFER_PATH),
 })
 
 

@@ -301,3 +301,36 @@ def test_settings_pipe_can_store_and_revoke_but_cannot_execute(entry, tmp_path):
     assert invoke("revoke", folder_id=folder_id)["folders"] == []
     assert not list(folder.iterdir())
     assert not (data / ".vortoone").exists()
+
+
+def test_verified_delivery_never_publishes_wrong_bytes_and_never_replays(paired):
+    from dataclasses import asdict
+    import hashlib
+    import tempfile
+
+    from src.gateway.computer_file_store import FileDelivery
+
+    store, grant, folder = paired
+    data = b"binary\0data" * 8192
+    create = action(store, grant, "create", "delivered.bin")
+    delivery = FileDelivery(**asdict(create), size=len(data), sha256=hashlib.sha256(data).hexdigest(),
+                            source_version="a" * 64)
+    destination = folder / create.path
+    with tempfile.TemporaryFile(dir=store.directory) as source:
+        source.write(b"x" * len(data))
+        source.flush()
+        with pytest.raises(FileDenied):
+            store.execute_delivery(delivery, source.fileno(), active=lambda: True)
+        assert not list(folder.iterdir()) and not store.pending()
+
+        source.seek(0)
+        source.write(data)
+        source.flush()
+        receipt = store.execute_delivery(delivery, source.fileno(), active=lambda: True)
+        assert receipt["status"] == "created" and destination.read_bytes() == data
+        inode = destination.stat().st_ino
+        assert store.execute_delivery(delivery, source.fileno(), active=lambda: True) == receipt
+        assert destination.stat().st_ino == inode
+        with pytest.raises(FileDenied):
+            store.execute_delivery(replace(delivery, sha256="0" * 64), source.fileno(), active=lambda: True)
+        assert list(folder.iterdir()) == [destination]
