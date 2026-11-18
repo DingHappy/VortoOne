@@ -828,3 +828,181 @@ async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tm
         server.should_exit = True
         await asyncio.wait_for(server_task, 3)
         listener.close()
+
+
+async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp_path, monkeypatch):
+    import re
+    import uvicorn
+
+    from src.agents.agent_loop import MainAgent
+    from src.gateway import protocol as P
+    from src.gateway.computer_file_intents import HomeFileIntents
+    from src.gateway.computer_file_store import ComputerFiles
+    from src.web import app_views
+    from src.web.app_bridge import existing_bridge
+    from src.web.auth import SESSION_COOKIE
+    from src.web.routers import realtime
+    from src.web.server import app
+
+    root = str(tmp_path.resolve())
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("VORTOONE_API_TOKEN", "synthetic-file-owner")
+    monkeypatch.setenv("OPENAI_API_KEY", "unused-test-key")
+    monkeypatch.setenv("VORTOONE_TURN_DIGEST", "0")
+    monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
+    store = ConnectedComputers(root)
+    pairing = store.create_pairing(legacy_confirmed=True)
+    grant = store.pair(pairing["code"], BINDING["connector_id"], "测试电脑")
+    local = ComputerFiles(tmp_path / "file-access", grant)
+    folder = tmp_path / "selected"
+    folder.mkdir()
+    target = folder / "original.txt"
+    target.write_text("本地原文\n", encoding="utf-8")
+    permitted = local.grant(str(folder.resolve()), "测试目录", read=True, write=True)
+    folder_id = permitted["folder_id"]
+    args = {"computer_id": grant["connector_id"], "folder_id": folder_id}
+    outcomes = asyncio.Queue()
+    operations = {
+        "读取": ("connected_computer_read", {**args, "path": "original.txt"}),
+        "预览": ("connected_computer_patch_preview", {**args, "path": "original.txt", "text": "提议内容\n"}),
+        "撤权后写入": ("connected_computer_create", {**args, "path": "revoked.txt", "text": "不可写入"}),
+        "断线后补报": ("connected_computer_create", {**args, "path": "durable.txt", "text": "只写一次\n"}),
+        "清单": ("connected_computer_folders", {"computer_id": grant["connector_id"]}),
+    }
+
+    async def scripted_turn(self, prompt, *, mode, say, emit, owner_text, **_):
+        self._tool_turn_state.reset_escalation()
+        name, parameters = operations[owner_text]
+        result = await self._tool_runtime(say).execute(name, parameters, mode)
+        await outcomes.put(result)
+        emit(result.text)
+
+    monkeypatch.setattr(MainAgent, "run_turn", scripted_turn)
+    sent_json = aiohttp.ClientWebSocketResponse.send_json
+    dropped_reply = asyncio.Event()
+    dropped_receipt = {}
+
+    async def drop_create_result_once(ws, data, **kwargs):
+        if data.get("type") == "file_reply" and data.get("result", {}).get("status") == "created":
+            assert not dropped_reply.is_set(), "create must never be sent twice"
+            dropped_receipt.update(data["result"])
+            dropped_reply.set()
+            await ws.close()
+        else:
+            await sent_json(ws, data, **kwargs)
+
+    monkeypatch.setattr(aiohttp.ClientWebSocketResponse, "send_json", drop_create_result_once)
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    origin = f"http://127.0.0.1:{listener.getsockname()[1]}"
+    server = uvicorn.Server(uvicorn.Config(app, lifespan="off", log_level="critical", access_log=False,
+                                         log_config=None, ws="websockets"))
+    server_task = asyncio.create_task(server.serve(sockets=[listener]))
+    stop = asyncio.Event()
+    online = asyncio.Event()
+    worker_task = None
+
+    def emit(event):
+        if event.get("state") == "online":
+            online.set()
+
+    async def until(check, timeout=4):
+        async def poll():
+            while not (result := check()):
+                await asyncio.sleep(0.01)
+            return result
+        return await asyncio.wait_for(poll(), timeout)
+
+    try:
+        await until(lambda: server.started)
+        worker_task = asyncio.create_task(worker.run(config(origin, file_access=True, **grant), emit, stop))
+        await event_before(online)
+        account = store.identity()
+        assert connections.file_connection(root, grant["connector_id"], account)
+        base = origin + f"/api/app/organizations/{app_views.home_id(root)}"
+        channel = app_views.dm_channel_id(app_views.main_agent_id(root))
+
+        async with aiohttp.ClientSession(headers={"Authorization": "Bearer synthetic-file-owner"}) as owner:
+            async def send(text):
+                async with owner.post(f"{base}/channels/{channel}/messages", json={"body": text}) as response:
+                    assert response.status == 200, await response.text()
+
+            async def decide(card):
+                async with owner.post(f"{base}/approvals/{card['id']}/approve", json={}) as response:
+                    assert response.status == 200, await response.text()
+
+            async def card_for(fragment):
+                return await until(lambda: next((card for card in existing_bridge(root).pending_confirmations()
+                                                if fragment in card["text"]), None))
+
+            await send("清单")
+            listed = await asyncio.wait_for(outcomes.get(), 3)
+            assert "测试目录" in listed.text and str(folder) not in listed.text
+            await send("读取")
+            card = await card_for("original.txt")
+            assert card["scope_options"] == ["once"] and "测试电脑" in card["text"] and str(folder) not in card["text"]
+            attached = SimpleNamespace(query_params={"sid": existing_bridge(root).key.removeprefix("sid-")})
+            await realtime.handle_websocket_message(attached, {"type": P.AGENT_CONFIRM_RESPONSE, "id": card["id"], "ok": True})
+            assert existing_bridge(root).pending(card["id"]) is not None
+            async with aiohttp.ClientSession() as other:
+                async with other.post(f"{base}/approvals/{card['id']}/approve", json={},
+                                      headers={"Cookie": f"{SESSION_COOKIE}=synthetic-file-owner",
+                                               "Origin": "http://foreign.test"}) as response:
+                    assert response.status in (403, 409)
+                async with other.post(f"{base}/approvals/{card['id']}/approve", json={},
+                                      headers={"Cookie": f"{SESSION_COOKIE}=synthetic-file-owner",
+                                               "Origin": origin}) as response:
+                    assert response.status == 200, await response.text()
+            result = await asyncio.wait_for(outcomes.get(), 3)
+            assert result.text == "本地原文\n"
+
+            await send("预览")
+            await decide(await card_for("预览文件差异"))
+            patch = await asyncio.wait_for(outcomes.get(), 3)
+            assert "-本地原文" in patch.text and "+提议内容" in patch.text
+            assert target.read_text(encoding="utf-8") == "本地原文\n"
+
+            await send("撤权后写入")
+            await decide(await card_for("授权执行本回合"))
+            card = await card_for("revoked.txt")
+            local.revoke(folder_id)
+            await decide(card)
+            blocked = await asyncio.wait_for(outcomes.get(), 3)
+            assert blocked.status == "blocked" and not (folder / "revoked.txt").exists()
+
+            restored = local.grant(str(folder.resolve()), "重新授权目录", read=True, write=True)
+            operations["断线后补报"][1]["folder_id"] = restored["folder_id"]
+            await send("断线后补报")
+            await decide(await card_for("授权执行本回合"))
+            card = await card_for("durable.txt")
+            assert "SHA-256" in card["text"] and "只写一次" in card["text"]
+            old_connection = connections.file_connection(root, grant["connector_id"], account)
+            await decide(card)
+            result = await asyncio.wait_for(outcomes.get(), 3)
+            assert result.status == "blocked" and "结果未知" in result.text and dropped_reply.is_set()
+            action_id = re.search(r"[a-f0-9]{32}", result.text).group()
+            path = folder / "durable.txt"
+            fingerprint = path.stat()
+            home_intents = HomeFileIntents(root)
+            await until(lambda: home_intents.status(action_id, account) == "created")
+            await until(lambda: not local.pending())
+            assert dropped_receipt["action_id"] == action_id
+            assert home_intents.accept(grant, dropped_receipt)
+            assert not home_intents.accept({**grant, "credential_epoch": "e" * 32}, dropped_receipt)
+            assert not home_intents.accept(grant, {**dropped_receipt, "digest": "0" * 64})
+            assert not home_intents.accept(grant, {**dropped_receipt, "status": "blocked"})
+            assert home_intents.status(action_id, {**account, "trust_epoch": "e" * 32}) is None
+            assert connections.file_connection(root, grant["connector_id"], account) is not old_connection
+            assert path.read_text(encoding="utf-8") == "只写一次\n"
+            assert (path.stat().st_ino, path.stat().st_mtime_ns) == (fingerprint.st_ino, fingerprint.st_mtime_ns)
+            await realtime.handle_websocket_message(existing_bridge(root), {
+                "type": P.AGENT, "text": "清单", "rid": "unscoped-old-client",
+            })
+            assert (await asyncio.wait_for(outcomes.get(), 3)).status == "blocked"
+    finally:
+        stop.set()
+        if worker_task is not None:
+            await asyncio.gather(worker_task, return_exceptions=True)
+        server.should_exit = True
+        await asyncio.wait_for(server_task, 3)
+        listener.close()

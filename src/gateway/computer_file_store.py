@@ -232,7 +232,7 @@ class ComputerFiles:
         db.execute("UPDATE actions SET status = ? WHERE scope = ? AND action_id = ?",
                    (status, self.scope, action.action_id))
 
-    def _create(self, action: FileAction) -> str:
+    def _create(self, action: FileAction, active) -> str:
         # This first commit is deliberately separate from the transaction that fences
         # local revocation at the actual write. A crash between them is unknown.
         with self._db(write=True) as db:
@@ -246,17 +246,24 @@ class ComputerFiles:
                 if row[1] not in _STATUSES:
                     raise FileStateUnavailable("动作记录无效")
                 return row[1]
-            self._check_deadline(action)
-            self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
             if db.execute("SELECT count(*) FROM actions").fetchone()[0] >= MAX_ACTIONS:
                 raise FileStateUnavailable("本机动作记录已达上限")
+            try:
+                self._check_deadline(action)
+                if not active():
+                    raise FileDenied("本机已停止连接")
+                self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
+            except FileDenied:
+                db.execute("INSERT INTO actions VALUES (?, ?, ?, 'blocked', 0)",
+                           (self.scope, action.action_id, action.digest))
+                return "blocked"
             db.execute("INSERT INTO actions VALUES (?, ?, ?, 'started', 0)", (self.scope, action.action_id, action.digest))
 
         with self._db(write=True) as db:
             try:
                 self._check_deadline(action)
                 target = self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
-                target.create(text_bytes(action.content), action.version)
+                target.create(text_bytes(action.content), action.version, before_publish=lambda: self._check_deadline(action))
                 status = "created"
             except (FileDenied, FileExistsError):
                 status = "blocked"
@@ -267,15 +274,17 @@ class ComputerFiles:
             self._terminal(db, action, status)
         return status
 
-    def execute(self, action: FileAction) -> dict:
+    def execute(self, action: FileAction, *, active=lambda: True) -> dict:
         base = {"action_id": action.action_id, "digest": action.digest}
         try:
             self._private_directory()
             # One effect or read in flight across every pairing on this computer.
             with FileLease(self.directory / "file-action.lock", private=True):
                 if action.operation == "create":
-                    return {**base, "status": self._create(action)}
+                    return {**base, "status": self._create(action, active)}
                 self._check_deadline(action)
+                if not active():
+                    raise FileDenied("本机已停止连接")
                 with self._db(write=True) as db:
                     target = self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
                     value = (target.read(action.version) if action.operation == "read"

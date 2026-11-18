@@ -136,7 +136,7 @@ element("pair-form").addEventListener("submit", async (event) => {
   status.textContent = "请在本机确认窗口核对配对。全部执行能力仍关闭。";
   try {
     await invoke("computer_pair_confirm", { previewId: preview.previewId, code, name: preview.name });
-    status.textContent = "已登记电脑并开始连接。全部执行能力尚未就绪。";
+    status.textContent = "已登记电脑并开始连接。可为这个家设置本机文件夹授权。";
   } catch (error) { message(error); }
   finally { reset(); busy = false; element("confirm").disabled = false; await refresh(); }
 });

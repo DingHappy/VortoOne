@@ -110,6 +110,22 @@ def test_failed_directory_check_after_publication_reports_unknown(paired, monkey
     assert store.pending()[0]["status"] == "unknown"
 
 
+def test_deadline_passed_while_staging_blocks_publication_and_preserves_receipt(paired, monkeypatch):
+    store, grant, folder = paired
+    approved = action(store, grant, "create", "new.txt", "late")
+    check_parent = PinnedFile._check_parent
+
+    def expire_at_publication(target, chain):
+        check_parent(target, chain)
+        store.clock = lambda: approved.deadline
+
+    monkeypatch.setattr(PinnedFile, "_check_parent", expire_at_publication)
+    result = store.execute(approved)
+    assert result["status"] == "blocked"
+    assert not list(folder.iterdir())
+    assert store.pending() == [result]
+
+
 def test_read_or_create_capabilities_are_independent_and_revocation_fences_queued_action(paired):
     store, grant, folder = paired
     approved = action(store, grant, "create", "new.txt")
@@ -178,9 +194,12 @@ def test_single_flight_and_expired_unstarted_actions_fail_closed(paired):
     approved = action(store, grant, "create", "new.txt")
     with FileLease(store.directory / "file-action.lock", private=True):
         assert store.execute(approved)["status"] == "busy"
-    assert store.execute(replace(approved, deadline=int(time.time()) - 1))["status"] == "blocked"
-    assert not (folder / "new.txt").exists()
     assert store.pending() == []
+    expired = replace(approved, deadline=int(time.time()) - 1)
+    rejected = store.execute(expired)
+    assert rejected["status"] == "blocked"
+    assert not (folder / "new.txt").exists()
+    assert store.pending() == [rejected]
 
 
 def test_actual_process_death_after_effect_retains_unknown_and_never_replays(paired):

@@ -51,7 +51,7 @@ impl Registration {
         json!({"operation":"connect", "origin":self.origin, "home_instance_id":self.home_instance_id,
             "connector_id":self.connector_id, "paired_principal_id":self.paired_principal_id,
             "credential_epoch":self.credential_epoch, "trust_epoch":self.trust_epoch,
-            "allow_loopback_http":allow_loopback_http, "token":token})
+            "allow_loopback_http":allow_loopback_http, "token":token, "file_access":cfg!(unix)})
     }
 }
 
@@ -1193,7 +1193,7 @@ pub async fn computer_folder_settings(
                     _ => unreachable!(),
                 };
                 if !ask(&app, "保存此文件夹的本机授权",
-                    format!("家：{}\n文件夹：{}\n权限：{}\n\n本版本只保存授权。接通文件功能后，该家可按以上范围请求访问。",
+                    format!("家：{}\n文件夹：{}\n权限：{}\n\n支持文件协议的家可按以上范围请求访问，每次操作须在家中确认。",
                             record.origin, path, permissions), "保存授权") {
                     return Err("已取消文件夹授权".into());
                 }
@@ -1322,7 +1322,7 @@ pub async fn computer_pair_confirm(
         let config = manager.inner.lock().map_err(|_| "电脑配置忙，请重试")?.config.as_ref().unwrap().clone();
         if config.registrations.iter().any(|record| record.home_instance_id == preview.home) { return Err("此家已有本机配对，请先移除旧配对".into()); }
         if config.registrations.len() >= MAX_RECORDS { return Err("本机配对数量已达上限，请先移除旧配对".into()); }
-        if !ask(&app, "确认连接这台电脑", format!("家：{}\n家身份：{}\n电脑名称：{}\n\n仅登记身份并保持主动连接。文件、命令、浏览器和 Codex 等全部能力尚未就绪，配对不会开放它们。", preview.origin, preview.home, name), "确认配对") {
+        if !ask(&app, "确认连接这台电脑", format!("家：{}\n家身份：{}\n电脑名称：{}\n\n配对只登记身份并保持主动连接。文件夹须在本机另行选择并授权。", preview.origin, preview.home, name), "确认配对") {
             return Err("已取消配对，请重新核对后再试".into());
         }
         let source = WorkerSource::for_app(&app)?;

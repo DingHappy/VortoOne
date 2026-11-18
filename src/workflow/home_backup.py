@@ -32,7 +32,7 @@ PREFIX = "vortoone-backup-"
 KEEP_DEFAULT = 7
 # .vortoone/ 下不进备份的顶层项
 NOT_DATA = frozenset({"runtime.lock", "worktrees", "worktree_bindings.json", "isolated_deliveries", "shadow.git",
-                      "logs", "moved.json"})
+                      "logs", "moved.json", "computer-file-intents"})
 
 
 class BackupError(ValueError):

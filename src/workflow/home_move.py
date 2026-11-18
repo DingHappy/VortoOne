@@ -35,7 +35,7 @@ MAX_FILES = 500_000
 # .vortoone/ 下不带走的顶层项
 LEFT_BEHIND = frozenset({
     "runtime.lock", "worktrees", "worktree_bindings.json", "isolated_deliveries", "shadow.git", "logs",
-    "ai_apps", "mobile-devices", "connected-computers", "im-pairings", "im-bots", MARKER,
+    "ai_apps", "mobile-devices", "connected-computers", "computer-file-intents", "im-pairings", "im-bots", MARKER,
 })
 _DATA_ROOTS = ("sessions.db", "web_sessions", "staff", "members", "tasks", "memory", "main_chat.json", "connected-computers")
 

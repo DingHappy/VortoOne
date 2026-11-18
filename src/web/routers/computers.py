@@ -19,7 +19,7 @@ from src.gateway.computer_connections import connections, serve
 from src.gateway.computer_native import (
     ComputerNativeDenied, ComputerNativeUnclaimed, ComputerNativeUnavailable, redeem,
 )
-from src.gateway.computer_protocol import FEATURES, PROTOCOL_MAX, PROTOCOL_MIN, decode_frame
+from src.gateway.computer_protocol import FEATURES, PROTOCOL_MIN, decode_frame
 from src.gateway.connected_computers import ConnectedComputers, ComputerDenied, ComputerUnavailable
 from src.web import app_views as views
 from src.web.auth import SESSION_COOKIE, ct_eq, get_api_token
@@ -74,7 +74,7 @@ def _same_origin(request: Request) -> bool:
         return False
 
 
-def _owner(request: Request, org_id: str) -> tuple[str, ConnectedComputers]:
+def _require_owner_proof(request: Request) -> None:
     token = get_api_token()
     if not token or not _secure(request):
         raise _error(403, 'owner_required')
@@ -85,6 +85,18 @@ def _owner(request: Request, org_id: str) -> tuple[str, ConnectedComputers]:
         raise _error(401, 'owner_required')
     if (cookie and not bearer or request.headers.get('origin')) and not _same_origin(request):
         raise _error(403, 'same_origin_required')
+
+
+def has_computer_owner_proof(request: Request) -> bool:
+    try:
+        _require_owner_proof(request)
+    except HTTPException:
+        return False
+    return True
+
+
+def _owner(request: Request, org_id: str) -> tuple[str, ConnectedComputers]:
+    _require_owner_proof(request)
     root = str(Path(os.getcwd()).resolve())
     if org_id != views.home_id(root):
         raise _error(404, 'not_found')
@@ -201,8 +213,9 @@ async def computer_identity(request: Request, response: Response):
     if not _secure(request):
         raise _error(403, 'secure_transport_required')
     identity = await _call(ConnectedComputers(os.getcwd()).identity)
+    # Discovery describes the stable pairing API. Workers negotiate file support after pairing.
     return {'home_instance_id': identity['home_instance_id'], 'protocol_min': PROTOCOL_MIN,
-            'protocol_max': PROTOCOL_MAX, 'features': list(FEATURES)}
+            'protocol_max': PROTOCOL_MIN, 'features': list(FEATURES)}
 
 
 @router.get(_ORG + '/machines')

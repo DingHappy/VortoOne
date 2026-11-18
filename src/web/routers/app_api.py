@@ -788,7 +788,8 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             return _error(403, "owner_proof_required", _NEEDS_OWNER)
         return await asyncio.to_thread(_staff_read, lambda: app_staff.send(member[0], member[1], text, client_id))
     try:
-        return await (await main_chat_bridge(root)).post(text, client_id)
+        from src.web.routers.computers import has_computer_owner_proof
+        return await (await main_chat_bridge(root)).post(text, client_id, file_owner=has_computer_owner_proof(request))
     except NoModel:
         return _error(409, "no_ai", "还没有连接模型，没法回复")
 
@@ -856,10 +857,11 @@ async def approval(org_id: str, approval_id: str):
     return views.approval(root, pending)
 
 
-async def _decide(org_id: str, approval_id: str, approve: bool):
+async def _decide(org_id: str, approval_id: str, approve: bool, request: Request):
+    from src.web.routers.computers import has_computer_owner_proof
     root = _root(org_id)
     bridge = existing_bridge(root)
-    decided = await bridge.decide(approval_id, approve) if bridge else None
+    decided = await bridge.decide(approval_id, approve, file_owner=has_computer_owner_proof(request)) if bridge else None
     if decided is None:
         return _error(409, "approval_decided", "这个确认已经不在等待")
     return decided
@@ -872,16 +874,16 @@ class _Approve(BaseModel):
 
 
 @router.post(_ORG + "/approvals/{approval_id}/approve")
-async def approve(org_id: str, approval_id: str, body: _Approve):
+async def approve(org_id: str, approval_id: str, body: _Approve, request: Request):
     if body.always:
         # 「以后都允许」在这里没有对应的授权：不把一次批准悄悄扩大成常设放行。
         return _error(400, "always_unsupported", "这里只能批准这一次")
-    return await _decide(org_id, approval_id, True)
+    return await _decide(org_id, approval_id, True, request)
 
 
 @router.post(_ORG + "/approvals/{approval_id}/refuse")
-async def refuse(org_id: str, approval_id: str, body: _Approve):
-    return await _decide(org_id, approval_id, False)
+async def refuse(org_id: str, approval_id: str, body: _Approve, request: Request):
+    return await _decide(org_id, approval_id, False, request)
 
 
 @router.get(_ORG + "/channels/{channel_id}/pins")

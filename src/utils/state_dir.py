@@ -243,7 +243,8 @@ _STATE_ENTRIES = [
     "im-bots/",                # bot-scoped personas and hello state, private to the current instance
     "mobile-devices/",         # hashed mobile device grants; never part of task/session state
     "home-identity/",          # stable local identity and computer trust epoch
-    "connected-computers/",    # hashed control-only computer grants
+    "computer-file-intents/",  # durable home-side receipts, without file contents
+    "connected-computers/",    # hashed computer grants
     "isolated_deliveries/",
     "runtime.lock",
     "main_chat.json",          # 常驻助理的主要聊天登记（Desktop 连上时写，手机/电脑共用）
