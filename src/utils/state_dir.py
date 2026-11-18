@@ -36,7 +36,9 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 import subprocess
+import threading
 from pathlib import Path
 from typing import Union
 
@@ -47,8 +49,11 @@ LEGACY_STATE_DIRNAME = ".vortocode"
 STATE_DIRNAMES = frozenset({STATE_DIRNAME, LEGACY_STATE_DIRNAME})
 APP_SUPPORT_DIRNAME = "VortoOne"
 LEGACY_APP_SUPPORT_DIRNAME = "VortoCode"
+HOME_MAINTENANCE_FILE = ".vortoone-home-maintenance.lock"
 
 _conflicts_reported: set = set()
+_maintenance_excludes: dict = {}
+_maintenance_excludes_lock = threading.Lock()
 
 
 def state_dir(root: Union[str, Path]) -> Path:
@@ -145,6 +150,56 @@ def _hide_in_git(base: Path, old_name: str, also_ignore: str | None) -> None:
         pass
 
 
+def ensure_home_maintenance_gitignore(root: Union[str, Path]) -> None:
+    """仅在 Git 本地 info/exclude 隐藏家的外部维护锁；不改用户 .gitignore 或锁 inode。
+
+    每个仓库/工作树首次维护时解析一次 Git 路径；后续只 stat 已知文件。用户修改或删除
+    exclude 后重新读取补齐。非 Git 的家不缓存失败，日后 git init 也能接上。
+    """
+    try:
+        base = Path(root).resolve()
+        marker = (base / ".git").lstat()
+        marker_key = (marker.st_dev, marker.st_ino)
+        if stat.S_ISREG(marker.st_mode):
+            marker_key += (marker.st_size, marker.st_mtime_ns)
+        elif not stat.S_ISDIR(marker.st_mode):
+            return
+        key = (str(base), marker_key)
+        with _maintenance_excludes_lock:
+            previous = _maintenance_excludes.get(key)
+            if previous is None:
+                result = _git(base, "rev-parse", "--git-path", "info/exclude")
+                if result.returncode or not result.stdout.strip():
+                    return
+                exclude = Path(os.path.abspath(base / result.stdout.strip()))
+            else:
+                exclude, fingerprint = previous
+                try:
+                    found = exclude.lstat()
+                except FileNotFoundError:
+                    found = None
+                if found is not None and fingerprint == (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns):
+                    return
+            if exclude.is_symlink() or exclude.parent.is_symlink():
+                return
+            existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+            pattern = f"/{HOME_MAINTENANCE_FILE}"
+            if pattern not in existing.splitlines():
+                exclude.parent.mkdir(parents=True, exist_ok=True)
+                flags = (os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+                         | getattr(os, "O_NONBLOCK", 0))
+                descriptor = os.open(exclude, flags, 0o666)
+                with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+                    if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                        return
+                    prefix = "\n" if existing and not existing.endswith("\n") else ""
+                    handle.write(prefix + "# VortoOne：家的外部维护锁（仅本机生成态）\n" + pattern + "\n")
+            found = exclude.lstat()
+            _maintenance_excludes[key] = (exclude, (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns))
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        pass                         # Git 忽略是尽力维护，不能改变进程锁的安全语义
+
+
 _STATE_ENTRIES = [
     ".gitignore",
     "worktrees/",
@@ -187,6 +242,8 @@ _STATE_ENTRIES = [
     "im-pairings/",
     "im-bots/",                # bot-scoped personas and hello state, private to the current instance
     "mobile-devices/",         # hashed mobile device grants; never part of task/session state
+    "home-identity/",          # stable local identity and computer trust epoch
+    "connected-computers/",    # hashed control-only computer grants
     "isolated_deliveries/",
     "runtime.lock",
     "main_chat.json",          # 常驻助理的主要聊天登记（Desktop 连上时写，手机/电脑共用）

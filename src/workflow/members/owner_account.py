@@ -19,8 +19,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from src.utils.state_dir import state_dir
+from src.utils.home_maintenance import home_maintenance
 from src.workflow.members import accounts as _accounts
 from src.workflow.members.registry import login_name
+from src.workflow.home_identity import (
+    complete_owner_claim, ensure_home_identity, invalidate_computer_trust, owner_identity_change,
+)
 
 _FILE = "owner.json"
 _LOCK = threading.RLock()
@@ -41,6 +45,7 @@ def _now() -> datetime:
 
 class OwnerAccount:
     def __init__(self, root: str):
+        self.root = root
         self.path = state_dir(root) / "members" / _FILE
 
     def _load(self) -> Dict[str, Any]:
@@ -57,12 +62,24 @@ class OwnerAccount:
         return value
 
     def _save(self, value: Dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        import os
+        if self.path.parent.is_symlink() or self.path.is_symlink():
+            raise _accounts.Damaged("所有者账号目录不可用")
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{_FILE}.{uuid.uuid4().hex}.tmp")
         try:
-            temporary.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding="utf-8")
-            temporary.chmod(0o600)
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(value, handle, ensure_ascii=False, indent=1)
+                handle.flush()
+                os.fsync(handle.fileno())
             temporary.replace(self.path)
+            if os.name != "nt":
+                descriptor = os.open(self.path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -87,6 +104,8 @@ class OwnerAccount:
         except _accounts.Damaged:
             return False
         claim = value.get("claim") or {}
+        if value.get("claim_completion"):
+            return True                    # 已接受的认领可以凭原码+相同账号密码继续完成
         return not value.get("password") and str(claim.get("expires") or "") > _accounts._iso(now or _now())
 
     # ── 认领 ──────────────────────────────────────────────────────────────────
@@ -95,11 +114,15 @@ class OwnerAccount:
         """开一个认领令牌（顶掉之前没用的），返回（令牌，过期时刻）。已经有所有者账号时报 Taken。
         reset：忘了密码——在这台电脑上跑的命令才能这样做；去掉现在的密码，重新认领。"""
         moment = now or _now()
-        with _LOCK:
+        with home_maintenance(self.root), _LOCK, owner_identity_change(self.root):
+            self.path = state_dir(self.root) / "members" / _FILE
             value = self._load()
             if value.get("password") and not reset:
                 raise Taken("这个家已经有所有者账号了；忘了密码就加 --reset 重新认领")
+            # 先收电脑权限，再修改认领凭据；即使后续写失败也保持收权。
+            invalidate_computer_trust(self.root, "owner-reclaim" if reset else "owner-claim", unclaimed=True)
             value.pop("password", None)
+            value.pop("claim_completion", None)
             token, expires = secrets.token_urlsafe(32), _accounts._iso(moment + timedelta(hours=CLAIM_HOURS))
             value["claim"] = {"digest": _accounts._digest(token), "expires": expires}
             self._save(value)
@@ -115,16 +138,35 @@ class OwnerAccount:
         if secret == clean_name:
             raise ValueError("密码不能和名字一样")
         stamp = _accounts._iso(now or _now())
-        with _LOCK:
+        with home_maintenance(self.root), _LOCK, owner_identity_change(self.root):
+            self.path = state_dir(self.root) / "members" / _FILE
             value = self._load()
             if value.get("password"):
-                raise Taken("这个家已经有所有者了")
-            claim = value.get("claim") or {}
-            if not (isinstance(token, str) and claim.get("digest")
-                    and secrets.compare_digest(str(claim["digest"]), _accounts._digest(token))
-                    and str(claim.get("expires") or "") > stamp):
-                raise WrongClaim("认领链接不对、过期或已经用过")
-            value = {"name": clean_name, "email": address, "password": _accounts._sealed(secret), "created": stamp}
+                pending = value.get("claim_completion")
+                if pending is None:
+                    raise Taken("这个家已经有所有者了")
+                if not isinstance(pending, dict):
+                    raise _accounts.Damaged("认领完成记录不可用")
+                # 首次认领已经在有效期内接受；这仅恢复同一提交，不重开认领窗口。
+                if not (isinstance(token, str) and pending.get("digest")
+                        and secrets.compare_digest(str(pending["digest"]), _accounts._digest(token))
+                        and value.get("name") == clean_name and value.get("email") == address
+                        and _accounts._matches(value["password"], secret)):
+                    raise WrongClaim("认领链接或原认领资料不正确")
+            else:
+                claim = value.get("claim") or {}
+                if not (isinstance(token, str) and claim.get("digest")
+                        and secrets.compare_digest(str(claim["digest"]), _accounts._digest(token))
+                        and str(claim.get("expires") or "") > stamp):
+                    raise WrongClaim("认领链接不对、过期或已经用过")
+                admission = ensure_home_identity(self.root)
+                value = {"name": clean_name, "email": address, "password": _accounts._sealed(secret), "created": stamp,
+                         "claim_completion": {"digest": claim["digest"], "expires": claim["expires"],
+                                              "admission_epoch": admission["trust_epoch"],
+                                              "subject": uuid.uuid4().hex, "trust_epoch": uuid.uuid4().hex}}
+                self._save(value)
+            complete_owner_claim(self.root)
+            value.pop("claim_completion")
             self._save(value)
 
     # ── 登录 ──────────────────────────────────────────────────────────────────

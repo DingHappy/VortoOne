@@ -20,7 +20,12 @@ const START_WITHIN: Duration = Duration::from_secs(90);
 const IO_WAIT: Duration = Duration::from_secs(5);
 /// 模型凭据等只从这些前缀里取，免得把配置文件当成往后端塞任意环境变量的口子。
 const ENV_PREFIXES: [&str; 3] = ["OPENAI_", "VORTOONE_MODEL", "VORTOONE_LLM_"];
-const MODEL_NAMES: [&str; 4] = ["DEFAULT_MODEL", "LLM_MODEL_CHEAP", "LLM_MODEL_BALANCED", "LLM_MODEL_POWERFUL"];
+const MODEL_NAMES: [&str; 4] = [
+    "DEFAULT_MODEL",
+    "LLM_MODEL_CHEAP",
+    "LLM_MODEL_BALANCED",
+    "LLM_MODEL_POWERFUL",
+];
 
 #[derive(Debug, PartialEq)]
 pub struct Config {
@@ -30,16 +35,134 @@ pub struct Config {
 }
 
 #[derive(Default)]
-pub struct Backend(pub Mutex<Option<Child>>);
+pub struct Backend(pub Mutex<Option<Child>>, Mutex<Option<NativeBootstrap>>);
+
+/// The ticket is never serialized or formatted. It only crosses the child stdin
+/// pipe and this child's literal-loopback native registration request.
+pub struct NativeBootstrap {
+    ticket: Option<String>,
+    child_pid: u32,
+    port: u16,
+    expires: Instant,
+}
+
+#[derive(Clone, Copy)]
+pub struct NativeCandidate {
+    pub child_pid: u32,
+    pub port: u16,
+}
+
+impl NativeBootstrap {
+    fn new(child_pid: u32, port: u16, ticket: String) -> Self {
+        Self {
+            ticket: Some(ticket),
+            child_pid,
+            port,
+            expires: Instant::now() + Duration::from_secs(60),
+        }
+    }
+}
 
 impl Backend {
     pub fn stop(&self) {
         if let Ok(mut slot) = self.0.lock() {
+            if let Ok(mut native) = self.1.lock() {
+                native.take();
+            }
             if let Some(mut child) = slot.take() {
                 let _ = child.kill();
                 let _ = child.wait();
             }
         }
+    }
+    pub fn install(&self, child: Child, native: NativeBootstrap) -> Result<(), String> {
+        let mut incoming = Some(child);
+        let outcome = (|| {
+            let mut slot = self.0.lock().map_err(|_| "后端状态不可用")?;
+            let mut bootstrap = self.1.lock().map_err(|_| "本机配对状态不可用")?;
+            if slot.is_some() || incoming.as_ref().unwrap().id() != native.child_pid {
+                return Err("本机后端已变化".to_string());
+            }
+            *bootstrap = Some(native);
+            *slot = incoming.take();
+            Ok(())
+        })();
+        if let Some(mut child) = incoming {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        outcome
+    }
+    pub fn local_origin(&self) -> Option<String> {
+        let mut slot = self.0.lock().ok()?;
+        let child = slot.as_mut()?;
+        if child.try_wait().ok()?.is_some() {
+            return None;
+        }
+        let native = self.1.lock().ok()?;
+        let native = native.as_ref()?;
+        (child.id() == native.child_pid).then(|| origin(native.port))
+    }
+    pub fn native_candidate(&self) -> Option<NativeCandidate> {
+        let mut slot = self.0.lock().ok()?;
+        let child = slot.as_mut()?;
+        if child.try_wait().ok()?.is_some() {
+            return None;
+        }
+        let native = self.1.lock().ok()?;
+        let native = native.as_ref()?;
+        (child.id() == native.child_pid && native.ticket.is_some()).then_some(NativeCandidate {
+            child_pid: child.id(),
+            port: native.port,
+        })
+    }
+    pub fn matches_native(&self, candidate: NativeCandidate) -> bool {
+        let Ok(mut slot) = self.0.lock() else {
+            return false;
+        };
+        let Some(child) = slot.as_mut() else {
+            return false;
+        };
+        let Ok(native) = self.1.lock() else {
+            return false;
+        };
+        native.as_ref().is_some_and(|native| {
+            native.child_pid == candidate.child_pid
+                && native.port == candidate.port
+                && child.id() == candidate.child_pid
+                && matches!(child.try_wait(), Ok(None))
+        })
+    }
+    pub fn discard_native(&self, candidate: NativeCandidate) {
+        if let Ok(mut native) = self.1.lock() {
+            if let Some(native) = native.as_mut().filter(|native| {
+                native.child_pid == candidate.child_pid && native.port == candidate.port
+            }) {
+                native.ticket.take();
+            }
+        }
+    }
+    pub fn consume_native(&self, candidate: NativeCandidate) -> Result<String, String> {
+        let mut slot = self.0.lock().map_err(|_| "无法核对本机后端")?;
+        let child = slot.as_mut().ok_or("本机后端已停止")?;
+        let mut native = self.1.lock().map_err(|_| "无法核对本机配对")?;
+        let native = native.as_mut().ok_or("本机配对票据不可用")?;
+        if child.id() != candidate.child_pid
+            || native.child_pid != candidate.child_pid
+            || native.port != candidate.port
+            || !matches!(child.try_wait(), Ok(None))
+        {
+            native.ticket.take();
+            return Err("本机后端已变化，请重新启动本机服务".into());
+        }
+        let ticket = native
+            .ticket
+            .take()
+            .ok_or("本机自动配对已尝试，请重新启动本机服务或手工配对")?;
+        if native.expires <= Instant::now() {
+            return Err("本机自动配对票据已过期，请重新启动本机服务或手工配对".into());
+        }
+        Ok(ticket)
     }
 }
 
@@ -76,14 +199,20 @@ pub fn parse_config(text: &str) -> Result<Config, String> {
         Some(_) => Some(absolute("env_file")?),
         None => None,
     };
-    Ok(Config { python: absolute("python")?, source: absolute("source")?, env_file })
+    Ok(Config {
+        python: absolute("python")?,
+        source: absolute("source")?,
+        env_file,
+    })
 }
 
 /// 环境文件里允许带给后端的几项（`KEY=VALUE`，可带引号；其余行忽略）。
 pub fn allowed_env(text: &str) -> Vec<(String, String)> {
     dotenvy::from_read_iter(text.as_bytes())
         .filter_map(Result::ok)
-        .filter(|(key, _)| ENV_PREFIXES.iter().any(|p| key.starts_with(p)) || MODEL_NAMES.contains(&key.as_str()))
+        .filter(|(key, _)| {
+            ENV_PREFIXES.iter().any(|p| key.starts_with(p)) || MODEL_NAMES.contains(&key.as_str())
+        })
         .collect()
 }
 
@@ -134,14 +263,27 @@ fn new_token() -> Result<String, String> {
 }
 
 /// 对本机后端的一次请求；返回 (状态码, 正文)。
-fn request(port: u16, method: &str, path: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+fn request(
+    port: u16,
+    method: &str,
+    path: &str,
+    bearer: Option<&str>,
+) -> Result<(u16, String), String> {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream = TcpStream::connect_timeout(&address, IO_WAIT).map_err(|e| e.to_string())?;
-    stream.set_read_timeout(Some(IO_WAIT)).map_err(|e| e.to_string())?;
-    stream.set_write_timeout(Some(IO_WAIT)).map_err(|e| e.to_string())?;
-    let auth = bearer.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
+    stream
+        .set_read_timeout(Some(IO_WAIT))
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(Some(IO_WAIT))
+        .map_err(|e| e.to_string())?;
+    let auth = bearer
+        .map(|t| format!("Authorization: Bearer {t}\r\n"))
+        .unwrap_or_default();
     let head = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{auth}Content-Length: 0\r\nConnection: close\r\n\r\n");
-    stream.write_all(head.as_bytes()).map_err(|e| e.to_string())?;
+    stream
+        .write_all(head.as_bytes())
+        .map_err(|e| e.to_string())?;
     let mut raw = String::new();
     stream.read_to_string(&mut raw).map_err(|e| e.to_string())?;
     parse_response(&raw).ok_or_else(|| "后端应答无法解析".to_string())
@@ -153,21 +295,128 @@ pub fn parse_response(raw: &str) -> Option<(u16, String)> {
     Some((status, body.to_string()))
 }
 
+/// Fixed literal-loopback client for the native process-bound exchange. No
+/// redirects, cookies, ambient owner credential, proxy, or remote URL are used.
+pub fn native_identity(port: u16) -> Result<(u16, serde_json::Value), String> {
+    native_request(port, "GET", "/api/computers/identity", None, None)
+}
+pub fn native_pair(
+    port: u16,
+    ticket: &str,
+    connector_id: &str,
+    name: &str,
+) -> Result<(u16, serde_json::Value), String> {
+    if ticket.len() != 68
+        || !ticket.starts_with("vcn_")
+        || !ticket[4..]
+            .bytes()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    {
+        return Err("本机启动票据无效".into());
+    }
+    native_request(
+        port,
+        "POST",
+        "/api/computers/native-pair",
+        Some(ticket),
+        Some(&serde_json::json!({"connector_id":connector_id,"name":name})),
+    )
+}
+fn native_request(
+    port: u16,
+    method: &str,
+    path: &str,
+    ticket: Option<&str>,
+    body: Option<&serde_json::Value>,
+) -> Result<(u16, serde_json::Value), String> {
+    let until = Instant::now() + Duration::from_secs(10);
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream =
+        TcpStream::connect_timeout(&address, IO_WAIT).map_err(|_| "本机服务没有应答")?;
+    let body = body
+        .map(serde_json::to_vec)
+        .transpose()
+        .map_err(|_| "本机配对请求无效")?
+        .unwrap_or_default();
+    let auth = ticket
+        .map(|ticket| format!("Authorization: Native {ticket}\r\n"))
+        .unwrap_or_default();
+    let header = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+    stream
+        .set_write_timeout(Some(IO_WAIT))
+        .map_err(|_| "本机连接不可用")?;
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|_| stream.write_all(&body))
+        .map_err(|_| "本机配对请求没有送达")?;
+    let mut raw = Vec::new();
+    let mut chunk = [0u8; 2048];
+    loop {
+        let remaining = until
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or("本机服务没有及时应答")?;
+        stream
+            .set_read_timeout(Some(remaining.min(IO_WAIT)))
+            .map_err(|_| "本机连接不可用")?;
+        let count = stream.read(&mut chunk).map_err(|_| "本机服务应答不可用")?;
+        if count == 0 {
+            break;
+        }
+        if raw.len() + count > 16384 {
+            return Err("本机服务应答过长".into());
+        }
+        raw.extend_from_slice(&chunk[..count]);
+    }
+    let raw = std::str::from_utf8(&raw).map_err(|_| "本机服务应答无效")?;
+    let (status, body) = parse_response(raw).ok_or("本机服务应答无效")?;
+    // A redirect must never forward the native credential or turn into a grant.
+    if (300..400).contains(&status) {
+        return Err("本机配对拒绝重定向".into());
+    }
+    let body = serde_json::from_str(&body).map_err(|_| "本机服务应答无效")?;
+    Ok((status, body))
+}
+
 pub fn command(config: &Config, home: &Path, ui: &Path, port: u16, token: &str) -> Command {
     let mut command = Command::new(&config.python);
-    command.args(["-m", "src.runtime_entry", "server", "--host", "127.0.0.1", "--port"]).arg(port.to_string());
+    command
+        .args([
+            "-m",
+            "src.runtime_entry",
+            "server",
+            "--host",
+            "127.0.0.1",
+            "--port",
+        ])
+        .arg(port.to_string());
     command.env("PYTHONPATH", &config.source);
     configure(command, config.env_file.as_deref(), home, ui, token)
 }
 
-pub fn bundled_command(runtime: &Path, env_file: Option<&Path>, home: &Path, ui: &Path, port: u16, token: &str) -> Command {
+pub fn bundled_command(
+    runtime: &Path,
+    env_file: Option<&Path>,
+    home: &Path,
+    ui: &Path,
+    port: u16,
+    token: &str,
+) -> Command {
     let mut command = Command::new(runtime);
-    command.args(["server", "--host", "127.0.0.1", "--port"]).arg(port.to_string());
+    command
+        .args(["server", "--host", "127.0.0.1", "--port"])
+        .arg(port.to_string());
     command.env_remove("PYTHONPATH").env_remove("PYTHONHOME");
     configure(command, env_file, home, ui, token)
 }
 
-fn configure(mut command: Command, env_file: Option<&Path>, home: &Path, ui: &Path, token: &str) -> Command {
+fn configure(
+    mut command: Command,
+    env_file: Option<&Path>,
+    home: &Path,
+    ui: &Path,
+    token: &str,
+) -> Command {
     command.current_dir(home);
     command.env("PYTHONNOUSERSITE", "1");
     command.env("VORTOONE_WORKSPACE_SCOPE", "general");
@@ -197,12 +446,29 @@ pub fn public_url(path: &Path) -> Option<String> {
 }
 
 /// 启动后端并等它应答；返回 (子进程, 端口, 令牌)。
-pub fn start(config: &Config, home: &Path, ui: &Path, log: &Path, token: &str) -> Result<(Child, u16, String), String> {
-    start_with(home, ui, log, token, |port, token| command(config, home, ui, port, token))
+pub fn start(
+    config: &Config,
+    home: &Path,
+    ui: &Path,
+    log: &Path,
+    token: &str,
+) -> Result<(Child, u16, String, NativeBootstrap), String> {
+    start_with(home, ui, log, token, |port, token| {
+        command(config, home, ui, port, token)
+    })
 }
 
-pub fn start_bundled(runtime: &Path, env_file: Option<&Path>, home: &Path, ui: &Path, log: &Path, token: &str) -> Result<(Child, u16, String), String> {
-    start_with(home, ui, log, token, |port, token| bundled_command(runtime, env_file, home, ui, port, token))
+pub fn start_bundled(
+    runtime: &Path,
+    env_file: Option<&Path>,
+    home: &Path,
+    ui: &Path,
+    log: &Path,
+    token: &str,
+) -> Result<(Child, u16, String, NativeBootstrap), String> {
+    start_with(home, ui, log, token, |port, token| {
+        bundled_command(runtime, env_file, home, ui, port, token)
+    })
 }
 
 /// 这台电脑上的服务的所有者密钥：有就读出来，没有就生成一把存下（0600）。读出来的不像样就报错，不悄悄换一把
@@ -237,25 +503,59 @@ fn write_private(path: &Path, text: &str) -> Result<(), String> {
     file.write_all(text.as_bytes()).map_err(|e| e.to_string())
 }
 
-fn start_with(home: &Path, ui: &Path, log: &Path, token: &str, build: impl FnOnce(u16, &str) -> Command) -> Result<(Child, u16, String), String> {
+fn start_with(
+    home: &Path,
+    ui: &Path,
+    log: &Path,
+    token: &str,
+    build: impl FnOnce(u16, &str) -> Command,
+) -> Result<(Child, u16, String, NativeBootstrap), String> {
     if !ui.join("index.html").is_file() {
         return Err("安装包里没有界面文件".into());
     }
     fs::create_dir_all(home).map_err(|e| e.to_string())?;
-    let (port, token) = (stable_port(&home.with_file_name("backend.port"))?, token.to_string());
+    let (port, token) = (
+        stable_port(&home.with_file_name("backend.port"))?,
+        token.to_string(),
+    );
     let output = fs::File::create(log).map_err(|e| e.to_string())?;
+    let ticket = format!("vcn_{}", new_token()?);
+    let frame =
+        serde_json::to_vec(&serde_json::json!({"ticket":ticket, "parent_pid":std::process::id()}))
+            .map_err(|_| "本机启动票据无效")?;
     let mut child = build(port, &token)
+        .arg("--native-computer-control")
+        .stdin(Stdio::piped())
         .stdout(output.try_clone().map_err(|e| e.to_string())?)
         .stderr(output)
         .spawn()
         .map_err(|e| format!("后端启动失败：{e}"))?;
+    let bootstrap = NativeBootstrap::new(child.id(), port, ticket);
+    let sent = child
+        .stdin
+        .take()
+        .ok_or("本机启动私有通道不可用")
+        .and_then(|mut pipe| {
+            pipe.write_all(&frame)
+                .and_then(|_| pipe.write_all(b"\n"))
+                .and_then(|_| pipe.flush())
+                .map_err(|_| "本机启动票据没有送达")
+        });
+    if let Err(error) = sent {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error.into());
+    }
     let since = Instant::now();
     loop {
         if let Ok(Some(status)) = child.try_wait() {
             return Err(format!("后端已退出（{status}），详见日志"));
         }
-        if matches!(request(port, "GET", "/api/health/quick", None), Ok((200, _))) {
-            return Ok((child, port, token));
+        if matches!(
+            request(port, "GET", "/api/health/quick", None),
+            Ok((200, _))
+        ) {
+            return Ok((child, port, token, bootstrap));
         }
         if since.elapsed() > START_WITHIN {
             let _ = child.kill();
@@ -283,35 +583,53 @@ fn good_code(code: &str) -> bool {
 
 /// 安装验收：在全新的临时家里启动随包后端并完成登录，不读取用户配置，不调用模型。
 pub fn verify_standalone(resources: &Path) -> Result<(), String> {
-    let runtime = resources.join("runtime").join(if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" });
-    let capabilities = Command::new(&runtime).arg("model-capabilities").output().map_err(|_| "内置后端无法运行")?;
-    if !capabilities.status.success() { return Err("内置模型客户端无法启动".into()); }
-    let capabilities: serde_json::Value = serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
+    let runtime = resources.join("runtime").join(if cfg!(windows) {
+        "vortocode-runtime.exe"
+    } else {
+        "vortocode-runtime"
+    });
+    let capabilities = Command::new(&runtime)
+        .arg("model-capabilities")
+        .output()
+        .map_err(|_| "内置后端无法运行")?;
+    if !capabilities.status.success() {
+        return Err("内置模型客户端无法启动".into());
+    }
+    let capabilities: serde_json::Value =
+        serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
     if capabilities["native_tools_client"] != true || capabilities["inference_sent"] != false {
         return Err("内置模型客户端核验失败".into());
     }
-    let scratch = std::env::temp_dir().join(format!("vortoone-installed-check-{}-{}", std::process::id(), new_token()?));
+    let scratch = std::env::temp_dir().join(format!(
+        "vortoone-installed-check-{}-{}",
+        std::process::id(),
+        new_token()?
+    ));
     fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let outcome = (|| {
         let ui = resources.join("web");
         let home = scratch.join("home");
         let log = scratch.join("backend.log");
-        let (mut child, port, token) = start_with(&home, &ui, &log, &new_token()?, |port, token| {
-            let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
-            cmd.env_clear();
-            cmd = configure(cmd, None, &home, &ui, token);
-            cmd.env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
-            cmd
-        })?;
+        let (mut child, port, token, _native) =
+            start_with(&home, &ui, &log, &new_token()?, |port, token| {
+                let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
+                cmd.env_clear();
+                cmd = configure(cmd, None, &home, &ui, token);
+                cmd.env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
+                cmd
+            })?;
         let result = (|| {
             if request(port, "GET", "/api/app/me", None)?.0 != 401
                 || request(port, "GET", "/api/app/me", Some(&token))?.0 != 200
-                || request(port, "GET", "/", None)?.0 != 200 {
+                || request(port, "GET", "/", None)?.0 != 200
+            {
                 return Err("独立后端或界面未能通过验收".into());
             }
             let address = sign_in_url(port, &token)?;
             let path = address.strip_prefix(&origin(port)).ok_or("交接地址无效")?;
-            if request(port, "GET", path, None)?.0 != 303 { return Err("独立安装登录交接失败".into()); }
+            if request(port, "GET", path, None)?.0 != 303 {
+                return Err("独立安装登录交接失败".into());
+            }
             Ok(())
         })();
         let _ = child.kill();
@@ -337,14 +655,37 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("vortoone-public-url-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("home")).unwrap();
-        let env_of = |command: &Command| command.get_envs()
-            .find(|(key, _)| *key == "VORTOONE_PUBLIC_URL")
-            .and_then(|(_, value)| value.map(|v| v.to_string_lossy().to_string()));
-        let build = || bundled_command(Path::new("/bin/true"), None, &dir.join("home"), &dir, 4321, "k");
+        let env_of = |command: &Command| {
+            command
+                .get_envs()
+                .find(|(key, _)| *key == "VORTOONE_PUBLIC_URL")
+                .and_then(|(_, value)| value.map(|v| v.to_string_lossy().to_string()))
+        };
+        let build = || {
+            bundled_command(
+                Path::new("/bin/true"),
+                None,
+                &dir.join("home"),
+                &dir,
+                4321,
+                "k",
+            )
+        };
         assert_eq!(env_of(&build()), None);
-        fs::write(dir.join(crate::places::PUBLIC_URL_FILE), "https://box.tail1.ts.net/\n").unwrap();
-        assert_eq!(env_of(&build()).as_deref(), Some("https://box.tail1.ts.net"));
-        fs::write(dir.join(crate::places::PUBLIC_URL_FILE), "http://box.tail1.ts.net").unwrap();
+        fs::write(
+            dir.join(crate::places::PUBLIC_URL_FILE),
+            "https://box.tail1.ts.net/\n",
+        )
+        .unwrap();
+        assert_eq!(
+            env_of(&build()).as_deref(),
+            Some("https://box.tail1.ts.net")
+        );
+        fs::write(
+            dir.join(crate::places::PUBLIC_URL_FILE),
+            "http://box.tail1.ts.net",
+        )
+        .unwrap();
         assert_eq!(env_of(&build()), None);
         let _ = fs::remove_dir_all(&dir);
     }
@@ -406,11 +747,22 @@ mod tests {
 
     #[test]
     fn bundled_backend_uses_its_own_executable_without_a_python_or_source_path() {
-        let command = bundled_command(Path::new("/App/runtime/vortocode-runtime"), None,
-            Path::new("/profile"), Path::new("/App/web"), 4321, "token");
+        let command = bundled_command(
+            Path::new("/App/runtime/vortocode-runtime"),
+            None,
+            Path::new("/profile"),
+            Path::new("/App/web"),
+            4321,
+            "token",
+        );
         assert_eq!(command.get_program(), "/App/runtime/vortocode-runtime");
-        assert_eq!(command.get_args().map(|v| v.to_str().unwrap()).collect::<Vec<_>>(),
-            ["server", "--host", "127.0.0.1", "--port", "4321"]);
+        assert_eq!(
+            command
+                .get_args()
+                .map(|v| v.to_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["server", "--host", "127.0.0.1", "--port", "4321"]
+        );
         let env: std::collections::HashMap<_, _> = command.get_envs().collect();
         assert!(env[std::ffi::OsStr::new("PYTHONPATH")].is_none());
         assert!(env[std::ffi::OsStr::new("PYTHONHOME")].is_none());
@@ -444,20 +796,181 @@ mod tests {
 
     #[test]
     fn the_backend_is_started_private_and_supervised() {
-        let config = Config { python: "/p".into(), source: "/s".into(), env_file: None };
+        let config = Config {
+            python: "/p".into(),
+            source: "/s".into(),
+            env_file: None,
+        };
         let built = command(&config, Path::new("/home"), Path::new("/ui"), 4321, "tok");
         let env: std::collections::HashMap<_, _> = built
             .get_envs()
-            .map(|(k, v)| (k.to_string_lossy().to_string(), v.map(|v| v.to_string_lossy().to_string())))
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.map(|v| v.to_string_lossy().to_string()),
+                )
+            })
             .collect();
         assert_eq!(env["VORTOONE_API_TOKEN"].as_deref(), Some("tok"));
         assert_eq!(env["VORTOONE_WORKSPACE_SCOPE"].as_deref(), Some("general"));
         assert_eq!(env["VORTOONE_APP_UI_DIR"].as_deref(), Some("/ui"));
         assert_eq!(env["VORTOONE_CRON"].as_deref(), Some("0"));
-        assert_eq!(env["VORTOONE_SUPERVISOR_PID"], Some(std::process::id().to_string()));
-        let args: Vec<_> = built.get_args().map(|a| a.to_string_lossy().to_string()).collect();
-        assert_eq!(args, ["-m", "src.runtime_entry", "server", "--host", "127.0.0.1", "--port", "4321"]);
+        assert_eq!(
+            env["VORTOONE_SUPERVISOR_PID"],
+            Some(std::process::id().to_string())
+        );
+        let args: Vec<_> = built
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            args,
+            [
+                "-m",
+                "src.runtime_entry",
+                "server",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "4321"
+            ]
+        );
         assert_eq!(built.get_current_dir(), Some(Path::new("/home")));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn native_ticket_is_bound_to_live_child_port_expiry_and_single_consumption() {
+        let launch = || {
+            let child = Command::new("/usr/bin/python3")
+                .args(["-c", "import time; time.sleep(30)"])
+                .env_clear()
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let native =
+                NativeBootstrap::new(child.id(), 4321, format!("vcn_{}", new_token().unwrap()));
+            let state = Backend::default();
+            state.install(child, native).unwrap();
+            state
+        };
+        let state = launch();
+        let candidate = state.native_candidate().unwrap();
+        assert_eq!(
+            state.local_origin().as_deref(),
+            Some("http://127.0.0.1:4321")
+        );
+        let ticket = state.consume_native(candidate).unwrap();
+        assert!(ticket.starts_with("vcn_") && ticket.len() == 68);
+        assert!(state.consume_native(candidate).is_err());
+        assert!(state.native_candidate().is_none());
+        assert!(state.matches_native(candidate));
+        state.stop();
+        assert!(state.1.lock().unwrap().is_none() && state.local_origin().is_none());
+
+        let state = launch();
+        let mut wrong = state.native_candidate().unwrap();
+        wrong.port += 1;
+        assert!(state.consume_native(wrong).is_err());
+        assert!(state.native_candidate().is_none());
+        state.stop();
+
+        let state = launch();
+        let candidate = state.native_candidate().unwrap();
+        state.1.lock().unwrap().as_mut().unwrap().expires =
+            Instant::now() - Duration::from_millis(1);
+        assert!(state.consume_native(candidate).is_err());
+        assert!(state.native_candidate().is_none());
+        state.stop();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn real_child_receives_bootstrap_only_on_stdin_and_native_http_never_uses_owner_auth() {
+        let scratch = std::env::temp_dir().join(format!(
+            "vortoone-native-bootstrap-{}",
+            new_token().unwrap()
+        ));
+        let ui = scratch.join("ui");
+        fs::create_dir_all(&ui).unwrap();
+        fs::write(ui.join("index.html"), "offline fixture").unwrap();
+        let script = scratch.join("native.py");
+        fs::write(&script, r#"import http.server, json, os, sys
+x=json.loads(sys.stdin.buffer.readline(1024))
+assert x['parent_pid']==os.getppid()
+assert x['ticket'].startswith('vcn_') and len(x['ticket'])==68
+assert x['ticket'] not in str(sys.argv) and x['ticket'] not in str(dict(os.environ))
+assert '--native-computer-control' in sys.argv
+assert sys.stdin.buffer.read()==b''
+used=False
+class H(http.server.BaseHTTPRequestHandler):
+ def log_message(self,*args): pass
+ def reply(self,status,body):
+  raw=json.dumps(body).encode(); self.send_response(status); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
+ def do_GET(self): self.reply(200,{'home_instance_id':'1'*32,'protocol_min':1,'protocol_max':1,'features':['control-only']})
+ def do_POST(self):
+  global used
+  assert self.path=='/api/computers/native-pair'
+  assert self.headers.get('Authorization')=='Native '+x['ticket']
+  assert not self.headers.get('Origin') and not self.headers.get('Cookie')
+  body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+  assert set(body)=={'connector_id','name'}
+  if used: self.reply(403,{}); return
+  used=True
+  self.reply(200,{'home_instance_id':'1'*32,'connector_id':body['connector_id'],'paired_principal_id':'3'*32,'credential_epoch':'4'*32,'trust_epoch':'5'*32,'token':'vcc_'+'a'*43})
+http.server.HTTPServer(('127.0.0.1',int(sys.argv[1])),H).serve_forever()
+"#).unwrap();
+        let log = scratch.join("backend.log");
+        let (child, port, _, native) = start_with(
+            &scratch.join("home"),
+            &ui,
+            &log,
+            "owner-test-secret",
+            |port, _| {
+                let mut command = Command::new("/usr/bin/python3");
+                command.env_clear().arg(&script).arg(port.to_string());
+                command
+            },
+        )
+        .unwrap();
+        let state = Backend::default();
+        state.install(child, native).unwrap();
+        let candidate = state.native_candidate().unwrap();
+        assert_eq!(native_identity(port).unwrap().0, 200);
+        let ticket = state.consume_native(candidate).unwrap();
+        let (status, grant) = native_pair(port, &ticket, &"2".repeat(32), "这台电脑").unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(grant["connector_id"], "2".repeat(32));
+        assert_eq!(
+            native_pair(port, &ticket, &"2".repeat(32), "这台电脑")
+                .unwrap()
+                .0,
+            403
+        );
+        state.stop();
+        let logged = fs::read_to_string(log).unwrap();
+        assert!(
+            !logged.contains(&ticket)
+                && !logged.contains("owner-test-secret")
+                && !logged.contains("vcc_")
+        );
+        fs::remove_dir_all(scratch).unwrap();
+    }
+
+    #[test]
+    fn native_http_redirects_are_not_followed() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0u8; 2048];
+            let _ = stream.read(&mut buffer).unwrap();
+            stream.write_all(b"HTTP/1.1 307 Temporary Redirect\r\nLocation: https://elsewhere.invalid/\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}").unwrap();
+        });
+        assert!(native_identity(port).is_err());
+        server.join().unwrap();
     }
 
     #[test]
@@ -465,9 +978,17 @@ mod tests {
         let raw = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{\"code\":\"Ab0-_Ab0-_Ab0-_Ab0-_Ab0-_\",\"expiresIn\":60}";
         let (status, body) = parse_response(raw).unwrap();
         assert_eq!(status, 200);
-        assert_eq!(json_string(&body, "code").as_deref(), Some("Ab0-_Ab0-_Ab0-_Ab0-_Ab0-_"));
+        assert_eq!(
+            json_string(&body, "code").as_deref(),
+            Some("Ab0-_Ab0-_Ab0-_Ab0-_Ab0-_")
+        );
         assert!(good_code("Ab0-_Ab0-_Ab0-_Ab0-_Ab0-_"));
-        for bad in ["short", "has space has space has space", "x/../../../../../../etc/passwd", "a?b=cccccccccccccccccccc"] {
+        for bad in [
+            "short",
+            "has space has space has space",
+            "x/../../../../../../etc/passwd",
+            "a?b=cccccccccccccccccccc",
+        ] {
             assert!(!good_code(bad), "{bad}");
         }
         assert_eq!(json_string("{\"other\": 1}", "code"), None);
@@ -479,16 +1000,31 @@ mod tests {
     #[test]
     #[ignore]
     fn a_real_backend_starts_and_hands_over_a_sign_in() {
-        let var = |name: &str| PathBuf::from(std::env::var(name).unwrap_or_else(|_| panic!("需要 {name}")));
-        let config = Config { python: var("VORTO_DEV_PYTHON"), source: var("VORTO_DEV_SOURCE"), env_file: None };
+        let var = |name: &str| {
+            PathBuf::from(std::env::var(name).unwrap_or_else(|_| panic!("需要 {name}")))
+        };
+        let config = Config {
+            python: var("VORTO_DEV_PYTHON"),
+            source: var("VORTO_DEV_SOURCE"),
+            env_file: None,
+        };
         let scratch = std::env::temp_dir().join(format!("vorto-dev-live-{}", std::process::id()));
-        let (mut child, port, token) =
-            start(&config, &scratch.join("home"), &var("VORTO_DEV_UI"), &scratch.join("backend.log"), &new_token().unwrap()).unwrap();
+        let (mut child, port, token, _native) = start(
+            &config,
+            &scratch.join("home"),
+            &var("VORTO_DEV_UI"),
+            &scratch.join("backend.log"),
+            &new_token().unwrap(),
+        )
+        .unwrap();
         let outcome = (|| {
             assert_eq!(request(port, "GET", "/api/app/me", None)?.0, 401);
             assert_eq!(request(port, "GET", "/api/app/me", Some(&token))?.0, 200);
             let url = sign_in_url(port, &token)?;
-            assert!(own_page(&url.parse().unwrap(), port) && !url.contains(&token), "{url}");
+            assert!(
+                own_page(&url.parse().unwrap(), port) && !url.contains(&token),
+                "{url}"
+            );
             let path = url.strip_prefix(&origin(port)).unwrap().to_string();
             assert_eq!(request(port, "GET", &path, None)?.0, 303);
             assert_eq!(request(port, "GET", &path, None)?.0, 303); // 用过了：仍是跳转，但跳去登录页
@@ -503,7 +1039,10 @@ mod tests {
 
     #[test]
     fn the_main_window_stays_on_the_backend() {
-        for url in ["http://127.0.0.1:4321/", "http://127.0.0.1:4321/org/x/home?a=1#b"] {
+        for url in [
+            "http://127.0.0.1:4321/",
+            "http://127.0.0.1:4321/org/x/home?a=1#b",
+        ] {
             assert!(own_page(&url.parse().unwrap(), 4321), "{url}");
         }
         for url in [

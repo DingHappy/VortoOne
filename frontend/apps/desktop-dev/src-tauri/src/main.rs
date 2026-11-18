@@ -5,6 +5,8 @@ mod places;
 mod reach;
 mod shell;
 mod model_settings;
+mod connector;
+mod connector_secrets;
 
 use tauri::{
     menu::{Menu, SubmenuBuilder},
@@ -118,22 +120,29 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     } else {
         backend::start_bundled(&runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"), &key)
     };
-    let (child, port, token) = match started {
+    let (mut child, port, token, native) = match started {
         Ok(found) => found,
         Err(error) => {
             shell::set_phase(app, "failing");
             return Err(error);
         }
     };
-    shell::local_started(app, port)?;
-    if let Ok(mut slot) = app.state::<backend::Backend>().0.lock() {
-        *slot = Some(child);
+    if let Err(error) = shell::local_started(app, port) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
     }
-    let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
-    app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
-    app.state::<LiveAddress>().set(port);
-    watch_consents(app.clone(), port, token.clone());
-    show_live(app, url, first_run)
+    app.state::<backend::Backend>().install(child, native)?;
+    let outcome = (|| {
+        let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
+        app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
+        app.state::<LiveAddress>().set(port);
+        watch_consents(app.clone(), port, token.clone());
+        show_live(app, url, first_run)
+    })();
+    if outcome.is_ok() { connector::resume(app.clone()); }
+    else { app.state::<backend::Backend>().stop(); }
+    outcome
 }
 
 /// 主窗口打开 url（本机服务的交接登录地址，或别处服务的页面）。已开着就原地导航。
@@ -271,8 +280,11 @@ fn main() {
         .manage(ConnectionGate::default())
         .manage(LiveAddress::default())
         .manage(shell::ShellState::default())
+        .manage(connector::ConnectorManager::default())
         .invoke_handler(tauri::generate_handler![
             model_settings::model_settings_get, model_settings::model_settings_save,
+            connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
+            connector::computer_remove, connector::computers_open,
             shell::servers_get, shell::server_choose, shell::server_remove, shell::server_sign_out, shell::workspaces_get,
             shell::welcome_mode_take, shell::welcome_add, shell::discover, shell::link_take, shell::open_external,
             shell::show_window, shell::hide_window, shell::app_info, shell::quit_app, shell::reveal_folder,
@@ -293,6 +305,7 @@ fn main() {
             let preview = SubmenuBuilder::new(app, "开发版")
                 .text("connect", "连接本机后端")
                 .text("models", "模型连接…")
+                .text("computers", "连接的电脑…")
                 .separator()
                 .text("desktop", "桌面界面（示例数据）")
                 .text("characters", "史莱姆外观")
@@ -309,6 +322,7 @@ fn main() {
             menu.append(&preview)?;
             app.set_menu(menu)?;
             app.add_capability(shell::capability())?;
+            connector::resume(app.handle().clone());
             let bundled = app.path().resource_dir()?.join("runtime").join(
                 if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" }).is_file();
             // 先打开哪个：上次选的服务；什么都还没选就是首次引导（HOME_AND_MEMBERS_DESIGN 第 4 节）
@@ -343,6 +357,10 @@ fn main() {
                     return;
                 }
                 "models" => show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0),
+                "computers" => {
+                    if let Err(error) = connector::open(app) { eprintln!("{error}"); }
+                    return;
+                }
                 "move-out" => {
                     shell::move_out(app.clone());
                     return;
@@ -410,7 +428,10 @@ fn main() {
         .expect("VortoOne Dev failed to start")
         .run(|app, event| match event {
             // 退出时带走后端；被强杀时由后端看监护进程 pid 自己退出
-            tauri::RunEvent::Exit => app.state::<backend::Backend>().stop(),
+            tauri::RunEvent::Exit => {
+                app.state::<connector::ConnectorManager>().stop();
+                app.state::<backend::Backend>().stop();
+            }
             // 点了 vortoone:// 链接（Info.plist 登记了这个协议；冷启动时也走这里）
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Opened { urls } => {

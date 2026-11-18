@@ -82,8 +82,9 @@ def test_online_backup_keeps_a_complete_owner_file_during_atomic_update(tmp_path
     from src.workflow.members.owner_account import OwnerAccount
 
     owner = OwnerAccount(str(tmp_path))
-    before = {"name": "Ding", "email": "me@example.com", "password": {"hash": "old"}}
-    after = {**before, "name": "A much longer updated owner name", "password": {"hash": "x" * 128}}
+    before = {"name": "Ding", "email": "me@example.com", "password": {"salt": "0" * 32, "hash": "a" * 64}}
+    after = {**before, "name": "A much longer updated owner name" * 20,
+             "password": {"salt": "1" * 32, "hash": "b" * 64}}
     owner._save(before)
     gettarinfo = tarfile.TarFile.gettarinfo
     updated = False
@@ -124,7 +125,9 @@ def test_manifest_only_backup_restores_an_empty_home_and_keeps_old_state(tmp_pat
     saved = B.backup(str(tmp_path), str(tmp_path / "backups"))
     assert saved["files"] == 0
     result = B.restore(str(tmp_path), saved["path"])
-    assert state.is_dir() and list(state.iterdir()) == []
+    assert state.is_dir() and {p.name for p in state.iterdir()} == {"home-identity"}
+    from src.workflow.home_identity import ensure_home_identity
+    assert ensure_home_identity(str(tmp_path))["owner_subject"] is None
     assert state.stat().st_mode & 0o777 == 0o700
     assert (Path(result["kept_aside"]) / "runtime.lock").read_text() == "old lock"
 

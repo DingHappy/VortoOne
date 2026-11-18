@@ -191,7 +191,7 @@ def test_standalone_im_keeps_lease_and_cleanup_order(monkeypatch, tmp_path):
     monkeypatch.setattr(im_service, "load_session_role", lambda: "general")
     monkeypatch.setattr(im_service, "load_allow_from", lambda channel: {"fixture-owner"})
     monkeypatch.setattr(bridge, "IMBridge", Bridge)
-    monkeypatch.setattr(process_lease, "ProcessLease", Lease)
+    monkeypatch.setattr(process_lease, "RuntimeLease", Lease)
     with pytest.raises(RuntimeError, match="fixture failure"):
         asyncio.run(runtime_entry.run_im("telegram"))
     assert events == ["claim", "run", "runner-shutdown", "release", "adapter-close"]

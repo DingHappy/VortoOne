@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import uuid
 
 from src.gateway.account_access import AccountIdentity
 from src.gateway.mobile_devices import (
@@ -21,6 +20,7 @@ from src.gateway.mobile_devices import (
     _name,
 )
 from src.gateway.account_service import AccountSession
+from src.workflow.home_identity import ensure_home_identity
 
 READ_LEASE_SECONDS = 300
 
@@ -79,13 +79,14 @@ class AccountRegistration(MobileDevices):
         name = _name(name)
         if not isinstance(session, AccountSession):
             raise ValueError("需要已经核验的账号会话")
+        canonical_id = ensure_home_identity(self.root)["home_instance_id"]
         with self._lock():
             data = self._load()
             if instance_id is not ... and instance_id != (data["instance_id"] if data else None):
                 raise ValueError("运行端身份已变化，请重新核对")
             data = data or {
                 "schema_version": 1,
-                "instance_id": uuid.uuid4().hex,
+                "instance_id": canonical_id,
                 "devices": [],
                 "account_revision": 0,
                 "account_registration": None,

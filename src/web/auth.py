@@ -122,6 +122,14 @@ MOBILE_SELF_AUTHENTICATED = frozenset({
 })
 
 
+# Computers use only these exact HTTP exchanges before owner authentication.
+COMPUTER_SELF_AUTHENTICATED = frozenset({
+    ("GET", "/api/computers/identity"),
+    ("POST", "/api/computers/pair"),
+    ("POST", "/api/computers/native-pair"),
+})
+
+
 def ct_eq(candidate: str, token: str) -> bool:
     """常时比较（防时序侧信道）——token 校验点专用。
 
@@ -155,7 +163,8 @@ async def auth_middleware(request, call_next):
     """仅当配置了 VORTOONE_API_TOKEN 时，对非豁免路径强制校验。"""
     path = request.url.path
     exempt = (path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIXES)
-              or (request.method, path) in MOBILE_SELF_AUTHENTICATED)
+              or (request.method, path) in MOBILE_SELF_AUTHENTICATED
+              or (request.method, path) in COMPUTER_SELF_AUTHENTICATED)
     refused = 0
     if not exempt and not _token_ok(request):
         # 主人令牌没过：成员的会话只在它自己的白名单接口上算数（web/member_auth.py），其余一律不放行
@@ -167,7 +176,10 @@ async def auth_middleware(request, call_next):
         response = JSONResponse({"detail": "Unauthorized" if refused == 401 else "Forbidden"}, status_code=refused)
     else:
         response = await call_next(request)
-    if path.startswith("/api/mobile/"):  # 手机数据一律不进浏览器/代理缓存
+    computer_data = path.startswith("/api/computers/") or (
+        path.startswith("/api/app/organizations/") and any(
+            f"/{part}" in path for part in ("machines", "computer-pairings")))
+    if path.startswith("/api/mobile/") or computer_data:  # 私有设备数据不进浏览器/代理缓存
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

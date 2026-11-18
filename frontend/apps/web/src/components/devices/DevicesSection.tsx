@@ -33,6 +33,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentComputersCard } from "@/components/AgentComputer";
+import { ConnectedComputerPairing } from "@/components/ConnectedComputerPairing";
 import { HelpLink } from "@/components/HelpLink";
 import { ErrorState, LoadingList } from "@/components/Loading";
 import { HostComputerCard } from "@/components/Machines";
@@ -81,6 +82,7 @@ export function DevicesSection({ start }: { start?: ConnectStart | null }) {
 
   return (
     <>
+      <ConnectedComputerPairing />
       {/* While the workspace computer is on its way, its setup card says where it is. */}
       {view && view.phase !== "ready" && <WorkspaceComputerCard view={view} />}
       <Toolbar

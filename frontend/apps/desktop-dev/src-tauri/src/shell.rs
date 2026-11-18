@@ -377,12 +377,28 @@ fn stop_local(app: &tauri::AppHandle) {
     set_phase(app, "stopped");
 }
 
+fn private_backup_file(target: &Path) -> Result<std::fs::File, String> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)] {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let archive = options.open(target).map_err(|_| "无法创建私有备份文件，或同名备份已存在")?;
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        archive.set_permissions(std::fs::Permissions::from_mode(0o600)).map_err(|_| "无法限制备份文件权限")?;
+    }
+    Ok(archive)
+}
+
 fn backup(app: &tauri::AppHandle) -> Result<String, String> {
     let (config, data) = dirs(app)?;
     let local = places::read_local(&config, &data);
     let was_running = phase(app) == "running";
     // 停着备份：数据库和文件不会写到一半
     if was_running { stop_local(app); }
+    let result = (|| {
     let folder = data.join("backups");
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     let target = folder.join(format!("vortoone-{}.tar.gz", stamp()));
@@ -390,8 +406,11 @@ fn backup(app: &tauri::AppHandle) -> Result<String, String> {
     for extra in [places::OWNER_KEY_FILE, "model.env"] {
         if data.join(extra).is_file() { parts.push(extra.into()); }
     }
-    let made = Command::new("tar").arg("-czf").arg(&target).arg("-C").arg(&data).args(&parts).status();
-    let result = match made {
+    let archive = private_backup_file(&target)?;
+    // tar writes into the already-open 0600 file, with no public-permission creation window.
+    let made = Command::new("tar").arg("-czf").arg("-").arg("-C").arg(&data).args(&parts)
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::from(archive)).status();
+    match made {
         Ok(code) if code.success() => {
             if let Some(copy_to) = local.copy_to.as_deref() {
                 let _ = std::fs::copy(&target, Path::new(copy_to).join(target.file_name().unwrap_or_default()));
@@ -406,7 +425,8 @@ fn backup(app: &tauri::AppHandle) -> Result<String, String> {
             let _ = std::fs::remove_file(&target);
             Err("备份没有完成".into())
         }
-    };
+    }
+    })();
     if was_running { crate::connect(app.clone()); }
     result
 }
@@ -422,20 +442,14 @@ fn restore(app: &tauri::AppHandle, file: &str) -> Result<(), String> {
         || !allowed.iter().filter_map(|d| d.canonicalize().ok()).any(|d| path.starts_with(&d)) {
         return Err("只能从这里的备份恢复".into());
     }
+    if !ask(app, "恢复这份家的备份", "恢复聊天、设置等家数据；备份中的额外文件另存保留，供你找回。当前家数据会在旁边保留。\n\n恢复后，已连接的电脑需要重新配对。", "确认恢复") {
+        return Err("已取消恢复".into());
+    }
+    let was_running = phase(app) == "running";
     stop_local(app);
-    let aside = data.join(format!("home.before-restore-{}", stamp()));
-    if data.join("home").exists() {
-        std::fs::rename(data.join("home"), &aside).map_err(|e| e.to_string())?;
-    }
-    let unpacked = Command::new("tar").arg("-xzf").arg(&path).arg("-C").arg(&data).arg("home").status();
-    if !matches!(unpacked, Ok(code) if code.success()) || !data.join("home").is_dir() {
-        let _ = std::fs::remove_dir_all(data.join("home"));
-        let _ = std::fs::rename(&aside, data.join("home"));
-        crate::connect(app.clone());
-        return Err("备份解不开，已经放回原来的数据".into());
-    }
-    crate::connect(app.clone());
-    Ok(())
+    let restored = crate::connector::restore_home(app, &data, &path);
+    if restored.is_ok() || was_running { crate::connect(app.clone()); }
+    restored
 }
 
 fn erase(app: &tauri::AppHandle) -> Result<String, String> {
@@ -853,9 +867,9 @@ pub fn local_server_backups_set(window: tauri::WebviewWindow, app: tauri::AppHan
 }
 
 #[tauri::command]
-pub fn local_server_restore(window: tauri::WebviewWindow, app: tauri::AppHandle, file: String) -> Result<(), String> {
+pub async fn local_server_restore(window: tauri::WebviewWindow, app: tauri::AppHandle, file: String) -> Result<(), String> {
     check(&window)?;
-    restore(&app, &file)
+    tauri::async_runtime::spawn_blocking(move || restore(&app, &file)).await.map_err(|_| "本机恢复未完成，请检查当前服务状态")?
 }
 
 #[tauri::command]
@@ -974,6 +988,23 @@ absent! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn credential_backup_file_is_private_before_writing_and_cannot_replace_a_saved_backup() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("vortoone-private-archive-{}", crate::connector_secrets::random_id().unwrap()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("vortoone-backup.tar.gz");
+        let mut archive = private_backup_file(&path).unwrap();
+        assert_eq!(archive.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        archive.write_all(b"private backup fixture").unwrap();
+        drop(archive);
+        assert!(private_backup_file(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"private backup fixture");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn only_the_packaged_shell_page_may_call() {
