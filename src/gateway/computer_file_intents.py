@@ -79,11 +79,22 @@ class HomeFileIntents:
             if row is None or row[:2] != (self._scope(binding), receipt["digest"]):
                 return False
             status = receipt["status"]
-            if row[2] not in ("dispatched", status):
+            if row[2] not in ("dispatched", "waiting", status):
                 return False
-            if row[2] == "dispatched":
+            if row[2] != status:
                 db.execute("UPDATE intents SET status = ? WHERE id = ?", (status, receipt["action_id"]))
             return True
+
+    def set_waiting(self, binding: dict, action: FileAction, *, waiting: bool) -> bool:
+        """Fence every retry before sending. Terminal receipts cannot be reset."""
+        before, after = ("dispatched", "waiting") if waiting else ("waiting", "dispatched")
+        with self._db() as db:
+            if not waiting and action.deadline <= time.time():
+                return False
+            updated = db.execute("UPDATE intents SET status = ? WHERE id = ? AND binding = ? "
+                                 "AND digest = ? AND status = ?",
+                                 (after, action.action_id, self._scope(binding), action.digest, before))
+            return updated.rowcount == 1
 
     def status(self, action_id: str, identity: dict) -> str | None:
         identifier(action_id)

@@ -11,6 +11,7 @@ import uuid
 import pytest
 
 from src.gateway.computer_file_paths import FileDenied, PinnedFile
+from src.gateway import computer_file_capacity
 from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable
 from src.gateway.computer_protocol import BINDING_FIELDS
 from src.utils.home_maintenance import FileLease
@@ -200,6 +201,39 @@ def test_single_flight_and_expired_unstarted_actions_fail_closed(paired):
     assert rejected["status"] == "blocked"
     assert not (folder / "new.txt").exists()
     assert store.pending() == [rejected]
+
+
+def test_low_memory_retains_unstarted_identity_and_rechecks_on_retry(paired, monkeypatch):
+    store, grant, folder = paired
+    approved = action(store, grant, "create", "new.txt", "本次批准的内容")
+    threshold = computer_file_capacity.SYSTEM_RESERVE + computer_file_capacity.FILE_RESERVATION["create"]
+    memory = [threshold - 1]
+    monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: memory[0])
+    assert store.execute(approved)["status"] == "busy"
+    assert store.pending() == []
+    assert not (folder / "new.txt").exists()
+
+    memory[0] = threshold
+    restarted = ComputerFiles(store.directory, BINDING)
+    assert restarted.execute(replace(approved, content="其它文本"))["status"] == "blocked"
+    assert not (folder / "new.txt").exists()
+    result = restarted.execute(approved)
+    assert result["status"] == "created"
+    assert (folder / "new.txt").read_text() == approved.content
+
+    memory[0] = 0
+    assert restarted.execute(approved) == result
+    assert restarted.pending() == [result]
+
+
+def test_missing_memory_measurement_still_uses_the_exclusive_slot(paired, monkeypatch):
+    store, grant, folder = paired
+    monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: None)
+    approved = action(store, grant, "create", "new.txt", "only one slot")
+    with FileLease(store.directory / "file-action.lock", private=True):
+        assert store.execute(approved)["status"] == "busy"
+    assert not (folder / "new.txt").exists()
+    assert store.execute(approved)["status"] == "created"
 
 
 def test_actual_process_death_after_effect_retains_unknown_and_never_replays(paired):

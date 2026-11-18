@@ -835,11 +835,12 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     import uvicorn
 
     from src.agents.agent_loop import MainAgent
-    from src.gateway import protocol as P
+    from src.gateway import computer_file_capacity, computer_file_tools, protocol as P
+    from src.gateway.computer_connections import Connection
     from src.gateway.computer_file_intents import HomeFileIntents
     from src.gateway.computer_file_store import ComputerFiles
     from src.web import app_views
-    from src.web.app_bridge import existing_bridge
+    from src.web.app_bridge import MainChatBridge, existing_bridge
     from src.web.auth import SESSION_COOKIE
     from src.web.routers import realtime
     from src.web.server import app
@@ -869,6 +870,27 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
         "断线后补报": ("connected_computer_create", {**args, "path": "durable.txt", "text": "只写一次\n"}),
         "清单": ("connected_computer_folders", {"computer_id": grant["connector_id"]}),
     }
+    memory = [None]
+    monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: memory[0])
+    monkeypatch.setattr(computer_file_tools, "FILE_QUEUE_POLL_SECONDS", 0.08)
+    attempts = []
+    request = Connection.file_request
+
+    async def observe_request(self, method, payload):
+        if method == "perform":
+            attempts.append(payload.copy())
+        return await request(self, method, payload)
+
+    monkeypatch.setattr(Connection, "file_request", observe_request)
+    queued = asyncio.Event()
+    bridge_emit = MainChatBridge._emit
+
+    async def observe_app_event(self, kind, **fields):
+        if kind == "agent.tool" and "已在家中等待" in (fields.get("detail") or ""):
+            queued.set()
+        await bridge_emit(self, kind, **fields)
+
+    monkeypatch.setattr(MainChatBridge, "_emit", observe_app_event)
 
     async def scripted_turn(self, prompt, *, mode, say, emit, owner_text, **_):
         self._tool_turn_state.reset_escalation()
@@ -883,8 +905,9 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     dropped_receipt = {}
 
     async def drop_create_result_once(ws, data, **kwargs):
-        if data.get("type") == "file_reply" and data.get("result", {}).get("status") == "created":
-            assert not dropped_reply.is_set(), "create must never be sent twice"
+        if (data.get("type") == "file_reply" and data.get("result", {}).get("status") == "created"
+                and attempts[-1]["path"] == "durable.txt"):
+            assert not dropped_reply.is_set(), "unknown creates must never be sent twice"
             dropped_receipt.update(data["result"])
             dropped_reply.set()
             await ws.close()
@@ -999,6 +1022,30 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
                 "type": P.AGENT, "text": "清单", "rid": "unscoped-old-client",
             })
             assert (await asyncio.wait_for(outcomes.get(), 3)).status == "blocked"
+
+            for should_create in (True, False):
+                filename = "capacity.txt" if should_create else "queued-revoked.txt"
+                operations["等待资源"] = ("connected_computer_create", {
+                    **args, "folder_id": restored["folder_id"], "path": filename, "text": "原批准的文本",
+                })
+                queued.clear()
+                memory[0] = 0
+                await send("等待资源")
+                await decide(await card_for("授权执行本回合"))
+                await decide(await card_for(filename))
+                await event_before(queued)
+                action = attempts[-1]
+                assert action["path"] == filename and home_intents.status(action["action_id"], account) == "waiting"
+                assert not (folder / filename).exists()
+                if not should_create:
+                    local.revoke(restored["folder_id"])
+                memory[0] = None
+                outcome = await asyncio.wait_for(outcomes.get(), 3)
+                repeated = [attempt for attempt in attempts if attempt["path"] == filename]
+                assert len(repeated) >= 2 and all(item == action for item in repeated)
+                assert outcome.status == ("succeeded" if should_create else "blocked")
+                assert home_intents.status(action["action_id"], account) == ("created" if should_create else "blocked")
+                assert (folder / filename).exists() == should_create
     finally:
         stop.set()
         if worker_task is not None:
@@ -1006,3 +1053,122 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
         server.should_exit = True
         await asyncio.wait_for(server_task, 3)
         listener.close()
+
+
+@pytest.mark.parametrize("disconnect", [True, False], ids=["reconnect", "revoke"])
+async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_path, monkeypatch, disconnect):
+    from dataclasses import asdict
+    import threading
+    import time
+    import uuid
+
+    from src.gateway.computer_connections import FileConnectionUnavailable
+    from src.gateway.computer_file_intents import HomeFileIntents
+    from src.gateway.computer_file_paths import PinnedFile
+    from src.gateway.computer_file_store import ComputerFiles, FileAction
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = str(tmp_path.resolve())
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("VORTOONE_API_TOKEN", "synthetic-owner")
+    monkeypatch.setattr(worker, "_HEARTBEAT_INTERVAL", 0.1)
+    store = ConnectedComputers(root)
+    pairing = store.create_pairing(legacy_confirmed=True)
+    grant = store.pair(pairing["code"], BINDING["connector_id"], "Test computer")
+    account = store.identity()
+    local = ComputerFiles(tmp_path / "file-access", grant)
+    folder = tmp_path / "selected"
+    folder.mkdir()
+    folder_id = local.grant(str(folder.resolve()), "Selected", read=True, write=True)["folder_id"]
+    revision = local.policy()["policy_revision"]
+    action = FileAction(uuid.uuid4().hex, folder_id, revision, "create", "staged.txt",
+                        local.preview("create", folder_id, "staged.txt", revision),
+                        int(time.time()) + 60, "session", "turn", "call", "approved text")
+    intents = HomeFileIntents(root)
+    intents.record(grant, action)
+    staged = asyncio.Event()
+    resume = threading.Event()
+    pongs = asyncio.Queue()
+    acknowledged = asyncio.Event()
+    persisted = asyncio.Event()
+    stop = asyncio.Event()
+    published = []
+    loop = asyncio.get_running_loop()
+    create = PinnedFile.create
+
+    def staging(target, *args, **kwargs):
+        loop.call_soon_threadsafe(staged.set)
+        if not resume.wait(10):
+            raise RuntimeError("test did not finish the control action")
+        create(target, *args, **kwargs)
+        published.append(True)
+
+    monkeypatch.setattr(PinnedFile, "create", staging)
+    send_json = aiohttp.ClientWebSocketResponse.send_json
+
+    async def observe_pong(ws, frame, **kwargs):
+        await send_json(ws, frame, **kwargs)
+        if frame.get("type") == "pong":
+            pongs.put_nowait(frame["generation"])
+
+    monkeypatch.setattr(aiohttp.ClientWebSocketResponse, "send_json", observe_pong)
+
+    async def handler(request):
+        binding = store.authenticate(request.headers["Authorization"].removeprefix("Bearer "))
+        socket = web.WebSocketResponse(max_msg_size=MAX_FRAME_BYTES)
+        await socket.prepare(request)
+        await serve(ServerSocket(socket, acknowledged), root, store, binding)
+        return socket
+
+    async def current(*, except_connection=None):
+        while True:
+            connection = connections.file_connection(root, grant["connector_id"], account)
+            if connection is not None and connection is not except_connection:
+                return connection
+            await asyncio.sleep(0.01)
+
+    async def terminal():
+        while True:
+            if disconnect:
+                if intents.status(action.action_id, account) == "created":
+                    return
+            else:
+                try:
+                    if local.pending() == [{"action_id": action.action_id, "digest": action.digest, "status": "blocked"}]:
+                        return
+                except HomeMaintenanceError:
+                    pass
+            await asyncio.sleep(0.02)
+
+    async with service([("GET", "/api/computers/ws", handler)]) as origin:
+        running = asyncio.create_task(worker.run(config(origin, **grant, file_access=True), lambda _: None,
+                                                 stop, persisted))
+        dispatch = None
+        try:
+            first = await asyncio.wait_for(current(), 2)
+            dispatch = asyncio.create_task(first.file_request("perform", asdict(action)))
+            await event_before(staged)
+            await first.send({"type": "ping", "generation": first.generation})
+            assert await asyncio.wait_for(pongs.get(), 2) == first.generation
+            assert not (folder / "staged.txt").exists()
+            if disconnect:
+                await asyncio.wait_for(first.socket.close(), 2)
+                second = await asyncio.wait_for(current(except_connection=first), 3)
+                assert second.generation != first.generation
+            else:
+                store.revoke(grant["connector_id"])
+                persisted.set()
+                connections.revoked(root, grant["connector_id"])
+                await event_before(acknowledged)
+            with pytest.raises(FileConnectionUnavailable):
+                await asyncio.wait_for(dispatch, 3)
+            resume.set()
+            await asyncio.wait_for(terminal(), 4)
+            if disconnect:
+                assert (folder / "staged.txt").read_text() == "approved text" and published == [True]
+            else:
+                assert not (folder / "staged.txt").exists() and not published
+        finally:
+            resume.set()
+            stop.set()
+            await asyncio.gather(running, *([dispatch] if dispatch is not None else []), return_exceptions=True)

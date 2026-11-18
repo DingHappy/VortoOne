@@ -99,14 +99,13 @@ def result_value(value: dict, action: FileAction) -> dict:
     return value
 
 
-def native_file_request(store: ComputerFiles, frame: dict, generation: str, binding: dict, *, active) -> dict:
+def native_file_request(frame: dict, generation: str, binding: dict) -> tuple[str, str, dict | FileAction]:
     object_fields(frame, ("type", "generation", "request_id", "binding", "method", "payload"))
     if frame["generation"] != generation or frame["binding"] != binding_fields(binding):
         raise ValueError("stale file request")
     request_id = identifier(frame["request_id"])
     method = frame["method"]
     body = frame["payload"]
-    action = None
     if method == "policy":
         object_fields(body, ())
     elif method == "preview":
@@ -115,18 +114,26 @@ def native_file_request(store: ComputerFiles, frame: dict, generation: str, bind
         action = FileAction(**body)
         if set(body) != set(asdict(action)):
             raise ValueError("missing file action field")
+        body = action
     else:
         raise ValueError("unsupported file request")
+    return request_id, method, body
+
+
+def native_file_reply(store: ComputerFiles, request, generation: str, *, active, busy=False) -> dict:
+    request_id, method, body = request
     reply = {"type": "file_reply", "generation": generation, "request_id": request_id}
+    failure = {**reply, "ok": False, "result": {}}
     try:
-        if action is not None:
-            data = store.execute(action, active=active)
+        if isinstance(body, FileAction):
+            data = ({"action_id": body.action_id, "digest": body.digest, "status": "busy"}
+                    if busy else store.execute(body, active=active))
+        elif busy:
+            return failure
         elif method == "policy":
             data = policy_value(store.policy())
         else:
             data = {"version": store.preview(**body)}
         return bounded_frame({**reply, "ok": True, "result": data})
-    except FileDenied:
-        return {**reply, "ok": False, "result": {}}
-    except (FileStateUnavailable, OSError):
-        return {**reply, "ok": False, "result": {}}
+    except (FileDenied, FileStateUnavailable, OSError):
+        return failure
