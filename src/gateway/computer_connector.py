@@ -18,7 +18,7 @@ from typing import Awaitable, Callable
 import aiohttp
 
 from src.gateway.computer_protocol import (
-    BINDING_FIELDS, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PROTOCOL,
+    BINDING_FIELDS, DELIVERY_PROTOCOL, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PROTOCOL,
     ComputerProtocolError, binding_fields, control_frame, decode_frame, hello,
     identifier, origin_url, validate_welcome,
 )
@@ -26,6 +26,7 @@ from src.gateway.computer_file_process import FileProcessUnavailable, run_file_a
 from src.gateway.computer_file_paths import FileDenied
 from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable
 from src.gateway.computer_file_wire import digest_value, file_reply, native_file_preflight, native_file_request, object_fields
+from src.gateway.computer_transfer_receiver import native_delivery
 from src.gateway.computer_transfer_sender import native_transfer
 from src.utils.home_maintenance import HomeMaintenanceError
 
@@ -155,16 +156,16 @@ class _FileWork:
         if self.task is not None:
             await asyncio.gather(self.task, return_exceptions=True)
 
-    async def dispatch(self, ws, store, request, generation):
+    async def dispatch(self, ws, store, request, generation, disconnected):
         if self.task is not None and not self.task.done():
             request_id, _, body = request
             busy = ({"action_id": body.action_id, "digest": body.digest, "status": "busy"}
                     if isinstance(body, FileAction) else None)
             await ws.send_json(file_reply(request_id, generation, busy))
             return
-        self.task = asyncio.create_task(self._run(ws, store, request, generation))
+        self.task = asyncio.create_task(self._run(ws, store, request, generation, disconnected))
 
-    async def _run(self, ws, store, request, generation):
+    async def _run(self, ws, store, request, generation, disconnected):
         try:
             request_id, method, body = request
             if isinstance(body, FileAction):
@@ -173,6 +174,14 @@ class _FileWork:
                                                  stop=self.stop, revoked=self.revoked)
                 except FileProcessUnavailable:
                     data = None  # The durable local journal may still contain a terminal receipt.
+                reply = file_reply(request_id, generation, data)
+            elif method == "transfer_download":
+                try:
+                    data = await native_delivery(self.session, self.config, store, body, stop=self.stop,
+                                                 revoked=self.revoked, disconnected=disconnected)
+                except (FileDenied, ValueError, FileStateUnavailable, HomeMaintenanceError,
+                        FileProcessUnavailable, OSError, aiohttp.ClientError, asyncio.TimeoutError):
+                    data = None
                 reply = file_reply(request_id, generation, data)
             elif method in ("transfer_preview", "transfer_hash", "transfer_upload"):
                 def active():
@@ -200,14 +209,14 @@ class _FileWork:
 
 
 async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_persisted: asyncio.Event,
-                   file_work: _FileWork) -> bool:
+                   file_work: _FileWork, disconnected: asyncio.Event) -> bool:
     files = config.get("file_access", False)
-    await ws.send_json(hello(config, files=files, transfers=files))
+    await ws.send_json(hello(config, deliveries=files))
     message = await ws.receive(timeout=15)
     if message.type != aiohttp.WSMsgType.TEXT:
         raise ComputerProtocolError("computer handshake refused")
     frame = decode_frame(message.data)
-    generation = validate_welcome(frame, config, files=files, transfers=files)
+    generation = validate_welcome(frame, config, deliveries=files)
     selected = frame["protocol"]
     store = ComputerFiles(Path.cwd() / "file-access", config) if selected >= FILES_PROTOCOL else None
     _status(emit, config, "online")
@@ -241,8 +250,9 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             raise ComputerProtocolError("invalid computer control frame")
         frame = decode_frame(message.data)
         if store is not None and frame.get("type") == "file_request":
-            request = native_file_request(frame, generation, config, transfers=selected >= TRANSFER_PROTOCOL)
-            await file_work.dispatch(ws, store, request, generation)
+            request = native_file_request(frame, generation, config, transfers=selected >= TRANSFER_PROTOCOL,
+                                          deliveries=selected >= DELIVERY_PROTOCOL)
+            await file_work.dispatch(ws, store, request, generation, disconnected)
             continue
         if store is not None and frame.get("type") == "file_ack":
             object_fields(frame, ("type", "generation", "action_id", "digest"))
@@ -260,6 +270,7 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             reason = frame["reason"]
             if (reason, frame["credentialRevoked"]) not in {("authorization_revoked", True), ("connection_replaced", False)}:
                 raise ComputerProtocolError("invalid computer revocation")
+            disconnected.set()
             if frame["credentialRevoked"]:
                 file_work.revoked.set()
             _status(emit, config, "revoked" if frame["credentialRevoked"] else "replaced")
@@ -303,9 +314,13 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                 # aiohttp follows WS redirects internally. Trace veto below rejects them before sending a second request.
                 async with session.ws_connect(url, headers={"Authorization": "Bearer " + config["token"]},
                                               max_msg_size=MAX_FRAME_BYTES, autoping=True) as ws:
-                    if await _control(ws, config, emit, revocation_persisted, file_work):
-                        return
-                    delay = 1.0
+                    disconnected = asyncio.Event()
+                    try:
+                        if await _control(ws, config, emit, revocation_persisted, file_work, disconnected):
+                            return
+                        delay = 1.0
+                    finally:
+                        disconnected.set()
             except aiohttp.WSServerHandshakeError as error:
                 if error.status in {401, 403}:
                     file_work.revoked.set()

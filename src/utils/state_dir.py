@@ -243,6 +243,7 @@ _STATE_ENTRIES = [
     "im-bots/",                # bot-scoped personas and hello state, private to the current instance
     "mobile-devices/",         # hashed mobile device grants; never part of task/session state
     "home-identity/",          # stable local identity and computer trust epoch
+    "computer-outbox/",        # files explicitly placed in the home outgoing folder
     "computer-file-intents/",  # durable home-side receipts, without file contents
     "connected-computers/",    # hashed computer grants
     "isolated_deliveries/",

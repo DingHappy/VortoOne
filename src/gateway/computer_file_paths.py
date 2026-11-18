@@ -125,6 +125,13 @@ class PinnedFile:
         self.components = relative_parts(relative_path)
         self.name = self.components[-1]
 
+    @classmethod
+    def in_private_directory(cls, directory: str, relative_path: str):
+        with _directory(directory) as (fd, chain):
+            if os.fstat(fd).st_mode & 0o077:
+                raise FileDenied("家的发件目录必须仅所有者可访问")
+        return cls(directory, chain, relative_path)
+
     @contextmanager
     def parent(self):
         with _directory(self.directory, self.components[:-1], expected=self.identity) as pinned:
@@ -200,27 +207,39 @@ class PinnedFile:
         return patch
 
     def create(self, data: bytes, version: str, *, before_publish) -> None:
+        with self.stage_creation(version) as (stream, publish):
+            stream.write(data)
+            publish(before_publish)
+
+    @contextmanager
+    def stage_creation(self, version: str, *, reserve_bytes: int = 0):
         with self.parent() as (parent, chain):
             if version != "absent:" + _fingerprint(chain):
                 raise FileDenied("父目录在确认后变化，请重新发起")
+            if reserve_bytes:
+                disk = os.fstatvfs(parent)
+                if disk.f_bavail * disk.f_frsize < reserve_bytes:
+                    raise FileDenied("本机没有足够的传输暂存空间")
             token = _TEMP_PREFIX + uuid.uuid4().hex
             fd = os.open(token, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
             try:
                 with os.fdopen(fd, "wb") as stream:
-                    stream.write(data)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                    self._check_parent(chain)
-                    if _version(os.stat(token, dir_fd=parent, follow_symlinks=False)) != _version(os.fstat(stream.fileno())):
-                        raise FileDenied("新建暂存文件已变化")
-                    before_publish()
-                    # A hard link creates the destination only if it does not already exist.
-                    os.link(token, self.name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
-                    try:
+                    def publish(before_publish):
+                        stream.flush()
+                        os.fsync(stream.fileno())
                         self._check_parent(chain)
-                    except (OSError, FileDenied):
-                        # Publication may already have happened in the selected inode.
-                        raise OSError("cannot verify directory after publication") from None
+                        if _version(os.stat(token, dir_fd=parent, follow_symlinks=False)) != _version(os.fstat(stream.fileno())):
+                            raise FileDenied("新建暂存文件已变化")
+                        before_publish()
+                        # A hard link creates the destination only if it does not already exist.
+                        os.link(token, self.name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+                        try:
+                            self._check_parent(chain)
+                            os.fsync(parent)
+                        except (OSError, FileDenied):
+                            # Publication may already have happened in the selected inode.
+                            raise OSError("cannot verify directory after publication") from None
+                    yield stream, publish
             finally:
                 os.unlink(token, dir_fd=parent)
                 os.fsync(parent)

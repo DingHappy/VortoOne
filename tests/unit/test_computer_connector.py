@@ -761,7 +761,7 @@ async def test_actual_worker_persists_revocation_before_ack_and_exits_with_stdin
     assert not list(user_home.iterdir())
 
 
-@pytest.mark.parametrize("file_access", [False, True], ids=["control-v1", "file-process-v3"])
+@pytest.mark.parametrize("file_access", [False, True], ids=["control-v1", "file-process-v4"])
 async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tmp_path, monkeypatch, file_access):
     """Cover the real mounted auth/routes, not just the transport test adapter."""
     import uvicorn
@@ -880,6 +880,8 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     from src.gateway.computer_connections import Connection
     from src.gateway.computer_file_intents import HomeFileIntents
     from src.gateway.computer_file_store import ComputerFiles
+    from src.gateway.computer_home_delivery import OUTBOX
+    from src.utils.state_dir import state_dir
     from src.web import app_views
     from src.web.app_bridge import MainChatBridge, existing_bridge
     from src.web.auth import SESSION_COOKIE
@@ -915,6 +917,13 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     binary = folder / "manual.bin"
     binary_bytes = bytes(range(256)) * 4096
     binary.write_bytes(binary_bytes)
+
+    outbox = state_dir(root) / OUTBOX
+    outbox.mkdir(parents=True, mode=0o700)
+    source = outbox / "package.bin"
+    source.write_bytes(binary_bytes)
+    operations["接收文件"] = ("connected_computer_deliver", {**args, "path": "copy.bin", "source_path": source.name})
+    operations["修改源后接收"] = ("connected_computer_deliver", {**args, "path": "changed.bin", "source_path": source.name})
     operations["发送文件"] = ("connected_computer_transfer", {**args, "path": binary.name})
     memory = [None]
     monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: memory[0])
@@ -1061,6 +1070,31 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
             await decide(card)
             altered = await asyncio.wait_for(outcomes.get(), 3)
             assert altered.status == "blocked" and "downloads/" not in altered.text
+
+            await send("接收文件")
+            await decide(await card_for("授权执行本回合"))
+            card = await card_for("接收文件并新建")
+            assert "computer-outbox/package.bin" in card["text"] and str(len(binary_bytes)) in card["text"]
+            assert not (folder / "copy.bin").exists()
+            await decide(card)
+            delivered = await asyncio.wait_for(outcomes.get(), 8)
+            assert delivered.status == "succeeded", delivered.text
+            assert "vct_" not in delivered.text and (folder / "copy.bin").read_bytes() == binary_bytes
+            delivery_id = re.search(r"[a-f0-9]{32}", delivered.text).group()
+            assert HomeFileIntents(root).status(delivery_id, account) == "created"
+
+            await send("接收文件")
+            await decide(await card_for("授权执行本回合"))
+            blocked = await asyncio.wait_for(outcomes.get(), 3)
+            assert blocked.status == "blocked" and (folder / "copy.bin").read_bytes() == binary_bytes
+
+            await send("修改源后接收")
+            await decide(await card_for("授权执行本回合"))
+            card = await card_for("接收文件并新建")
+            source.write_bytes(binary_bytes[::-1])
+            await decide(card)
+            assert (await asyncio.wait_for(outcomes.get(), 3)).status == "blocked"
+            assert not (folder / "changed.bin").exists()
 
             await send("撤权后写入")
             await decide(await card_for("授权执行本回合"))

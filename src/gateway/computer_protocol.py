@@ -14,7 +14,8 @@ TRANSFER_SECONDS = 1800
 PROTOCOL_MIN = 1
 FILES_PROTOCOL = 2
 TRANSFER_PROTOCOL = 3
-PROTOCOL_MAX = TRANSFER_PROTOCOL
+DELIVERY_PROTOCOL = 4
+PROTOCOL_MAX = DELIVERY_PROTOCOL
 FEATURES = ("control-only",)
 CAPABILITIES = {key: False for key in ("read", "write", "command", "browser", "codex")}
 BINDING_FIELDS = ("home_instance_id", "connector_id", "paired_principal_id", "credential_epoch", "trust_epoch")
@@ -81,8 +82,8 @@ def binding_fields(binding: dict) -> dict:
     return {key: identifier(binding.get(key)) for key in BINDING_FIELDS}
 
 
-def hello(binding: dict, *, files: bool = False, transfers: bool = False) -> dict:
-    maximum = TRANSFER_PROTOCOL if transfers else FILES_PROTOCOL if files else PROTOCOL_MIN
+def hello(binding: dict, *, files: bool = False, transfers: bool = False, deliveries: bool = False) -> dict:
+    maximum = _enabled_protocol(files, transfers, deliveries)
     return {"type": "hello", **binding_fields(binding), "protocol_min": PROTOCOL_MIN,
             "protocol_max": maximum, "features": list(FEATURES)}
 
@@ -104,11 +105,20 @@ def welcome(binding: dict, generation: str, protocol: int = PROTOCOL_MIN) -> dic
             "protocol": protocol, "features": list(FEATURES), "capabilities": dict(CAPABILITIES), "folders": []}
 
 
-def validate_welcome(frame: dict, binding: dict, *, files: bool = False, transfers: bool = False) -> str:
+def _enabled_protocol(files: bool, transfers: bool, deliveries: bool) -> int:
+    if deliveries:
+        return DELIVERY_PROTOCOL
+    if transfers:
+        return TRANSFER_PROTOCOL
+    return FILES_PROTOCOL if files else PROTOCOL_MIN
+
+
+def validate_welcome(frame: dict, binding: dict, *, files: bool = False, transfers: bool = False,
+                     deliveries: bool = False) -> str:
     generation = identifier(frame.get("generation"))
     capabilities = frame.get("capabilities")
     protocol = frame.get("protocol")
-    maximum = TRANSFER_PROTOCOL if transfers else FILES_PROTOCOL if files else PROTOCOL_MIN
+    maximum = _enabled_protocol(files, transfers, deliveries)
     if (type(protocol) is not int or not PROTOCOL_MIN <= protocol <= maximum
             or not isinstance(capabilities, dict)
             or set(capabilities) != set(CAPABILITIES)

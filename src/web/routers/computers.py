@@ -22,6 +22,7 @@ from src.gateway.computer_native import (
     ComputerNativeDenied, ComputerNativeUnclaimed, ComputerNativeUnavailable, redeem,
 )
 from src.gateway.computer_protocol import DOWNLOAD_PREFIX, FEATURES, MAX_TRANSFER_BYTES, PROTOCOL_MIN, TRANSFER_PATH, decode_frame
+from src.gateway.computer_transfer_io import CHUNK_BYTES, file_io
 from src.gateway.computer_transfers import TransferDenied, TransferUnavailable, computer_transfers
 from src.gateway.connected_computers import ConnectedComputers, ComputerDenied, ComputerUnavailable
 from src.web import app_views as views
@@ -331,9 +332,7 @@ async def computer_socket(socket: WebSocket):
     await serve(socket, root, store, binding)
 
 
-@router.put(TRANSFER_PATH, status_code=201)
-async def receive_transfer(request: Request, response: Response):
-    response.headers.update(_PRIVATE)
+def _transfer_credentials(request: Request) -> tuple[str, str]:
     credentials = request.headers.getlist("authorization")
     tickets = request.headers.getlist("x-vortoone-transfer-ticket")
     if (not get_api_token() or not _secure(request) or request.scope.get("query_string")
@@ -341,6 +340,13 @@ async def receive_transfer(request: Request, response: Response):
             or len(credentials) != 1 or not re.fullmatch(r"Bearer vcc_[A-Za-z0-9_-]{43}", credentials[0])
             or len(tickets) != 1 or not re.fullmatch(r"vct_[A-Za-z0-9_-]{43}", tickets[0])):
         raise _error(403, "computer_transfer_denied")
+    return credentials[0][len("Bearer "):], tickets[0]
+
+
+@router.put(TRANSFER_PATH, status_code=201)
+async def receive_transfer(request: Request, response: Response):
+    response.headers.update(_PRIVATE)
+    token, ticket = _transfer_credentials(request)
     lengths = request.headers.getlist("content-length")
     encodings = request.headers.getlist("content-encoding")
     if (len(lengths) != 1 or not re.fullmatch(r"0|[1-9][0-9]{0,9}", lengths[0])
@@ -351,14 +357,67 @@ async def receive_transfer(request: Request, response: Response):
     root = str(Path(os.getcwd()).resolve())
     store = ConnectedComputers(root)
     try:
-        binding = await asyncio.to_thread(store.authenticate, credentials[0][len("Bearer "):])
-        return await computer_transfers.receive(root, binding, tickets[0], int(lengths[0]), request.stream())
+        binding = await asyncio.to_thread(store.authenticate, token)
+        return await computer_transfers.receive(root, binding, ticket, int(lengths[0]), request.stream())
     except (ComputerDenied, TransferDenied, ValueError):
         raise _error(403, "computer_transfer_denied") from None
     except (ComputerUnavailable, TransferUnavailable, OSError):
         raise _error(503, "computer_transfer_unavailable") from None
     except ClientDisconnect:
         raise _error(400, "transfer_disconnected") from None
+
+
+class _DeliveryResponse(StreamingResponse):
+    def __init__(self, transfer):
+        self.transfer = transfer
+        super().__init__(self._chunks(), media_type="application/octet-stream",
+                         headers={**_PRIVATE, "Content-Length": str(transfer.file.size),
+                                  "X-Content-Type-Options": "nosniff"})
+
+    async def _chunks(self):
+        transfer = self.transfer
+        offset = 0
+        next_check = 0.0
+        while offset < transfer.file.size:
+            now = time.monotonic()
+            if transfer.aborted or now >= transfer.deadline:
+                return
+            if now >= next_check:
+                if not await computer_transfers.valid_delivery(transfer):
+                    return
+                next_check = now + 1
+            length = min(CHUNK_BYTES, transfer.file.size - offset)
+            chunk = await file_io(os.pread, transfer.staged.fileno(), length, offset)
+            if len(chunk) != length or transfer.aborted:
+                return
+            if offset + length == transfer.file.size and not await computer_transfers.valid_delivery(transfer):
+                return
+            offset += length
+            yield chunk
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            computer_transfers.end_delivery(self.transfer)
+
+
+@router.get(TRANSFER_PATH)
+async def pull_transfer(request: Request):
+    token, ticket = _transfer_credentials(request)
+    if ("range" in request.headers or "transfer-encoding" in request.headers
+            or request.headers.getlist("content-length") not in ([], ["0"])):
+        raise _error(400, "invalid_transfer_body")
+    root = str(Path(os.getcwd()).resolve())
+    store = ConnectedComputers(root)
+    try:
+        binding = await asyncio.to_thread(store.authenticate, token)
+        transfer = await computer_transfers.begin_delivery(root, binding, ticket)
+    except (ComputerDenied, TransferDenied, ValueError):
+        raise _error(403, "computer_transfer_denied") from None
+    except (ComputerUnavailable, TransferUnavailable, OSError):
+        raise _error(503, "computer_transfer_unavailable") from None
+    return _DeliveryResponse(transfer)
 
 
 class _DownloadResponse(StreamingResponse):
@@ -382,13 +441,8 @@ class _DownloadResponse(StreamingResponse):
                 if not computer_transfers.owned_download(self.transfer, account):
                     return
                 next_check = now + 1
-            length = min(256 * 1024, self.transfer.file.size - offset)
-            read = asyncio.create_task(asyncio.to_thread(os.pread, self.transfer.staged.fileno(), length, offset))
-            try:
-                chunk = await asyncio.shield(read)
-            except asyncio.CancelledError:
-                await asyncio.gather(read, return_exceptions=True)
-                raise
+            length = min(CHUNK_BYTES, self.transfer.file.size - offset)
+            chunk = await file_io(os.pread, self.transfer.staged.fileno(), length, offset)
             if not chunk:
                 return
             yield chunk

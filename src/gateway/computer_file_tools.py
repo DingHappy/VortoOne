@@ -18,10 +18,12 @@ from src.gateway.computer_file_authority import current_owner_turn, file_confirm
 from src.gateway.computer_file_intents import FileIntentUnavailable, HomeFileIntents
 from src.gateway.computer_file_paths import relative_parts, text_bytes
 from src.gateway.computer_file_store import FileAction
+from src.gateway.computer_home_delivery import OUTBOX, deliver_file, outgoing_source
 from src.gateway.computer_file_wire import object_fields, policy_value, result_value, staged_transfer, transfer_manifest, version_value
-from src.gateway.computer_protocol import DOWNLOAD_PREFIX, TRANSFER_PROTOCOL, identifier
+from src.gateway.computer_protocol import DELIVERY_PROTOCOL, DOWNLOAD_PREFIX, MAX_TRANSFER_BYTES, TRANSFER_PROTOCOL, identifier
 from src.gateway.computer_transfers import TransferFile, TransferUnavailable, computer_transfers
 from src.gateway.connected_computers import ComputerUnavailable, ConnectedComputers
+from src.utils.home_maintenance import HomeMaintenanceError
 
 _SOURCE = {"external_content": True, "untrusted_source": True, "serial": True}
 _OFFLINE = "电脑离线、未启用文件协议，或配对已变化。"
@@ -147,7 +149,12 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
                 return _blocked("需要从家中的正式工具调用发起文件操作。")
             fields = {"computer_id", "folder_id", "path"}
             with_text = operation in ("create", "patch")
-            object_fields(args, fields | {"text"} if with_text else fields)
+            delivering = operation == "deliver"
+            if with_text:
+                fields.add("text")
+            if delivering:
+                fields.add("source_path")
+            object_fields(args, fields)
             computer_id = identifier(args.get("computer_id"))
             folder_id = identifier(args.get("folder_id"))
             path = args.get("path")
@@ -159,26 +166,36 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
                 return _blocked(_OFFLINE)
             if operation == "transfer" and connection.protocol < TRANSFER_PROTOCOL:
                 return _blocked("这台电脑需要支持大文件传输的连接器版本。")
+            if delivering and connection.protocol < DELIVERY_PROTOCOL:
+                return _blocked("这台电脑需要支持从家接收文件的连接器版本。")
             rows = await asyncio.to_thread(store.list)
             machine = next((row for row in rows if row["active"] and row["connector_id"] == computer_id), None)
             if machine is None:
                 return _blocked(_OFFLINE)
             policy = policy_value(await connection.file_request("policy", {}))
             folder = next((row for row in policy["folders"] if row["folder_id"] == folder_id), None)
-            if (folder is None or (operation != "create" and not folder["read"])
-                    or (with_text and not folder["write"])):
+            if (folder is None or (operation not in ("create", "deliver") and not folder["read"])
+                    or ((with_text or delivering) and not folder["write"])):
                 return _blocked("本机没有授予该文件夹所需的权限。")
             target = {"folder_id": folder_id, "policy_revision": policy["policy_revision"], "path": path}
             if operation == "transfer":
                 info = transfer_manifest(await connection.file_request("transfer_preview", target))
                 version = info["version"]
             else:
-                version = version_value(await connection.file_request("preview", {**target, "operation": operation}), operation)
+                preview_operation = "create" if delivering else operation
+                preview = await connection.file_request("preview", {**target, "operation": preview_operation})
+                version = version_value(preview, preview_operation)
+                if delivering:
+                    try:
+                        source = await asyncio.to_thread(outgoing_source, root, args["source_path"])
+                        info = await asyncio.to_thread(source.transfer_info, MAX_TRANSFER_BYTES)
+                    except (OSError, ValueError):
+                        return _blocked("无法核对家的发件目录或源文件版本。")
         except (ComputerUnavailable, FileConnectionUnavailable, OSError, ValueError):
             return _blocked("无法核对电脑、目标文件或本机授权。")
 
         verb = {"read": "读取文件", "create": "新建文件", "patch": "预览文件差异",
-                "transfer": "发送文件到家"}[operation]
+                "transfer": "发送文件到家", "deliver": "接收文件并新建"}[operation]
         message = (f"允许仅此一次在电脑「{machine['name']}」（{computer_id}）{verb}？\n"
                    f"已授权目录「{folder['alias']}」（{folder_id}）\n相对路径 {path}\n"
                    f"预览版本 {version}")
@@ -188,6 +205,9 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
                         f"\n{'文本前 320 字' if len(body) > 320 else '文本'} {excerpt}")
         elif operation == "transfer":
             message += f"\n文件 {info['size']} 字节。传输成功后，家会提供仅所有者可取的临时下载。"
+        elif delivering:
+            message += (f"\n来自家的发件目录 {OUTBOX}/{args['source_path']}，文件 {info['size']} 字节"
+                        f"\n源版本 {info['version']}\n目标只允许新建。")
 
         async def still_current():
             try:
@@ -204,10 +224,18 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
                     return _blocked(_OFFLINE)
                 if operation == "transfer":
                     return await _receive_file(connection, target, info, still_current)
+                if delivering:
+                    action_id, status = await deliver_file(
+                        connection, source, info, target=target, destination_version=version, owner=owner,
+                        call_id=call_id, intents=intents, deadline=int(time.time()) + FILE_TRANSFER_SECONDS,
+                        still_current=still_current)
+                    return ToolResult(f"{_STATUS[status]}。动作编号 {action_id}。",
+                                      "succeeded" if status == "created" else "blocked")
                 action = FileAction(uuid.uuid4().hex, folder_id, target["policy_revision"], operation, path,
                                     version, int(time.time()) + FILE_ACTION_SECONDS, owner.session, owner.rid, call_id, body)
-            except (ComputerUnavailable, FileConnectionUnavailable, OSError, ValueError):
-                return _blocked("家的身份或文件确认已失效。")
+            except (ComputerUnavailable, FileConnectionUnavailable, FileIntentUnavailable, TransferUnavailable,
+                    HomeMaintenanceError, OSError, ValueError):
+                return _blocked("无法完成文件操作，请核对家的授权、源文件版本和可用空间。")
             if operation == "create":
                 try:
                     await asyncio.to_thread(intents.record, connection.binding, action)
@@ -239,9 +267,12 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
         args = dict(target_args)
         if operation in ("create", "patch"):
             args["text"] = "不超过 32 KiB 的 UTF-8 文本"
+        if operation == "deliver":
+            args["source_path"] = "家的发件目录内相对路径"
+        writes = operation in ("create", "deliver")
         return Tool.prepared(name, description, args, partial(prepare, operation, name),
-                             operation_kind=WRITE if operation == "create" else READ,
-                             read_only=operation != "create", always_confirm=True, required_args=tuple(args), **_SOURCE)
+                             operation_kind=WRITE if writes else READ,
+                             read_only=not writes, always_confirm=True, required_args=tuple(args), **_SOURCE)
 
     return [
         Tool("connected_computer_folders", "在家的主要聊天中列出支持文件操作的已连接电脑；传电脑编号后列出本机已授权的目录。",
@@ -250,6 +281,7 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
         file_tool("create", "connected_computer_create", "经所有者逐次确认，在连接电脑选定目录中新建小文本文件。已有文件保持原样。结果未知时用回执查询。"),
         file_tool("patch", "connected_computer_patch_preview", "经所有者逐次确认，比较连接电脑的原文本和提议文本，只产生差异。"),
         file_tool("transfer", "connected_computer_transfer", "经所有者逐次确认，从连接电脑的授权目录将文件发送到家，返回临时下载链接。文件正文不进入对话。"),
-        Tool("connected_computer_file_status", "按动作编号查已派发新建操作的持久回执。",
-             {"action_id": "新建操作的动作编号"}, action_status, operation_kind=READ, required_args=("action_id",)),
+        file_tool("deliver", "connected_computer_deliver", "经所有者逐次确认，从家的发件目录发送文件，在连接电脑已授权的目录中新建。已有文件保持原样。"),
+        Tool("connected_computer_file_status", "按动作编号查已派发新建或发件操作的持久回执。",
+             {"action_id": "新建或发件操作的动作编号"}, action_status, operation_kind=READ, required_args=("action_id",)),
     ]

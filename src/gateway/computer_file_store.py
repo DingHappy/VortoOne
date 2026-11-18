@@ -17,7 +17,8 @@ from src.gateway.computer_file_paths import (
     FileDenied, PinnedFile, relative_parts, select_directory, text_bytes,
 )
 from src.gateway.computer_file_capacity import has_file_capacity
-from src.gateway.computer_protocol import binding_fields, identifier
+from src.gateway.computer_transfer_io import CHUNK_BYTES, MIN_DISK_FREE
+from src.gateway.computer_protocol import MAX_TRANSFER_BYTES, TRANSFER_SECONDS, binding_fields, identifier
 from src.utils.home_maintenance import FileLease, HomeMaintenanceError
 
 MAX_GRANTS = 16
@@ -68,6 +69,21 @@ class FileAction:
     @property
     def digest(self) -> str:
         return hashlib.sha256(_json(asdict(self)).encode("ascii")).hexdigest()
+
+
+@dataclass(frozen=True, kw_only=True)
+class FileDelivery(FileAction):
+    source_version: str
+    size: int
+    sha256: str
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (self.operation != "create" or self.content != ""
+                or not all(isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value)
+                           for value in (self.source_version, self.sha256))
+                or type(self.size) is not int or not 0 <= self.size <= MAX_TRANSFER_BYTES):
+            raise FileDenied("文件传输参数无效")
 
 
 @dataclass(frozen=True)
@@ -225,6 +241,50 @@ class ComputerFiles:
         with self._db() as db:
             return self._target(db, "read", folder_id, path, policy_revision)
 
+    def delivery_target(self, action: FileDelivery, active) -> PinnedFile:
+        self._check_active(action, active)
+        with self._db() as db:
+            return self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
+
+    def existing_delivery(self, action: FileDelivery) -> str | None:
+        with self._db(write=True) as db:
+            row = self._action_row(db, action.action_id)
+            if row is None or (row[0] == action.digest and row[1] == "waiting"):
+                return None
+            if row[0] != action.digest:
+                raise FileDenied("动作编号已绑定其它参数")
+            if row[1] == "started":
+                self._terminal(db, action, "unknown")
+                return "unknown"
+            if row[1] not in _STATUSES:
+                raise FileStateUnavailable("动作记录无效")
+            return row[1]
+
+    def execute_delivery(self, action: FileDelivery, descriptor: int, *, active) -> dict:
+        base = {"action_id": action.action_id, "digest": action.digest}
+        with self.transfer_lease():
+            self._check_active(action, active)
+            recorded = self.existing_delivery(action)
+            if recorded is not None:
+                return {**base, "status": recorded}
+            if not has_file_capacity("create"):
+                return {**base, "status": "busy"}
+            target = self.delivery_target(action, active)
+            with target.stage_creation(action.version, reserve_bytes=action.size + MIN_DISK_FREE) as (stream, publish):
+                digest = hashlib.sha256()
+                offset = 0
+                while offset < action.size:
+                    self._check_active(action, active)
+                    data = os.pread(descriptor, min(CHUNK_BYTES, action.size - offset), offset)
+                    if not data or stream.write(data) != len(data):
+                        raise FileDenied("本机暂存不完整")
+                    offset += len(data)
+                    digest.update(data)
+                if os.pread(descriptor, 1, offset) or digest.hexdigest() != action.sha256:
+                    raise FileDenied("本机暂存内容与确认的版本不符")
+                status = self._create(action, active, publish=publish)
+            return {**base, "status": status}
+
     @contextmanager
     def transfer_lease(self):
         self._private_directory()
@@ -232,7 +292,8 @@ class ComputerFiles:
             yield
 
     def _check_deadline(self, action: FileAction) -> None:
-        if not 0 < action.deadline - self.clock() <= ACTION_SECONDS:
+        maximum = TRANSFER_SECONDS if isinstance(action, FileDelivery) else ACTION_SECONDS
+        if not 0 < action.deadline - self.clock() <= maximum:
             raise FileDenied("文件动作已过期或期限无效")
 
     def _check_active(self, action: FileAction, active) -> None:
@@ -248,7 +309,7 @@ class ComputerFiles:
         db.execute("UPDATE actions SET status = ? WHERE scope = ? AND action_id = ?",
                    (status, self.scope, action.action_id))
 
-    def _create(self, action: FileAction, active) -> str:
+    def _create(self, action: FileAction, active, *, publish=None) -> str:
         # This first commit is deliberately separate from the transaction that fences
         # local revocation at the actual write. A crash between them is unknown.
         with self._db(write=True) as db:
@@ -271,7 +332,7 @@ class ComputerFiles:
             except FileDenied:
                 status = "blocked"
             else:
-                status = "started" if has_file_capacity(action.operation) else "waiting"
+                status = "started" if publish is not None or has_file_capacity(action.operation) else "waiting"
             db.execute("INSERT INTO actions VALUES (?, ?, ?, ?, 0)"
                        " ON CONFLICT(scope, action_id) DO UPDATE SET status = excluded.status",
                        (self.scope, action.action_id, action.digest, status))
@@ -284,8 +345,15 @@ class ComputerFiles:
             try:
                 self._check_active(action, active)
                 target = self._target(db, action.operation, action.folder_id, action.path, action.policy_revision)
-                target.create(text_bytes(action.content), action.version,
-                              before_publish=lambda: self._check_active(action, active))
+                def before_publish():
+                    self._check_active(action, active)
+
+                if publish is None:
+                    target.create(text_bytes(action.content), action.version, before_publish=before_publish)
+                else:
+                    if target.preview("create") != action.version:
+                        raise FileDenied("目标目录在确认后变化")
+                    publish(before_publish)
                 status = "created"
             except (FileDenied, FileExistsError):
                 status = "blocked"
@@ -302,6 +370,8 @@ class ComputerFiles:
             self._private_directory()
             # The lock reserves capacity across every pairing, from admission through the effect and its receipt.
             with FileLease(self.directory / "file-action.lock", private=True):
+                if isinstance(action, FileDelivery):
+                    raise FileDenied("大文件需要独立传输入口")
                 if action.operation == "create":
                     return {**base, "status": self._create(action, active)}
                 self._check_active(action, active)

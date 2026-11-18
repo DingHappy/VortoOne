@@ -2722,6 +2722,12 @@
   {
     "path": "/api/computers/transfer",
     "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/computers/transfer",
+    "methods": [
       "PUT"
     ]
   },

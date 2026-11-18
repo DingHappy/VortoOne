@@ -1,4 +1,4 @@
-"""One-use receiving tickets for files sent by a connected computer."""
+"""One-use directional tickets for transfers between the home and a computer."""
 from __future__ import annotations
 
 import asyncio
@@ -17,12 +17,12 @@ from typing import BinaryIO
 
 from src.gateway.computer_connections import Connection, connections
 from src.gateway.computer_file_wire import digest_value
+from src.gateway.computer_transfer_io import MIN_DISK_FREE, write_chunk
 from src.gateway.computer_protocol import (
-    FILES_PROTOCOL, MAX_TRANSFER_BYTES, TRANSFER_SECONDS, binding_fields, identifier,
+    DELIVERY_PROTOCOL, FILES_PROTOCOL, MAX_TRANSFER_BYTES, TRANSFER_SECONDS, binding_fields, identifier,
 )
 from src.utils.state_dir import state_dir
 
-MIN_DISK_FREE = 128 * 1024 ** 2
 TICKET_SECONDS = 300
 DOWNLOAD_SECONDS = 600
 READ_TIMEOUT = 10
@@ -64,6 +64,7 @@ class _Transfer:
     transfer_id: str
     deadline: float
     ticket_expiry: float
+    outgoing: bool = False
     claimed: bool = False
     staged: BinaryIO | None = None
     filename: str | None = None
@@ -72,7 +73,7 @@ class _Transfer:
     expiry_handle: asyncio.TimerHandle | None = None
 
 
-def _spool(root: str, size: int) -> BinaryIO:
+def private_spool(root: str, size: int) -> BinaryIO:
     try:
         directory = state_dir(root) / "computer-file-intents"
         if os.name != "posix" or directory.parent.is_symlink():
@@ -89,26 +90,16 @@ def _spool(root: str, size: int) -> BinaryIO:
         raise TransferUnavailable("transfer staging unavailable") from error
 
 
-async def _write(handle: BinaryIO, chunk: bytes) -> None:
-    # Keep ownership of the descriptor while the worker is still writing, even on disconnect.
-    task = asyncio.create_task(asyncio.to_thread(handle.write, chunk))
-    try:
-        written = await asyncio.shield(task)
-    except asyncio.CancelledError:
-        await asyncio.gather(task, return_exceptions=True)
-        raise
-    if written != len(chunk):
-        raise TransferUnavailable("incomplete transfer write")
-
-
 class ComputerTransfers:
     def __init__(self):
         self._lock = threading.RLock()
         self._by_home: dict[str, _Transfer] = {}
 
-    async def issue(self, connection: Connection, file: TransferFile, *, action_deadline: float) -> dict:
+    async def issue(self, connection: Connection, file: TransferFile, *, action_deadline: float,
+                    source: BinaryIO | None = None) -> dict:
         """Called by the trusted adapter after the owner approves a specific file."""
-        if connection.protocol < FILES_PROTOCOL or not await connection.valid():
+        protocol = DELIVERY_PROTOCOL if source is not None else FILES_PROTOCOL
+        if connection.protocol < protocol or not await connection.valid():
             raise TransferDenied("transfer is outside the current action")
         remaining = action_deadline - time.time()
         if not 0 < remaining <= TRANSFER_SECONDS:
@@ -119,7 +110,7 @@ class ComputerTransfers:
         claim_for = min(TICKET_SECONDS, remaining)
         transfer = _Transfer(connection, binding_fields(connection.binding), file,
                              hashlib.sha256(ticket.encode("ascii")).digest(), secrets.token_hex(16),
-                             now + remaining, now + claim_for)
+                             now + remaining, now + claim_for, outgoing=source is not None, staged=source)
         with self._lock:
             self._prune()
             if connection.root in self._by_home or len(self._by_home) >= MAX_HOMES:
@@ -136,6 +127,8 @@ class ComputerTransfers:
                 transfer.expiry_handle = asyncio.get_running_loop().call_later(expiry - now, self._expire, transfer)
                 return
             # An active reader or handoff still owns the descriptor and releases it itself.
+            if transfer.outgoing:
+                transfer.aborted = True
             if not transfer.downloading and (not transfer.claimed or transfer.staged is not None):
                 self._drop(transfer)
 
@@ -159,16 +152,37 @@ class ComputerTransfers:
             transfer.staged.close()
             transfer.staged = None
 
-    def _claim(self, root: str, binding: dict, ticket: str, size: int) -> _Transfer:
+    def _claim(self, root: str, binding: dict, ticket: str, size: int | None) -> _Transfer:
         provided = hashlib.sha256(ticket.encode("ascii")).digest()
         with self._lock:
             self._prune()
             transfer = self._by_home.get(root)
             if (transfer is None or transfer.claimed or transfer.aborted or transfer.binding != binding_fields(binding)
-                    or not hmac.compare_digest(provided, transfer.ticket_digest) or transfer.file.size != size):
+                    or transfer.outgoing != (size is None) or (size is not None and transfer.file.size != size)
+                    or not hmac.compare_digest(provided, transfer.ticket_digest)):
                 raise TransferDenied("transfer ticket invalid")
             transfer.claimed = True
+            transfer.downloading = transfer.outgoing
             return transfer
+
+    async def begin_delivery(self, root: str, binding: dict, ticket: str) -> _Transfer:
+        transfer = self._claim(root, binding, ticket, None)
+        try:
+            if not await self.valid_delivery(transfer):
+                raise TransferDenied("transfer authorization changed")
+            return transfer
+        except BaseException:
+            self.end_delivery(transfer)
+            raise
+
+    async def valid_delivery(self, transfer: _Transfer) -> bool:
+        return (not transfer.aborted and time.monotonic() < transfer.deadline
+                and await transfer.connection.valid() and not transfer.aborted
+                and time.monotonic() < transfer.deadline)
+
+    def end_delivery(self, transfer: _Transfer) -> None:
+        with self._lock:
+            self._drop(transfer)
 
     async def receive(self, root: str, binding: dict, ticket: str, size: int, chunks) -> dict:
         transfer = self._claim(root, binding, ticket, size)
@@ -182,7 +196,7 @@ class ComputerTransfers:
         try:
             await check()
             # Opening is synchronous so cancellation cannot orphan the returned descriptor.
-            handle = _spool(root, size)
+            handle = private_spool(root, size)
             received = 0
             digest = hashlib.sha256()
             next_check = time.monotonic() + 1
@@ -205,7 +219,7 @@ class ComputerTransfers:
                     next_check = time.monotonic() + 1
                 if chunk:
                     digest.update(chunk)
-                    await _write(handle, chunk)
+                    await write_chunk(handle, chunk)
             sha256 = digest.hexdigest()
             if received != size or not hmac.compare_digest(sha256, transfer.file.sha256):
                 raise TransferDenied("transfer body does not match the approved file")
@@ -234,7 +248,7 @@ class ComputerTransfers:
             if (transfer is not None and transfer.connection is connection
                     and transfer.transfer_id == transfer_id and transfer.filename is None):
                 transfer.aborted = True
-                if not transfer.claimed or transfer.staged is not None:
+                if not transfer.downloading and (not transfer.claimed or transfer.staged is not None):
                     self._drop(transfer)
 
     async def _verified_stage(self, connection: Connection, transfer_id: str, action_id: str) -> _Transfer:
@@ -243,7 +257,7 @@ class ComputerTransfers:
         with self._lock:
             self._prune()
             transfer = self._by_home.get(connection.root)
-            if (transfer is None or transfer.connection is not connection or transfer.staged is None
+            if (transfer is None or transfer.outgoing or transfer.connection is not connection or transfer.staged is None
                     or transfer.aborted or transfer.filename is not None or transfer.transfer_id != transfer_id
                     or transfer.file.action_id != action_id):
                 raise TransferDenied("staged transfer unavailable")

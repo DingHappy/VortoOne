@@ -274,7 +274,9 @@ def test_socket_rejects_protocol_mismatch_and_every_execution_frame(home, mutati
     with connect(socket_client(home), grant) as ws:
         first = hello(grant)
         if mutation == 'protocol':
-            first.update(protocol_min=4, protocol_max=4)
+            from src.gateway.computer_protocol import PROTOCOL_MAX
+
+            first.update(protocol_min=PROTOCOL_MAX + 1, protocol_max=PROTOCOL_MAX + 1)
         elif mutation == 'identity':
             first['home_instance_id'] = 'f' * 32
         elif mutation == 'oversize':
@@ -295,7 +297,8 @@ def test_computer_http_exemptions_are_exact_and_general_scope_routes_exist(home)
     routes = {(method, path) for path, methods in _live_routes() for method in methods}
     assert COMPUTER_SELF_AUTHENTICATED <= routes
     assert COMPUTER_SELF_AUTHENTICATED == {('GET', '/api/computers/identity'), ('POST', '/api/computers/pair'),
-                                           ('POST', '/api/computers/native-pair'), ('PUT', '/api/computers/transfer')}
+                                           ('POST', '/api/computers/native-pair'), ('GET', '/api/computers/transfer'),
+                                           ('PUT', '/api/computers/transfer')}
     for _, path in COMPUTER_SELF_AUTHENTICATED:
         assert http_workspace_requirement(path, 'general') is None
     assert http_workspace_requirement('/api/computers/execute', 'general') == 'scratch'
@@ -744,3 +747,43 @@ def test_transfer_stream_has_one_receiver_and_rejects_stale_generation(transfer_
             assert receipt["transfer_id"] == ticket["transfer_id"]
             bound, received = second.portal.call(_read_staged, registry, current, ticket["transfer_id"], file.action_id)
             assert bound == file and received == body
+
+
+@pytest.mark.parametrize("body", [b"", b"binary\x00file" * 40000])
+def test_delivery_ticket_is_single_use_directional_and_bound_to_its_computer(transfer_home, body):
+    import hashlib
+    import time
+    from functools import partial
+
+    from src.gateway.computer_connections import connections
+    from src.gateway.computer_protocol import DELIVERY_PROTOCOL, TRANSFER_PATH
+    from src.gateway.computer_transfers import TransferFile, private_spool
+
+    home, registry = transfer_home
+    grant = paired(home)
+    other = paired(home, connector="b" * 32)
+    file = TransferFile("1" * 32, "2" * 32, "3" * 32, "4" * 64, len(body), hashlib.sha256(body).hexdigest())
+    client = socket_client(home)
+    with connect(client, grant) as ws, private_spool(home["root"], len(body)) as source:
+        source.write(body)
+        ws.send_json(hello(grant, deliveries=True))
+        assert ws.receive_json()["protocol"] == DELIVERY_PROTOCOL
+        connection = connections.file_connection(home["root"], grant["connector_id"], home["store"].identity())
+        incoming = ws.portal.call(partial(registry.issue, connection, file, action_deadline=time.time() + 30))
+        headers = {"Authorization": "Bearer " + grant["token"], "X-VortoOne-Transfer-Ticket": incoming["ticket"]}
+        assert client.get(TRANSFER_PATH, headers=headers).status_code == 403
+        ws.portal.call(registry.abort, connection, incoming["transfer_id"])
+
+        ticket = ws.portal.call(partial(registry.issue, connection, file, action_deadline=time.time() + 30,
+                                        source=source))
+        headers["X-VortoOne-Transfer-Ticket"] = ticket["ticket"]
+        assert client.get(TRANSFER_PATH, headers={**headers, "Authorization": "Bearer " + other["token"]}).status_code == 403
+        assert client.get(TRANSFER_PATH, headers={**headers, "Authorization": "Bearer " + OWNER}).status_code == 403
+        assert client.get(TRANSFER_PATH, headers={**headers, "Range": "bytes=0-5"}).status_code == 400
+        assert client.put(TRANSFER_PATH, headers={**headers, "Content-Type": "application/octet-stream",
+                                                  "Content-Length": str(len(body))}, content=body).status_code == 403
+        downloaded = client.get(TRANSFER_PATH, headers=headers)
+        assert downloaded.status_code == 200 and downloaded.content == body
+        assert downloaded.headers["content-length"] == str(len(body))
+        assert downloaded.headers["cache-control"] == "no-store"
+        assert client.get(TRANSFER_PATH, headers=headers).status_code == 403
