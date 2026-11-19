@@ -4898,6 +4898,8 @@ export type ComputerSetupStep = "reserving" | "starting" | "installing" | "conne
  */
 export interface ComputerSetup {
   mode: "external" | "pair";
+  /** This home supports private member-owned computer registrations. */
+  memberPairing?: boolean;
   /** With `external`, null while the workspace is on hold and its computer isn't ready: it waits for none. */
   state: "preparing" | "waiting" | "problem" | "ready" | null;
   /** While `preparing`. */

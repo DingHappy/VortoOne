@@ -2858,6 +2858,14 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/browser-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/computers/browser-preview",
+    "methods": []
+  },
+  {
     "path": "/api/computers/downloads/{transfer_id}",
     "methods": [
       "GET"

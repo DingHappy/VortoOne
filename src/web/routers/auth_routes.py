@@ -41,7 +41,11 @@ async def login(body: LoginBody, request: Request, response: Response):
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
+    expected = get_api_token()
+    if expected and ct_eq(request.cookies.get(SESSION_COOKIE, ""), expected):
+        from src.gateway.computer_browser_preview import browser_previews
+        browser_previews.end_owner_views()
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
 

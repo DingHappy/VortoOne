@@ -39,6 +39,10 @@ MAX_GROUPS, MAX_MEMBERS, MAX_INVITATIONS = 64, 500, 200
 INVITE_DAYS_DEFAULT, INVITE_DAYS_MAX = 7, 30
 
 
+def is_member_id(value: object) -> bool:
+    return isinstance(value, str) and bool(_MEMBER_ID.fullmatch(value))
+
+
 class Refused(PermissionError):
     """操作人没有做这件事的权限。"""
 
@@ -529,7 +533,7 @@ class MemberRegistry:
         kind = invitation.get("by_kind")
         if kind is None and isinstance(issuer, str) and issuer:
             # Version-one invitations used the generated member id or the owner's UI id.
-            kind = MEMBER if _MEMBER_ID.fullmatch(issuer) else OWNER
+            kind = MEMBER if is_member_id(issuer) else OWNER
         if kind == OWNER:
             return invited
         member = state["members"].get(issuer) if kind == MEMBER and isinstance(issuer, str) else None
