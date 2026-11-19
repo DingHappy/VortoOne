@@ -88,16 +88,16 @@ def hello(binding: dict, *, files: bool = False, transfers: bool = False, delive
             "protocol_max": maximum, "features": list(FEATURES)}
 
 
-def validate_hello(frame: dict, binding: dict) -> dict:
+def validate_hello(frame: dict, binding: dict, *, ceiling: int = PROTOCOL_MAX) -> dict:
     expected = set(BINDING_FIELDS) | {"type", "protocol_min", "protocol_max", "features"}
     if set(frame) != expected or frame.get("type") != "hello" or binding_fields(frame) != binding_fields(binding):
         raise ComputerProtocolError("computer identity mismatch")
     low, high = frame.get("protocol_min"), frame.get("protocol_max")
-    if type(low) is not int or type(high) is not int or not 1 <= low <= high or low > PROTOCOL_MAX or high < PROTOCOL_MIN:
+    if type(low) is not int or type(high) is not int or not PROTOCOL_MIN <= low <= high or low > ceiling:
         raise ComputerProtocolError("incompatible computer protocol")
     if frame.get("features") != list(FEATURES):
         raise ComputerProtocolError("incompatible computer features")
-    return {"protocol": min(high, PROTOCOL_MAX)}
+    return {"protocol": min(high, ceiling)}
 
 
 def welcome(binding: dict, generation: str, protocol: int = PROTOCOL_MIN) -> dict:

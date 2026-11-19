@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from src.gateway.computer_protocol import MAX_FRAME_BYTES, hello
-from src.gateway.connected_computers import ConnectedComputers
+from src.gateway.computer_protocol import MAX_FRAME_BYTES, PROTOCOL_MIN, hello
+from src.gateway.connected_computers import ConnectedComputers, ComputerDenied
 from src.web import member_auth
 from src.web.auth import COMPUTER_SELF_AUTHENTICATED, SESSION_COOKIE
 
@@ -142,15 +142,120 @@ def test_owner_cookie_requires_exact_same_origin_and_token_configuration(home, m
     assert owner.post(path, json={'legacy_confirmed': True}).status_code == 403
 
 
-def test_members_keep_empty_list_and_cannot_manage_pairings(home, monkeypatch):
-    paired(home)
-    monkeypatch.setattr(member_auth, 'account', lambda request: {'id': 'acct', 'member': 'person'})
-    monkeypatch.setattr(member_auth, 'member_id', lambda account: 'person')
+def join_member(home, owner, email):
+    invite = owner.post(home['base'] + '/invitations', json={'email': email})
+    assert invite.status_code == 200, invite.text
+    token = invite.json()['url'].rsplit('/', 1)[-1]
     member = browser(home)
-    listing = member.get(home['base'] + '/machines')
-    assert listing.status_code == 200 and listing.json() == {'machines': []}
-    assert member.post(home['base'] + '/computer-pairings', json={}).status_code == 403
-    assert member.delete(home['base'] + '/machines/' + CONNECTOR).status_code == 403
+    signup = member.post('/api/auth/sign-up/email', headers={'x-invitation-token': token},
+                         json={'email': email, 'name': email.split('@')[0], 'password': 'test-member-passphrase'})
+    assert signup.status_code == 200, signup.text
+    accepted = member.post(f'/api/app/invitations/{token}/accept', json={})
+    assert accepted.status_code == 200, accepted.text
+    return member, member.get('/api/app/me').json()['user']['id']
+
+
+def exchange(home, pairing, connector, name):
+    return socket_client(home).post('/api/computers/pair', json={
+        'home_instance_id': pairing['home_instance_id'], 'code': pairing['code'],
+        'connector_id': connector, 'name': name,
+    })
+
+
+def test_members_pair_independent_private_computers_with_control_only(home, monkeypatch):
+    claim_native_home(home, monkeypatch)
+    owner = browser(home, owner=True)
+    alice, alice_id = join_member(home, owner, 'alice@example.test')
+    bob, _ = join_member(home, owner, 'bob@example.test')
+    path = home['base'] + '/computer-pairings'
+    machines = home['base'] + '/machines'
+    assert alice.get(home['base'] + '/computer-setup').json()['memberPairing'] is True
+    assert alice.post(path, headers={'Origin': 'https://other.test'}, json={}).status_code == 403
+    owner_code, alice_code, bob_code = (client.post(path, json={}) for client in (owner, alice, bob))
+    assert all(code.status_code == 201 and code.headers['cache-control'] == 'no-store'
+               for code in (owner_code, alice_code, bob_code))
+    assert bob.delete(path + '/' + alice_code.json()['pairing_id']).status_code == 204
+    alice_connector, bob_connector = 'b' * 32, 'c' * 32
+    alice_pair = exchange(home, alice_code.json(), alice_connector, 'Alice laptop')
+    assert alice_pair.status_code == 200, alice_pair.text
+    grant = alice_pair.json()
+    assert grant['paired_principal_id'] != home['store'].identity()['owner_subject']
+    assert exchange(home, bob_code.json(), bob_connector, 'Bob laptop').status_code == 200
+    assert exchange(home, owner_code.json(), CONNECTOR, 'Owner laptop').status_code == 200
+
+    for client, only_id in ((owner, CONNECTOR), (alice, alice_connector), (bob, bob_connector)):
+        listed = client.get(machines)
+        assert listed.status_code == 200 and listed.headers['cache-control'] == 'no-store'
+        assert [row['id'] for row in listed.json()['machines']] == [only_id]
+        assert grant['token'] not in listed.text and 'digest' not in listed.text
+    assert alice.get(machines).json()['machines'][0]['pairedBy']['id'] == alice_id
+    assert owner.patch(machines + '/' + alice_connector, json={'name': 'Elsewhere'}).status_code == 404
+    assert bob.delete(machines + '/' + alice_connector).status_code == 404
+    assert alice.patch(machines + '/' + alice_connector, json={'name': 'Private laptop'}).status_code == 200
+
+    with connect(socket_client(home), grant) as ws:
+        ws.send_json(hello(grant, files=True, transfers=True, deliveries=True))
+        ready = ws.receive_json()
+        assert ready['protocol'] == PROTOCOL_MIN and ready['folders'] == []
+        assert not any(ready['capabilities'].values())
+        assert alice.get(machines).json()['machines'][0]['online']
+        assert alice.delete(machines + '/' + alice_connector).status_code == 204
+        assert ws.receive_json()['credentialRevoked'] is True
+        ws.send_json({'type': 'ack', 'generation': ready['generation']})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    with pytest.raises(ComputerDenied):
+        home['store'].authenticate(grant['token'])
+
+
+def test_member_pairing_needs_a_claimed_home_and_current_connect_permission(home, monkeypatch):
+    from src.agents.identity_groups import EVERYONE, EVERYONE_DEFAULT
+    from src.agents.principal import Principal
+    from src.workflow.members.registry import MemberRegistry
+
+    monkeypatch.setattr('src.workflow.members.accounts._SCRYPT', {'n': 16, 'r': 8, 'p': 1})
+    owner = browser(home, owner=True)
+    member, _ = join_member(home, owner, 'pairer@example.test')
+    path = home['base'] + '/computer-pairings'
+    assert member.post(path, json={'legacy_confirmed': True}).status_code == 403
+    assert home['store'].identity()['owner_subject'] is None
+    claim_native_home(home, monkeypatch)
+    pending = member.post(path, json={})
+    assert pending.status_code == 201, pending.text
+    MemberRegistry(home['root']).change_group(Principal('owner', 'owner'), EVERYONE,
+                                              items=EVERYONE_DEFAULT - {'computers.connect_own'})
+    assert member.post(path, json={}).status_code == 403
+    assert exchange(home, pending.json(), 'b' * 32, 'Laptop').status_code == 403
+    assert owner.post(path, json={}).status_code == 201
+
+
+def test_removing_member_revokes_connector_and_pending_code(home, monkeypatch):
+    claim_native_home(home, monkeypatch)
+    owner = browser(home, owner=True)
+    member, member_id = join_member(home, owner, 'former@example.test')
+    path = home['base'] + '/computer-pairings'
+    first = member.post(path, json={})
+    grant = exchange(home, first.json(), 'b' * 32, 'Laptop').json()
+    later = member.post(path, json={}).json()
+    with pytest.raises(ComputerDenied):
+        home['store'].authenticate(grant['token'], owner_only=True)
+    transfer = socket_client(home).get('/api/computers/transfer', headers={
+        'Authorization': f"Bearer {grant['token']}", 'X-Vortoone-Transfer-Ticket': 'vct_' + 'a' * 43,
+    })
+    assert transfer.status_code == 403
+    with connect(socket_client(home), grant) as ws:
+        ws.send_json(hello(grant))
+        ready = ws.receive_json()
+        assert owner.delete(home['base'] + '/members/' + member_id).status_code == 204
+        assert not home['store'].check(grant)
+        assert ws.receive_json()['credentialRevoked'] is True
+        ws.send_json({'type': 'ack', 'generation': ready['generation']})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    assert exchange(home, later, 'c' * 32, 'Another laptop').status_code == 403
+    with pytest.raises(WebSocketDisconnect):
+        with connect(socket_client(home), grant):
+            pytest.fail('removed member connector connected again')
 
 
 def test_pair_exchange_is_exactly_scoped_bounded_and_rate_limited(home):

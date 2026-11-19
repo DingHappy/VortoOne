@@ -1,4 +1,5 @@
-import { createRequester, useMachines } from "@agenteschat/client";
+import { createRequester, useComputerSetup, useMachines } from "@agenteschat/client";
+import { can } from "@agenteschat/client/lib/permissions";
 import { Button, Card } from "@agenteschat/ui";
 import { useEffect, useRef, useState } from "react";
 import { useOrg } from "./org-context";
@@ -6,14 +7,17 @@ import { useOrg } from "./org-context";
 type Pairing = { pairing_id: string; code: string; expires_at: number; home_instance_id: string };
 const request = createRequester();
 
-/** C1's human pairing flow. It cannot grant local folders or execution capabilities. */
 export function ConnectedComputerPairing() {
-  const { org } = useOrg();
-  const machines = useMachines(org.id);
+  const { org, me } = useOrg();
+  const owner = org.role === "owner";
+  const setup = useComputerSetup(org.id);
+  const available = owner || setup.data?.memberPairing === true;
+  const canPair = owner || can(org, "pair_computers");
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [legacy, setLegacy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const machines = useMachines(org.id, available, pairing ? 3000 : false);
   const active = useRef<AbortController | null>(null);
   const base = `/api/app/organizations/${encodeURIComponent(org.id)}`;
   useEffect(() => {
@@ -22,13 +26,13 @@ export function ConnectedComputerPairing() {
     setError("");
     setBusy(false);
     return () => active.current?.abort();
-  }, [org.id]);
+  }, [org.id, me.user.id]);
   useEffect(() => {
     if (!pairing) return;
     const timer = setTimeout(() => setPairing(null), Math.max(0, pairing.expires_at * 1000 - Date.now()));
     return () => clearTimeout(timer);
   }, [pairing]);
-  if (org.role !== "owner") return null;
+  if (!available) return null;
 
   async function act(operation: (signal: AbortSignal) => Promise<void>) {
     if (active.current) active.current.abort();
@@ -50,15 +54,18 @@ export function ConnectedComputerPairing() {
 
   return <Card>
     <h2>连接的电脑</h2>
-    <p>在家里生成配对码，再到目标电脑的 VortoOne Dev 菜单「连接的电脑…」输入。电脑主动连接，退出 App 后断开。</p>
-    <p className="small muted">当前仅登记身份与连接状态。文件、命令、浏览器和 Codex 的执行能力尚未就绪。</p>
-    <label><input type="checkbox" checked={legacy} disabled={busy || !!pairing} onChange={(event) => setLegacy(event.target.checked)} /> 这是仍由我管理、仅使用所有者密钥登录的旧家</label>
-    <p className="small muted">首次安装请先完成所有者认领；旧家需要上面的明确确认。</p>
+    {canPair && <p>生成配对码后，到目标电脑的 VortoOne Dev 菜单「连接的电脑…」输入。</p>}
+    {!owner && <p className="small muted">只有你能看到和管理这里的电脑。当前可查看设备连接状态。</p>}
+    {!canPair && <p className="small muted">你当前的身份组无法生成配对码。</p>}
+    {owner && <>
+      <label><input type="checkbox" checked={legacy} disabled={busy || !!pairing} onChange={(event) => setLegacy(event.target.checked)} /> 这是仍由我管理、仅使用所有者密钥登录的旧家</label>
+      <p className="small muted">首次安装请先完成所有者认领。旧家需要上面的明确确认。</p>
+    </>}
     <div className="row">
-      <Button disabled={busy} onClick={() => void act(async (signal) => {
-        const result = await request<Pairing>(`${base}/computer-pairings`, { json: { legacy_confirmed: legacy }, signal });
+      {canPair && <Button disabled={busy} onClick={() => void act(async (signal) => {
+        const result = await request<Pairing>(`${base}/computer-pairings`, { json: { legacy_confirmed: owner && legacy }, signal });
         if (!signal.aborted) setPairing(result);
-      })}>生成电脑配对码</Button>
+      })}>生成电脑配对码</Button>}
       <Button disabled={busy} onClick={() => void machines.refetch()}>刷新连接状态</Button>
     </div>
     {pairing && <div role="status">

@@ -1,4 +1,4 @@
-"""Owner-managed pairing and authenticated computer control and transfer routes."""
+"""Private computer pairing and authenticated control and transfer routes."""
 from __future__ import annotations
 
 import asyncio
@@ -8,25 +8,33 @@ import re
 import threading
 import time
 from collections import deque
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.requests import ClientDisconnect
 from starlette.responses import StreamingResponse
 
+from src.agents.identity_groups import screen_level_allows
+from src.agents.principal import MEMBER, OWNER, Principal
+from src.gateway.audit import append_audit
+from src.gateway.computer_browser_preview import browser_previews, serve_publisher, serve_viewer
 from src.gateway.computer_connections import connections, serve
 from src.gateway.computer_native import (
     ComputerNativeDenied, ComputerNativeUnclaimed, ComputerNativeUnavailable, redeem,
 )
-from src.gateway.computer_protocol import DOWNLOAD_PREFIX, FEATURES, MAX_TRANSFER_BYTES, PROTOCOL_MIN, TRANSFER_PATH, decode_frame
+from src.gateway.computer_protocol import (
+    DOWNLOAD_PREFIX, FEATURES, MAX_TRANSFER_BYTES, PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PATH, decode_frame,
+)
 from src.gateway.computer_transfer_io import CHUNK_BYTES, file_io
 from src.gateway.computer_transfers import TransferDenied, TransferUnavailable, computer_transfers
 from src.gateway.connected_computers import ConnectedComputers, ComputerDenied, ComputerUnavailable
-from src.web import app_views as views
+from src.web import app_views as views, member_auth
 from src.web.auth import SESSION_COOKIE, ct_eq, get_api_token
+from src.workflow.members.registry import MemberRegistry, Missing
 
 router = APIRouter(tags=['computers'])
 _ORG = '/api/app/organizations/{org_id}'
@@ -66,12 +74,13 @@ def _native_loopback(request: Request) -> bool:
 def _same_origin(request: Request) -> bool:
     raw = request.headers.get('origin')
     if not raw:
-        return request.method in ('GET', 'HEAD')
+        return getattr(request, 'method', None) in ('GET', 'HEAD')
     try:
         parsed = urlsplit(raw)
         served = urlsplit(str(request.base_url))
         def origin(value):
-            return (value.scheme, (value.hostname or '').lower(), value.port or (443 if value.scheme == 'https' else 80))
+            scheme = {'ws': 'http', 'wss': 'https'}.get(value.scheme, value.scheme)
+            return (scheme, (value.hostname or '').lower(), value.port or (443 if scheme == 'https' else 80))
         return (parsed.scheme in ('http', 'https') and parsed.username is None and parsed.password is None
                 and not any((parsed.path, parsed.query, parsed.fragment)) and origin(parsed) == origin(served))
     except ValueError:
@@ -99,12 +108,20 @@ def has_computer_owner_proof(request: Request) -> bool:
     return True
 
 
-def _owner(request: Request, org_id: str) -> tuple[str, ConnectedComputers]:
-    _require_owner_proof(request)
+def _pairer(request: Request, org_id: str) -> tuple[str, ConnectedComputers, str | None, str]:
+    account = getattr(request.state, 'member_account', None)
+    if account is None:
+        _require_owner_proof(request)
+        member_id, name = None, '所有者'
+    else:
+        member_id = member_auth.member_id(account)
+        if not member_id or not get_api_token() or not _secure(request) or not _same_origin(request):
+            raise _error(403, 'computer_authorization_denied')
+        name = str(account.get('name') or '成员')
     root = str(Path(os.getcwd()).resolve())
     if org_id != views.home_id(root):
         raise _error(404, 'not_found')
-    return root, ConnectedComputers(root)
+    return root, ConnectedComputers(root), member_id, name
 
 
 class _Body(BaseModel):
@@ -193,7 +210,7 @@ async def _call(method, *args, **kwargs):
         raise _error(503, 'computer_storage_unavailable') from None
 
 
-def _machine(root: str, row: dict) -> dict:
+def _machine(root: str, row: dict, member_id: str | None, name: str) -> dict:
     connector = row['connector_id']
     def stamp(value):
         if isinstance(value, (int, float)):
@@ -203,7 +220,7 @@ def _machine(root: str, row: dict) -> dict:
         'id': connector, 'name': row.get('name', ''), 'kind': 'connected',
         'online': row.get('active') is True and connections.online(root, connector), 'lastSeenAt': None,
         'hostname': '', 'os': 'other', 'arch': '', 'mode': 'single', 'runnerVersion': '1',
-        'execAllowed': False, 'pairedBy': {'id': row['paired_principal_id'], 'name': '所有者'},
+        'execAllowed': False, 'pairedBy': {'id': member_id or row['paired_principal_id'], 'name': name},
         'agents': [], 'workspace': None, 'canManage': True, 'createdAt': stamp(row.get('created_at')),
         'browserProfiles': False, 'accessAllow': False, 'cliInstall': False, 'remotePause': False,
         'access': {'folders': [], 'tools': {key: False for key in (
@@ -225,46 +242,47 @@ async def computer_identity(request: Request, response: Response):
 @router.get(_ORG + '/machines')
 async def machines(org_id: str, request: Request, response: Response):
     response.headers.update(_PRIVATE)
-    root, store = _owner(request, org_id)
-    rows = await _call(store.list)
-    return {'machines': [_machine(root, row) for row in rows if row.get('revoked_at') is None]}
+    root, store, member_id, name = _pairer(request, org_id)
+    rows = await _call(store.list, member_id=member_id)
+    return {'machines': [_machine(root, row, member_id, name) for row in rows if row.get('revoked_at') is None]}
 
 
 @router.patch(_ORG + '/machines/{machine_id}')
 async def rename(org_id: str, machine_id: str, request: Request, response: Response):
     response.headers.update(_PRIVATE)
-    _, store = _owner(request, org_id)
+    _, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
     body = await _body(request, RenameBody)
-    await _call(store.rename, machine_id, body.name)
+    await _call(store.rename, machine_id, body.name, member_id=member_id)
     return {'id': machine_id, 'name': body.name}
 
 
 @router.delete(_ORG + '/machines/{machine_id}', status_code=204)
 async def remove(org_id: str, machine_id: str, request: Request):
-    root, store = _owner(request, org_id)
+    root, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
-    await _call(store.revoke, machine_id)  # Persist revocation before notifying its current connection.
-    connections.revoked(root, machine_id)
+    revoked = await _call(store.revoke, machine_id, member_id=member_id)
+    # A replacement registration never receives the old credential's revocation.
+    connections.revoked(root, machine_id, credential_epoch=revoked['credential_epoch'] if member_id else None)
     return Response(status_code=204, headers=_PRIVATE)
 
 
 @router.post(_ORG + '/computer-pairings', status_code=201)
 async def create_pairing(org_id: str, request: Request, response: Response):
     response.headers.update(_PRIVATE)
-    _, store = _owner(request, org_id)
+    _, store, member_id, _ = _pairer(request, org_id)
     body = await _body(request, PairingBody)
-    return await _call(store.create_pairing, legacy_confirmed=body.legacy_confirmed)
+    return await _call(store.create_pairing, legacy_confirmed=body.legacy_confirmed, member_id=member_id)
 
 
 @router.delete(_ORG + '/computer-pairings/{pairing_id}', status_code=204)
 async def cancel_pairing(org_id: str, pairing_id: str, request: Request):
-    _, store = _owner(request, org_id)
+    _, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(pairing_id):
         raise _error(404, 'not_found')
-    await _call(store.cancel_pairing, pairing_id)
+    await _call(store.cancel_pairing, pairing_id, member_id=member_id)
     return Response(status_code=204, headers=_PRIVATE)
 
 
@@ -312,24 +330,110 @@ async def native_pair(request: Request, response: Response):
         raise _error(400, 'invalid_request') from None
 
 
+def _computer_token(socket: WebSocket) -> str | None:
+    authorization = socket.headers.getlist('authorization')
+    if (not get_api_token() or not _secure(socket) or len(authorization) != 1 or socket.query_params
+            or any(name in socket.headers for name in ('cookie', 'origin', 'x-api-token'))
+            or not re.fullmatch(r'Bearer vcc_[A-Za-z0-9_-]{43}', authorization[0])):
+        return None
+    return authorization[0][len('Bearer '):]
+
+
 @router.websocket('/api/computers/ws')
 async def computer_socket(socket: WebSocket):
-    authorization = socket.headers.get('authorization', '')
-    auth_count = sum(key.lower() == b'authorization' for key, _ in socket.scope.get('headers', []))
-    if (not get_api_token() or not _secure(socket) or auth_count != 1 or socket.query_params
-            or socket.headers.get('cookie') or socket.headers.get('origin')
-            or not re.fullmatch(r'Bearer vcc_[A-Za-z0-9_-]{43}', authorization)):
+    token = _computer_token(socket)
+    if token is None:
         await socket.close(code=1008)
         return
     root = str(Path(os.getcwd()).resolve())
     store = ConnectedComputers(root)
     try:
-        binding = await asyncio.to_thread(store.authenticate, authorization[7:])
+        binding = await asyncio.to_thread(store.authenticate, token)
+        identity = await asyncio.to_thread(store.identity)
     except (ComputerDenied, ComputerUnavailable, ValueError, OSError):
         await socket.close(code=1008)
         return
     await socket.accept()
-    await serve(socket, root, store, binding)
+    ceiling = PROTOCOL_MAX if binding['paired_principal_id'] == identity['owner_subject'] else PROTOCOL_MIN
+    await serve(socket, root, store, binding, protocol_ceiling=ceiling)
+
+
+@router.websocket('/api/computers/browser-preview')
+async def publish_browser_preview(socket: WebSocket):
+    """The local connector opens a separate, outbound data socket for a selected browser."""
+    try:
+        token = _computer_token(socket)
+        if token is None:
+            return
+        root = str(Path(os.getcwd()).resolve())
+        store = ConnectedComputers(root)
+        binding = await asyncio.to_thread(store.authenticate, token)
+        await serve_publisher(socket, root, binding)
+    except (WebSocketDisconnect, ComputerDenied, RuntimeError, ValueError, KeyError, OSError, asyncio.TimeoutError):
+        pass
+    finally:
+        with suppress(WebSocketDisconnect, RuntimeError, OSError):
+            await socket.close(code=1008)
+
+
+def _browser_viewer(socket: WebSocket, root: str) -> tuple[Principal, object | None] | None:
+    token = get_api_token()
+    if not token:
+        return None
+    if ct_eq(socket.cookies.get(SESSION_COOKIE, ''), token):
+        return Principal(OWNER, views.owner_id(root), root), browser_previews.owner_epoch()
+    member_id = member_auth.member_id(member_auth.account(socket))
+    return (Principal(MEMBER, member_id, root), None) if member_id else None
+
+
+def _private_view_allowed(socket, root, viewer, binding):
+    actor, _ = viewer
+    member_id = actor.id if actor.is_member else None
+    if not ConnectedComputers(root).check_pairer(binding, member_id):
+        return False
+    if member_id is not None:
+        level = MemberRegistry(root).standing(member_id)["computer"]
+        if not screen_level_allows(level, "browser", own=True):
+            return False
+    return _browser_viewer(socket, root) == viewer
+
+
+@router.websocket(_ORG + '/machines/{machine_id}/browser-preview')
+async def watch_browser_preview(socket: WebSocket, org_id: str, machine_id: str):
+    """A human can pull frames from their own live offer. Each reply rechecks current authority."""
+    watching = False
+    try:
+        root = str(Path(os.getcwd()).resolve())
+        if (org_id != views.home_id(root) or not _ID.fullmatch(machine_id) or socket.query_params
+                or not _secure(socket) or len(socket.headers.getlist('origin')) != 1 or not _same_origin(socket)):
+            return
+        viewer = await asyncio.to_thread(_browser_viewer, socket, root)
+        preview = browser_previews.find(root, machine_id)
+        if viewer is None or preview is None:
+            return
+        actor, owner_epoch = viewer
+
+        async def allowed():
+            return (await preview.live()
+                    and await asyncio.to_thread(_private_view_allowed, socket, root, viewer, preview.connection.binding)
+                    and (owner_epoch is None or browser_previews.owner_epoch() is owner_epoch)
+                    and preview.active())
+
+        if not await allowed() or not preview.begin_viewing():
+            return
+        watching = True
+        event = {'category': 'decision', 'decision': 'allowed', 'decision_source': 'user',
+                 'operation': '观看私有浏览器', 'operation_kind': 'read', 'actor_id': actor.id,
+                 'connector_id': machine_id, 'surface_id': preview.surface_id}
+        await asyncio.to_thread(append_audit, root, event)
+        await serve_viewer(socket, preview, allowed)
+    except (WebSocketDisconnect, ComputerDenied, Missing, RuntimeError, ValueError, KeyError, OSError, asyncio.TimeoutError):
+        pass
+    finally:
+        if watching:
+            preview.viewing = False
+        with suppress(WebSocketDisconnect, RuntimeError, OSError):
+            await socket.close(code=1008)
 
 
 def _transfer_credentials(request: Request) -> tuple[str, str]:
@@ -357,7 +461,7 @@ async def receive_transfer(request: Request, response: Response):
     root = str(Path(os.getcwd()).resolve())
     store = ConnectedComputers(root)
     try:
-        binding = await asyncio.to_thread(store.authenticate, token)
+        binding = await asyncio.to_thread(store.authenticate, token, owner_only=True)
         return await computer_transfers.receive(root, binding, ticket, int(lengths[0]), request.stream())
     except (ComputerDenied, TransferDenied, ValueError):
         raise _error(403, "computer_transfer_denied") from None
@@ -411,7 +515,7 @@ async def pull_transfer(request: Request):
     root = str(Path(os.getcwd()).resolve())
     store = ConnectedComputers(root)
     try:
-        binding = await asyncio.to_thread(store.authenticate, token)
+        binding = await asyncio.to_thread(store.authenticate, token, owner_only=True)
         transfer = await computer_transfers.begin_delivery(root, binding, ticket)
     except (ComputerDenied, TransferDenied, ValueError):
         raise _error(403, "computer_transfer_denied") from None

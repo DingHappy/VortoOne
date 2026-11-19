@@ -13,7 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 from src.gateway.computer_file_intents import FileIntentUnavailable, HomeFileIntents
 from src.gateway.computer_file_wire import bounded_frame, object_fields, receipt_value
 from src.gateway.computer_protocol import (
-    FILES_PROTOCOL, PROTOCOL_MIN, binding_fields, decode_frame, identifier, validate_hello, welcome,
+    FILES_PROTOCOL, PROTOCOL_MAX, PROTOCOL_MIN, binding_fields, decode_frame, identifier, validate_hello, welcome,
 )
 
 REVOKE_ACK_SECONDS = 2.0
@@ -170,16 +170,24 @@ class Connections:
         if pending is not None and not pending[1].done():
             pending[1].set_result(None)
 
-    def revoked(self, root: str, connector_id: str) -> None:
+    def revoked(self, root: str, connector_id: str, *, credential_epoch: str | None = None) -> None:
         with self._lock:
             connection = self._current.get((root, connector_id))
-        if connection is not None:
+        if connection is not None and (credential_epoch is None or connection.binding["credential_epoch"] == credential_epoch):
             self._schedule(connection)
 
     def online(self, root: str, connector_id: str) -> bool:
         with self._lock:
             found = self._current.get((root, connector_id))
             return found is not None and not found.revoking and not found.finished
+
+    def active_binding(self, root: str, binding: dict, generation: str) -> Connection | None:
+        with self._lock:
+            found = self._current.get((root, binding["connector_id"]))
+            if (found is not None and found.binding == binding and found.generation == generation
+                    and not found.revoking and not found.finished):
+                return found
+        return None
 
     def file_connection(self, root: str, connector_id: str, identity: dict) -> Connection | None:
         with self._lock:
@@ -196,12 +204,12 @@ class Connections:
 connections = Connections()
 
 
-async def serve(socket, root: str, store, binding: dict) -> None:
+async def serve(socket, root: str, store, binding: dict, *, protocol_ceiling: int = PROTOCOL_MAX) -> None:
     """Only liveness and validated v2 file responses are accepted from computers."""
     connection = None
     try:
         hello = await _frame(socket, HELLO_SECONDS)
-        selected = validate_hello(hello, binding)["protocol"]
+        selected = validate_hello(hello, binding, ceiling=protocol_ceiling)["protocol"]
         if not await asyncio.to_thread(store.check, binding):
             raise ValueError('invalid authorization')
         connection = connections.add(root, binding, socket, protocol=selected, store=store)

@@ -87,6 +87,12 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/settings"),
     ("GET", _ORG + r"/dashboards/home"),
     ("GET", _ORG + r"/computer-setup"),
+    # 电脑只在配对人的会话里可见。传输和本机自动配对仍使用各自的验权入口。
+    ("GET", _ORG + r"/machines"),
+    ("PATCH", _ORG + r"/machines/[^/]+"),
+    ("DELETE", _ORG + r"/machines/[^/]+"),
+    ("POST", _ORG + r"/computer-pairings"),
+    ("DELETE", _ORG + r"/computer-pairings/[^/]+"),
 ))
 
 # 路径（GET）→ 成员看到的固定回答。
@@ -105,7 +111,6 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/usage", {"usage": []}),
     (_ORG + r"/approvals", {"approvals": []}),
     (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
-    (_ORG + r"/machines", {"machines": []}),  # C1 只开放所有者的电脑列表，成员继续固定空回答
     (_ORG + r"/former-agents", {"agents": []}),          # 不在团队里的 agent 是所有者的事
 )
 
