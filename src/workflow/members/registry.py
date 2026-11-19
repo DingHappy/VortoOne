@@ -25,7 +25,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
 
 from src.agents import identity_groups as rules
 from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE, Post
-from src.agents.principal import ALLOWABLE, Principal
+from src.agents.principal import ALLOWABLE, MEMBER, OWNER, Principal
 from src.utils.state_dir import ensure_state_gitignore, state_dir
 
 _FILE = "space.json"
@@ -34,6 +34,7 @@ _LOCK = threading.RLock()
 _NAME = re.compile(r"^[^\x00-\x1f\x7f]{1,64}$")
 _EMAIL = re.compile(r"^[^@\s\x00-\x1f\x7f]{1,64}@[^@\s\x00-\x1f\x7f]{1,190}$")
 _AGENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_MEMBER_ID = re.compile(r"m_[a-f0-9]{12}")
 MAX_GROUPS, MAX_MEMBERS, MAX_INVITATIONS = 64, 500, 200
 INVITE_DAYS_DEFAULT, INVITE_DAYS_MAX = 7, 30
 
@@ -356,8 +357,7 @@ class MemberRegistry:
         """身份组上的两条阶梯也不能给出自己没有的：定出去的级别不高于操作人自己按身份组得到的。"""
         if owner:
             return
-        if computer is not None and rules.COMPUTER_LEVELS.index(computer) > rules.COMPUTER_LEVELS.index(
-                rules.computer_level(held, posts)):
+        if computer is not None and not rules.computer_level_at_most(computer, rules.computer_level(held, posts)):
             raise Refused("电脑权限级别不能高于你自己的")
         if act is not None and rules.ACT_LEVELS.index(act) > rules.ACT_LEVELS.index(rules.act_level(held, posts)):
             raise Refused("办事级别不能高于你自己的")
@@ -498,7 +498,7 @@ class MemberRegistry:
             invitation_id, token = f"i_{uuid.uuid4().hex[:12]}", secrets.token_urlsafe(32)
             state["invitations"][invitation_id] = {
                 "digest": _digest(token), "groups": chosen, "by": actor.id, "note": str(note or "")[:200],
-                "email": address,
+                "email": address, "by_kind": actor.kind,
                 "created": _iso(moment), "expires": _iso(moment + timedelta(days=days))}
             return invitation_id, token
 
@@ -521,12 +521,36 @@ class MemberRegistry:
                 raise Refused("不能撤回别人发的邀请")
             del state["invitations"][str(invitation_id)]
 
+    @staticmethod
+    def _invited_groups(state: Mapping[str, Any], invitation: Mapping[str, Any]) -> List[str]:
+        posts = MemberRegistry._posts(state)
+        invited = rules.accepted_posts(invitation.get("groups") or [], posts)
+        issuer = invitation.get("by")
+        kind = invitation.get("by_kind")
+        if kind is None and isinstance(issuer, str) and issuer:
+            # Version-one invitations used the generated member id or the owner's UI id.
+            kind = MEMBER if _MEMBER_ID.fullmatch(issuer) else OWNER
+        if kind == OWNER:
+            return invited
+        member = state["members"].get(issuer) if kind == MEMBER and isinstance(issuer, str) else None
+        if member is not None:
+            try:
+                return rules.invite_posts(member.get("groups") or [], invited, posts, state["order"])
+            except PermissionError:
+                pass
+        raise Missing("邀请权限已变化，请让有权限的人重新发送")
+
     def invitation(self, token: str, *, now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
         """凭令牌看一份还有效的邀请（不消耗它）。没有或已过期返回 None。"""
         stamp, digest = _iso(now or _now()), _digest(str(token or ""))
-        for invitation_id, item in self.snapshot()["invitations"].items():
-            if secrets.compare_digest(str(item.get("digest") or ""), digest):
-                return {**item, "id": invitation_id} if str(item.get("expires") or "") > stamp else None
+        state = self.snapshot()
+        for invitation_id, item in state["invitations"].items():
+            if str(item.get("expires") or "") > stamp and secrets.compare_digest(str(item.get("digest") or ""), digest):
+                try:
+                    groups = self._invited_groups(state, item)
+                except Missing:
+                    return None
+                return {**item, "groups": groups, "id": invitation_id}
         return None
 
     def manages(self, actor: Principal, member_id: str) -> bool:
@@ -560,12 +584,13 @@ class MemberRegistry:
             wanted = str(state["invitations"][found].get("email") or "")
             if wanted and wanted != str(email or ""):
                 raise Refused("这份邀请是发给另一个邮箱的")
+            groups = self._invited_groups(state, state["invitations"][found])
             invitation = state["invitations"].pop(found)
             member_id = f"m_{uuid.uuid4().hex[:12]}"
             state["members"][member_id] = {
                 "name": _name(name, "名字"), "joined": _iso(moment), "invited_by": str(invitation.get("by") or ""),
                 "email": str(email or ""), "account": str(account or ""),
-                "groups": rules.accepted_posts(invitation.get("groups") or [], self._posts(state))}
+                "groups": groups}
             return member_id
 
     # ── 对单个 agent 单独定级别 ───────────────────────────────────────────────

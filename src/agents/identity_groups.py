@@ -45,6 +45,7 @@ OWNER_ONLY: FrozenSet[str] = frozenset({"owners.manage", "space.delete", "space.
 # 人对角色电脑的权限是一条阶梯，每个身份组选一级，高一级包含低一级；多个身份组取最高
 COMPUTER_LEVELS = ("none", "own_browser", "own_computer", "all_browsers", "all_computers")
 COMPUTER_DEFAULT = "own_browser"
+_SCREEN_LEVELS = {"browser": ("own_browser", "all_browsers"), "desktop": ("own_computer", "all_computers")}
 
 # 办事级别：一个人能让 agent 做到哪一步。对外发送、不可逆、替人操作界面不单列一级——
 # 可写及以上可以让 agent 去做，但那几类始终要批准（见 principal.pre_authorized_for）。
@@ -150,6 +151,17 @@ def computer_level(held: Iterable[str], posts: Mapping[str, Post], *, owner: boo
                key=COMPUTER_LEVELS.index, default="none")
 
 
+def computer_level_at_most(requested: str, ceiling: str) -> bool:
+    return (requested in COMPUTER_LEVELS and ceiling in COMPUTER_LEVELS
+            and COMPUTER_LEVELS.index(requested) <= COMPUTER_LEVELS.index(ceiling))
+
+
+def screen_level_allows(level: str, surface: str, *, own: bool) -> bool:
+    """Identity-group clearance. Actual screen access also requires a valid pairing and screen binding."""
+    required = _SCREEN_LEVELS.get(surface)
+    return required is not None and computer_level_at_most(required[0 if own else 1], level)
+
+
 def _rank(post_id: str, order: Sequence[str]) -> int:
     """排得越前数字越小。不在顺序表里的身份组按最前算：没人（除所有者）够得着它。"""
     return order.index(post_id) if post_id in order else -1
@@ -183,6 +195,7 @@ def may_change_post(actor_held: Iterable[str], post_id: str, posts: Mapping[str,
 
 def _holds_post_clearance(held: Iterable[str], post: Post, posts: Mapping[str, Post]) -> bool:
     return (post.items <= permissions_of(held, posts)
+            and computer_level_at_most(post.computer, computer_level(held, posts))
             and act_level_at_most(post.act, act_level(held, posts)))
 
 
@@ -190,7 +203,7 @@ def may_grant(actor_held: Iterable[str], post_id: str, posts: Mapping[str, Post]
               target_held: Iterable[str] = (), owner: bool = False) -> bool:
     """能不能把这个身份组授予（或收回）某个人。
 
-    要有「管理成员」，身份组排在自己之后，它的权限项和办事级别都不能超过自己，对方也要排在自己之后。
+    要有「管理成员」，身份组和对方都排在自己之后。还要持有该身份组的权限项、电脑级别和办事级别。
     「所有人」是自动持有的，不能授予也不能收回。"""
     if post_id == EVERYONE or post_id not in posts:
         return False
