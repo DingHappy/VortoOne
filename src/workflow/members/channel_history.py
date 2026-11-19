@@ -46,10 +46,14 @@ def _stamp(moment: datetime) -> str:
 
 
 def _before(value: str) -> str:
-    moment = datetime.fromisoformat(value)
+    moment = _parse_stamp(value)
     if moment.tzinfo is None:
         raise ValueError("消息时间需要时区")
     return _stamp(moment)
+
+
+def _parse_stamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class ChannelHistory:
@@ -122,7 +126,7 @@ class ChannelHistory:
                                   (channel,)).fetchone()
             now = datetime.now(timezone.utc)
             if latest is not None:
-                now = max(now, datetime.fromisoformat(latest[0]) + timedelta(microseconds=1))
+                now = max(now, _parse_stamp(latest[0]) + timedelta(microseconds=1))
             message_id = str(uuid.uuid4())
             conn.execute(
                 "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened) "

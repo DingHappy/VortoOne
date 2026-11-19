@@ -46,7 +46,9 @@ def test_public_channel_join_post_retry_pagination_replies_pins_and_archive(home
     assert first["author"] == {"type": "person", "id": member.member_id}
     assert member.post(f"{url}/messages", json={"body": "共享讨论", "clientId": "one"}).json() == first
     assert member.post(f"{url}/messages", json={"body": "不同文字", "clientId": "one"}).status_code == 400
-    second = owner.post(f"{url}/messages", json={"body": "第二条", "clientId": "one"}).json()
+    second_response = owner.post(f"{url}/messages", json={"body": "第二条", "clientId": "one"})
+    assert second_response.status_code == 200, second_response.text
+    second = second_response.json()
     assert second["id"] != first["id"]
     assert _list(home, member)[channel]["unreadCount"] == 1
     assert member.post(f"{url}/read").status_code == 204
