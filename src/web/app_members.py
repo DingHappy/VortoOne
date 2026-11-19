@@ -6,8 +6,7 @@
 操作人由路由从请求里认出来（``web/member_auth.principal``）传进来：过了主人令牌的是所有者，
 凭成员会话进来的是那个成员。成员会话只在 ``member_auth.MEMBER_ROUTES`` 列出的接口上算数。
 
-界面上没有的两样东西从这里设不了：办事级别（不能对话/只读/可写/可执行），以及「调整免批范围」
-「代成员办事」两个权限项。
+界面可以管理身份组的办事级别，并通过智能体设置管理「代成员办事」与「成员放行」。
 """
 from __future__ import annotations
 
@@ -26,6 +25,7 @@ _KEYS: Dict[str, str] = {
     "talk_to_agents": "roles.talk", "view_all_agents": "roles.view_all", "assign_work": "roles.dispatch",
     "manage_routines": "roles.manage_routines", "approve_actions": "roles.approve",
     "create_agents": "roles.create_own", "manage_agents": "roles.manage_all",
+    "act_for_members": "roles.act_for_members",
     "pair_computers": "computers.connect_own", "manage_connectors": "computers.manage_connections",
     "manage_credentials": "computers.manage_credentials",
     "edit_wiki": "material.edit", "upload_files": "material.upload", "review_memory": "material.review_memory",
@@ -43,7 +43,7 @@ AREAS: List[Dict[str, Any]] = [
      "keys": ["post", "create_channels", "mention_everyone", "manage_channels"]},
     {"id": "agents", "use": ["talk_to_agents", "view_all_agents", "assign_work", "manage_routines"],
      "keys": ["talk_to_agents", "view_all_agents", "assign_work", "manage_routines", "approve_actions",
-              "create_agents", "manage_agents"]},
+              "create_agents", "manage_agents", "act_for_members"]},
     {"id": "tools", "use": ["pair_computers"],
      "keys": ["pair_computers", *_COMPUTER_KEYS, "manage_connectors", "manage_credentials"]},
     {"id": "knowledge", "use": ["edit_wiki", "upload_files"], "keys": ["edit_wiki", "upload_files", "review_memory"]},
@@ -70,6 +70,12 @@ def _keys(record: Mapping[str, Any]) -> List[str]:
     keys = [_ITEMS[item] for item in record.get("items") or [] if item in _ITEMS]
     step = rules.COMPUTER_LEVELS.index(record["computer"]) if record.get("computer") in rules.COMPUTER_LEVELS else 0
     return sorted(keys) + ([_COMPUTER_KEYS[step - 1]] if step else [])
+
+
+def _act_level(value: Any, field: str = "actLevel") -> str:
+    if not isinstance(value, str) or value not in rules.ACT_LEVELS:
+        raise ValueError(f"{field} 必须是 none、read、write 或 execute")
+    return value
 
 
 def _look(body: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
@@ -113,12 +119,14 @@ def roles(root: str, actor: Principal) -> Dict[str, Any]:
     manages = rules.has("space.manage_posts", mine, posts, owner=owner)
     held = [set(member.get("groups") or []) for member in state["members"].values()]
     rows = []
+    edit_act_levels = owner and views.owner_connection()
     for position, group_id in enumerate(state["order"]):
         record, look = state["groups"][group_id], state["groups"][group_id].get("look") or {}
         rows.append({
             "id": group_id, "kind": "everyone" if group_id == EVERYONE else "custom", "name": record["name"],
             "icon": look.get("icon") or ("shield" if group_id == ADMINS else "person"),
             "color": look.get("color") or "graphite", "position": position, "permissions": _keys(record),
+            "actLevel": posts[group_id].act, "actLevelEditable": edit_act_levels and group_id != ADMINS,
             "mentionable": bool(look.get("mentionable")), "hoist": bool(look.get("hoist")),
             "people": len(held) + 1 if group_id == EVERYONE else sum(group_id in groups for groups in held),
             "editable": owner or (manages and rules.outranks(mine, group_id, state["order"])),
@@ -132,17 +140,22 @@ def roles(root: str, actor: Principal) -> Dict[str, Any]:
 def create_role(root: str, actor: Principal, body: Mapping[str, Any]) -> str:
     registry = MemberRegistry(root)
     source: Mapping[str, Any] = {}
+    act = rules.ACT_DEFAULT
     if body.get("copyFrom"):
-        source = registry.snapshot()["groups"].get(str(body["copyFrom"])) or {}
+        source_id = str(body["copyFrom"])
+        state = registry.snapshot()
+        source = state["groups"].get(source_id) or {}
         if not source:
             raise LookupError("没有要复制的那个身份组")
+        act = registry._posts(state)[source_id].act
     if "permissions" in body:
         items, computer = _split(body["permissions"])
     else:
         items, computer = frozenset(source.get("items") or []), str(source.get("computer") or "none")
     look = {**(source.get("look") or {}), **(_look(body) or {})}
-    return registry.create_group(actor, body.get("name"), items=items,
-                                 computer=computer, act=str(source.get("act") or rules.ACT_DEFAULT), look=look)
+    if "actLevel" in body:
+        act = _act_level(body["actLevel"])
+    return registry.create_group(actor, body.get("name"), items=items, computer=computer, act=act, look=look)
 
 
 def change_role(root: str, actor: Principal, role_id: str, body: Mapping[str, Any]) -> None:
@@ -151,6 +164,8 @@ def change_role(root: str, actor: Principal, role_id: str, body: Mapping[str, An
         change["name"] = body["name"]
     if "permissions" in body:
         change["items"], change["computer"] = _split(body["permissions"])
+    if "actLevel" in body:
+        change["act"] = _act_level(body["actLevel"])
     look = _look(body)
     if look is not None:
         change["look"] = look
@@ -208,7 +223,8 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
                  "email": str(account["email"]), "image": None, "locale": "zh-Hans", "localeAuto": False},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
-                           "showActivity": True, "permissions": permission_keys(root, actor)}] if joined else [],
+                           "showActivity": True, "permissions": permission_keys(root, actor),
+                           "memberRoutineProposals": True, "teamChannels": True}] if joined else [],
     }
 
 
@@ -324,15 +340,12 @@ def usable_level(root: str, staff_id: str, actor: Principal, role: Optional[Mapp
     """这个成员对这个 agent 实际能用的级别：登记的级别，岗位不许成员用时按「不能对话」。"""
     from src.workflow.staff import initiators
     from src.workflow.staff.registry import StaffRegistry
-    level = initiators.level_on(root, staff_id, actor)
-    if level == "none":
-        return level
+    registry = StaffRegistry(root)
     try:
-        if not initiators.plan_allows(root, StaffRegistry(root).member(staff_id)):
-            return "none"            # 用所有者个人订阅的 agent，所有者没打开就只回应他
-        current = role if role is not None else StaffRegistry(root).role(
-            StaffRegistry(root).member(staff_id)["role"])
-        initiators.role_for_member(StaffRegistry(root), dict(current), level)
+        staff = registry.member(staff_id)
+        current = dict(role) if role is not None else registry.role(staff["role"])
+        level, delegated, _ = initiators.member_authority(root, current, staff, actor)
+        initiators.role_for_member(registry, current, level, acts_for_members=delegated)
     except (ValueError, OSError, KeyError, TypeError):
         return "none"
     return level
@@ -340,22 +353,56 @@ def usable_level(root: str, staff_id: str, actor: Principal, role: Optional[Mapp
 
 def member_agents(root: str, actor: Principal) -> List[Dict[str, Any]]:
     roles_by_staff = _staff_roles(root)
+    try:
+        permissions = permission_keys(root, actor)
+    except (ValueError, OSError):
+        return []                                     # 成员登记读不出来：任何 agent 都不可见
     shown = []
     for agent in views.agents(root):
         staff_id = agent["handle"]
         if agent["id"] == views.main_agent_id(root) or staff_id not in roles_by_staff:
             continue
-        if usable_level(root, staff_id, actor, roles_by_staff[staff_id]) == "none":
+        role = roles_by_staff[staff_id]
+        level = usable_level(root, staff_id, actor, role)
+        if level == "none":
             continue
+        grants = role["grants"]
         # 受众里还有谁是所有者的事：成员只看到自己在受众里
         shown.append({**{key: value for key, value in agent.items() if key != "audience"},
-                      "seesDetails": False, "audienceMode": "people"})
+                      "seesDetails": False, "audienceMode": "people",
+                      "canManageMemberActionLevels": "manage_agents" in permissions,
+                      "canManageMemberPolicy": agent.get("supportsMemberPolicy", False) and rules.may_set_act_for_members(
+                          level, grants["operations"], holds_permission="act_for_members" in permissions,
+                          private=bool(grants["sees"] or grants["project"]), owner=False)})
     return shown
 
 
 def member_staff(root: str, actor: Principal, agent_id: str) -> Optional[str]:
     """成员要找的这个 agent 是哪个专员；他看不到的返回 None（与「没有这个 agent」不作区分）。"""
     return next((agent["handle"] for agent in member_agents(root, actor) if agent["id"] == agent_id), None)
+
+
+def agent_member_action_levels(root: str, actor: Principal, staff_id: str) -> Dict[str, Any]:
+    from src.workflow.staff.agent_lifecycle import member_settings_agent
+    member_settings_agent(root, staff_id)
+    return MemberRegistry(root).agent_member_action_levels(actor, staff_id)
+
+
+def set_agent_member_action_level(root: str, actor: Principal, staff_id: str, member_id: str,
+                                  body: Mapping[str, Any]) -> None:
+    from src.workflow.staff.agent_lifecycle import set_member_action_level
+
+    if "level" not in body:
+        raise ValueError("缺少 level")
+    level = None if body["level"] is None else _act_level(body["level"], "level")
+    set_member_action_level(root, actor, staff_id, member_id, level)
+
+
+def agent_member_policy(root: str, actor: Principal, staff_id: str,
+                        change: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    from src.workflow.staff.agent_lifecycle import member_policy
+
+    return member_policy(root, actor, staff_id, dict(change) if change is not None else None)
 
 
 def member_agent_detail(root: str, actor: Principal, agent_id: str) -> Optional[Dict[str, Any]]:

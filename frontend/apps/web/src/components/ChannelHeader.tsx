@@ -86,7 +86,8 @@ export function ChannelHeader({
               <Icon name="members" />
             </button>
           )}
-          {isMember && <HeaderSearch channelId={channel.id} onOpen={onSearch} searching={searching} />}
+          {isMember && channel.canRead === undefined &&
+            <HeaderSearch channelId={channel.id} onOpen={onSearch} searching={searching} />}
         </div>
       </div>
     </header>

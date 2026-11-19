@@ -284,7 +284,7 @@ class StaffService:
 
     def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
                via=None):
-        """initiator：发起这件事的成员 id（所有者派的活和例行工作不传）。记进任务，执行时据此收窄权限。
+        """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。
 
         via：这件事经哪个 AI 应用发来（``{"kind": "ai_app", "grant", "name"}``，只由 web 层的 /mcp 填）。
         这样的任务从一开始就带外部内容标记：文字出自那个应用，可能夹带它读到的东西，执行时不能当作授权。"""
@@ -297,9 +297,10 @@ class StaffService:
             started_by = None
             if initiator is not None:
                 from src.workflow.staff.initiators import record
-                if routine:
-                    raise ValueError('例行工作不能由成员发起')
                 started_by = record(initiator)
+            if routine:
+                from src.workflow.staff.routines import Routines
+                Routines(self.root).check_dispatch(routine, initiator)
             if expected is not None and (member, role) != expected:
                 raise ValueError('确认期间专员或岗位已变化，未创建任务')
             notes = None

@@ -303,6 +303,12 @@ export interface OrgSummary {
    * (lib/permissions). Absent: nothing past reading.
    */
   permissions?: string[];
+  /** The signed-in member can read their own routine proposals on this server. */
+  memberRoutineProposals?: boolean;
+  /** This server offers owner review of member routine proposals. */
+  routineProposalReview?: boolean;
+  /** This home stores authenticated team channels and their human messages. */
+  teamChannels?: boolean;
   /** Their highest role's position (0 the top), null with none: they manage the roles and people below it. */
   rank?: number | null;
   /** The workspace logo (`/api/app/org-logos/…`); null or absent = the agent mark. */
@@ -459,6 +465,9 @@ export interface Invitation {
   expiresAt: string;
 }
 
+export const ORG_ROLE_ACT_LEVELS = ["none", "read", "write", "execute"] as const;
+export type OrgRoleActLevel = (typeof ORG_ROLE_ACT_LEVELS)[number];
+
 /** One of a workspace's roles (ADR 0085, `GET …/roles`). */
 export interface OrgRole {
   id: string;
@@ -473,6 +482,9 @@ export interface OrgRole {
   position: number;
   /** Its keys; `administrator` grants every other one. */
   permissions: string[];
+  /** The ceiling this role contributes when a member asks an agent to act. */
+  actLevel?: OrgRoleActLevel;
+  actLevelEditable?: boolean;
   mentionable: boolean;
   hoist: boolean;
   people: number;
@@ -510,6 +522,7 @@ export interface RoleInput {
   icon?: string;
   color?: string;
   permissions?: string[];
+  actLevel?: OrgRoleActLevel;
   mentionable?: boolean;
   hoist?: boolean;
   /** Duplicar: a role below yours whose keys you hold; what's left out comes from it, and the copy joins its channels and agents. */
@@ -789,6 +802,30 @@ export interface AgentAudience {
   consultable?: boolean;
 }
 
+export interface AgentMemberActionLevels {
+  maxLevel: OrgRoleActLevel;
+  members: {
+    userId: string;
+    name: string;
+    level: OrgRoleActLevel | null;
+    roleLevel: OrgRoleActLevel;
+    inAudience: boolean;
+  }[];
+}
+
+export type MemberAutoApproval = "write" | "execute";
+
+export interface AgentMemberPolicy {
+  roleVersion: string;
+  actForMembers: boolean;
+  autoApprove: MemberAutoApproval[];
+  availableAutoApprove: MemberAutoApproval[];
+  canSetAutoApprove: boolean;
+}
+
+export type AgentMemberPolicyChange = Pick<AgentMemberPolicy, "roleVersion"> &
+  Partial<Pick<AgentMemberPolicy, "actForMembers" | "autoApprove">>;
+
 /** A mailbox someone else gave the agent, which a wider audience takes from it (only its owner gives it again). */
 export interface ForeignMailbox {
   accountId: string;
@@ -816,6 +853,8 @@ export interface Agent {
   /** Expected from the backend; absent = everyone. */
   audience?: AgentAudience;
   audienceMode?: AudienceMode;
+  canManageMemberActionLevels?: boolean;
+  canManageMemberPolicy?: boolean;
   /** Whether I can talk to it (absent = yes). */
   canTalk?: boolean;
   /**
@@ -1259,7 +1298,11 @@ export interface Channel {
   visibility: "public" | "private";
   /** Private and limited to these roles (departments, ADR 0125): their people see it and may join. Empty or absent: public or invite only. */
   audienceRoleIds?: string[];
+  /** A department remains restricted after its last role is deleted. */
+  department?: boolean;
   isMember: boolean;
+  /** This home's channel read access, including the requirement to join first. */
+  canRead?: boolean;
   /** Listed only because I'm an administrator (ADR 0151): off the sidebar until I open or join it. */
   seenAsAdmin?: boolean;
   createdAt: string;
@@ -1355,6 +1398,7 @@ export interface ChannelCard {
   visibility: "public" | "private";
   /** As on `Channel`. */
   audienceRoleIds?: string[];
+  department?: boolean;
   isMember: boolean;
   archived: boolean;
   /** People in it. */
@@ -4212,6 +4256,10 @@ export interface Routine {
   canSeeDetails: boolean;
   /** The viewer may change, pause, run, stop or delete it. */
   canManage: boolean;
+  /** Whether this server offers a direct takeover of the creator's schedule. */
+  canTakeOver?: boolean;
+  /** An owner took over this schedule and has yet to enable it. */
+  awaitingTakeoverResume?: boolean;
   /** Its creator, whose reach it has (kept on edit); null once they left. Absent from older servers. */
   createdByUserId?: string | null;
   lastRun: RoutineRun | null;
@@ -4226,6 +4274,19 @@ export interface Routine {
    * (its schedule and instructions are changed there). Absent for any other routine and from older servers.
    */
   widget?: { id: string; dashboardId: string; title: string } | null;
+}
+
+export interface RoutineTakeoverPreview {
+  digest: string;
+  name: string;
+  prompt: string;
+  acceptance: string[];
+  schedule: string;
+  timezone: string;
+  agentName: string;
+  operations: string[];
+  tools: string[];
+  sources: string[];
 }
 
 /** An action prepared ahead for one of a routine's runs (`schedule_action`): its approval, in short. */
@@ -4280,6 +4341,45 @@ export interface RoutineRun {
   /** Waiting for this approval ("Esperando sua aprovação"). */
   approvalId?: string | null;
   finishedAt: string | null;
+}
+
+export type MemberRoutineProposalStatus = "pending" | "applying" | "approved" | "rejected";
+
+export interface MemberRoutineProposal {
+  id: string;
+  name: string;
+  agentName: string;
+  schedule: string;
+  timezone: string;
+  createdAt: string;
+  status: MemberRoutineProposalStatus;
+}
+
+export interface MemberRoutineProposalInput {
+  agentId: string;
+  definition: { id: string; name: string; prompt: string; schedule: string; timezone: string };
+  reason: string;
+}
+
+export interface RoutineProposalProof {
+  digest: string;
+  nonce: string;
+  round: number;
+  instance: string;
+}
+
+export interface RoutineProposalReview extends Omit<MemberRoutineProposal, "status"> {
+  status: "pending" | "applying";
+  submitterName: string | null;
+  reason: string;
+  prompt: string;
+  acceptance: string[];
+  delivery: "notify" | "review";
+  tokenBudget: number;
+  enabled: boolean;
+  operations: string[];
+  tools: string[];
+  proof: RoutineProposalProof;
 }
 
 export interface RoutineInput {

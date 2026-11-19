@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from src.agents.principal import OWNER, Principal
+from src.agents.principal import MEMBER, OWNER, Principal
 from src.workflow.members.registry import MemberRegistry
 
 TOKEN = "owner-token-for-test"
@@ -38,6 +38,8 @@ def test_a_new_space_lists_the_built_in_groups_in_order(home):
         ("admins", "custom", 0), ("everyone", "everyone", 1)]
     admins, everyone = body["roles"]
     assert admins["permissions"] == ["administrator", "control_computers"]
+    assert (admins["actLevel"], admins["actLevelEditable"]) == ("execute", False)
+    assert (everyone["actLevel"], everyone["actLevelEditable"]) == ("read", True)
     assert "talk_to_agents" in everyone["permissions"] and "own_browsers" in everyone["permissions"]
     assert everyone["people"] == 1 and not everyone["givable"]
     assert {area["id"] for area in body["areas"]} == {"chat", "agents", "tools", "knowledge", "org"}
@@ -60,6 +62,7 @@ def test_create_change_reorder_delete(home):
     role = _roles(home)[made]
     assert (role["name"], role["icon"], role["color"], role["position"]) == ("财务", "wallet", "amber", 1)
     assert role["permissions"] == ["view_usage", "own_computers"]
+    assert role["actLevel"] == "read"
 
     assert client.patch(f"{base}/roles/{made}", json={"name": "财务组", "permissions": ["view_audit"],
                                                       "hoist": True}).status_code == 204
@@ -74,13 +77,17 @@ def test_create_change_reorder_delete(home):
     assert made not in _roles(home)
 
 
-def test_a_copy_takes_what_the_request_leaves_out(home):
+@pytest.mark.parametrize("legacy", [False, True])
+def test_a_copy_takes_what_the_request_leaves_out(home, legacy):
     client, base = home["client"], home["base"]
     source = client.post(f"{base}/roles", json={"name": "财务", "color": "teal",
-                                                "permissions": ["view_usage"]}).json()["id"]
+                                                "permissions": ["view_usage"], "actLevel": "none"}).json()["id"]
+    if legacy:
+        with MemberRegistry(home["root"])._change() as state:
+            del state["groups"][source]["act"]
     copy = client.post(f"{base}/roles", json={"name": "财务二组", "copyFrom": source}).json()["id"]
     role = _roles(home)[copy]
-    assert (role["permissions"], role["color"]) == (["view_usage"], "teal")
+    assert (role["permissions"], role["color"], role["actLevel"]) == (["view_usage"], "teal", "none")
     assert client.post(f"{base}/roles", json={"name": "x", "copyFrom": "g_missing"}).status_code == 404
 
 
@@ -92,11 +99,37 @@ def test_bad_requests_are_refused_not_half_applied(home):
         assert client.post(f"{base}/roles", json=body).status_code == 400
     assert client.patch(f"{base}/roles/everyone", json={"permissions": ["administrator"]}).status_code == 400
     assert client.patch(f"{base}/roles/admins", json={"permissions": []}).status_code == 400
+    assert client.patch(f"{base}/roles/admins", json={"actLevel": "read"}).status_code == 400
     assert client.patch(f"{base}/roles/everyone", json={}).status_code == 400
     assert client.patch(f"{base}/roles/g_missing", json={"name": "x"}).status_code == 404
     assert client.delete(f"{base}/roles/everyone").status_code == 400
     assert client.put(f"{base}/roles/order", json={"ids": "admins"}).status_code == 400
     assert client.get(f"{base}/roles").json() == before
+
+
+def test_changing_a_group_level_changes_members_effective_level(home):
+    client, base = home["client"], home["base"]
+    created = client.post(f"{base}/roles", json={"name": "编辑组", "actLevel": "write"})
+    assert created.status_code == 200
+    group = created.json()["id"]
+    actor = Principal(MEMBER, _join(home["root"], groups=[group]))
+    registry = MemberRegistry(home["root"])
+    assert registry.act_level_on("editor", actor) == "write"
+
+    assert client.patch(f"{base}/roles/{group}", json={"actLevel": "none"}).status_code == 204
+    assert _roles(home)[group]["actLevel"] == "none"
+    assert registry.act_level_on("editor", actor) == "read"  # 仍有「所有人」的级别
+    assert client.patch(f"{base}/roles/everyone", json={"actLevel": "none"}).status_code == 204
+    assert registry.act_level_on("editor", actor) == "none"
+
+
+@pytest.mark.parametrize("value", [None, True, [], "admin"])
+def test_invalid_action_level_does_not_change_roles(home, value):
+    client, base = home["client"], home["base"]
+    before = _roles(home)
+    assert client.post(f"{base}/roles", json={"name": "试验组", "actLevel": value}).status_code == 400
+    assert client.patch(f"{base}/roles/everyone", json={"actLevel": value}).status_code == 400
+    assert _roles(home) == before
 
 
 def test_members_list_and_their_groups(home):
@@ -123,6 +156,7 @@ def test_writes_need_an_owner_token_on_the_service(home, monkeypatch):
     monkeypatch.delenv("VORTOONE_API_TOKEN")
     client, base = home["client"], home["base"]
     assert client.get(f"{base}/roles").status_code == 200
+    assert not _roles(home)["everyone"]["actLevelEditable"]
     assert client.post(f"{base}/roles", json={"name": "财务"}).status_code == 403
     assert client.put(f"{base}/roles/order", json={"ids": ["admins", "everyone"]}).status_code == 403
     assert client.delete(f"{base}/members/m_x").status_code == 403

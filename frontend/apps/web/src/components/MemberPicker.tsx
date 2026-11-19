@@ -26,7 +26,7 @@ export function useMemberRows(
   query: string,
   exclude: Set<PickKey> = new Set(),
   keep?: Set<PickKey>,
-  { channel = false }: { channel?: boolean } = {},
+  { channel = false, peopleOnly = false }: { channel?: boolean; peopleOnly?: boolean } = {},
 ) {
   const { org, me } = useOrg();
   const dir = useDirectory(org.id);
@@ -42,7 +42,8 @@ export function useMemberRows(
         sub: m.email,
       })),
     ...dir.agents
-      .filter((a) => (!channel || joinsChannels(a)) && (listsAgent(org, a) || keep?.has(`agent:${a.id}`)))
+      .filter((a) => !peopleOnly && (!channel || joinsChannels(a)) &&
+        (listsAgent(org, a) || keep?.has(`agent:${a.id}`)))
       .map((a) => ({
         key: `agent:${a.id}` as PickKey,
         kind: "agent" as const,
@@ -102,6 +103,7 @@ export function PeoplePicker({
   selected,
   onChange,
   channel = false,
+  peopleOnly = false,
 }: {
   label: string;
   searchLabel: string;
@@ -112,11 +114,12 @@ export function PeoplePicker({
   onChange: (next: Set<PickKey>) => void;
   /** Picking a channel's members: `useMemberRows`'s `channel`. */
   channel?: boolean;
+  peopleOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const rows = useMemberRows(query, undefined, selected, { channel });
-  const all = useMemberRows("", undefined, selected, { channel });
+  const rows = useMemberRows(query, undefined, selected, { channel, peopleOnly });
+  const all = useMemberRows("", undefined, selected, { channel, peopleOnly });
   const picked = all.filter((r) => selected.has(r.key));
   const toggle = (key: PickKey, on: boolean) => {
     const next = new Set(selected);

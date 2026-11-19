@@ -59,6 +59,8 @@ import {
 import { BLANK_LOOK, cleanHandle } from "@/lib/new-agent";
 import { BrakesCard } from "./BrakesCard";
 import { CardHead, useAgentEdit, WasLine } from "./context";
+import { MemberActionLevels } from "./MemberActionLevels";
+import { MemberPolicy } from "./MemberPolicy";
 import { ReadOnlyNote, useVisibleChannels } from "./pieces";
 
 const SECTION_ICON: Record<AgentSection, IconName> = {
@@ -370,6 +372,8 @@ export function SettingsTab({
           {has("audience") && (
             <Section id="audience" title={t("audience.title", g)} fields={["audience"]}>
               <AudienceEditor />
+              {agent.canManageMemberActionLevels && <MemberActionLevels agentId={agent.id} />}
+              {agent.canManageMemberPolicy && <MemberPolicy agentId={agent.id} />}
             </Section>
           )}
 

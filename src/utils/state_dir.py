@@ -215,6 +215,7 @@ _STATE_ENTRIES = [
     "products/",
     "pipeline_runs/",
     "web_sessions/",
+    "members/",
     "session_events/",
     "artifacts/",
     "states/",

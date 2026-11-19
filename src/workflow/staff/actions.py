@@ -14,6 +14,7 @@ from src.workflow.staff.owner_confirmation import owner_instance, require_owner_
 from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger
 
 ACTION_TTL = 24 * 60 * 60
+MEMBER_APPROVAL_CHECK_INTERVAL = 1.0
 
 
 class StaffActions:
@@ -97,6 +98,21 @@ class StaffActions:
                 cards.append(row); size += count; cursor = task.id
             return {'cards': cards, 'next': cursor if more else None, 'source_complete': complete}
 
+    async def _wait_for_decision(self, future, task, role, member, kind):
+        from src.workflow.staff.initiators import initiator_of, require_member_operations
+        if initiator_of(task) is None:
+            return await asyncio.wait_for(asyncio.shield(future), self.timeout)
+        clock = asyncio.get_running_loop().time
+        deadline = clock() + self.timeout
+        while True:
+            require_member_operations(self.service.root, task, role, member, (kind,))
+            if future.done():
+                return future.result()
+            remaining = deadline - clock()
+            if remaining <= 0:
+                raise asyncio.TimeoutError
+            await asyncio.wait((future,), timeout=min(remaining, MEMBER_APPROVAL_CHECK_INTERVAL))
+
     async def request(self, task, role, member, call, budget):
         """Only the running tool adapter supplies call metadata; model arguments cannot do so."""
         self.service.check(member, role)
@@ -105,6 +121,8 @@ class StaffActions:
             raise ValueError('审批动作不在登记岗位权限内')
         if len(json.dumps(call, ensure_ascii=False).encode()) > 32 * 1024:
             raise ValueError('审批内容过长，未执行或静默截断')
+        from src.workflow.staff.initiators import MemberAccessChanged, require_member_operations
+        require_member_operations(self.service.root, task, role, member, (call['kind'],))
         from src.agents.taint import is_tainted
         now = self.clock()
         details = approval_details(call['kind'])
@@ -140,8 +158,9 @@ class StaffActions:
             budget.pause()
             async with self.service.runner.waiting_for_owner(task.id):
                 work.update_staff_action(task.id, p['round'], stage)
-                answer = await asyncio.wait_for(asyncio.shield(future), self.timeout)
+                answer = await self._wait_for_decision(future, task, role, member, call['kind'])
             self.service.check(member, role)
+            require_member_operations(self.service.root, task, role, member, (call['kind'],))
             def resume(current):
                 active = self._card(current)
                 if current.status != 'blocked' or active['payload']['id'] != p['id'] or active['status'] not in {'approved', 'denied'}:
@@ -158,6 +177,8 @@ class StaffActions:
                 active = current.collaboration.get('approval') or {}
                 if active.get('payload', {}).get('id') == p['id'] and active.get('status') == 'pending':
                     active['status'] = 'expired' if isinstance(error, (TimeoutError, asyncio.TimeoutError)) else 'cancelled'
+                    if isinstance(error, MemberAccessChanged):
+                        active['reason'] = str(error)
             try:
                 work.update_staff_action(task.id, p['round'], close)
             except Exception:
@@ -165,6 +186,8 @@ class StaffActions:
             if isinstance(error, asyncio.CancelledError):
                 raise
             from src.agents.tool import ToolTurnYield
+            if isinstance(error, MemberAccessChanged):
+                raise ToolTurnYield(str(error)) from error
             raise ToolTurnYield('审批等待中断，未继续执行；请核对任务记录。') from error
         finally:
             budget.resume()
@@ -218,6 +241,8 @@ class StaffActions:
                 self.service.check(member, role)
                 if member['revision'] != p['member_revision'] or role['revision'] != p['role_revision']:
                     raise ValueError('岗位或专员权限已变化，旧卡不能批准')
+                from src.workflow.staff.initiators import require_member_operations
+                require_member_operations(self.service.root, task, role, member, (p['kind'],))
             from src.gateway.audit import append_audit
             from src.workflow.staff.approval_stats import _instant, _task_source
             source, source_id = _task_source(task, p)

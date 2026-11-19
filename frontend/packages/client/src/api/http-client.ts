@@ -35,6 +35,8 @@ import type {
   AgentHolds,
   AgentLineChange,
   AgentMailbox,
+  AgentMemberActionLevels,
+  AgentMemberPolicy,
   AgentPlanUsage,
   AgentProposal,
   AgentQuestion,
@@ -155,6 +157,7 @@ import type {
   MailProviders,
   Me,
   Member,
+  MemberRoutineProposal,
   Memory,
   Message,
   MessageCard,
@@ -205,6 +208,8 @@ import type {
   RoleMailLoss,
   RosterMember,
   Routine,
+  RoutineProposalReview,
+  RoutineTakeoverPreview,
   RoutineHook,
   RoutineRun,
   RuleInfo,
@@ -829,6 +834,17 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
     },
     agents: {
       list: async (orgId) => (await request<{ agents: Agent[] }>(`${org(orgId)}/agents`)).agents,
+      memberActionLevels: (orgId, agentId) =>
+        request<AgentMemberActionLevels>(`${org(orgId)}/agents/${enc(agentId)}/member-action-levels`),
+      setMemberActionLevel: (orgId, agentId, userId, level) =>
+        request<void>(`${org(orgId)}/agents/${enc(agentId)}/member-action-levels/${enc(userId)}`, {
+          method: "PUT",
+          json: { level },
+        }),
+      memberPolicy: (orgId, agentId) =>
+        request<AgentMemberPolicy>(`${org(orgId)}/agents/${enc(agentId)}/member-policy`),
+      setMemberPolicy: (orgId, agentId, change) =>
+        request<AgentMemberPolicy>(`${org(orgId)}/agents/${enc(agentId)}/member-policy`, { method: "PUT", json: change }),
       planUsage: (orgId, agentId) => request<AgentPlanUsage>(`${org(orgId)}/agents/${enc(agentId)}/usage`),
       team: (orgId) => request<Team>(`${org(orgId)}/team`),
       setLines: (orgId, changes) =>
@@ -1766,6 +1782,15 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
     })(),
     routines: {
       list: async (orgId) => (await request<{ routines: Routine[] }>(`${org(orgId)}/routines`)).routines,
+      memberProposals: async (orgId) =>
+        (await request<{ proposals: MemberRoutineProposal[] }>(`${org(orgId)}/routines/proposals`)).proposals,
+      proposalReviews: async (orgId) =>
+        (await request<{ proposals: RoutineProposalReview[] }>(`${org(orgId)}/routines/proposals/review`)).proposals,
+      decideProposal: (orgId, id, decision) =>
+        request<Pick<MemberRoutineProposal, "id" | "status">>(
+          `${org(orgId)}/routines/proposals/${enc(id)}/decision`, { json: decision }),
+      proposeForMember: (orgId, input) =>
+        request<Pick<MemberRoutineProposal, "id" | "status">>(`${org(orgId)}/routines/proposals`, { json: input }),
       parseSchedule: (orgId, phrase, timezone) =>
         request<ScheduleParse>(`${org(orgId)}/routines/parse-schedule`, { json: { phrase, timezone } }),
       create: (orgId, input) => request<Routine>(`${org(orgId)}/routines`, { json: input }),
@@ -1773,7 +1798,10 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         request<Routine>(`${org(orgId)}/routines/${enc(id)}`, { method: "PATCH", json: { active } }),
       runNow: (orgId, id) => request<Routine>(`${org(orgId)}/routines/${enc(id)}/run`, { json: {} }),
       stop: (orgId, id) => request<Routine>(`${org(orgId)}/routines/${enc(id)}/stop`, { json: {} }),
-      takeOver: (orgId, id) => request<Routine>(`${org(orgId)}/routines/${enc(id)}/take-over`, { json: {} }),
+      takeoverPreview: (orgId, id) =>
+        request<RoutineTakeoverPreview>(`${org(orgId)}/routines/${enc(id)}/take-over`),
+      takeOver: (orgId, id, digest) =>
+        request<Routine>(`${org(orgId)}/routines/${enc(id)}/take-over`, { json: digest ? { digest } : {} }),
       continueUsage: (orgId, id) => request<Routine>(`${org(orgId)}/routines/${enc(id)}/continue`, { json: {} }),
       runs: async (orgId, id) => (await request<{ runs: RoutineRun[] }>(`${org(orgId)}/routines/${enc(id)}/runs`)).runs,
       parseRule: (orgId, phrase, timezone) =>

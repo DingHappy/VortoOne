@@ -151,16 +151,18 @@ def make_confirm_gate(
                     _task_authorized: bool = False, _protective_authorized: bool = False) -> bool:
         operation = str(message)                   # 原始操作文案（端展示"拒了什么"用这个）
         tainted = is_tainted()
-        from src.agents.scoped_approval import consume_scope, make_offer, offering
-        offer = make_offer(kind, enabled=enable_turn_scope, profile=capability_profile, can_ask=can_ask_human and ask_human is not None)
-        scoped = not force_prompt and not tainted and consume_scope(offer)
-        task_authorized = _task_authorized and kind in {"write", "execute"}
-        protective = (_protective_authorized and can_ask_human and capability_profile != "unattended"
-                      and kind in {"write", "execute"})
-        # 发起人这一维（ADR-019）：主人给自己的档位与 --yes 不借给成员；成员只认所有者对该角色登记的放行。
-        # 所有者和没有真人发起的回合原样通过，所以这里对现有入口没有变化。
         from src.agents.principal import current_member_allowance, current_principal, pre_authorized_for
-        standing = pre_authorized_for(current_principal(), kind or "write", owner_pre_authorized=pre_authorized(_level(), kind),
+        from src.agents.scoped_approval import consume_scope, make_offer, offering
+        principal = current_principal()
+        may_use_host_scope = not principal.is_member
+        offer = make_offer(kind, enabled=enable_turn_scope and may_use_host_scope, profile=capability_profile,
+                           can_ask=can_ask_human and ask_human is not None)
+        scoped = not force_prompt and not tainted and consume_scope(offer)
+        task_authorized = may_use_host_scope and _task_authorized and kind in {"write", "execute"}
+        protective = (may_use_host_scope and _protective_authorized and can_ask_human and capability_profile != "unattended"
+                      and kind in {"write", "execute"})
+        # ADR-019：成员不继承所有者的授权档位、任务授权或回合授权。
+        standing = pre_authorized_for(principal, kind or "write", owner_pre_authorized=pre_authorized(_level(), kind),
                                       member_allowed=current_member_allowance(), tainted=tainted)
         verdict = decide(tainted=tainted, pre_authorized=not force_prompt and (protective or task_authorized or scoped or standing),
                          can_ask_human=can_ask_human)

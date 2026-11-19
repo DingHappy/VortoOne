@@ -69,6 +69,7 @@ import type {
   MySuggestion,
   NewAgentSetup,
   OrgRole,
+  OrgRoleActLevel,
   OrgSettings,
   OrgStanding,
   PendingReturn,
@@ -105,7 +106,7 @@ import type {
   UsageQueue,
   WorkspaceLimits,
 } from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+import { ApiError, ORG_ROLE_ACT_LEVELS } from "@agenteschat/client";
 import { moveInGroups } from "@agenteschat/client/lib/agent-groups";
 import { answersOthers, audienceOf, listsAllAgents } from "@agenteschat/client/lib/audience";
 import type { ChatPrefs } from "@agenteschat/client/lib/chat-look";
@@ -1306,6 +1307,22 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
     state.roles ??= seedRoles();
     return state.roles;
   };
+  const actionLevels = new Map<string, Map<string, OrgRoleActLevel>>();
+  const memberPolicies = new Map<string, Awaited<ReturnType<HttpApi["agents"]["memberPolicy"]>>>();
+  const mayManageActionLevels = (agent: Agent) => !agent.builtin && state.me?.organizations[0]?.role === "owner";
+  const actionLevelAgent = (agentId: string) => {
+    const agent = state.agents.find((a) => a.id === agentId && !a.builtin);
+    if (!agent) throw new ApiError(404, "not_found", "Agent not found");
+    if (!mayManageActionLevels(agent)) throw new ApiError(403, "forbidden", "Only the owner can manage action levels");
+    return agent;
+  };
+  const memberPolicy = (agentId: string) => {
+    actionLevelAgent(agentId);
+    return memberPolicies.get(agentId) ?? {
+      roleVersion: "demo:1", actForMembers: false, autoApprove: [],
+      availableAutoApprove: [], canSetAutoApprove: true,
+    };
+  };
   /**
    * `GET …/roles`: the roles with how many hold each, what each reaches (the channels limited to it, `everyone` the
    * public ones; the agents whose audience lists it, `everyone` those that answer everyone) and the areas.
@@ -2240,6 +2257,41 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       },
     },
     agents: {
+      memberActionLevels: async (_orgId, agentId) => {
+        const audience = audienceOf(actionLevelAgent(agentId));
+        const levels = actionLevels.get(agentId);
+        return {
+          maxLevel: "execute",
+          members: state.members.filter((m) => m.role !== "owner").map((m) => ({
+            userId: m.userId,
+            name: m.name,
+            level: levels?.get(m.userId) ?? null,
+            roleLevel: [...ORG_ROLE_ACT_LEVELS].reverse().find((level) => roles().some(
+              (role) => role.actLevel === level && (role.kind === "everyone" || m.roleIds?.includes(role.id)),
+            )) ?? "read",
+            inAudience: audience.mode === "everyone" || (audience.mode === "people" &&
+              (audience.userIds.includes(m.userId) || audience.roleIds.some((id) => m.roleIds?.includes(id)))),
+          })),
+        };
+      },
+      setMemberActionLevel: async (_orgId, agentId, userId, level) => {
+        actionLevelAgent(agentId);
+        if (!state.members.some((m) => m.userId === userId && m.role !== "owner"))
+          throw new ApiError(404, "not_found", "Member not found");
+        const levels = actionLevels.get(agentId) ?? new Map<string, OrgRoleActLevel>();
+        if (level === null) levels.delete(userId);
+        else levels.set(userId, level);
+        actionLevels.set(agentId, levels);
+      },
+      memberPolicy: async (_orgId, agentId) => structuredClone(memberPolicy(agentId)),
+      setMemberPolicy: async (_orgId, agentId, change) => {
+        const previous = memberPolicy(agentId);
+        if (change.roleVersion !== previous.roleVersion || change.autoApprove?.length)
+          throw new ApiError(400, "invalid", "Member permissions changed");
+        const updated = { ...previous, ...change };
+        memberPolicies.set(agentId, updated);
+        return structuredClone(updated);
+      },
       planUsage: async (_orgId, agentId) => {
         const money = seesCost();
         const account = fakePlanAccount(money);
@@ -2336,6 +2388,8 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
             ...(seesDetails ? {} : { instructions: "" }),
             budgetUsedPercent: percentOf(a),
             audienceMode: mode,
+            canManageMemberActionLevels: mayManageActionLevels(a),
+            canManageMemberPolicy: mayManageActionLevels(a),
             canTalk,
             seesDetails,
           };

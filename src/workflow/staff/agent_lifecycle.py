@@ -213,6 +213,60 @@ def purge(root: str, actor: Principal, staff_id: str) -> None:
     AgentProfiles(root).update(staff_id, archived=False, deleted=True)
 
 
+def member_settings_agent(root: str, staff_id: str) -> dict:
+    from src.workflow.staff.registry import StaffRegistry
+
+    try:
+        staff = StaffRegistry(root).member(staff_id)
+    except ValueError as error:
+        raise LookupError("没有这个智能体") from error
+    profile = AgentProfiles(root).get(staff_id)
+    if staff["status"] == "retired" or profile.get("archived") or profile.get("deleted"):
+        raise LookupError("没有这个智能体")
+    return staff
+
+
+def set_member_action_level(root: str, actor: Principal, staff_id: str, member_id: str, level: str | None) -> None:
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow.tasks.tasks import TASK_STATE_LOCK
+
+    # The task lock must always precede the member registry lock, including during approval.
+    with TASK_STATE_LOCK:
+        member_settings_agent(root, staff_id)
+        MemberRegistry(root).set_act_level_on(actor, staff_id, member_id, level)
+
+
+def member_policy(root: str, actor: Principal, staff_id: str, change: dict | None = None) -> dict:
+    from src.agents.principal import ALLOWABLE
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow.staff.initiators import available_member_auto_approval, member_policy_supported, role_version
+    from src.workflow.staff.registry import StaffRegistry
+    from src.workflow.tasks.tasks import TASK_STATE_LOCK
+
+    if change is not None:
+        if (not set(change) <= {"roleVersion", "actForMembers", "autoApprove"}
+                or not isinstance(change.get("roleVersion"), str) or len(change) < 2):
+            raise ValueError("缺少当前岗位版本或权限设置")
+        if "actForMembers" in change and type(change["actForMembers"]) is not bool:
+            raise ValueError("代成员办事必须是开或关")
+        if "autoApprove" in change:
+            kinds = change["autoApprove"]
+            if not isinstance(kinds, list) or any(not isinstance(kind, str) or kind not in ALLOWABLE for kind in kinds):
+                raise ValueError("成员放行只支持写入和执行")
+            change = {**change, "autoApprove": sorted(set(kinds))}
+    with TASK_STATE_LOCK:
+        staff = member_settings_agent(root, staff_id)
+        registry = StaffRegistry(root)
+        role = registry.role(staff["role"])
+        if not member_policy_supported(role, staff):
+            raise LookupError("这个智能体没有成员权限设置")
+        eligible = available_member_auto_approval(registry, role)
+        members = MemberRegistry(root)
+        if change is None:
+            return members.agent_policy(actor, staff_id, role, role_version(role), eligible)
+        return members.change_agent_policy(actor, staff_id, role, role_version(role), eligible, change)
+
+
 def confirm_step(root: str, actor: Principal, staff_id: str, step: str) -> None:
     _owner_only(actor)
     from src.workflow.staff.registry import StaffRegistry

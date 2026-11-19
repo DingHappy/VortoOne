@@ -1,4 +1,4 @@
-"""发起人与按发起人封顶的权限判定（ADR-019）。本模块还没接到任何入口，这里只钉判定本身。"""
+"""发起人的权限判定，以及回合与确认门对发起人的处理（ADR-019）。"""
 
 import asyncio
 
@@ -159,6 +159,80 @@ async def test_member_allowance_is_void_in_a_tainted_turn():
         reset_taint()
 
 
+@pytest.mark.parametrize("scope_kind", ["task_workspace", "protective"])
+async def test_member_cannot_use_host_tool_exemptions(scope_kind, tmp_path):
+    from src.agents.capabilities import SessionCapabilities
+    from src.agents.gate import make_confirm_gate
+    from src.agents.tool import ApprovedTaskScope, PreparedToolCall, Tool
+    from src.agents.tool_runtime import ToolExecutionContext, ToolRuntime
+
+    asked, ran = [], []
+
+    async def human(_message, kind):
+        asked.append(kind)
+        return False
+
+    async def action(_args=None):
+        ran.append(P.current_principal())
+        return "done"
+
+    scope = ApprovedTaskScope("approved-task", str(tmp_path.resolve()))
+    if scope_kind == "task_workspace":
+        tool = Tool("write_file", "", {}, action, operation_kind="write", task_scope=scope,
+                    execution_root=str(tmp_path.resolve()))
+        args = {"path": "result.txt"}
+    else:
+        async def prepare(_args):
+            return PreparedToolCall(action, "停用作业", "write", protective=True)
+
+        tool = Tool.prepared("cron_toggle", "", {}, prepare, operation_kind="write", protective=True)
+        args = {"name": "fixture", "enabled": False}
+
+    runtime = ToolRuntime(lambda: {tool.name: tool}, ToolExecutionContext(
+        confirm=make_confirm_gate(human, can_ask_human=True),
+        capabilities=SessionCapabilities.for_profile("local", str(tmp_path)),
+        task_scopes=(scope,),
+    ))
+    for actor, expected in ((OWNER, "succeeded"), (ANN, "blocked")):
+        token = P.set_principal(actor)
+        try:
+            assert (await runtime.execute(tool.name, args, "build")).status == expected
+        finally:
+            P.reset_principal(token)
+
+    assert ran == [OWNER]
+    assert asked == ["write"]
+
+
+async def test_member_cannot_consume_or_acquire_a_turn_approval():
+    from src.agents.gate import make_confirm_gate
+    from src.agents.scoped_approval import current_offer, turn_approval_scope
+
+    offers = []
+
+    async def human(_message):
+        offers.append(current_offer())
+        return False
+
+    gate = make_confirm_gate(human, can_ask_human=True, capability_profile="local", enable_turn_scope=True)
+    owner = P.set_principal(OWNER)
+    try:
+        with turn_approval_scope() as scope:
+            assert scope.grant("draft")
+            remaining = scope.grants["draft"]
+            member = P.set_principal(ANN)
+            try:
+                assert not await gate("保存草稿", "draft")
+                assert scope.grants["draft"] == remaining
+            finally:
+                P.reset_principal(member)
+            assert await gate("保存草稿", "draft")
+            assert scope.grants["draft"] == remaining - 1
+    finally:
+        P.reset_principal(owner)
+    assert offers == [None]
+
+
 def test_a_members_words_do_not_enter_the_owners_memory():
     from src.memory.write_policy import MemoryWritePolicy, MemoryWriteRequest
     request = MemoryWriteRequest(content="主人周三不开会", source="chat", tainted=False, write_method="tool")
@@ -195,8 +269,33 @@ async def test_each_turn_runs_as_the_agents_declared_principal_and_does_not_inhe
             return {"content": "done"}
 
     agent = MainAgent([], llm=LLM())
-    P.set_principal(OWNER)                          # 同一上下文里上一回合留下的身份
-    await agent.run_turn("hi", mode="plan")
-    agent.principal, agent.member_allowed = ANN, ("write",)
-    await agent.run_turn("hi", mode="plan")
+    token = P.set_principal(OWNER)
+    try:
+        await agent.run_turn("hi", mode="plan")
+        assert P.current_principal() == OWNER
+        agent.principal, agent.member_allowed = ANN, ("write",)
+        await agent.run_turn("hi", mode="plan")
+        assert (P.current_principal(), P.current_member_allowance()) == (OWNER, frozenset())
+    finally:
+        P.reset_principal(token)
     assert seen == [(P.NOBODY, frozenset()), (ANN, frozenset({"write"}))]
+
+
+@pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
+async def test_turn_restores_caller_authority_when_interrupted(monkeypatch, failure):
+    from src.agents.main_agent import MainAgent
+
+    async def fail(*_args, **_kwargs):
+        assert (P.current_principal(), P.current_member_allowance()) == (OWNER, frozenset())
+        raise failure("interrupted")
+
+    agent = MainAgent([], llm=object())
+    agent.principal = OWNER
+    monkeypatch.setattr(agent, "_run_turn_body", fail)
+    parent = P.set_principal(ANN, member_allowed=("write",))
+    try:
+        with pytest.raises(failure, match="interrupted"):
+            await agent.run_turn("hi", mode="plan")
+        assert (P.current_principal(), P.current_member_allowance()) == (ANN, frozenset({"write"}))
+    finally:
+        P.reset_principal(parent)

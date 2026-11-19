@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
 import threading
@@ -24,8 +25,8 @@ from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
 
 from src.agents import identity_groups as rules
 from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE, Post
-from src.agents.principal import Principal
-from src.utils.state_dir import state_dir
+from src.agents.principal import ALLOWABLE, Principal
+from src.utils.state_dir import ensure_state_gitignore, state_dir
 
 _FILE = "space.json"
 _MAX_BYTES = 1024 * 1024
@@ -76,6 +77,8 @@ def _fresh() -> Dict[str, Any]:
         "agent_levels": {},
         "plans_shared": {},
         "agent_audiences": {},
+        "agent_policies": {},
+        "channels": {},
     }
 
 
@@ -113,6 +116,16 @@ def _post(group_id: str, record: Mapping[str, Any]) -> Post:
                 str(record.get("computer") or "none"), str(record.get("act") or "none"))
 
 
+def _group_act_level(held: List[str], posts: Mapping[str, Post]) -> str:
+    return rules.act_level(held, posts) if rules.has("roles.talk", held, posts) else "none"
+
+
+def _member_act_level(state: Mapping[str, Any], agent: str, person: str, held: List[str],
+                      posts: Mapping[str, Post]) -> str:
+    return rules.act_level_on(state["agent_levels"].get(agent) or {}, person, _group_act_level(held, posts),
+                              audience=state["agent_audiences"].get(agent), held=held)
+
+
 class MemberRegistry:
     def __init__(self, root: str):
         self.root = str(root)
@@ -141,7 +154,9 @@ class MemberRegistry:
                 raise Damaged("成员登记文件结构无效")
         value.setdefault("plans_shared", {})          # 早于这一项的登记文件没有它：一个都没打开
         value.setdefault("agent_audiences", {})       # 早于这一项的：没设受众，按所有人
-        if not isinstance(value["plans_shared"], dict) or not isinstance(value["agent_audiences"], dict):
+        value.setdefault("agent_policies", {})
+        value.setdefault("channels", {})
+        if any(not isinstance(value[key], dict) for key in ("plans_shared", "agent_audiences", "agent_policies", "channels")):
             raise Damaged("成员登记文件结构无效")
         try:
             self._check(value)
@@ -160,6 +175,15 @@ class MemberRegistry:
         rules.check_order(order)
         if set(order) != set(groups) or ADMINS not in groups:
             raise ValueError("身份组与顺序表对不上")
+        for agent, policy in state["agent_policies"].items():
+            if (not _AGENT.fullmatch(agent) or not isinstance(policy, dict)
+                    or not isinstance(policy.get("roleVersion"), str) or type(policy.get("actForMembers")) is not bool
+                    or not isinstance(policy.get("autoApprove"), list)
+                    or any(not isinstance(kind, str) or kind not in ALLOWABLE for kind in policy["autoApprove"])):
+                raise ValueError("智能体成员权限设置无效")
+        if state["channels"]:
+            from src.workflow.members.channels import check_channels
+            check_channels(state)
 
     def _save(self, state: Dict[str, Any]) -> None:
         self._check(state)
@@ -172,33 +196,48 @@ class MemberRegistry:
         encoded = json.dumps(state, ensure_ascii=False, indent=2) + "\n"
         if len(encoded.encode("utf-8")) > _MAX_BYTES:
             raise ValueError("成员登记文件过大，未写入")
+        ensure_state_gitignore(self.root)
         temporary = self.directory / f".{_FILE}.{uuid.uuid4().hex}.tmp"
         try:
-            temporary.write_text(encoded, encoding="utf-8")
-            temporary.chmod(0o600)
+            fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                file.write(encoded)
+                file.flush()
+                os.fsync(file.fileno())
             temporary.replace(path)
+            if hasattr(os, "O_DIRECTORY"):
+                dir_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
         finally:
             temporary.unlink(missing_ok=True)
 
     @contextmanager
-    def _change(self) -> Iterator[Dict[str, Any]]:
-        """读—判定—写在一把锁里；跨进程再加文件锁（没有 fcntl 的平台只有进程内的锁）。"""
+    def _locked_state(self) -> Iterator[Dict[str, Any]]:
+        """Keep membership and authorization stable while committing a change."""
         with _LOCK:
-            handle = None
             try:
                 import fcntl
-                self.directory.mkdir(parents=True, exist_ok=True)
-                handle = open(self.directory / ".lock", "a+")       # noqa: SIM115 —— 锁要持有到写完
+            except ImportError:
+                yield self._load()
+                return
+            if self.directory.is_symlink():
+                raise Damaged("成员登记目录不能是符号链接")
+            self.directory.mkdir(parents=True, exist_ok=True)
+            path = self.directory / ".lock"
+            fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            with os.fdopen(fd, "a+b") as handle:
                 fcntl.flock(handle, fcntl.LOCK_EX)
-            except (ImportError, OSError):
-                handle = None
-            try:
-                state = self._load()
-                yield state
-                self._save(state)
-            finally:
-                if handle is not None:
-                    handle.close()
+                yield self._load()
+
+    @contextmanager
+    def _change(self) -> Iterator[Dict[str, Any]]:
+        """读、判定与保存使用同一把锁。"""
+        with self._locked_state() as state:
+            yield state
+            self._save(state)
 
     # ── 判定用的小工具 ────────────────────────────────────────────────────────
 
@@ -266,15 +305,22 @@ class MemberRegistry:
             return rules.ACT_LEVELS[-1]
         if not principal.is_member:
             return "none"
-        state = self.snapshot()
-        member = state["members"].get(principal.id)
-        if member is None:
+        try:
+            return self.member_act_level_on(agent_id, principal.id)
+        except Missing:
             return "none"
+
+    def member_act_level_on(self, agent_id: str, member_id: str, *, required_permission: Optional[str] = None,
+                            requires_shared_plan: bool = False) -> str:
+        """在同一份快照核对成员、所需的权限项和对智能体的办事级别。不在册的抛 Missing。"""
+        state = self.snapshot()
+        held = self._member(state, member_id).get("groups") or []
         posts = self._posts(state)
-        held = member.get("groups") or []
-        return rules.act_level_on(state["agent_levels"].get(str(agent_id)) or {}, principal.id,
-                                  rules.act_level(held, posts), talks=rules.has("roles.talk", held, posts),
-                                  audience=state["agent_audiences"].get(str(agent_id)), held=held)
+        if required_permission is not None and not rules.has(required_permission, held, posts):
+            return "none"
+        if requires_shared_plan and str(agent_id) not in state["plans_shared"]:
+            return "none"
+        return _member_act_level(state, str(agent_id), member_id, held, posts)
 
     # ── 身份组 ────────────────────────────────────────────────────────────────
 
@@ -361,6 +407,12 @@ class MemberRegistry:
             state["order"] = [item for item in state["order"] if item != group_id]
             for member in state["members"].values():
                 member["groups"] = [item for item in member.get("groups") or [] if item != group_id]
+            for channel in state["channels"].values():
+                channel["audience_roles"] = [role for role in channel["audience_roles"] if role != group_id]
+                channel["overrides"] = [item for item in channel["overrides"]
+                                        if item["target"] != {"type": "role", "id": group_id}]
+            for member_id in state["members"]:
+                self._prune_department_membership(state, member_id)
 
     def reorder_groups(self, actor: Principal, order: Iterable[str]) -> None:
         with self._change() as state:
@@ -384,7 +436,17 @@ class MemberRegistry:
                 if not rules.may_grant(held, group, posts, state["order"], target_held=current, owner=owner):
                     raise Refused(f"不能授予或收回身份组 {group}")
             member["groups"] = wanted
+            self._prune_department_membership(state, str(member_id))
             return wanted
+
+    @classmethod
+    def _prune_department_membership(cls, state, member_id):
+        held = state["members"][member_id].get("groups") or []
+        privileged = rules.has(ADMIN, held, cls._posts(state))
+        for channel in state["channels"].values():
+            if channel["kind"] == "department" and not rules.channel_visible(
+                    "department", channel["audience_roles"], held, joined=False, privileged=privileged):
+                channel["joined"].pop(member_id, None)
 
     def remove_member(self, actor: Principal, member_id: str) -> None:
         """把成员移出空间；在各个 agent 上单独给他定的级别一并清掉。成员也可以自己退出。"""
@@ -403,6 +465,10 @@ class MemberRegistry:
             for audience in state["agent_audiences"].values():
                 if str(member_id) in audience.get("userIds", []):
                     audience["userIds"].remove(str(member_id))
+            for channel in state["channels"].values():
+                channel["joined"].pop(str(member_id), None)
+                channel["overrides"] = [item for item in channel["overrides"]
+                                        if item["target"] != {"type": "person", "id": str(member_id)}]
 
     # ── 邀请 ──────────────────────────────────────────────────────────────────
 
@@ -526,14 +592,104 @@ class MemberRegistry:
             return dict(checked)
 
     def forget_agent(self, actor: Principal, agent_id: str) -> None:
-        """agent 彻底删除时：它的受众、单独定的级别、「也回应别人」一并清掉。"""
+        """agent 彻底删除时清掉受众、成员权限和订阅共享设置。"""
         agent = str(agent_id)
         with self._change() as state:
             owner, _held = self._actor(state, actor)
             if not owner:
                 raise Refused("只有所有者能删除 agent")
-            for key in ("agent_audiences", "agent_levels", "plans_shared"):
+            for key in ("agent_audiences", "agent_levels", "plans_shared", "agent_policies"):
                 state[key].pop(agent, None)
+
+    @staticmethod
+    def _agent_policy(state, agent, role_version):
+        entry = state["agent_policies"].get(agent, {})
+        if entry.get("roleVersion") != role_version:
+            return {"roleVersion": role_version, "actForMembers": False, "autoApprove": []}
+        return dict(entry)
+
+    def member_execution_policy(self, agent, principal, role_version, *, requires_shared_plan=False):
+        """Read membership, audience, subscription sharing, and policy from one snapshot."""
+        state = self.snapshot()
+        member = state["members"].get(principal.id) if principal.is_member else None
+        if member is None or (requires_shared_plan and agent not in state["plans_shared"]):
+            return "none", False, frozenset()
+        level = _member_act_level(state, agent, principal.id, member.get("groups") or [], self._posts(state))
+        policy = self._agent_policy(state, agent, role_version)
+        return level, policy["actForMembers"], frozenset(policy["autoApprove"])
+
+    @staticmethod
+    def _policy_access(state, actor, agent, role):
+        owner, held = MemberRegistry._actor(state, actor)
+        posts = MemberRegistry._posts(state)
+        level = _member_act_level(state, agent, actor.id, held, posts) if not owner else "execute"
+        grants = role["grants"]
+        can_delegate = rules.may_set_act_for_members(
+            level, grants["operations"], holds_permission=rules.has("roles.act_for_members", held, posts),
+            private=bool(grants["sees"] or grants["project"]), owner=owner)
+        if not can_delegate:
+            raise Refused("需要代成员办事权限，且智能体的岗位权限不能超出你自己的权限")
+        return owner
+
+    def agent_policy(self, actor, agent, role, role_version, approval_kinds):
+        state = self.snapshot()
+        owner = self._policy_access(state, actor, agent, role)
+        return {**self._agent_policy(state, agent, role_version), "canSetAutoApprove": owner,
+                "availableAutoApprove": sorted(approval_kinds) if owner else []}
+
+    def change_agent_policy(self, actor, agent, role, role_version, approval_kinds, change):
+        from src.gateway.audit import append_audit
+
+        if not _AGENT.fullmatch(agent):
+            raise ValueError("agent 标识无效")
+        with self._change() as state:
+            owner = self._policy_access(state, actor, agent, role)
+            if change.get("roleVersion") != role_version:
+                raise ValueError("岗位已变化，请重新读取权限设置")
+            if "autoApprove" in change and not owner:
+                raise Refused("只有所有者能设置成员放行")
+            previous = self._agent_policy(state, agent, role_version)
+            result = {**previous, **change}
+            if "autoApprove" in change and not set(change["autoApprove"]) <= approval_kinds:
+                raise ValueError("只能放行岗位内可用于成员的写入或执行工具")
+            if result != previous:
+                if not append_audit(self.root, {"category": "event", "operation": "授权修改智能体成员权限",
+                                    "actor_kind": actor.kind, "actor_id": actor.id, "staff_member": agent,
+                                    "previous": previous, "requested": result}, durable=True):
+                    raise OSError("权限变更审计无法保存，未修改权限")
+                if result["actForMembers"] or result["autoApprove"]:
+                    state["agent_policies"][agent] = result
+                else:
+                    state["agent_policies"].pop(agent, None)
+            return {**result, "canSetAutoApprove": owner,
+                    "availableAutoApprove": sorted(approval_kinds) if owner else []}
+
+    @staticmethod
+    def _act_level_ceiling(state: Mapping[str, Any], agent: str, actor: Principal, owner: bool, held: List[str],
+                           posts: Mapping[str, Post], *, responsible: bool = False) -> str:
+        if owner:
+            return rules.ACT_LEVELS[-1]
+        mine = _member_act_level(state, agent, actor.id, held, posts)
+        if mine == "none" or not rules.may_set_act_level(
+                "none", actor_level=mine, responsible=responsible, manages_all=rules.has("roles.manage_all", held, posts)):
+            raise Refused("只有所有者、能使用此智能体的负责人或智能体管理员能管理办事级别")
+        return mine
+
+    def agent_member_action_levels(self, actor: Principal, agent: str) -> Dict[str, Any]:
+        """给管理界面的名单、已设的级别和角色默认值，使用同一份登记快照。"""
+        state = self.snapshot()
+        owner, held = self._actor(state, actor)
+        posts = self._posts(state)
+        ceiling = self._act_level_ceiling(state, agent, actor, owner, held, posts)
+        levels = state["agent_levels"].get(agent) or {}
+        audience = state["agent_audiences"].get(agent)
+        members = []
+        for member_id, member in state["members"].items():
+            groups = member.get("groups") or []
+            members.append({"userId": member_id, "name": member["name"], "level": levels.get(member_id),
+                            "roleLevel": _group_act_level(groups, posts),
+                            "inAudience": rules.in_audience(audience, member_id, groups)})
+        return {"maxLevel": ceiling, "members": members}
 
     def set_act_level_on(self, actor: Principal, agent_id: str, member_id: str, level: Optional[str], *,
                          responsible: bool = False) -> None:
@@ -546,18 +702,13 @@ class MemberRegistry:
             raise ValueError("agent 标识无效")
         with self._change() as state:
             owner, held = self._actor(state, actor)
-            member = self._member(state, member_id)
             posts = self._posts(state)
+            mine = self._act_level_ceiling(state, agent, actor, owner, held, posts, responsible=responsible)
+            member = self._member(state, member_id)
+            result = level if level is not None else _group_act_level(member.get("groups") or [], posts)
+            if not rules.act_level_at_most(result, mine):
+                raise Refused("设定或恢复的办事级别不能高于你自己的级别")
             levels = state["agent_levels"].get(agent) or {}
-            mine = rules.act_level_on(levels, actor.id, rules.act_level(held, posts), owner=owner,
-                                      talks=rules.has("roles.talk", held, posts, owner=owner),
-                                      audience=state["agent_audiences"].get(agent), held=held)
-            target = member.get("groups") or []
-            result = level if level is not None else rules.act_level_on(
-                {}, str(member_id), rules.act_level(target, posts), talks=rules.has("roles.talk", target, posts))
-            if not rules.may_set_act_level(str(result), actor_level=mine, responsible=responsible, owner=owner,
-                                           manages_all=rules.has("roles.manage_all", held, posts, owner=owner)):
-                raise Refused("不能定这个级别：要是这个 agent 的负责人或能管理所有 agent，且不高于你自己的级别")
             if level is None:
                 levels.pop(str(member_id), None)
             else:

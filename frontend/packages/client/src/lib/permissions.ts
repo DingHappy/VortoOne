@@ -16,6 +16,7 @@ export type RolePermission =
   | "approve_actions"
   | "create_agents"
   | "manage_agents"
+  | "act_for_members"
   | "pair_computers"
   | "own_browsers"
   | "own_computers"

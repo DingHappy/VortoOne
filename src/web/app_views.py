@@ -23,7 +23,7 @@ OWNER_PERMISSIONS = [
     "view_usage", "configure", "view_audit", "manage_billing", "create_agents", "manage_channels",
     "mention_everyone", "manage_routines", "review_memory", "invite_people", "pair_computers",
     "own_computers", "own_browsers", "talk_to_agents", "view_all_agents", "assign_work", "post",
-    "create_channels", "edit_wiki", "upload_files",
+    "create_channels", "edit_wiki", "upload_files", "act_for_members",
 ]
 
 SIDEBAR_TOOLS = ["waiting", "approvals", "proposals", "threads", "issues", "wiki", "drive", "routines",
@@ -110,6 +110,8 @@ def _staff(root: str) -> Dict[str, Any]:
 
 def agents(root: str) -> List[Dict[str, Any]]:
     """主助理加未退役的专员。暂停中的专员不能对话。"""
+    from src.workflow.staff.initiators import member_policy_supported
+
     profile = _profile(root)
     owner = owner_id(root)
     created = _home_created(root)
@@ -122,7 +124,9 @@ def agents(root: str) -> List[Dict[str, Any]]:
     staff = _staff(root)
     titles = {str(role.get("id")): str(role.get("title") or role.get("id")) for role in staff.get("roles") or []}
     briefs = {str(role.get("id")): str(role.get("brief") or "") for role in staff.get("roles") or []}
+    roles_by_id = {role["id"]: role for role in staff.get("roles") or []}
     profiles, audiences = _agent_extras(root)
+    can_manage_levels = owner_connection()
     for member in staff.get("members") or []:
         if member.get("status") == "retired":
             continue
@@ -133,6 +137,8 @@ def agents(root: str) -> List[Dict[str, Any]]:
         if extra.get("archived") or extra.get("deleted"):
             continue                                    # 归档的、删掉的不在团队里（former-agents 里还有它）
         audience = audiences.get(member_id) or {"mode": "everyone", "userIds": [], "roleIds": []}
+        role = roles_by_id.get(member.get("role"))
+        supports_member_policy = role is not None and member_policy_supported(role, member)
         row = {
             "id": member_agent_id(root, member_id), "name": str(member.get("name") or member_id),
             "handle": member_id, "role": titles.get(str(member.get("role")), str(member.get("role") or "")),
@@ -140,6 +146,8 @@ def agents(root: str) -> List[Dict[str, Any]]:
             "model": str(member.get("model") or ""), "ownerUserId": owner,
             "hasCredential": model_connected(), "createdAt": str(extra.get("created") or created),
             "audience": {**audience, "consultable": False}, "audienceMode": audience["mode"],
+            "canManageMemberActionLevels": can_manage_levels,
+            "supportsMemberPolicy": supports_member_policy, "canManageMemberPolicy": can_manage_levels and supports_member_policy,
             "canTalk": member.get("status", "active") == "active", "seesDetails": True,
         }
         if extra.get("appearance"):
@@ -218,7 +226,8 @@ def me(root: str) -> Dict[str, Any]:
         "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
                  "locale": "zh-Hans", "localeAuto": False},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
-                           "showActivity": True, "permissions": list(OWNER_PERMISSIONS)}],
+                           "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
+                           "routineProposalReview": owner_connection(), "teamChannels": owner_connection()}],
     }
 
 
@@ -536,13 +545,17 @@ def routines(root: str) -> List[Dict[str, Any]]:
     from datetime import timezone as tz
     from src.scheduling.routine_schedule import RoutineSchedule
     from src.workflow.staff.routines import Routines
+    registry = Routines(root)
     rows = []
-    for item in Routines(root).list():
+    for item in registry.list():
         if item["retired"]:
             continue
+        creator_issue = registry.creator_issue(item)
+        paused_reason = creator_issue.reason if creator_issue else None
+        active = item["enabled"] and paused_reason is None
         try:
             upcoming = RoutineSchedule(item["schedule"], item["timezone"]).next(
-                datetime.now(tz.utc), item["state"]["cursor"]) if item["enabled"] else None
+                datetime.now(tz.utc), item["state"]["cursor"]) if active else None
         except (ValueError, KeyError, TypeError):
             upcoming = None
         agent = member_agent_id(root, str(item["member"]))
@@ -550,14 +563,19 @@ def routines(root: str) -> List[Dict[str, Any]]:
             "id": item["id"], "name": item["name"], "agentId": agent, "prompt": item["prompt"],
             "target": {"type": "conversation", "channelId": dm_channel_id(agent), "threadId": None},
             "trigger": _trigger(str(item["schedule"]), str(item["timezone"])),
-            "active": bool(item["enabled"]), "nextRunAt": _iso(upcoming.timestamp()) if upcoming else None,
+            "active": active, "nextRunAt": _iso(upcoming.timestamp()) if upcoming else None,
             "createdAt": _iso(item.get("created_at")), "access": "read",
             "report": "always" if item.get("delivery") == "notify" else "when_new",
-            "pausedReason": None, "failuresInRow": 0, "state": "active" if item["enabled"] else "paused",
+            "pausedReason": paused_reason, "failuresInRow": 0, "state": "active" if active else "paused",
             "waitingFor": None, "brain": {"kind": "model", "machineName": None},
             "health": {"ok": 0, "silent": 0, "failed": 0, "skipped": 0, "missed": 0, "total": 0},
             "canSeeDetails": True, "canManage": owner_connection(), "lastRun": None, "recentRuns": [],
             "usage": {"runs": 0, "tokens": 0, "costNanoUsd": 0, "billedTo": "api"}, "ownActions": [],
+            **({"createdByUserId": None if paused_reason == "creator_left" else item["initiator"],
+                "canTakeOver": bool(creator_issue and creator_issue.verified and owner_connection())}
+               if "initiator" in item else
+               {"createdByUserId": owner_id(root), "awaitingTakeoverResume": registry.awaiting_takeover_resume(item)}
+               if item["state"].get("takeover") else {}),
         })
     history = routine_history(root)
     for row in rows:

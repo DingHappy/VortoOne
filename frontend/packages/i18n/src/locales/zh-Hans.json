@@ -93,6 +93,16 @@
     "fromAdmin": "来自“管理员”",
     "viaAdmin": "全部，作为管理员",
     "nothing": "无",
+    "actLevel": {
+      "title": "智能体办事级别",
+      "hint": "成员持有多个角色时取最高级别，包括「所有人」。智能体只能使用已获授权的工具。写入、执行及其他有后果的操作默认仍需审批。",
+      "options": {
+        "none": "不能对话",
+        "read": "只读",
+        "write": "可写",
+        "execute": "可执行"
+      }
+    },
     "computer": {
       "title": "智能体的电脑",
       "levels": {
@@ -413,6 +423,12 @@
       "desc": "指令、大脑、预算，以及每个智能体使用的东西。",
       "short": "编辑智能体",
       "say": "编辑任意智能体"
+    },
+    "act_for_members": {
+      "title": "管理代成员办事",
+      "desc": "可以调整岗位权限未超出你自身权限的智能体的代办开关。",
+      "short": "管理代办",
+      "say": "管理代成员办事"
     },
     "pair_computers": {
       "title": "连接电脑",
@@ -5233,6 +5249,26 @@
     "notFound": "该智能体不存在或已归档。"
   },
   "agentPage": {
+    "memberPolicy": {
+      "title": "成员权限",
+      "delegation": "代成员办事",
+      "delegationHelp": "受众内成员可以请求岗位权限内的操作。超出成员自身级别的动作仍需所有者审批。",
+      "approval": "成员放行",
+      "approvalHelp": "所选类别在成员自身权限内可跳过逐次审批。涉及外部内容的操作仍需确认。",
+      "noEligibleTools": "此岗位没有可为成员预先放行的写入或执行工具。",
+      "write": "写入",
+      "execute": "执行"
+    },
+    "memberActionLevels": {
+      "title": "成员办事级别",
+      "description": "为成员单独设置此智能体的办事级别。级别约束智能体已有的工具权限，在成员属于此智能体的受众时生效。",
+      "member": "成员",
+      "chooseMember": "选择成员",
+      "level": "办事级别",
+      "inherit": "沿用角色级别（{{level}}）",
+      "outsideAudience": "该成员当前不在此智能体的受众内。",
+      "empty": "工作区暂时没有可管理的成员。"
+    },
     "work": {
       "sentenceMember": "用 <brain/> 思考<end>。</end>",
       "sentenceCloud": "在 <computer/> 上用 <brain/> 思考，<browser/><end>。</end>",
@@ -7827,6 +7863,72 @@
     }
   },
   "routines": {
+    "proposalReview": {
+      "title": "待核对的例行工作提议",
+      "open": "核对提议",
+      "description": "批准后会登记排期。每次运行仍按成员当前的权限执行。",
+      "submittedBy": "由 {{name}} 提交",
+      "departed": "成员已离开工作区",
+      "reason": "提议理由",
+      "operations": "岗位登记的操作",
+      "tools": "岗位登记的工具",
+      "delivery": "工作完成后",
+      "notify": "发送报告",
+      "review": "等待所有者验收结果",
+      "budget": "单次运行 Token 上限",
+      "budgetUnset": "这条例行工作未设置单次上限",
+      "approve": "批准排期",
+      "approvePaused": "批准并保持暂停",
+      "reject": "拒绝提议",
+      "finish": "继续完成登记",
+      "approved": "已批准例行工作提议。",
+      "rejected": "已拒绝例行工作提议。",
+      "changed": "提议状态已变化，请重新核对后再决定。",
+      "handled": "这条提议已处理。"
+    },
+    "takeover": {
+      "description": "请核对原工作内容、排期和岗位权限。后续运行将使用所有者的权限。接手后先保持暂停，等你启用排期。",
+      "agent": "智能体",
+      "schedule": "排期",
+      "prompt": "原工作内容",
+      "acceptance": "验收标准",
+      "operations": "允许的操作",
+      "tools": "已登记的工具",
+      "sources": "可访问的数据来源",
+      "empty": "无",
+      "refresh": "重新核对",
+      "done": "已接手。启用后会按新排期运行。"
+    },
+    "memberProposals": {
+      "title": "我的例行工作提议",
+      "empty": "这里会显示你提交的例行工作提议和审批状态。",
+      "new": "提议例行工作",
+      "intro": "工作区所有者批准后，例行工作才会进入排期。",
+      "name": "例行工作名称",
+      "agent": "智能体",
+      "chooseAgent": "选择智能体",
+      "frequency": "重复频率",
+      "daily": "每天",
+      "weekly": "每周",
+      "weekday": "星期",
+      "time": "运行时间",
+      "timezone": "时区",
+      "prompt": "智能体要做什么？",
+      "reason": "为什么需要定期运行？",
+      "submit": "提交审批",
+      "submitted": "已提交例行工作提议。",
+      "noAgents": "需要有权使用至少一个智能体才能提交提议。",
+      "noPermission": "提交提议需要「管理例行工作」权限。",
+      "refresh": "刷新状态",
+      "dailyAt": "每天 {{time}}",
+      "weeklyAt": "每{{day}} {{time}}",
+      "status": {
+        "pending": "待审批",
+        "applying": "已批准，正在登记",
+        "approved": "已批准",
+        "rejected": "已拒绝"
+      }
+    },
     "filters": "筛选例行工作",
     "agentFilter": "智能体",
     "resume": "恢复",
