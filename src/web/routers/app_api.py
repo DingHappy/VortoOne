@@ -1722,27 +1722,40 @@ async def agent_holds(org_id: str, agent_id: str):
     return {"holds": [], "canStop": False}
 
 
+async def _screen_status(org_id: str, agent_id: str, request: Request, surface: str, unavailable: dict):
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        response = _error(403, "forbidden", _NOT_MEMBER)
+    else:
+        def read_status():
+            app_members.require_agent_screen_level(root, actor, agent_id, surface)
+            return JSONResponse(unavailable)
+
+        response = await _members_call(read_status)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @router.get(_ORG + "/agents/{agent_id}/desktop")
-async def agent_desktop(org_id: str, agent_id: str):
-    if not _known_agent(org_id, agent_id):
-        return _error(404, "not_found", "没有这个角色")
-    return {"available": False, "reason": "no_desktop", "detail": None, "running": False, "startedAt": None,
-            "controllerUserId": None, "handoff": None, "viewers": 0, "canControl": False, "held": False,
-            "browserOnDesktop": False}
+async def agent_desktop(org_id: str, agent_id: str, request: Request):
+    return await _screen_status(org_id, agent_id, request, "desktop", {
+        "available": False, "reason": "no_desktop", "detail": None, "running": False, "startedAt": None,
+        "controllerUserId": None, "handoff": None, "viewers": 0, "canControl": False, "held": False,
+        "browserOnDesktop": False,
+    })
 
 
 @router.get(_ORG + "/agents/{agent_id}/browser")
-async def agent_browser(org_id: str, agent_id: str):
-    if not _known_agent(org_id, agent_id):
-        return _error(404, "not_found", "没有这个角色")
-    return {"allowedDomains": None, "available": False, "reason": "no_machine", "detail": None, "machine": None}
+async def agent_browser(org_id: str, agent_id: str, request: Request):
+    return await _screen_status(org_id, agent_id, request, "browser", {
+        "allowedDomains": None, "available": False, "reason": "no_machine", "detail": None, "machine": None,
+    })
 
 
 @router.get(_ORG + "/agents/{agent_id}/browser/handoff")
-async def agent_browser_handoff(org_id: str, agent_id: str):
-    if not _known_agent(org_id, agent_id):
-        return _error(404, "not_found", "没有这个角色")
-    return {"handoff": None}
+async def agent_browser_handoff(org_id: str, agent_id: str, request: Request):
+    return await _screen_status(org_id, agent_id, request, "browser", {"handoff": None})
 
 
 @router.get(_ORG + "/agents/{agent_id}/scopes")

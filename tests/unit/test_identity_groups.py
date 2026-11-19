@@ -111,6 +111,28 @@ def test_grants_and_invites_cannot_give_a_higher_act_level():
     assert R.invite_posts([], ["ops"], posts, ORDER, owner=True) == ["ops"]
 
 
+def test_grants_and_invites_cannot_give_a_higher_computer_level():
+    posts = {**POSTS, "ops": replace(POSTS["ops"], computer="all_computers")}
+    assert not R.may_grant(["leads"], "ops", posts, ORDER)
+    with pytest.raises(PermissionError):
+        R.invite_posts(["leads"], ["ops"], posts, ORDER)
+    assert R.may_grant([], "ops", posts, ORDER, owner=True)
+    assert R.invite_posts([], ["ops"], posts, ORDER, owner=True) == ["ops"]
+
+
+@pytest.mark.parametrize("level,expected", [
+    ("none", (False, False, False, False)),
+    ("own_browser", (True, False, False, False)),
+    ("own_computer", (True, True, False, False)),
+    ("all_browsers", (True, True, True, False)),
+    ("all_computers", (True, True, True, True)),
+])
+def test_screen_clearance_checks_kind_and_ownership(level, expected):
+    checks = (("browser", True), ("desktop", True), ("browser", False), ("desktop", False))
+    assert tuple(R.screen_level_allows(level, surface, own=own) for surface, own in checks) == expected
+    assert not R.screen_level_allows(level, "terminal", own=True)
+
+
 def test_posts_deleted_after_an_invite_was_sent_are_skipped():
     assert R.accepted_posts(["ops", "gone", R.EVERYONE, "ops"], POSTS) == ["ops"]
 

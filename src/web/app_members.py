@@ -16,7 +16,7 @@ from src.agents import identity_groups as rules
 from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE
 from src.agents.principal import Principal
 from src.web import app_views as views
-from src.workflow.members.registry import MemberRegistry
+from src.workflow.members.registry import MemberRegistry, Missing, Refused
 
 # 界面的权限键 → 内核的权限项
 _KEYS: Dict[str, str] = {
@@ -380,6 +380,17 @@ def member_agents(root: str, actor: Principal) -> List[Dict[str, Any]]:
 def member_staff(root: str, actor: Principal, agent_id: str) -> Optional[str]:
     """成员要找的这个 agent 是哪个专员；他看不到的返回 None（与「没有这个 agent」不作区分）。"""
     return next((agent["handle"] for agent in member_agents(root, actor) if agent["id"] == agent_id), None)
+
+
+def require_agent_screen_level(root: str, actor: Principal, agent_id: str, surface: str) -> None:
+    """Check eligibility for status. This endpoint has no bound computer or running screen."""
+    agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
+    agent = next((row for row in agents if row["id"] == agent_id), None)
+    if agent is None:
+        raise Missing("没有这个角色")
+    level = rules.COMPUTER_LEVELS[-1] if actor.is_owner else MemberRegistry(root).standing(actor.id)["computer"]
+    if not rules.screen_level_allows(level, surface, own=agent.get("ownerUserId") == actor.id):
+        raise Refused("当前身份组没有这个角色的屏幕权限")
 
 
 def agent_member_action_levels(root: str, actor: Principal, staff_id: str) -> Dict[str, Any]:

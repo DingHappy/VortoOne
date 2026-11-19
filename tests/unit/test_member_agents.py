@@ -83,6 +83,36 @@ def test_a_member_sees_the_agents_they_can_use_and_never_the_main_assistant(home
     assert member.post(f"{home['base']}/channels/{main_channel}/messages", json={"body": "你好"}).status_code == 404
 
 
+def test_screen_status_checks_live_computer_clearance_and_agent_visibility(home):
+    member = _join(home)
+    registry = MemberRegistry(home["root"])
+    base = home["base"]
+    agent = f"{base}/agents/{home['agent']['id']}"
+    private_agent = f"{base}/agents/{home['main']['id']}"
+
+    assert member.get(f"{agent}/browser").status_code == 403  # Own browser, but this agent belongs to the owner.
+    registry.change_group(OWNER_P, "everyone", computer="all_browsers")
+    browser = member.get(f"{agent}/browser")
+    assert browser.status_code == 200
+    assert browser.headers["cache-control"] == "no-store"
+    assert browser.json() == {"allowedDomains": None, "available": False, "reason": "no_machine",
+                              "detail": None, "machine": None}
+    assert member.get(f"{agent}/browser/handoff").json() == {"handoff": None}
+    assert member.get(f"{agent}/desktop").status_code == 403
+    assert member.get(f"{private_agent}/browser").status_code == 404
+    assert member.get(f"{agent}/browser", headers={"Origin": "https://other.example"}).status_code == 403
+
+    registry.change_group(OWNER_P, "everyone", computer="all_computers")
+    desktop = member.get(f"{agent}/desktop")
+    assert desktop.status_code == 200
+    assert not desktop.json()["available"] and not desktop.json()["canControl"]
+    registry.change_group(OWNER_P, "everyone", computer="none")
+    denied = member.get(f"{agent}/browser/handoff")
+    assert denied.status_code == 403 and denied.headers["cache-control"] == "no-store"
+    assert member.get(f"{agent}/desktop").status_code == 403
+    assert home["owner"].get(f"{agent}/desktop").status_code == 200
+
+
 def test_none_on_an_agent_hides_it(home):
     member = _join(home)
     MemberRegistry(home["root"]).set_act_level_on(OWNER_P, home["staff"]["id"], member.member_id, "none")

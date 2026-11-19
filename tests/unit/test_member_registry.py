@@ -217,6 +217,34 @@ def test_invitation_groups_must_be_grantable_and_deleted_ones_are_skipped(reg):
     assert reg.snapshot()["members"][who]["invited_by"] == inviter
 
 
+@pytest.mark.parametrize("legacy", [False, True])
+def test_invitation_rechecks_the_issuers_computer_level_at_acceptance(reg, legacy):
+    manager = reg.create_group(OWNER_P, "招募", items=["space.invite"], computer="all_computers")
+    viewing = reg.create_group(OWNER_P, "屏幕权限", computer="all_computers")
+    issuer = join(reg, groups=[manager])
+    invitation, token = reg.invite(member(issuer), groups=[viewing], now=T0)
+    if legacy:
+        with reg._change() as state:
+            state["invitations"][invitation].pop("by_kind")
+    assert reg.invitation(token, now=T0)["groups"] == [viewing]
+
+    reg.change_group(OWNER_P, manager, computer="all_browsers")
+    assert reg.invitation(token, now=T0) is None
+    with pytest.raises(Missing, match="邀请权限已变化"):
+        reg.accept_invitation(token, "新成员", now=T0)
+    assert set(reg.snapshot()["members"]) == {issuer}
+
+
+def test_invitation_from_a_removed_member_expires_immediately(reg):
+    recruiter = reg.create_group(OWNER_P, "招募", items=["space.invite"])
+    issuer = join(reg, groups=[recruiter])
+    _, token = reg.invite(member(issuer), now=T0)
+    reg.remove_member(OWNER_P, issuer)
+    assert reg.invitation(token, now=T0) is None
+    with pytest.raises(Missing):
+        reg.accept_invitation(token, "新成员", now=T0)
+
+
 def test_only_the_sender_or_a_member_manager_revokes(reg):
     inviter_group = reg.create_group(OWNER_P, "招募", items=["space.invite"])
     inviter, other = join(reg, groups=[inviter_group]), join(reg, groups=[inviter_group], name="小李")
