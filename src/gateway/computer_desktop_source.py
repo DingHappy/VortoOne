@@ -46,14 +46,16 @@ async def _close(process: asyncio.subprocess.Process) -> None:
         await drain
 
 
-async def _share(session, config: dict, generation: str, sharing, allow_control: bool = False) -> None:
+async def _share(session, config: dict, generation: str, sharing, allow_control: bool = False,
+                 *, stopped: asyncio.Event) -> None:
     # This is the native app's computer-connections directory. The child inherits
     # the descriptor so a connector crash cannot release control before it exits.
     with desktop_lease_file(Path.cwd()) if allow_control else nullcontext() as lease:
-        await _share_display(session, config, generation, sharing, lease)
+        await _share_display(session, config, generation, sharing, lease, stopped)
 
 
-async def _share_display(session, config: dict, generation: str, sharing, lease: int | None) -> None:
+async def _share_display(session, config: dict, generation: str, sharing, lease: int | None,
+                         stopped: asyncio.Event) -> None:
     allow_control = lease is not None
     process = await asyncio.create_subprocess_exec(
         config["desktop_capture"], "--share-control" if allow_control else "--share", stdin=asyncio.subprocess.PIPE,
@@ -68,6 +70,8 @@ async def _share_display(session, config: dict, generation: str, sharing, lease:
             if await asyncio.wait_for(process.wait(), 0.25) == 0:
                 return  # The local user dismissed the picker.
             raise BrowserPreviewDenied("desktop picker unavailable") from None
+        if stopped.is_set():
+            return
         if ready != (b"C" if allow_control else b"R") or process.returncode is not None:
             raise BrowserPreviewDenied("desktop picker did not accept a display")
         options = {"allow_control": True} if allow_control else {}
@@ -77,12 +81,12 @@ async def _share_display(session, config: dict, generation: str, sharing, lease:
             next_frame = clock()
             frame_expires = 0.0
             controlling = False
-            while process.returncode is None and clock() < deadline:
+            while not stopped.is_set() and process.returncode is None and clock() < deadline:
                 try:
                     command = await read_command(socket, min(1.0, deadline - clock()))
                 except asyncio.TimeoutError:
                     continue
-                if command is None or process.returncode is not None:
+                if stopped.is_set() or command is None or process.returncode is not None:
                     return
                 fields = {"type", "request_id", "surface_id"}
                 operation = command.get("type")
@@ -92,7 +96,7 @@ async def _share_display(session, config: dict, generation: str, sharing, lease:
                 if operation == "capture" and set(command) == fields:
                     await asyncio.sleep(max(0, next_frame - clock()))
                     remaining = deadline - clock()
-                    if remaining <= 0 or process.returncode is not None:
+                    if stopped.is_set() or remaining <= 0 or process.returncode is not None:
                         return
                     next_frame = clock() + MIN_FRAME_INTERVAL
                     reply = await asyncio.wait_for(_capture(process), min(FRAME_TIMEOUT - 0.3, remaining))
@@ -116,7 +120,7 @@ async def _share_display(session, config: dict, generation: str, sharing, lease:
                     else:
                         raise BrowserPreviewDenied("invalid desktop control request")
                     remaining = min(FRAME_TIMEOUT - 0.3, deadline - clock())
-                    if remaining <= 0 or process.returncode is not None:
+                    if stopped.is_set() or remaining <= 0 or process.returncode is not None:
                         return
                     process.stdin.write(native)
                     await asyncio.wait_for(process.stdin.drain(), remaining)
@@ -126,7 +130,7 @@ async def _share_display(session, config: dict, generation: str, sharing, lease:
                     if not controlling:
                         controlling = True
                         sharing("controlling")
-                if process.returncode is not None or clock() >= deadline:
+                if stopped.is_set() or process.returncode is not None or clock() >= deadline:
                     return
                 await asyncio.wait_for(socket.send_bytes(request.encode("ascii") + reply),
                                        min(FRAME_TIMEOUT, deadline - clock()))
