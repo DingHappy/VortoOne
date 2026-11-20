@@ -12,11 +12,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Optional, Set
 
 from src.gateway import app_protocol as F
 from src.gateway import protocol as P
 from src.web import app_views as views
+
+if TYPE_CHECKING:
+    from src.gateway.computer_browser_preview import BrowserPreview
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +253,19 @@ class MainChatBridge:
         if row is not None and row.get("rid") in self.runs:
             return pending_paired_browser(self.root, self.key, cid)
         return None
+
+    def paired_browser_run(self) -> tuple[str, BrowserPreview] | None:
+        """Project the current runtime's browser on the invited computer."""
+        found = None
+        for cid, row in self.confirms.items():
+            task = self.paired_browser_task(cid)
+            preview = task.preview() if task is not None else None
+            if preview is None:
+                continue
+            if found is not None:
+                return None
+            found = row["rid"], preview
+        return found
 
     def pending_confirmations(self) -> list[Dict[str, Any]]:
         """以会话侧为准：只有它还在等的确认才算待处理。"""

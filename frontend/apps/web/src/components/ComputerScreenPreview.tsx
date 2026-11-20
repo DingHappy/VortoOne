@@ -1,13 +1,14 @@
 import { Button } from "@agenteschat/ui";
 import { type FormEvent, type PointerEvent, useEffect, useRef, useState } from "react";
-import { type DesktopWatch, type PrivatePreviewKind, INPUT_TEXT_BYTES, watchControllableDesktop, watchPrivateScreen } from "../screen/private-browser-preview";
+import { type DesktopWatch, type PrivatePreviewKind, INPUT_TEXT_BYTES, watchControllableDesktop, watchPairedRunDisplay, watchPrivateScreen } from "../screen/private-browser-preview";
 
-export function ComputerScreenPreview({ orgId, machineId, name, kind, allowControl, close }: {
+export function ComputerScreenPreview({ orgId, machineId, name, kind, allowControl, agentRun, close }: {
   orgId: string;
   machineId: string;
   name: string;
   kind: PrivatePreviewKind;
   allowControl: boolean;
+  agentRun?: { agentId: string; runId: string };
   close: () => void;
 }) {
   const [image, setImage] = useState<string | null>(null);
@@ -20,7 +21,9 @@ export function ComputerScreenPreview({ orgId, machineId, name, kind, allowContr
   const latestImage = useRef<string | null>(null);
   const text = useRef<HTMLInputElement>(null);
   const screen = kind === "desktop" ? "桌面" : "浏览器";
-  const canControl = allowControl && kind === "desktop";
+  const agentId = agentRun?.agentId;
+  const runId = agentRun?.runId;
+  const canControl = allowControl && !agentRun && kind === "desktop";
   const canAct = Boolean(frameReady && image && image === loaded);
 
   useEffect(() => {
@@ -69,6 +72,8 @@ export function ComputerScreenPreview({ orgId, machineId, name, kind, allowContr
         control.current = watch;
         stop = watch.stop;
         document.addEventListener("visibilitychange", onHidden);
+      } else if (agentId !== undefined && runId !== undefined) {
+        stop = watchPairedRunDisplay({ ...options, agentId, runId });
       } else {
         stop = watchPrivateScreen({ ...options, kind });
       }
@@ -81,7 +86,7 @@ export function ComputerScreenPreview({ orgId, machineId, name, kind, allowContr
       document.removeEventListener("visibilitychange", onHidden);
       discard();
     };
-  }, [orgId, machineId, kind, canControl]);
+  }, [orgId, machineId, kind, canControl, agentId, runId]);
 
   function takeControl() {
     if (canAct && loaded === latestImage.current) control.current?.takeControl();
