@@ -33,7 +33,8 @@ async def _screenshot(browser) -> bytes:
 
 
 async def _publish(session, config: dict, generation: str, browser, sharing: Callable[[], None],
-                   *, task_code: str | None = None, allow_control: bool = False, allow_login: bool = False) -> None:
+                   *, stopped: asyncio.Event, task_code: str | None = None,
+                   allow_control: bool = False, allow_login: bool = False) -> None:
     clock = asyncio.get_running_loop().time
     options = {}
     if task_code is not None:
@@ -44,7 +45,7 @@ async def _publish(session, config: dict, generation: str, browser, sharing: Cal
         options["allow_login"] = True
     async with preview_link(session, config, generation, **options) as (socket, surface, deadline, site_origin):
         def current() -> bool:
-            return not socket.closed and browser.page_attached and clock() < deadline
+            return not stopped.is_set() and not socket.closed and browser.page_attached and clock() < deadline
 
         frame = None
         viewer = None
@@ -66,7 +67,7 @@ async def _publish(session, config: dict, generation: str, browser, sharing: Cal
                 request = await read_command(socket, min(1.0, deadline - clock()))
             except asyncio.TimeoutError:
                 continue
-            if request is None or not browser.page_attached:
+            if request is None or not current():
                 return
             fields = {"type", "request_id", "surface_id"}
             operation = request.get("type")
@@ -85,7 +86,7 @@ async def _publish(session, config: dict, generation: str, browser, sharing: Cal
             request_id = identifier(request["request_id"])
             await asyncio.sleep(max(0.0, next_capture - clock()))
             remaining = deadline - clock()
-            if remaining <= 0 or not browser.page_attached:
+            if not current():
                 return
             next_capture = clock() + MIN_FRAME_INTERVAL
             bound = min(FRAME_TIMEOUT - 0.3, remaining)
@@ -110,7 +111,8 @@ async def _publish(session, config: dict, generation: str, browser, sharing: Cal
 
 
 async def _share(session, config: dict, generation: str, sharing: Callable[[], None],
-                 task_code: str | None = None, allow_control: bool = False, allow_login: bool = False) -> None:
+                 task_code: str | None = None, allow_control: bool = False, allow_login: bool = False,
+                 *, stopped: asyncio.Event) -> None:
     from src.browser.cdp import CdpBrowser, find_browser
 
     executable = find_browser()
@@ -120,11 +122,12 @@ async def _share(session, config: dict, generation: str, sharing: Callable[[], N
         browser = CdpBrowser(executable, Path(profile), private_preview=True)
         try:
             await asyncio.wait_for(browser.start(), 10)
-            if not browser.page_attached:
+            if stopped.is_set() or not browser.page_attached:
                 return
             await asyncio.wait_for(_set_viewport(browser, 1), 2)
-            await _publish(session, config, generation, browser, sharing,
-                           task_code=task_code, allow_control=allow_control, allow_login=allow_login)
+            if not stopped.is_set():
+                await _publish(session, config, generation, browser, sharing, stopped=stopped,
+                               task_code=task_code, allow_control=allow_control, allow_login=allow_login)
         finally:
             await browser.close()
 
