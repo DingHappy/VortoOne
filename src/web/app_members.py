@@ -383,7 +383,7 @@ def member_staff(root: str, actor: Principal, agent_id: str) -> Optional[str]:
 
 
 def require_agent_screen_level(root: str, actor: Principal, agent_id: str, surface: str) -> None:
-    """Check eligibility for status. This endpoint has no bound computer or running screen."""
+    """Check role visibility and clearance before looking up a live screen binding."""
     agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
     agent = next((row for row in agents if row["id"] == agent_id), None)
     if agent is None:

@@ -7756,7 +7756,9 @@ export interface AgentBrowserSettings {
 
 /** `GET …/agents/{id}/desktop` (ADR 0058): the agent's desktop as this person sees it. */
 export interface DesktopStatus {
-  /** Whether it can be shown now, else why (`reason`). */
+  /** Current verified paired-browser run, including any display shared separately by that computer. */
+  pairedRun?: { runId: string; machineId: string; machineName: string; displayShared: boolean };
+  /** Whether the native desktop protocol can show its screen now, else why (`reason`). */
   available: boolean;
   /** `no_desktop`, `no_computer`, `offline`, `other_server`, `runner_outdated`, `not_allowed` (its switch is off), `desktop_unavailable`. */
   reason: string | null;

@@ -33,7 +33,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 5
+API_CONTRACT = 6
 MIN_API = 1
 
 
@@ -1908,19 +1908,63 @@ async def agent_holds(org_id: str, agent_id: str):
     return {"holds": [], "canStop": False}
 
 
-async def _screen_status(org_id: str, agent_id: str, request: Request, surface: str, unavailable: dict):
+async def _screen_status(org_id: str, agent_id: str, request: Request, surface: str, status: dict, *, project=None):
     root = _root(org_id)
     actor = _who(request, root)
     if actor is None:
         response = _error(403, "forbidden", _NOT_MEMBER)
     else:
-        def read_status():
-            app_members.require_agent_screen_level(root, actor, agent_id, surface)
-            return JSONResponse(unavailable)
-
-        response = await _members_call(read_status)
+        response = await _members_call(lambda: app_members.require_agent_screen_level(root, actor, agent_id, surface))
+        if response is None:
+            extra = await project(root, agent_id, request) if project is not None and actor.is_owner else {}
+            response = JSONResponse({**status, **extra})
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+def _paired_desktop_run(root: str, agent_id: str):
+    if agent_id != views.main_agent_id(root):
+        return None
+    bridge = existing_bridge(root)
+    return bridge.paired_browser_run() if bridge is not None else None
+
+
+def _run_display(browser):
+    from src.gateway.computer_browser_preview import browser_previews
+
+    connection = browser.connection
+    display = browser_previews.find(connection.root, connection.binding["connector_id"], "desktop")
+    return display if display is not None and display.connection is connection else None
+
+
+async def _paired_desktop_status(root: str, agent_id: str, request: Request):
+    from src.gateway.connected_computers import ComputerDenied, ComputerUnavailable
+    from src.web.routers.computers import live_private_preview_allowed, private_screen_viewer
+
+    if request.query_params:
+        return {}
+    binding = _paired_desktop_run(root, agent_id)
+    if binding is None:
+        return {}
+    run_id, browser = binding
+    try:
+        viewer = await asyncio.to_thread(private_screen_viewer, request, root)
+        if viewer is None or not viewer[0].is_owner:
+            return {}
+        connection = browser.connection
+        machine_id = connection.binding["connector_id"]
+        row = next((item for item in await asyncio.to_thread(connection.store.list)
+                    if item["connector_id"] == machine_id and item["active"]), None)
+        if row is None or not await live_private_preview_allowed(request, root, viewer, browser):
+            return {}
+        display = _run_display(browser)
+        sharing = display is not None and await live_private_preview_allowed(request, root, viewer, display)
+        if _paired_desktop_run(root, agent_id) != binding:
+            return {}
+        return {"pairedRun": {"runId": run_id, "machineId": machine_id, "machineName": row["name"],
+                              "displayShared": sharing}}
+    except (ComputerDenied, ComputerUnavailable, OSError, ValueError):
+        return {}
 
 
 @router.get(_ORG + "/agents/{agent_id}/desktop")
@@ -1929,7 +1973,54 @@ async def agent_desktop(org_id: str, agent_id: str, request: Request):
         "available": False, "reason": "no_desktop", "detail": None, "running": False, "startedAt": None,
         "controllerUserId": None, "handoff": None, "viewers": 0, "canControl": False, "held": False,
         "browserOnDesktop": False,
-    })
+    }, project=_paired_desktop_status)
+
+
+@router.websocket(_ORG + "/agents/{agent_id}/desktop/paired-preview/{run_id}")
+async def watch_paired_role_desktop(socket: WebSocket, org_id: str, agent_id: str, run_id: str):
+    from src.gateway.audit import append_audit
+    from src.gateway.computer_browser_preview import serve_viewer
+    from src.gateway.connected_computers import ComputerDenied, ComputerUnavailable
+    from src.web.routers.computers import (
+        has_owner_browser_session, live_private_preview_allowed, private_screen_viewer,
+    )
+
+    root = os.getcwd()
+    viewing = False
+    try:
+        if org_id != views.home_id(root) or socket.query_params or not has_owner_browser_session(socket):
+            return
+        current = _paired_desktop_run(root, agent_id)
+        if current is None or current[0] != run_id:
+            return
+        _, browser = current
+        display = _run_display(browser)
+        viewer = private_screen_viewer(socket, root)
+        if display is None or viewer is None or not viewer[0].is_owner:
+            return
+
+        async def allowed():
+            return (has_owner_browser_session(socket) and _paired_desktop_run(root, agent_id) == current
+                    and _run_display(browser) is display
+                    and await live_private_preview_allowed(socket, root, viewer, display)
+                    and _paired_desktop_run(root, agent_id) == current)
+
+        if not await allowed() or not display.begin_viewing():
+            return
+        viewing = True
+        if await asyncio.to_thread(append_audit, root, {
+            "category": "decision", "decision": "allowed", "decision_source": "user", "operation_kind": "read",
+            "operation": "观看当前回合配对电脑的显示器", "actor_id": viewer[0].id, "run_id": run_id,
+            "connector_id": display.connection.binding["connector_id"], "surface_id": display.surface_id,
+        }):
+            await serve_viewer(socket, display.capture, allowed)
+    except (WebSocketDisconnect, ComputerDenied, ComputerUnavailable, RuntimeError, ValueError, OSError, asyncio.TimeoutError):
+        pass
+    finally:
+        if viewing:
+            display.end_viewing()
+        with suppress(WebSocketDisconnect, RuntimeError, OSError):
+            await socket.close(code=1008)
 
 
 @router.get(_ORG + "/agents/{agent_id}/browser")

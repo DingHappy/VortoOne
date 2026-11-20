@@ -3,12 +3,13 @@ import { entryButton, entryLine, entryState } from "@agenteschat/client/lib/agen
 import { computerName } from "@agenteschat/client/lib/computer";
 import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
 import { Button, Icon } from "@agenteschat/ui";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { stepText } from "@/components/browser/BrowserCard";
 import { useAgentComputer } from "@/components/computer/facts";
 import { KeptRunningRow } from "@/components/computer/KeptRunning";
 import { useOpenComputer } from "@/components/computer/open";
+import { ComputerScreenPreview } from "@/components/ComputerScreenPreview";
 import { useOrg } from "@/components/org-context";
 import { useSetupWait, useWaitReader } from "@/components/WorkspaceComputer";
 import { useDirectory } from "@/hooks/useDirectory";
@@ -29,11 +30,16 @@ const OLD_LINKS = ["browser", "desktop", "terminal"] as const;
  */
 export function ComputerNow() {
   const { t, i18n } = useTranslation();
-  const { org } = useOrg();
+  const { org, me } = useOrg();
   const dir = useDirectory(org.id);
   const toast = useToast();
   const { agent, g, openWork } = useAgentEdit();
-  const view = useAgentComputer(agent, { runs: true });
+  const ownsAssistant = org.role === "owner" && agent.ownerUserId === me.user.id && agent.handle === "assistant";
+  const view = useAgentComputer(agent, { runs: true, poll: ownsAssistant ? 3_000 : false });
+  const paired = ownsAssistant && view.desktopQ.isSuccess ? view.desktop?.pairedRun : undefined;
+  const shareKey = paired?.displayShared ? JSON.stringify([org.id, me.user.id, agent.id, paired.runId, paired.machineId]) : null;
+  const [watching, setWatching] = useState<string | null>(null);
+  useEffect(() => setWatching(null), [shareKey]);
   const openComputer = useOpenComputer();
   const actions = useBrowserHandoffMutations(org.id);
   const [asked, clearAsked] = useOpenParam("computer", OLD_LINKS);
@@ -51,6 +57,31 @@ export function ComputerNow() {
   const now = setupWait.now ?? requestNow;
   // Only for whoever may watch it; nothing while that loads, never one edition's words before the other's.
   if (view.forbidden || !view.ready || !f) return null;
+  if (paired) {
+    return (
+      <>
+        <section className="cmp-entry agp-frow" aria-label={t("agentComputer.title", g)}>
+          <span className="agp-cell__key"><Icon name="computer" size={16} /></span>
+          <small className="agp-frow__label">{t("agentPage.ficha.computer")}</small>
+          <span className="agp-frow__value">
+            {t("agentComputer.pairedRunComputer", { computer: paired.machineName })}
+            {" · "}
+            {t(shareKey ? "agentComputer.pairedDisplayReady" : "agentComputer.pairedDisplayWait")}
+          </span>
+          {shareKey && <span className="agp-frow__tail">
+            <Button size="sm" disabled={watching === shareKey} onClick={() => setWatching(shareKey)}>
+              {t("agentComputer.watchPairedDisplay")}
+            </Button>
+          </span>}
+        </section>
+        {shareKey && watching === shareKey &&
+          <ComputerScreenPreview key={shareKey} orgId={org.id} machineId={paired.machineId}
+            name={paired.machineName} kind="desktop" allowControl={false}
+            agentRun={{ agentId: agent.id, runId: paired.runId }} close={() => setWatching(null)} />}
+        <KeptRunningRow agentId={agent.id} />
+      </>
+    );
+  }
   const state = entryState(f, now);
   const last = view.steps.at(-1);
   const line = entryLine(t, state, {

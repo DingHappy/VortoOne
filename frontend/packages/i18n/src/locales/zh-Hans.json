@@ -18430,6 +18430,10 @@
     "screenOffHelp": "有人观看时屏幕会打开。"
   },
   "agentComputer": {
+    "pairedRunComputer": "本回合使用 {{computer}}",
+    "pairedDisplayReady": "已分享显示器",
+    "pairedDisplayWait": "等待本机分享显示器",
+    "watchPairedDisplay": "查看显示器",
     "title": "{{name}} 的电脑",
     "title_female": "{{name}} 的电脑",
     "open": "打开",

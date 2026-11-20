@@ -407,7 +407,7 @@ async def _publish_private_preview(socket: WebSocket, kind: PreviewKind) -> None
             await socket.close(code=1008)
 
 
-def _screen_viewer(connection: HTTPConnection, root: str) -> tuple[Principal, object | None] | None:
+def private_screen_viewer(connection: HTTPConnection, root: str) -> tuple[Principal, object | None] | None:
     token = get_api_token()
     if not token:
         return None
@@ -426,10 +426,10 @@ def _private_view_allowed(connection, root, viewer, binding, kind: PreviewKind):
         level = MemberRegistry(root).standing(member_id)["computer"]
         if not screen_level_allows(level, kind, own=True):
             return False
-    return _screen_viewer(connection, root) == viewer
+    return private_screen_viewer(connection, root) == viewer
 
 
-async def _live_preview_allowed(connection: HTTPConnection, root: str, viewer: tuple[Principal, object | None],
+async def live_private_preview_allowed(connection: HTTPConnection, root: str, viewer: tuple[Principal, object | None],
                                 preview: BrowserPreview) -> bool:
     _, owner_epoch = viewer
     return (await preview.live()
@@ -444,13 +444,13 @@ async def _available_preview(request: Request, root: str, member_id: str | None,
     if preview is None or preview.task is not None or not preview.active():
         return None
     try:
-        viewer = await asyncio.to_thread(_screen_viewer, request, root)
+        viewer = await asyncio.to_thread(private_screen_viewer, request, root)
         if viewer is None:
             return None
         actor, _ = viewer
         if (actor.id if actor.is_member else None) != member_id:
             return None
-        return preview if await _live_preview_allowed(request, root, viewer, preview) else None
+        return preview if await live_private_preview_allowed(request, root, viewer, preview) else None
     except (ComputerDenied, ComputerUnavailable, Missing, OSError, ValueError):
         return None
 
@@ -473,14 +473,14 @@ async def _watch_private_preview(socket: WebSocket, org_id: str, machine_id: str
         if (org_id != views.home_id(root) or not _ID.fullmatch(machine_id) or socket.query_params
                 or not _secure(socket) or len(socket.headers.getlist('origin')) != 1 or not _same_origin(socket)):
             return
-        viewer = await asyncio.to_thread(_screen_viewer, socket, root)
+        viewer = await asyncio.to_thread(private_screen_viewer, socket, root)
         preview = browser_previews.find(root, machine_id, kind)
         if viewer is None or preview is None or preview.task is not None:
             return
         actor, _ = viewer
 
         async def allowed():
-            return await _live_preview_allowed(socket, root, viewer, preview)
+            return await live_private_preview_allowed(socket, root, viewer, preview)
 
         if not await allowed() or not preview.begin_viewing():
             return

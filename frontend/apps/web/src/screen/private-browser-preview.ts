@@ -60,6 +60,14 @@ export function watchPrivateScreen({ machineId, kind = "browser", ...options }: 
   return watchBrowserFrames(options, `machines/${encodeURIComponent(machineId)}/${kind}-preview`).stop;
 }
 
+export function watchPairedRunDisplay({ agentId, runId, ...options }: PreviewOptions & {
+  agentId: string;
+  runId: string;
+}): () => void {
+  const path = "agents/" + encodeURIComponent(agentId) + "/desktop/paired-preview/" + encodeURIComponent(runId);
+  return watchBrowserFrames(options, path).stop;
+}
+
 export function watchHandoffBrowser({ approvalId, ...options }: PreviewOptions & { approvalId: string }): () => void {
   return watchBrowserFrames(options, `approvals/${encodeURIComponent(approvalId)}/browser-preview/watch`).stop;
 }

@@ -1904,6 +1904,10 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/desktop/paired-preview/{run_id}",
+    "methods": []
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/member-action-levels",
     "methods": [
       "GET"

@@ -870,6 +870,151 @@ async def test_paired_browser_follows_the_selected_computer_and_original_turn(ap
             await asyncio.wait_for(serving, 3)
 
 
+@pytest.mark.parametrize("app_home", ["native"], indirect=True)
+@pytest.mark.parametrize("ending", ["turn", "replacement", "revocation"])
+async def test_role_display_uses_the_current_paired_browser_run(app_home, tmp_path, monkeypatch, ending):
+    import json
+    import socket
+    from contextlib import AsyncExitStack
+
+    import aiohttp
+    import uvicorn
+
+    from src.agents import web_fetch
+    from src.agents.identity_groups import ADMINS
+    from src.gateway.computer_protocol import hello
+    from src.gateway.connected_computers import ConnectedComputers
+    from src.web import app_views
+    from src.web.auth import SESSION_COOKIE
+    from src.web.member_auth import MEMBER_COOKIE
+    from src.web.server import app
+    from src.workflow.members.registry import MemberRegistry
+    from tests.unit.test_computer_browser_preview import OWNER_ACTOR, _image
+    from tests.unit.test_computer_web import OWNER, browser, claim_native_home, join_member
+
+    monkeypatch.setenv("VORTOONE_API_TOKEN", OWNER)
+    monkeypatch.setattr(web_fetch, "refusal_reason", lambda _host: "")
+    root = str(tmp_path)
+    home = {"base": app_home["base"], "root": root, "app": app}
+    claim_native_home(home, monkeypatch)
+    admin, admin_id = join_member(home, browser(home, owner=True), "admin@example.test")
+    MemberRegistry(root).set_member_groups(OWNER_ACTOR, admin_id, [ADMINS])
+    member_cookie = admin.cookies[MEMBER_COOKIE]
+    store = ConnectedComputers(root)
+    machine_id, other_id = "a" * 32, "b" * 32
+    chosen = store.pair(store.create_pairing()["code"], machine_id, "Chosen display computer")
+    other = store.pair(store.create_pairing()["code"], other_id, "Another computer")
+
+    class Model:
+        async def chat(self, *_args, **_kwargs):
+            return {"content": json.dumps({"tool": "browser_paired_handoff", "args": {"origin": "https://example.test"}})}
+
+    monkeypatch.setattr(app_home["agent"], "_llm", Model())
+    monkeypatch.setattr(app_home["agent"], "_native", False)
+    agent_id = app_views.main_agent_id(root)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        origin = f"http://127.0.0.1:{listener.getsockname()[1]}"
+        base = origin + home["base"]
+        desktop = f"{base}/agents/{agent_id}/desktop"
+        server = uvicorn.Server(uvicorn.Config(app, lifespan="off", log_level="critical",
+                                              log_config=None, access_log=False))
+        serving = asyncio.create_task(server.serve(sockets=[listener]))
+        try:
+            await _until(lambda: server.started)
+            async with AsyncExitStack() as stack:
+                client = await stack.enter_async_context(aiohttp.ClientSession(trust_env=False))
+                owner_headers = {"Origin": origin, "Cookie": f"{SESSION_COOKIE}={OWNER}"}
+                admin_headers = {"Origin": origin, "Cookie": f"{MEMBER_COOKIE}={member_cookie}"}
+
+                async def connect(grant):
+                    headers = {"Authorization": "Bearer " + grant["token"]}
+                    control = await stack.enter_async_context(client.ws_connect(origin + "/api/computers/ws", headers=headers))
+                    await control.send_json(hello(grant))
+                    return headers, (await control.receive_json(timeout=2))["generation"]
+
+                async def publish(headers, generation, kind, task_code=None):
+                    stream = await stack.enter_async_context(client.ws_connect(
+                        origin + f"/api/computers/{kind}-preview", headers=headers))
+                    offer = {"type": "offer", "generation": generation, "surface_id": "c" * 32}
+                    if task_code is not None:
+                        offer["task_code"] = task_code
+                    await stream.send_json(offer)
+                    assert (await stream.receive_json(timeout=2))["type"] == "offered"
+                    return stream
+
+                async def status(headers=owner_headers):
+                    async with client.get(desktop, headers=headers) as reply:
+                        assert reply.headers["Cache-Control"] == "no-store"
+                        return reply.status, await reply.json()
+
+                headers, generation = await connect(chosen)
+                other_headers, other_generation = await connect(other)
+                await publish(other_headers, other_generation, "desktop")
+                assert "pairedRun" not in (await status())[1]
+
+                async with client.post(f"{base}/channels/{app_home['channel']}/messages",
+                                       headers=owner_headers, json={"body": "在配对电脑核对网页"}) as reply:
+                    assert reply.status == 200
+                events = app_home["socket"]
+                await _until(lambda: events.events("approval.created"))
+                approval = events.events("approval.created")[0]["approval"]
+                run_id = approval["runId"]
+                approval_path = f"{base}/approvals/{approval['id']}/paired-browser"
+                async with client.post(approval_path, headers=owner_headers, json={"machineId": machine_id}) as reply:
+                    assert reply.status == 200
+                    code = (await reply.json())["code"]
+                assert "pairedRun" not in (await status())[1]
+                await publish(headers, generation, "browser", code)
+                binding = {"runId": run_id, "machineId": machine_id, "machineName": "Chosen display computer"}
+                assert (await status())[1]["pairedRun"] == {**binding, "displayShared": False}
+                publisher = await publish(headers, generation, "desktop")
+                assert (await status())[1]["pairedRun"] == {**binding, "displayShared": True}
+
+                denied, hidden = await status(admin_headers)
+                assert denied in (403, 404) and "pairedRun" not in hidden
+                assert "pairedRun" not in (await status({"Authorization": f"Bearer {OWNER}"}))[1]
+
+                watch = desktop + "/paired-preview/" + run_id
+                for url, auth in [(watch, admin_headers), (watch, {**owner_headers, "Origin": "https://different.test"}),
+                                  (watch + "-stale", owner_headers)]:
+                    with pytest.raises(aiohttp.WSServerHandshakeError) as denied:
+                        await client.ws_connect(url, headers=auth)
+                    assert denied.value.status == 403
+                async with client.ws_connect(watch, headers=owner_headers) as viewer:
+                    assert (await viewer.receive_json(timeout=2))["type"] == "ready"
+                    await viewer.send_json({"type": "next"})
+                    capture = await publisher.receive_json(timeout=2)
+                    await publisher.send_bytes(capture["request_id"].encode("ascii") + _image())
+                    assert await viewer.receive_bytes(timeout=2) == _image()
+                    await viewer.send_json({"type": "take_control"})
+                    assert (await viewer.receive(timeout=2)).type == aiohttp.WSMsgType.CLOSE
+
+                await asyncio.sleep(0.525)
+                async with client.ws_connect(watch, headers=owner_headers) as viewer:
+                    assert (await viewer.receive_json(timeout=2))["type"] == "ready"
+                    await viewer.send_json({"type": "next"})
+                    capture = await publisher.receive_json(timeout=2)
+                    if ending == "turn":
+                        async with client.post(f"{base}/runs/{run_id}/cancel", headers=owner_headers) as reply:
+                            assert reply.status == 204
+                        await _until(lambda: events.events("run.finished"))
+                    elif ending == "replacement":
+                        _, next_generation = await connect(chosen)
+                        assert next_generation != generation
+                    else:
+                        await asyncio.to_thread(store.revoke, machine_id)
+                    assert "pairedRun" not in (await status())[1]
+                    if ending == "turn":
+                        await publisher.send_bytes(capture["request_id"].encode("ascii") + _image())
+                    assert (await viewer.receive(timeout=4)).type == aiohttp.WSMsgType.CLOSE
+                    with pytest.raises(aiohttp.WSServerHandshakeError):
+                        await client.ws_connect(watch, headers=owner_headers)
+        finally:
+            server.should_exit = True
+            await asyncio.wait_for(serving, 5)
+
+
 def test_website_login_projection_requires_a_run_and_an_origin_without_credentials():
     from src.web import app_views as views
     pending = {"id": "test", "rid": "run", "operation_kind": "interact",
