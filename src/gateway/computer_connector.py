@@ -37,6 +37,7 @@ _TOKEN = re.compile(r"vcc_[A-Za-z0-9_-]{43}\Z")
 _CONFIG_BYTES = 8192
 _PARENT_COMMAND_BYTES = 192
 _HEARTBEAT_INTERVAL = 10
+_CONTROL_CLOSE_SECONDS = 1.0
 
 
 class ConnectorFailure(RuntimeError):
@@ -217,7 +218,7 @@ class _FileWork:
 
 async def _control(ws, session, config: dict, emit: Callable[[dict], None],
                    revocation_persisted: asyncio.Event, file_work: _FileWork,
-                   disconnected: asyncio.Event, previews: tuple[PreviewSource, ...]) -> bool:
+                   disconnected: asyncio.Event, previews: tuple[PreviewSource, ...], stop: asyncio.Event) -> bool:
     files = config.get("file_access", False)
     await ws.send_json(hello(config, deliveries=files))
     message = await ws.receive(timeout=15)
@@ -226,6 +227,8 @@ async def _control(ws, session, config: dict, emit: Callable[[dict], None],
     frame = decode_frame(message.data)
     generation = validate_welcome(frame, config, deliveries=files)
     selected = frame["protocol"]
+    if stop.is_set():
+        return False
     store = ComputerFiles(Path.cwd() / "file-access", config) if selected >= FILES_PROTOCOL else None
     _status(emit, config, "online")
     for preview in previews:
@@ -233,7 +236,7 @@ async def _control(ws, session, config: dict, emit: Callable[[dict], None],
     clock = asyncio.get_running_loop().time
     next_ping = clock()
     pong_deadline = None
-    while True:
+    while not stop.is_set():
         now = clock()
         if pong_deadline is not None and now >= pong_deadline:
             raise asyncio.TimeoutError
@@ -253,6 +256,8 @@ async def _control(ws, session, config: dict, emit: Callable[[dict], None],
             message = await ws.receive(timeout=max(0.001, deadline - clock()))
         except asyncio.TimeoutError:
             continue
+        if stop.is_set():
+            return False
         if message.type in {aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED,
                             aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR}:
             return False
@@ -302,6 +307,7 @@ async def _control(ws, session, config: dict, emit: Callable[[dict], None],
             next_ping = clock() + _HEARTBEAT_INTERVAL
         else:
             raise ComputerProtocolError("unexpected computer acknowledgement")
+    return False
 
 
 async def _retry_wait(stop: asyncio.Event, delay: float) -> bool:
@@ -315,12 +321,13 @@ async def _retry_wait(stop: asyncio.Event, delay: float) -> bool:
 async def connect(session, config: dict, emit: Callable[[dict], None], stop: asyncio.Event,
                   revocation_persisted: asyncio.Event, *,
                   browser_preview: BrowserPreviewSource | None = None,
-
                   retry_wait: Callable[[asyncio.Event, float], Awaitable[bool]] = _retry_wait,
                   jitter: Callable[[float, float], float] = random.uniform) -> None:
     delay = 1.0
     file_work = _FileWork(stop, config, session)
-    previews = tuple(preview for preview in (browser_preview,) if preview is not None)
+    previews = (browser_preview,) if browser_preview is not None else ()
+    ws_timeout = getattr(aiohttp, "ClientWSTimeout", None)
+    close_timeout = ws_timeout(ws_close=_CONTROL_CLOSE_SECONDS) if ws_timeout else _CONTROL_CLOSE_SECONDS
     try:
         while not stop.is_set():
             _status(emit, config, "connecting")
@@ -328,11 +335,11 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                 url = config["origin"].replace("https://", "wss://", 1).replace("http://", "ws://", 1) + "/api/computers/ws"
                 # aiohttp follows WS redirects internally. Trace veto below rejects them before sending a second request.
                 async with session.ws_connect(url, headers={"Authorization": "Bearer " + config["token"]},
-                                              max_msg_size=MAX_FRAME_BYTES, autoping=True) as ws:
+                                              max_msg_size=MAX_FRAME_BYTES, autoping=True, timeout=close_timeout) as ws:
                     disconnected = asyncio.Event()
                     try:
                         if await _control(ws, session, config, emit, revocation_persisted, file_work,
-                                          disconnected, previews):
+                                          disconnected, previews, stop):
                             return
                         delay = 1.0
                     finally:
@@ -349,6 +356,8 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                 return
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
                 pass
+            if stop.is_set():
+                break
             _status(emit, config, "disconnected")
             if await retry_wait(stop, min(60.0, max(1.0, delay * jitter(0.8, 1.2)))):
                 return
