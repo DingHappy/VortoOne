@@ -219,8 +219,88 @@ async def test_pull_only_source_obeys_affirmative_local_generation_and_closes(en
             assert commands[-1]["method"] == "Browser.close"
         finally:
             process.stdin.close()
-            await asyncio.wait_for(process.wait(), timeout=4)
+            try:
+                await asyncio.wait_for(process.wait(), timeout=4)
+            except asyncio.TimeoutError as error:
+                if process.returncode is None:
+                    process.kill()
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2)
+                raise AssertionError(f"connector did not close: {stdout[-1024:]!r} {stderr[-1024:]!r}") from error
             assert process.returncode == 0 and not await process.stderr.read()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Private preview is available on POSIX")
+async def test_stop_fences_the_request_that_completes_while_cancelling(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from src.browser import cdp
+    from src.gateway import computer_browser_source
+
+    receiving = asyncio.Event()
+    closed = asyncio.Event()
+    idle_after_share = asyncio.Event()
+    captures = []
+    states = []
+    surface = "a" * 32
+
+    class Browser:
+        page_attached = True
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def start(self):
+            pass
+
+        async def send(self, *_args):
+            pass
+
+        async def screenshot(self):
+            captures.append(True)
+            return _image()
+
+        async def close(self):
+            closed.set()
+
+    class Socket:
+        closed = False
+
+        async def send_bytes(self, _data):
+            pytest.fail("a frame was sent after local stop")
+
+    @asynccontextmanager
+    async def link(*_args, **_options):
+        yield Socket(), surface, asyncio.get_running_loop().time() + 30, None
+
+    async def read_command(*_args):
+        assert not receiving.is_set()
+        receiving.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            # A read and its timeout can finish while cancellation is being delivered.
+            return {"type": "capture", "request_id": "b" * 32, "surface_id": surface}
+
+    monkeypatch.setattr(cdp, "CdpBrowser", Browser)
+    monkeypatch.setattr(cdp, "find_browser", lambda: "synthetic-browser")
+    monkeypatch.setattr(computer_browser_source, "preview_link", link)
+    monkeypatch.setattr(computer_browser_source, "read_command", read_command)
+
+    def emit(frame):
+        state = frame["state"]
+        states.append(state)
+        if state == "idle" and "sharing" in states:
+            idle_after_share.set()
+
+    source = BrowserPreviewSource(BINDING, emit)
+    source.connected(None, GENERATION)
+    source.command(START, GENERATION)
+    await asyncio.wait_for(receiving.wait(), 2)
+    source.command(STOP, GENERATION)
+    await asyncio.wait_for(idle_after_share.wait(), 2)
+    await source.disconnect()
+    assert closed.is_set() and not captures
+    assert states == ["idle", "sharing", "idle"]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Chromium DevTools uses POSIX file descriptors")

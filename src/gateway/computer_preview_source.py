@@ -54,7 +54,7 @@ class PreviewSource:
         self._share = share
         self._connection: tuple[aiohttp.ClientSession, str] | None = None
         self._task: asyncio.Task | None = None
-        self._stopping = False
+        self._stop = asyncio.Event()
 
     def _status(self, generation: str, state: str) -> None:
         if self._connection is not None and self._connection[1] == generation:
@@ -75,20 +75,25 @@ class PreviewSource:
             else:
                 self._cancel()
         elif name == self._event + "_start" and self._task is None:
+            self._stop.clear()
+
+            def sharing(state="sharing"):
+                if not self._stop.is_set():
+                    self._status(generation, state)
+
             self._task = asyncio.create_task(self._share(
-                connection[0], self._config, generation,
-                lambda state="sharing": self._status(generation, state), *args, **options,
+                connection[0], self._config, generation, sharing, *args, stopped=self._stop, **options,
             ))
             self._task.add_done_callback(lambda finished: self._finished(finished, generation))
 
     def _cancel(self) -> None:
-        if self._task is not None and not self._stopping:
-            self._stopping = True
+        if self._task is not None and not self._stop.is_set():
+            # Keep the stop visible if a concurrent wait completes as cancellation arrives.
+            self._stop.set()
             self._task.cancel()
 
     def _finished(self, task: asyncio.Task, generation: str) -> None:
         self._task = None
-        self._stopping = False
         state = "idle" if task.cancelled() or task.exception() is None else "unavailable"
         self._status(generation, state)
 
