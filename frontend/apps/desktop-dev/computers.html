@@ -4,7 +4,24 @@
 <body><main>
 <header><p class="eyebrow">这台电脑 · VortoOne Dev</p><h1>连接的电脑</h1><p>把这台电脑的身份登记到你选择的家，由电脑主动保持连接。退出 App 后连接停止。</p></header>
 <aside class="notice"><strong>本机决定开放哪些文件夹</strong><p>配对后可为每个家单独授权读取或新建小文本文件。双方须支持文件协议，每次操作都需要在家中确认。</p></aside>
+<section id="task-browser" aria-labelledby="task-browser-title" hidden>
+  <div class="section-head"><h2 id="task-browser-title">任务专用浏览器</h2><button id="task-browser-toggle" type="button" class="secondary" disabled>启用任务浏览器</button></div>
+  <p class="muted">本机所有者可以在主助理对话中让它打开网站，每次打开都需要你确认。专用窗口会随回合关闭。</p>
+  <p id="task-browser-status" class="muted" role="status"></p>
+</section>
 <section aria-labelledby="connections-title"><div class="section-head"><h2 id="connections-title">已登记的连接</h2><button id="refresh" type="button" class="secondary">刷新</button></div><p id="auto-status" class="muted" role="status"></p><div id="connections" aria-live="polite"><p class="muted">正在读取本机连接…</p></div></section>
+<section id="paired-task-panel" aria-labelledby="paired-task-title" hidden>
+  <h2 id="paired-task-title">为当前任务打开浏览器</h2>
+  <p id="paired-task-home"></p>
+  <form id="paired-task-form">
+    <label for="paired-task-code">接管卡上的一次性任务码</label>
+    <input id="paired-task-code" type="text" autocomplete="off" spellcheck="false" maxlength="40" required>
+    <label><input id="paired-task-allow-control" type="checkbox"> 允许所有者从接管卡操作网页</label>
+    <label><input id="paired-task-allow-login" type="checkbox" disabled> 允许所有者完成一次本站登录（含验证码）</label>
+    <div class="actions"><button id="paired-task-open" type="submit">打开任务窗口</button><button id="paired-task-cancel" type="button" class="secondary">取消</button></div>
+  </form>
+  <p id="paired-task-status" role="status"></p>
+</section>
 <section id="folder-panel" aria-labelledby="folder-title" hidden>
   <h2 id="folder-title">本机文件夹</h2>
   <p id="folder-home"></p>

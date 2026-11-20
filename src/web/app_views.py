@@ -13,6 +13,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
+from urllib.parse import urlsplit
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
 
@@ -356,6 +357,32 @@ def approval_card(root: str, pending: Dict[str, Any]) -> Dict[str, Any]:
 CONFIRM_SECONDS = 300  # 与 routers/realtime._make_ws_confirm 的等待上限一致
 
 
+def _website_login(pending: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Project the original tool's site identity for an approval tied to a run."""
+    website = pending.get("website")
+    if (not pending.get("rid") or pending.get("operation_kind") != "interact"
+            or not isinstance(website, dict)
+            or set(website) != {"version", "action", "origin", "account_label", "device_mode"}
+            or type(website["version"]) is not int or website["version"] != 1 or website["action"] != "login"):
+        return None
+    origin, label, mode = website["origin"], website["account_label"], website["device_mode"]
+    if (mode not in ("desktop", "mobile") or not isinstance(origin, str) or not 1 <= len(origin) <= 512
+            or "\\" in origin or any(ord(char) <= 32 or ord(char) == 127 for char in origin)
+            or not isinstance(label, str) or not label.strip() or len(label) > 80
+            or any(ord(char) < 32 or ord(char) == 127 for char in label)):
+        return None
+    try:
+        url = urlsplit(origin)
+        if (url.scheme not in ("http", "https") or origin != f"{url.scheme}://{url.netloc}"
+                or not url.hostname or url.username is not None or url.password is not None or url.port == 0):
+            return None
+    except ValueError:
+        return None
+    return {"origin": origin, "accountLabel": label, "deviceMode": mode,
+            **({"pairedBrowser": True} if pending.get("paired_browser") is True else {}),
+            **({"canPreview": True, "livePreview": True} if pending.get("website_preview") is True else {})}
+
+
 def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
              decided: bool = False) -> Dict[str, Any]:
     """内核发出的一次确认，整理成界面的审批。外部内容的警示放进正文，不只藏在标记里。"""
@@ -366,7 +393,10 @@ def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
     detail = text
     if pending.get("tainted"):
         detail = "⚠️ 本回合读取过外部内容（网页、搜索或外部工具），请确认这是你自己要做的事。\n\n" + text
-    title = next((line.strip() for line in text.splitlines() if line.strip()), "需要你确认")[:120]
+    website = _website_login(pending)
+    website_title = "配对电脑网页核对" if website and website.get("pairedBrowser") else "专用浏览器登录核对"
+    title = website_title if website else next(
+        (line.strip() for line in text.splitlines() if line.strip()), "需要你确认")[:120]
     return {"id": str(pending["id"]), "runId": pending.get("rid"), "agentId": main_agent_id(root),
             "channelId": dm_channel_id(main_agent_id(root)), "threadId": None,
             "messageId": approval_card_id(str(pending["id"])),
@@ -375,7 +405,7 @@ def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
             "expiresAt": _iso(expires.timestamp()), "createdAt": created,
             "decidedByUserId": owner_id(root) if decided else None,
             "decidedAt": now_iso() if status != "pending" else None, "reason": None,
-            "canDecide": status == "pending"}
+            "canDecide": status == "pending", **({"websiteLogin": website} if website else {})}
 
 
 def main_dm(root: str) -> Dict[str, Any]:

@@ -756,7 +756,7 @@ export function ApproveButton({ approval, block, tip }: { approval: Approval; bl
   const decide = useDecideApproval(org.id);
   return (
     <HoldToApprove
-      label={t(`approval.approve.${approvalAction(approval)}`)}
+      label={approval.websiteLogin ? "我已完成，核对并继续" : t(`approval.approve.${approvalAction(approval)}`)}
       high={approvalRisk(approval) === "high"}
       block={block}
       id={approval.id}

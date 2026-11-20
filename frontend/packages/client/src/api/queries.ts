@@ -5081,15 +5081,19 @@ export function useSetComputerTarget(orgId: string) {
 
 // ── Connected computers ─────────────────────────────────────────────────────
 
-/** `pollMs`: also refetch this often (while waiting for a new machine to pair); events keep it live otherwise. */
-export const useMachines = (orgId: string, enabled = true, pollMs: number | false = false) => {
+/** Pairing and browser-preview status can poll while the device page is visible. */
+export const useMachines = (
+  orgId: string,
+  enabled = true,
+  pollMs: number | false | ((machines: Machine[] | undefined) => number | false) = false,
+) => {
   const api = useApi();
   return useQuery({
     queryKey: keys.machines(orgId),
     queryFn: () => api.machines.list(orgId),
     enabled,
     retry: false,
-    refetchInterval: pollMs,
+    refetchInterval: typeof pollMs === "function" ? (query) => pollMs(query.state.data) : pollMs,
     meta: { quiet: true },
   });
 };

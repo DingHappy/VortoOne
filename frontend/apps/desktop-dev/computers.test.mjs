@@ -130,5 +130,92 @@ test("automatic pairing failure is visible without implying an enabled connectio
   });
   assert.match(ui.element("auto-status").textContent, /自动配对未启用/);
   assert.match(text(ui.element("connections")), /尚未向任何家登记/);
-  assert.equal(ui.calls.length, 1);
+  assert.equal(ui.calls.filter(({ name }) => name === "computers_get").length, 1);
+});
+
+test("the computer card starts and stops preview through native commands for its registration", async () => {
+  let browserShare = "idle";
+  const ui = await page(async (name, args) => {
+    if (name === "computers_get") return { computers: [{ registrationId: HOME,
+      homeInstanceId: HOME, name: "This Mac", origin: "https://home.example",
+      state: "online", secretStorage: "keychain", enabled: true, browserShare }] };
+    assert.equal(name, "computer_browser_share");
+    assert.deepEqual({ ...args }, { registrationId: HOME, share: browserShare === "idle" });
+    browserShare = args.share ? "sharing" : "idle";
+  });
+  const card = () => ui.element("connections").children[0];
+  const button = (label) => card().children.find((child) => child.tag === "button" && child.textContent === label);
+  await button("打开并分享专用浏览器").fire("click");
+  assert.match(text(card()), /专用浏览器正在分享/);
+  await button("停止分享").fire("click");
+  assert.ok(button("打开并分享专用浏览器"));
+});
+
+test("the task browser uses native consent and renders the saved setting after a decline", async () => {
+  let enabled = false;
+  let declined = true;
+  const ui = await page(async (name, args) => {
+    if (name === "computers_get") return [];
+    if (name === "task_browser_enabled") return enabled;
+    assert.equal(name, "task_browser_set");
+    assert.equal(args.enabled, !enabled);
+    if (declined) throw "已取消启用";
+    enabled = args.enabled;
+  });
+  const toggle = ui.element("task-browser-toggle");
+  assert.equal(ui.element("task-browser").hidden, false);
+  assert.equal(toggle.textContent, "启用任务浏览器");
+  await toggle.fire("click");
+  assert.equal(toggle.textContent, "启用任务浏览器");
+  assert.equal(ui.element("task-browser-status").textContent, "已取消启用");
+
+  declined = false;
+  await toggle.fire("click");
+  assert.equal(toggle.textContent, "关闭任务浏览器");
+  assert.equal(ui.element("task-browser-status").textContent, "");
+  await toggle.fire("click");
+  assert.equal(toggle.textContent, "启用任务浏览器");
+  assert.equal(enabled, false);
+});
+
+test("a task code and local consent are sent to the selected registration and cleared before sharing", async () => {
+  const code = "a".repeat(32);
+  const consents = [];
+  const ui = await page(async (name, args, element) => {
+    if (name === "task_browser_enabled") return false;
+    if (name === "computers_get") return { computers: [{ registrationId: HOME,
+      homeInstanceId: HOME, name: "This Mac", origin: "https://home.example",
+      state: "online", secretStorage: "keychain", enabled: true, browserShare: "idle" }] };
+    assert.equal(name, "computer_browser_share");
+    assert.equal(args.registrationId, HOME);
+    assert.equal(args.share, true);
+    assert.equal(args.taskCode, code);
+    assert.equal(element("paired-task-code").value, "");
+    assert.equal(element("paired-task-allow-control").checked, false);
+    assert.equal(element("paired-task-allow-login").checked, false);
+    assert.equal(element("paired-task-allow-login").disabled, true);
+    consents.push([args.allowControl, args.allowLogin]);
+  });
+  await ui.element("connections").children[0].children.find((child) => child.textContent === "打开任务浏览器").fire("click");
+  assert.equal(ui.element("paired-task-panel").hidden, false);
+  ui.element("paired-task-code").value = "invalid";
+  await ui.element("paired-task-form").fire("submit");
+  assert.deepEqual(consents, []);
+  ui.element("paired-task-code").value = code.toUpperCase();
+  ui.element("paired-task-allow-login").checked = true;
+  await ui.element("paired-task-form").fire("submit");
+  assert.deepEqual(consents, [[undefined, undefined]]);
+  assert.match(ui.element("paired-task-status").textContent, /正在打开专用窗口/);
+  ui.element("paired-task-code").value = code;
+  ui.element("paired-task-allow-control").checked = true;
+  await ui.element("paired-task-form").fire("submit");
+  assert.deepEqual(consents, [[undefined, undefined], [true, undefined]]);
+  ui.element("paired-task-code").value = code;
+  const controls = ui.element("paired-task-allow-control");
+  controls.checked = true;
+  await controls.fire("change");
+  assert.equal(ui.element("paired-task-allow-login").disabled, false);
+  ui.element("paired-task-allow-login").checked = true;
+  await ui.element("paired-task-form").fire("submit");
+  assert.deepEqual(consents, [[undefined, undefined], [true, undefined], [true, true]]);
 });

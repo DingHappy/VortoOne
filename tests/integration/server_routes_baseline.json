@@ -2358,6 +2358,22 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/browser-preview",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/browser-preview/watch",
+    "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/paired-browser",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/refuse",
     "methods": [
       "POST"

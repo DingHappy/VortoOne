@@ -129,13 +129,13 @@ class MainChatBridge:
                              authorUserId=message["author"]["id"] if message["author"]["type"] == "person" else None)
 
     async def _confirm_opened(self, event: Dict[str, Any], rid: str) -> None:
-        from datetime import datetime, timezone
         cid = str(event.get("id") or "")
         if not cid or cid in self.confirms:      # 重连回放会再发一次同一个确认
             return
-        self.confirms[cid] = {"id": cid, "rid": rid or None, "text": event.get("text"),
-                              "tainted": event.get("tainted"), "operation_kind": event.get("operation_kind"),
-                              "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        pending = self.pending(cid)
+        if pending is None:
+            return
+        self.confirms[cid] = {**pending, "rid": rid or None}
         card = views.approval_card(self.root, self.confirms[cid])
         self.announced.add(card["id"])
         await self._emit("message.created", messageId=card["id"], message=card, agentRunId=rid or None)
@@ -161,7 +161,11 @@ class MainChatBridge:
 
     # ── 界面 → 会话 ───────────────────────────────────────────────────────────
 
-    async def post(self, body: str, client_id: Optional[str], *, file_owner: bool = False) -> Dict[str, Any]:
+    async def post(self, body: str, client_id: Optional[str], *, file_owner: bool = False,
+                   local_browser: bool = False, paired_browser: bool = False) -> Dict[str, Any]:
+        from src.gateway.computer_browser_preview import browser_previews
+        from src.gateway.computer_file_authority import OwnerTurn
+        from src.gateway.task_browser import task_browser_grant
         from src.web.routers import realtime
         if not views.model_connected():
             raise NoModel()
@@ -169,22 +173,25 @@ class MainChatBridge:
         if client_id:
             self.client_ids[rid] = client_id
         message = views.owner_message(self.root, rid, body, client_id=client_id)
-        owner_turn = None
+        browser_grant = task_browser_grant(self.root) if local_browser else None
+        paired_epoch = browser_previews.owner_epoch() if paired_browser else None
+        file_identity = None
         if file_owner:
-            from src.gateway.computer_file_authority import OwnerFileTurn
             from src.gateway.connected_computers import ConnectedComputers, ComputerUnavailable
             try:
                 identity = await asyncio.to_thread(ConnectedComputers(self.root).identity)
                 if identity.get("ownership_state") == "claimed":
-                    owner_turn = OwnerFileTurn(self.root, self.key, rid, identity["home_instance_id"],
-                                               identity["owner_subject"], identity["trust_epoch"])
+                    file_identity = identity["home_instance_id"], identity["owner_subject"], identity["trust_epoch"]
             except (ComputerUnavailable, OSError):
                 pass  # Ordinary chat can proceed when the home identity cannot be checked.
         event = {"type": P.AGENT, "text": body, "rid": rid, "mode": "plan"}
-        if owner_turn is None:
-            await realtime.client_message(self, event)
+        if file_identity is not None or browser_grant is not None:
+            await realtime.client_message(self, event, owner_turn=OwnerTurn(
+                self.root, self.key, rid, file_identity=file_identity, task_browser=browser_grant,
+                paired_browser_epoch=paired_epoch if file_identity is not None else None,
+            ))
         else:
-            await realtime.client_message(self, event, owner_turn=owner_turn)
+            await realtime.client_message(self, event)
         # 应答和实时/重读用同一条记录，不能用接收请求的时刻覆盖它的时间与顺序。
         recorded = next((row for row in views.main_messages(self.root, limit=400)
                          if row["id"] == message["id"]), None)
@@ -197,12 +204,28 @@ class MainChatBridge:
         await realtime.client_message(self, {"type": P.AGENT_CANCEL})
         return True
 
-    async def decide(self, cid: str, approve: bool, *, file_owner: bool = False) -> Optional[Dict[str, Any]]:
+    async def decide(self, cid: str, approve: bool, *, file_owner: bool = False,
+                     browser_owner: bool = False) -> Optional[Dict[str, Any]]:
         """主人的决定按原协议交回会话，范围固定为「仅这一次」。返回决定后的审批；确认已不在等则 None。"""
         from src.web.routers import realtime
         pending = self.pending(cid)
-        if pending is None or (realtime.requires_file_owner(cid) and not file_owner):
+        if pending is None or (realtime.requires_owner_confirmation(cid) and not file_owner):
             return None
+        paired = self.paired_browser_task(cid)
+        if pending.get("paired_browser") and paired is None:
+            return None
+        if paired is not None:
+            from src.gateway.paired_browser_task import PairedBrowserNotReady
+
+            if not browser_owner:
+                return None
+            if approve:
+                preview = paired.preview()
+                if preview is not None and preview.controlling:
+                    raise PairedBrowserNotReady("请先交还页面控制，再确认继续")
+                if (preview is None or not await preview.verify_site()
+                        or paired.preview() is not preview or preview.controlling or self.pending(cid) is None):
+                    raise PairedBrowserNotReady()
         self.decisions[cid] = approve
         event = {"type": P.AGENT_CONFIRM_RESPONSE, "id": cid, "ok": approve, "scope": "once"}
         if file_owner:
@@ -213,6 +236,20 @@ class MainChatBridge:
 
     def pending(self, cid: str) -> Optional[Dict[str, Any]]:
         return next((item for item in self.pending_confirmations() if item["id"] == cid), None)
+
+    def website_frame(self, cid: str):
+        from src.web.routers.realtime import pending_website_frame
+        row = self.confirms.get(cid)
+        if row is not None and row.get("rid") in self.runs:
+            return pending_website_frame(self.root, self.key, cid)
+        return None
+
+    def paired_browser_task(self, cid: str):
+        from src.web.routers.realtime import pending_paired_browser
+        row = self.confirms.get(cid)
+        if row is not None and row.get("rid") in self.runs:
+            return pending_paired_browser(self.root, self.key, cid)
+        return None
 
     def pending_confirmations(self) -> list[Dict[str, Any]]:
         """以会话侧为准：只有它还在等的确认才算待处理。"""
