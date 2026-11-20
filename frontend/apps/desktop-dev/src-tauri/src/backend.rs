@@ -420,6 +420,7 @@ fn configure(
     command.current_dir(home);
     command.env("PYTHONNOUSERSITE", "1");
     command.env("VORTOONE_WORKSPACE_SCOPE", "general");
+    command.env("VORTOONE_ENABLE_BROWSER_CONTROL", "0");
     command.env("VORTOONE_APP_UI_DIR", ui);
     command.env("VORTOONE_API_TOKEN", token);
     // 监护进程 pid：App 被强杀时后端据此自己退出，不留占着端口的孤儿进程
@@ -813,6 +814,7 @@ mod tests {
             .collect();
         assert_eq!(env["VORTOONE_API_TOKEN"].as_deref(), Some("tok"));
         assert_eq!(env["VORTOONE_WORKSPACE_SCOPE"].as_deref(), Some("general"));
+        assert_eq!(env["VORTOONE_ENABLE_BROWSER_CONTROL"].as_deref(), Some("0"));
         assert_eq!(env["VORTOONE_APP_UI_DIR"].as_deref(), Some("/ui"));
         assert_eq!(env["VORTOONE_CRON"].as_deref(), Some("0"));
         assert_eq!(

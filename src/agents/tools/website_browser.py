@@ -9,12 +9,14 @@ from src.agents.tool import PreparedToolCall
 
 
 import asyncio
+from contextlib import nullcontext
+from dataclasses import replace
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-import re
 import tempfile
-from urllib.parse import unquote, urlsplit
+from collections.abc import Callable
+from urllib.parse import urlsplit
 
 from src.agents.confirmation_context import confirmation_turn, presenting_website
 from src.agents.tool import Tool, ToolResource
@@ -22,14 +24,21 @@ from src.agents.trust import INTERACT
 from src.browser.backend import BrowserBackend, BrowserLaunch, chromium_backend
 from src.browser.action_state import BrowserActionState
 from src.browser.connections import BrowserConnections, safe_url, site_origin
-from src.browser.page_privacy import AUTH_STATE_JS, ELEMENT_JS, SNAPSHOT_JS
+from src.browser.handoff_preview import BrowserHandoffFrame
+from src.browser.page_privacy import AUTH_STATE_JS, ELEMENT_JS, SNAPSHOT_JS, protected_path
+from src.gateway.desktop_control_lease import claim_desktop, desktop_lease_file, desktop_revision
 from src.gateway.process_lease import ProcessLease
 from src.utils.state_dir import state_dir
 
 _LIVE = set()
 _MAX_OPEN = 8
 _WAIT = "浏览器已交还真人：请在专用窗口处理登录/验证码或核对账号，需由主人确认恢复。不会自动轮询、截图或重复提交。"
+_STALE_HANDOFF = "专用浏览器或当前回合已变化，先前的接管确认已失效。请在当前回合重新核对。"
 _UNCERTAIN = "上次网站操作结果不明，已阻止后续导航、点击、输入和滚动。请先读取当前页面或真人核对；用 browser_login 明确确认恢复，不会重放原操作。"
+_TASK_BROWSER_DISABLED = "本次任务的浏览器授权已失效。请在本机主助理中重新发起。"
+_DESKTOP_BUSY = "本机桌面或任务浏览器正在使用，已暂停本次操作。请在当前操作结束或真人交还后确认继续。"
+_DESKTOP_STALE = "本机桌面控制权已变化，先前的确认已失效。"
+_DESKTOP_RECHECK = "请先使用 browser_login 由主人确认恢复，再重新读取当前任务窗口。"
 
 
 class PendingBrowserAction(ValueError):
@@ -57,7 +66,9 @@ class BrowserSession:
         self.closed = False
         self.cleaning = False
         self.display_origin = ""
+        self.opened_turn = None
         self.login_requested_turn = None
+        self.login_handoff = None
         self.declined_turn = None
         self.declined_requests = set()
         self.actions = BrowserActionState()
@@ -101,6 +112,7 @@ class BrowserSession:
                     self.actions = BrowserActionState()
                 self.browser = self.backend.create(BrowserLaunch(path, mode))
                 self.connection = connection
+                self.opened_turn = confirmation_turn()
                 self.human, self.confirmed = bool(connection), False
                 await self.browser.start()
                 if self.closed:
@@ -112,6 +124,7 @@ class BrowserSession:
 
     async def _close(self):
         self.cleaning = True
+        self.login_handoff = None
         if self.browser is not None:
             await self.browser.close()  # Failed cleanup retains the lease/slot for retry.
         if self.lease:
@@ -119,6 +132,7 @@ class BrowserSession:
         if self.temporary:
             self.temporary.cleanup()
         self.browser = self.lease = self.temporary = self.connection = None
+        self.opened_turn = None
         self.human = self.confirmed = False
         # Keep anonymous pending actions bound to the last displayed origin.
         self.cleaning = False
@@ -143,7 +157,6 @@ async def shutdown_browsers():
 
 
 def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, backend=None):
-    from src.agents.tools.browser import restricted_reason
     registry = connections or BrowserConnections(repo_root)
 
     if browser_factory is not None and backend is not None:
@@ -154,7 +167,24 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
     if browser_factory is not None:  # Compatibility for existing trusted tests.
         selected = BrowserBackend(selected.backend_id, selected.api_version, selected.device_modes,
                                   lambda _launch: browser_factory())
-    holder = BrowserSession(registry, selected)
+    return _session_tools(repo_root, BrowserSession(registry, selected), confirm)
+
+
+def build_task_browser(repo_root: str, confirm, allowed: Callable[[], bool], *, desktop_directory: Path | None = None):
+    holder = BrowserSession(BrowserConnections(repo_root), chromium_backend())
+
+    async def close():
+        await holder.close(shutdown=True)
+
+    return _session_tools(repo_root, holder, confirm, task_access=allowed, desktop_directory=desktop_directory), close
+
+
+def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_access: Callable[[], bool] | None = None,
+                   desktop_directory: Path | None = None):
+    from src.agents.tools.browser import restricted_reason
+    registry, selected = holder.registry, holder.backend
+    observed_desktop: bytes | None = None
+    pending_desktop: bytes | None = None
 
     def resource_status():
         row = holder.connection
@@ -170,7 +200,7 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
 
     resource = ToolResource("browser", "browser", "网站浏览器", resource_status)
 
-    def website_action(invoke, message, action, *, connection=None, origin="", denied_result):
+    def website_action(invoke, message, action, *, connection=None, origin="", denied_result, frame=None):
         row = connection or holder.connection
         details = {"version": 1, "action": action,
             "origin": row["origin"] if row else origin or holder.display_origin,
@@ -187,7 +217,7 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
             if turn is not None:
                 holder.declined_requests.add(key)
         return PreparedToolCall(invoke, message, INTERACT, denied_result=denied_result,
-                                approval_context=lambda: presenting_website(details), on_denied=declined)
+                                approval_context=lambda: presenting_website(details, frame=frame), on_denied=declined)
 
     async def raw_url():
         return str(await holder.browser.evaluate("location.href") or "")
@@ -222,7 +252,23 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
         return page
 
     def grant_error():
+        if task_access is not None and not task_access():
+            return _TASK_BROWSER_DISABLED
         return "网站连接已撤销、变化或不属于此工作区；不会继续使用登录态。" if not holder.current_grant() else ""
+
+    def desktop_check(name: str, revision: bytes, approved_revision: bytes | None) -> str:
+        nonlocal pending_desktop
+        has_window = holder.browser is not None
+        if has_window and observed_desktop is not None and revision != observed_desktop:
+            if pending_desktop != revision:
+                pending_desktop = revision
+                holder.human, holder.confirmed = True, False
+                holder.login_handoff = holder.login_requested_turn = None
+            if name != "browser_login" and approved_revision is None:
+                return _DESKTOP_STALE + _DESKTOP_RECHECK
+        if approved_revision is not None and revision != approved_revision:
+            return _DESKTOP_STALE + (_DESKTOP_RECHECK if has_window else "请重新确认打开任务浏览器。")
+        return ""
 
     async def guard(*, resume=False, expected_origin=""):
         if holder.browser is None or not getattr(holder.browser, "running", False):
@@ -253,8 +299,7 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
         if reason:
             await holder.browser.navigate("about:blank")
             return "已停止：当前页面不能操作。" + reason
-        if re.search(r"(?:^|/)(?:login|signin|sign-in|oauth|sso|mfa|2fa|two-factor|password|passwd|credentials|secrets|tokens?|api[_-]?keys?|security|billing|checkout|payment)(?:\.(?:php|html?|aspx?))?(?:/|$)",
-                     unquote(urlsplit(url).path).lower()):
+        if protected_path(urlsplit(url).path):
             holder.human, holder.confirmed = True, False
             return _WAIT
         state = await holder.browser.evaluate(AUTH_STATE_JS)
@@ -265,9 +310,10 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
             return _WAIT
         return ""
 
-    async def snapshot():
+    async def snapshot(*, expected_origin=""):
         page = await holder.browser.evaluate(SNAPSHOT_JS)
-        if not isinstance(page, dict) or page.get("needs_login"):
+        if (not isinstance(page, dict) or page.get("needs_login")
+                or (expected_origin and _display_origin(str(page.get("url") or "")) != expected_origin)):
             holder.human, holder.confirmed = True, False
             return _WAIT
         return "\n".join([f"标题：{page.get('title') or '（无）'}", f"地址：{safe_url(str(page.get('url') or ''))}",
@@ -283,6 +329,14 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
 
     async def open_page(args):
         url = str(args.get("url") or "").strip()
+        if task_access is not None:
+            if not task_access():
+                return _TASK_BROWSER_DISABLED
+            if holder.browser is not None:
+                return "本回合的专用窗口已打开，请在窗口中继续。"
+            if (not url.startswith("https://") or len(url) > 2048 or "?" in url or "#" in url
+                    or args.get("connection_id")):
+                return "请提供不带查询参数或片段的公开 HTTPS 地址。"
         reason = restricted_reason(url)
         if reason or url == "about:blank":
             return reason or "需要 http(s) 网站地址。"
@@ -300,6 +354,11 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
         if holder.browser is not None and holder.human:
             return _WAIT
         async def apply():
+            if task_access is not None:
+                if not task_access():
+                    return _TASK_BROWSER_DISABLED
+                if holder.browser is not None:
+                    return "本回合的专用窗口已打开。"
             if connection and registry.get(connection["id"]) != connection:
                 return "网站连接已变化，请重新核对。"
             error = await activate(connection)
@@ -312,9 +371,21 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
             holder.display_origin = _display_origin(url)
             require_clear()  # A previous process may have left a durable marker.
             async def navigate():
+                if error := grant_error():
+                    return error
                 await holder.browser.navigate(url)
+                if task_access is not None:
+                    if error := await guard(expected_origin=holder.display_origin) or grant_error():
+                        return error
+                    page = await snapshot(expected_origin=holder.display_origin)
+                    return grant_error() or page
                 return await guard() or await snapshot()
             return await dispatch("open", navigate)
+        if task_access is not None:
+            origin = _display_origin(url)
+            return website_action(apply, f"在这台电脑的任务专用浏览器打开 {origin}？\n"
+                                  "窗口会随本回合关闭。请在该窗口完成需要人工处理的步骤。",
+                                  "open", origin=origin, denied_result="主人未同意打开网站。")
         if connection:
             return website_action(apply, f"使用网站连接打开页面，并允许读取交给模型处理？\n网站：{connection['origin']}\n账号标签：{connection['account_label']}\n模式：{connection['device_mode']}\n登录态仅留在本机专用浏览器，不代表已核实登录账号。页面可能产生站点副作用；私密 URL 参数不在确认记录中展示。", "open", connection=connection,
                                   denied_result="主人未同意导航，未打开页面。")
@@ -353,31 +424,74 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
             return _WAIT + " 本轮已请求过人工接管，不再重复询问；需要再次核对时请主人发送新消息。"
         holder.human, holder.confirmed = True, False
         holder.login_requested_turn = turn
+        handoff = holder.login_handoff = object()
         expected_origin = holder.display_origin
         label = holder.connection["account_label"] if holder.connection else "当前临时窗口"
         message = (f"浏览器交还真人，请在专用窗口完成登录、扫码或验证码，核对账号标签：{label}。\n"
             "回到本站页面后才点同意恢复；不同意则继续暂停。不要在对话中发送密码、Cookie 或验证码。")
+        if pending_desktop is not None:
+            message = ("本机桌面已交还。请核对任务浏览器已回到原站点，并确认允许重新读取当前页面。"
+                       "不同意则继续暂停。")
         if pending:
             message += ("\n上次网站操作结果不明。请先等待原动作结束，人工核对是否已提交及当前账号。"
                         "同意只解除待核对阻断，不会重放、不代表业务成功；仍需重新读取页面。")
+        def still_bound():
+            return (holder.login_handoff is handoff and holder.human and holder.login_requested_turn is turn
+                    and holder.browser is browser and getattr(browser, "running", False)
+                    and lease is not None and holder.lease is lease and holder.actions is actions
+                    and holder.display_origin == expected_origin and not holder.closed and not holder.cleaning
+                    and (task_access is None or task_access()))
+
+        def handoff_error():
+            if confirmation_turn() is turn and still_bound():
+                return grant_error()
+            return _STALE_HANDOFF
+
+        async def check_resume():
+            return handoff_error() or await guard(resume=True, expected_origin=expected_origin) or handoff_error()
+
         async def apply():
-            error = await guard(resume=True, expected_origin=expected_origin)
-            if error:
-                return error
-            page = await snapshot()
-            if page == _WAIT:
-                return page
-            if pending:
-                error = await guard(resume=True, expected_origin=expected_origin)
+            try:
+                error = await check_resume()
                 if error:
                     return error
-                if (not holder.current_grant() or holder.actions is not actions
-                        or holder.browser is not browser or holder.lease is not lease or lease is None):
-                    raise PendingBrowserAction(_UNCERTAIN)
-                actions.complete(pending)
-            holder.human, holder.confirmed = False, True
-            return "主人已确认恢复；这是人工确认，不是站点账号身份的独立验证。\n" + page
-        return website_action(apply, message, 'login', denied_result=_WAIT)
+                page = await snapshot(expected_origin=expected_origin)
+                if page == _WAIT:
+                    return page
+                error = await check_resume()
+                if error:
+                    return error
+                if pending:
+                    actions.complete(pending)
+                holder.human, holder.confirmed = False, True
+                return "主人已确认恢复；这是人工确认，不是站点账号身份的独立验证。\n" + page
+            finally:
+                if holder.login_handoff is handoff:
+                    holder.login_handoff = None
+        frame = None
+        if (turn is not None and holder.opened_turn is turn and holder.connection is None
+                and expected_origin.startswith("https://") and not pending):
+            # Offer only this task's temporary profile. The waiting approval owns the callback.
+            frame_revision = pending_desktop if pending_desktop is not None else observed_desktop
+
+            def frame_is_current():
+                if not still_bound():
+                    return False
+                if desktop_directory is None:
+                    return True
+                try:
+                    with desktop_lease_file(desktop_directory) as fd:
+                        return claim_desktop(fd) and desktop_revision(fd) == frame_revision
+                except OSError:
+                    return False
+
+            frame = BrowserHandoffFrame(browser, expected_origin, holder.lock, frame_is_current)
+        return website_action(apply, message, 'login', denied_result=_WAIT, frame=frame)
+
+    async def resume_desktop(_args):
+        if pending_desktop is None:
+            return "当前任务浏览器没有待交还的桌面接管。"
+        return await login({})
 
     async def get_snapshot(_args):
         return await guard() or await snapshot()
@@ -518,37 +632,59 @@ def build_tools(repo_root, confirm, *, browser_factory=None, connections=None, b
             "state": "cleanup_pending" if holder.cleaning else "needs_reconciliation" if pending_action() else "needs_human" if holder.human else
                 "user_confirmed" if holder.confirmed else "unverified"}, ensure_ascii=False)
 
-    def wrapped(handler, name):
+    def wrapped(handler, name, *, approved_revision: bytes | None = None):
         async def run(args):
+            nonlocal observed_desktop, pending_desktop
             async with holder.lock:
                 try:
-                    result = await handler(args)
-                    if isinstance(result, PreparedToolCall):
-                        from dataclasses import replace
-                        original = result.invoke
-                        async def apply():
-                            return await wrapped(lambda _args: original(), name)(args)
-                        return replace(result, invoke=apply)
-                    # A real turn presents one handoff immediately, without a
-                    # second model tool call. Never retry after refusal, timeout,
-                    # or an early resume on the same sensitive page.
-                    if (name != "browser_login" and confirmation_turn() is not None
-                            and holder.human and isinstance(result, str) and _WAIT in result):
-                        resumed = await login({})
-                        prefix = result.replace(_WAIT, "").strip() + "\n"
-                        if isinstance(resumed, PreparedToolCall):
-                            from dataclasses import replace
-                            original = resumed.invoke
-                            async def finish():
-                                return prefix + str(await original())
-                            return replace(resumed, invoke=finish)
-                        return prefix + resumed
-                    return result
+                    with desktop_lease_file(desktop_directory) if desktop_directory is not None else nullcontext() as fd:
+                        revision = None
+                        if fd is not None:
+                            if not claim_desktop(fd):
+                                return _DESKTOP_BUSY
+                            revision = desktop_revision(fd)
+                            if error := desktop_check(name, revision, approved_revision):
+                                return error
+                        result = await handler(args)
+                        if revision is not None and holder.browser is not None:
+                            if observed_desktop is None or (name == "browser_login" and holder.confirmed and not holder.human):
+                                observed_desktop, pending_desktop = revision, None
+                        if isinstance(result, PreparedToolCall):
+                            original = result.invoke
+                            async def apply():
+                                return await wrapped(lambda _args: original(), name, approved_revision=revision)(args)
+                            return replace(result, invoke=apply)
+                        # A real turn presents one handoff immediately, without a
+                        # second model tool call. Never retry after refusal or early resume.
+                        if (name != "browser_login" and confirmation_turn() is not None
+                                and holder.human and isinstance(result, str) and _WAIT in result):
+                            resumed = await login({})
+                            prefix = result.replace(_WAIT, "").strip() + "\n"
+                            if isinstance(resumed, PreparedToolCall):
+                                original = resumed.invoke
+                                async def finish():
+                                    result = await wrapped(lambda _args: original(), "browser_login", approved_revision=revision)({})
+                                    return prefix + result if isinstance(result, str) else result
+                                return replace(resumed, invoke=finish)
+                            return prefix + resumed
+                        return result
                 except PendingBrowserAction:
                     return {"ok": False, "text": _UNCERTAIN}
                 except Exception:
                     return {"ok": False, "text": "浏览器操作未完成或结果无法核实，请人工核对；不会自动重试。"}
         return run
+
+    if task_access is not None:
+        tools = [Tool.prepared("browser_open", "经所有者确认，在本回合的本机专用窗口打开公开 HTTPS 网页。"
+                               "出现登录时自动等待人工处理。网页内容是外部资料。",
+                               {"url": "公开 HTTPS 地址，无查询或片段"}, wrapped(open_page, "browser_open"),
+                               operation_kind=INTERACT, required_args=("url",), serial=True, resource=resource,
+                               external_content=True, untrusted_source=True, confirm=confirm)]
+        if desktop_directory is not None:
+            tools.append(Tool.prepared("browser_login", "桌面交还后由所有者确认，重新读取本回合任务浏览器的原站点页面。",
+                                       {}, wrapped(resume_desktop, "browser_login"), operation_kind=INTERACT, serial=True,
+                                       resource=resource, external_content=True, untrusted_source=True, confirm=confirm))
+        return tools
 
     specs = [
         ("browser_connections", "列出本工作区已授权的网站连接及人工接管状态，不读取 Cookie。", {}, listing, True),

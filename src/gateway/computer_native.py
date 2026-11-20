@@ -98,6 +98,8 @@ def read_bootstrap(root) -> None:
         if set(frame) != {"ticket", "parent_pid"}:
             raise ComputerNativeDenied("invalid native launch")
         register_bootstrap(root, frame["ticket"], frame["parent_pid"])
+        from src.gateway.task_browser import register_native_home
+        register_native_home(root)
     except (queue.Empty, ComputerProtocolError, KeyError):
         raise ComputerNativeDenied("invalid native launch") from None
 

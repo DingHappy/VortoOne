@@ -2118,6 +2118,15 @@ export interface Approval {
   /** "Merge PR #42 into main" (from the connector catalog). */
   title: string;
   detail: string;
+  /** A pending turn handed its dedicated browser back to a human on the runtime host. */
+  websiteLogin?: {
+    origin: string;
+    accountLabel: string;
+    deviceMode: "desktop" | "mobile";
+    canPreview?: boolean;
+    livePreview?: boolean;
+    pairedBrowser?: boolean;
+  };
   /** Exactly what will run if approved. */
   params: Record<string, unknown>;
   status: ApprovalStatus;
@@ -4820,6 +4829,11 @@ export interface Machine {
   kind?: MachineKind;
   /** Runner connected now (`machine.status` events). */
   online: boolean;
+  /** This signed-in pairer can watch an open private browser offer. Absent on older homes. */
+  browserPreviewAvailable?: boolean;
+  /** This signed-in pairer can watch one selected display on this computer. */
+  desktopPreviewAvailable?: boolean;
+  desktopControlAvailable?: boolean;
   /**
    * ADR 0161: the workspace's own computer is asleep in standby, offline by design: it wakes when something wants it,
    * and opens as it does. Absent from an older server: not in standby.
@@ -7742,7 +7756,9 @@ export interface AgentBrowserSettings {
 
 /** `GET …/agents/{id}/desktop` (ADR 0058): the agent's desktop as this person sees it. */
 export interface DesktopStatus {
-  /** Whether it can be shown now, else why (`reason`). */
+  /** Current verified paired-browser run, including any display shared separately by that computer. */
+  pairedRun?: { runId: string; machineId: string; machineName: string; displayShared: boolean };
+  /** Whether the native desktop protocol can show its screen now, else why (`reason`). */
   available: boolean;
   /** `no_desktop`, `no_computer`, `offline`, `other_server`, `runner_outdated`, `not_allowed` (its switch is off), `desktop_unavailable`. */
   reason: string | null;

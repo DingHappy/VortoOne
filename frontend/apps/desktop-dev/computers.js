@@ -5,7 +5,35 @@ let preview = null;
 let busy = false;
 let reading = false;
 let folderTarget = null;
+let pairedTaskTarget = null;
+const taskControl = element("paired-task-allow-control");
+const taskLogin = element("paired-task-allow-login");
+function resetTaskConsent() {
+  taskControl.checked = taskLogin.checked = false;
+  taskLogin.disabled = true;
+}
+taskControl.addEventListener("change", () => {
+  taskLogin.disabled = !taskControl.checked;
+  if (taskLogin.disabled) taskLogin.checked = false;
+});
 const states = { connecting: "正在连接", online: "已连接 · 全能力未就绪", disconnected: "当前未连接", revoked: "已停用", replaced: "连接已由另一进程接替", error: "连接不可用，请检查版本或重新配对" };
+const shareStates = {
+  idle: "打开并分享专用浏览器",
+  starting: "取消打开浏览器",
+  sharing: "停止分享",
+  stopping: "正在停止分享…",
+  unavailable: "重试分享专用浏览器",
+};
+const desktopShareStates = {
+  idle: "选择并分享显示器",
+  starting: "取消选择显示器",
+  starting_with_control: "取消选择显示器",
+  sharing: "停止桌面分享",
+  sharing_with_control: "停止桌面分享",
+  controlling: "停止桌面接管",
+  stopping: "正在停止桌面分享…",
+  unavailable: "重试桌面分享",
+};
 function message(error) { status.textContent = typeof error === "string" ? error : "操作未完成，请重试。"; }
 function node(tag, text, className) {
   const item = document.createElement(tag);
@@ -13,6 +41,52 @@ function node(tag, text, className) {
   if (className) item.className = className;
   return item;
 }
+function shareButton(record, state, label, command, allowControl = false) {
+  const action = node("button", label, "secondary");
+  action.type = "button";
+  action.disabled = state === "stopping";
+  action.addEventListener("click", async () => {
+    if (busy || action.disabled) return;
+    busy = true;
+    action.disabled = true;
+    status.textContent = "";
+    const share = state === "idle" || state === "unavailable";
+    try { await invoke(command, { registrationId: record.registrationId, share, ...(allowControl && { allowControl }) }); }
+    catch (error) { message(error); }
+    finally { busy = false; await refresh(); }
+  });
+  return action;
+}
+const taskBrowser = element("task-browser");
+const taskBrowserToggle = element("task-browser-toggle");
+const taskBrowserStatus = element("task-browser-status");
+let taskBrowserEnabled = null;
+
+async function readTaskBrowser() {
+  try {
+    taskBrowserEnabled = await invoke("task_browser_enabled");
+    taskBrowser.hidden = typeof taskBrowserEnabled !== "boolean";
+    taskBrowserToggle.textContent = taskBrowserEnabled ? "关闭任务浏览器" : "启用任务浏览器";
+    taskBrowserToggle.disabled = taskBrowser.hidden;
+  } catch {
+    taskBrowser.hidden = false;
+    taskBrowserToggle.disabled = true;
+    taskBrowserStatus.textContent = "任务浏览器设置暂时不可用。";
+  }
+}
+taskBrowserToggle.addEventListener("click", async () => {
+  if (taskBrowserToggle.disabled || typeof taskBrowserEnabled !== "boolean") return;
+  taskBrowserToggle.disabled = true;
+  taskBrowserStatus.textContent = "";
+  try {
+    await invoke("task_browser_set", { enabled: !taskBrowserEnabled });
+  } catch (error) {
+    taskBrowserStatus.textContent = typeof error === "string" ? error : "无法更改任务浏览器设置。";
+  }
+  await readTaskBrowser();
+});
+void readTaskBrowser();
+
 async function refresh() {
   if (reading || busy) return;
   reading = true;
@@ -42,6 +116,48 @@ async function refresh() {
           element("folder-choose").focus();
         });
         card.append(configure);
+        if (record.state === "online" && Object.hasOwn(shareStates, record.browserShare)) {
+          const share = record.browserShare === "idle" || record.browserShare === "unavailable";
+          card.append(shareButton(record, record.browserShare, shareStates[record.browserShare], "computer_browser_share"));
+          if (share) {
+            const task = node("button", "打开任务浏览器", "secondary");
+            task.type = "button";
+            task.addEventListener("click", () => {
+              if (busy) return;
+              pairedTaskTarget = record.registrationId;
+              element("paired-task-home").textContent = record.origin;
+              element("paired-task-panel").hidden = false;
+              element("paired-task-code").value = "";
+              resetTaskConsent();
+              element("paired-task-status").textContent = "";
+              element("paired-task-code").focus();
+            });
+            card.append(task);
+          }
+          if (record.browserShare === "sharing") {
+            card.append(node("p", "专用浏览器正在分享 · 最长 5 分钟", "muted"));
+          }
+          if (record.browserShare === "unavailable") {
+            card.append(node("p", "分享未能启动或已中断。请检查本机 Chromium 系浏览器、电脑连接和家的版本。", "muted"));
+          }
+        }
+        if (record.state === "online" && Object.hasOwn(desktopShareStates, record.desktopShare)) {
+          const state = record.desktopShare;
+          card.append(shareButton(record, state, desktopShareStates[state], "computer_desktop_share"));
+          if (state === "idle" || state === "unavailable") {
+            card.append(shareButton(record, state, "分享并允许接管", "computer_desktop_share", true));
+          }
+          if (state === "controlling") {
+            card.append(node("p", "配对人正在接管所选显示器", "muted"));
+          } else if (state === "sharing_with_control") {
+            card.append(node("p", "本次显示器分享已允许配对人接管 · 最长 5 分钟", "muted"));
+          } else if (state === "sharing") {
+            card.append(node("p", "所选显示器正在只读分享 · 最长 5 分钟", "muted"));
+          } else if (state === "unavailable") {
+            card.append(node("p", "桌面分享暂不可用。请检查 macOS 版本、屏幕录制权限及电脑连接。", "muted"));
+            card.append(node("p", "桌面接管需要 macOS 15.2 或更新版本及辅助功能权限。", "muted"));
+          }
+        }
       }
       const remove = node("button", "移除本机连接", "secondary");
       remove.type = "button";
@@ -59,6 +175,43 @@ async function refresh() {
   } catch (error) { message(error); }
   finally { reading = false; }
 }
+element("paired-task-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (busy || !pairedTaskTarget) return;
+  const input = element("paired-task-code");
+  const taskCode = input.value.replace(/\s+/g, "").toLowerCase();
+  const result = element("paired-task-status");
+  if (!/^[0-9a-f]{32}$/.test(taskCode)) {
+    result.textContent = "请输入接管卡生成的一次性任务码。";
+    return;
+  }
+  const button = element("paired-task-open");
+  const allowControl = taskControl.checked === true;
+  const allowLogin = allowControl && taskLogin.checked === true;
+  input.value = "";
+  resetTaskConsent();
+  button.disabled = true;
+  busy = true;
+  result.textContent = "";
+  try {
+    await invoke("computer_browser_share", { registrationId: pairedTaskTarget, share: true, taskCode,
+      ...(allowControl ? { allowControl: true } : {}), ...(allowLogin ? { allowLogin: true } : {}) });
+    result.textContent = "正在打开专用窗口。请在窗口输入接管卡上的站点地址。";
+  } catch (error) {
+    result.textContent = typeof error === "string" ? error : "无法打开任务浏览器。";
+  } finally {
+    busy = false;
+    button.disabled = false;
+    await refresh();
+  }
+});
+element("paired-task-cancel").addEventListener("click", () => {
+  if (busy) return;
+  pairedTaskTarget = null;
+  element("paired-task-code").value = "";
+  resetTaskConsent();
+  element("paired-task-panel").hidden = true;
+});
 function reset() {
   preview = null;
   element("code").value = "";

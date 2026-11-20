@@ -1904,6 +1904,10 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/desktop/paired-preview/{run_id}",
+    "methods": []
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/member-action-levels",
     "methods": [
       "GET"
@@ -2353,6 +2357,22 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/browser-preview",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/browser-preview/watch",
+    "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/paired-browser",
     "methods": [
       "POST"
     ]
@@ -2862,7 +2882,15 @@
     "methods": []
   },
   {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
+    "methods": []
+  },
+  {
     "path": "/api/computers/browser-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/computers/desktop-preview",
     "methods": []
   },
   {

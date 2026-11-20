@@ -1,6 +1,7 @@
 """Outbound-only C1 worker. Native parent owns configuration and secrets.
 
-The first private stdin frame is configuration, subsequent EOF stops the worker.
+The first private stdin frame is configuration. The same pipe accepts local
+browser sharing decisions, and EOF stops the worker.
 No home bootstrap, model, agent, tool registry, local listener or .env is loaded.
 """
 from __future__ import annotations
@@ -17,6 +18,9 @@ from typing import Awaitable, Callable
 
 import aiohttp
 
+from src.gateway.computer_browser_source import START, STOP, BrowserPreviewSource
+from src.gateway.computer_desktop_source import HELPER_NAME, START as DESKTOP_START, STOP as DESKTOP_STOP, DesktopPreviewSource
+from src.gateway.computer_preview_source import PreviewSource
 from src.gateway.computer_protocol import (
     BINDING_FIELDS, DELIVERY_PROTOCOL, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PROTOCOL,
     ComputerProtocolError, binding_fields, control_frame, decode_frame, hello,
@@ -32,7 +36,9 @@ from src.utils.home_maintenance import HomeMaintenanceError
 
 _TOKEN = re.compile(r"vcc_[A-Za-z0-9_-]{43}\Z")
 _CONFIG_BYTES = 8192
+_PARENT_COMMAND_BYTES = 192
 _HEARTBEAT_INTERVAL = 10
+_CONTROL_CLOSE_SECONDS = 1.0
 
 
 class ConnectorFailure(RuntimeError):
@@ -86,11 +92,19 @@ def configuration(value: dict) -> dict:
         if not isinstance(value.get("code"), str) or not re.fullmatch(r"[A-Z2-7]{12}", value["code"]):
             raise ConnectorFailure("invalid pairing code")
     elif operation == "connect":
-        allowed = common | set(BINDING_FIELDS) | {"token", "file_access"}
-        required = allowed - {"allow_loopback_http", "file_access"}
+        local_options = {"file_access", "browser_preview", "desktop_capture"}
+        allowed = common | set(BINDING_FIELDS) | {"token"} | local_options
+        required = allowed - {"allow_loopback_http"} - local_options
         binding_fields(value)
         if type(value.get("file_access", False)) is not bool:
             raise ConnectorFailure("invalid file access configuration")
+        if type(value.get("browser_preview", False)) is not bool:
+            raise ConnectorFailure("invalid browser preview configuration")
+        if "desktop_capture" in value:
+            capture = value["desktop_capture"]
+            if (not isinstance(capture, str) or len(capture) > 2048 or any(ord(c) < 32 for c in capture)
+                    or not os.path.isabs(capture) or Path(capture).name != HELPER_NAME):
+                raise ConnectorFailure("invalid desktop preview configuration")
         if not isinstance(value.get("token"), str) or not _TOKEN.fullmatch(value["token"]):
             raise ConnectorFailure("invalid computer credential")
     else:
@@ -208,8 +222,9 @@ class _FileWork:
             pass  # The result is bound to this generation; the outbox survives the socket.
 
 
-async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_persisted: asyncio.Event,
-                   file_work: _FileWork, disconnected: asyncio.Event) -> bool:
+async def _control(ws, session, config: dict, emit: Callable[[dict], None],
+                   revocation_persisted: asyncio.Event, file_work: _FileWork,
+                   disconnected: asyncio.Event, previews: tuple[PreviewSource, ...], stop: asyncio.Event) -> bool:
     files = config.get("file_access", False)
     await ws.send_json(hello(config, deliveries=files))
     message = await ws.receive(timeout=15)
@@ -218,12 +233,16 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
     frame = decode_frame(message.data)
     generation = validate_welcome(frame, config, deliveries=files)
     selected = frame["protocol"]
+    if stop.is_set():
+        return False
     store = ComputerFiles(Path.cwd() / "file-access", config) if selected >= FILES_PROTOCOL else None
     _status(emit, config, "online")
+    for preview in previews:
+        preview.connected(session, generation)
     clock = asyncio.get_running_loop().time
     next_ping = clock()
     pong_deadline = None
-    while True:
+    while not stop.is_set():
         now = clock()
         if pong_deadline is not None and now >= pong_deadline:
             raise asyncio.TimeoutError
@@ -243,6 +262,8 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             message = await ws.receive(timeout=max(0.001, deadline - clock()))
         except asyncio.TimeoutError:
             continue
+        if stop.is_set():
+            return False
         if message.type in {aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED,
                             aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR}:
             return False
@@ -271,6 +292,8 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             if (reason, frame["credentialRevoked"]) not in {("authorization_revoked", True), ("connection_replaced", False)}:
                 raise ComputerProtocolError("invalid computer revocation")
             disconnected.set()
+            if previews:
+                await asyncio.gather(*(preview.disconnect() for preview in previews))
             if frame["credentialRevoked"]:
                 file_work.revoked.set()
             _status(emit, config, "revoked" if frame["credentialRevoked"] else "replaced")
@@ -290,6 +313,7 @@ async def _control(ws, config: dict, emit: Callable[[dict], None], revocation_pe
             next_ping = clock() + _HEARTBEAT_INTERVAL
         else:
             raise ComputerProtocolError("unexpected computer acknowledgement")
+    return False
 
 
 async def _retry_wait(stop: asyncio.Event, delay: float) -> bool:
@@ -302,10 +326,15 @@ async def _retry_wait(stop: asyncio.Event, delay: float) -> bool:
 
 async def connect(session, config: dict, emit: Callable[[dict], None], stop: asyncio.Event,
                   revocation_persisted: asyncio.Event, *,
+                  browser_preview: BrowserPreviewSource | None = None,
+                  desktop_preview: DesktopPreviewSource | None = None,
                   retry_wait: Callable[[asyncio.Event, float], Awaitable[bool]] = _retry_wait,
                   jitter: Callable[[float, float], float] = random.uniform) -> None:
     delay = 1.0
     file_work = _FileWork(stop, config, session)
+    previews = tuple(preview for preview in (browser_preview, desktop_preview) if preview is not None)
+    ws_timeout = getattr(aiohttp, "ClientWSTimeout", None)
+    close_timeout = ws_timeout(ws_close=_CONTROL_CLOSE_SECONDS) if ws_timeout else _CONTROL_CLOSE_SECONDS
     try:
         while not stop.is_set():
             _status(emit, config, "connecting")
@@ -313,14 +342,17 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                 url = config["origin"].replace("https://", "wss://", 1).replace("http://", "ws://", 1) + "/api/computers/ws"
                 # aiohttp follows WS redirects internally. Trace veto below rejects them before sending a second request.
                 async with session.ws_connect(url, headers={"Authorization": "Bearer " + config["token"]},
-                                              max_msg_size=MAX_FRAME_BYTES, autoping=True) as ws:
+                                              max_msg_size=MAX_FRAME_BYTES, autoping=True, timeout=close_timeout) as ws:
                     disconnected = asyncio.Event()
                     try:
-                        if await _control(ws, config, emit, revocation_persisted, file_work, disconnected):
+                        if await _control(ws, session, config, emit, revocation_persisted, file_work,
+                                          disconnected, previews, stop):
                             return
                         delay = 1.0
                     finally:
                         disconnected.set()
+                        if previews:
+                            await asyncio.gather(*(preview.disconnect() for preview in previews))
             except aiohttp.WSServerHandshakeError as error:
                 if error.status in {401, 403}:
                     file_work.revoked.set()
@@ -331,6 +363,8 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                 return
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
                 pass
+            if stop.is_set():
+                break
             _status(emit, config, "disconnected")
             if await retry_wait(stop, min(60.0, max(1.0, delay * jitter(0.8, 1.2)))):
                 return
@@ -340,7 +374,9 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
 
 
 async def run(config: dict, emit: Callable[[dict], None], stop: asyncio.Event | None = None,
-              revocation_persisted: asyncio.Event | None = None) -> None:
+              revocation_persisted: asyncio.Event | None = None, *,
+              browser_preview: BrowserPreviewSource | None = None,
+              desktop_preview: DesktopPreviewSource | None = None) -> None:
     config = configuration(config)
     trace = aiohttp.TraceConfig()
     async def no_redirect(_session, _context, _params):
@@ -357,7 +393,10 @@ async def run(config: dict, emit: Callable[[dict], None], stop: asyncio.Event | 
             emit(await pair(session, config))
         else:
             signal = stop or asyncio.Event()
-            work = asyncio.create_task(connect(session, config, emit, signal, revocation_persisted or asyncio.Event()))
+            work = asyncio.create_task(connect(
+                session, config, emit, signal, revocation_persisted or asyncio.Event(),
+                browser_preview=browser_preview, desktop_preview=desktop_preview,
+            ))
             ended = asyncio.create_task(signal.wait())
             try:
                 await asyncio.wait({work, ended}, return_when=asyncio.FIRST_COMPLETED)
@@ -390,7 +429,9 @@ def main() -> int:
         async def start():
             stop = asyncio.Event()
             persisted = asyncio.Event()
-            # An OS thread observes only parent EOF; it never parses additional commands.
+            preview = BrowserPreviewSource(config, emit) if config.get("browser_preview") else None
+            desktop = DesktopPreviewSource(config, emit) if config.get("desktop_capture") else None
+            # Only the native parent can write to this pipe.
             # A daemon avoids blocking interpreter shutdown if the connection is revoked first.
             import threading
             loop = asyncio.get_running_loop()
@@ -404,10 +445,37 @@ def main() -> int:
                         pending += chunk
                         while b'\n' in pending:
                             line, pending = pending.split(b'\n', 1)
-                            if len(line) > 127 or decode_frame(line) != {"type": "revocation_persisted"}:
+                            if len(line) > _PARENT_COMMAND_BYTES:
                                 return
-                            loop.call_soon_threadsafe(persisted.set)
-                        if len(pending) > 127:
+                            command = decode_frame(line)
+                            if command == {"type": "revocation_persisted"}:
+                                loop.call_soon_threadsafe(persisted.set)
+                            elif (preview is not None and set(command) == {"type", "generation"}
+                                  and command["type"] in (START, STOP)):
+                                generation = identifier(command["generation"])
+                                loop.call_soon_threadsafe(preview.command, command["type"], generation)
+                            elif (desktop is not None and set(command) == {"type", "generation"}
+                                  and command["type"] in (DESKTOP_START, DESKTOP_STOP)):
+                                generation = identifier(command["generation"])
+                                loop.call_soon_threadsafe(desktop.command, command["type"], generation)
+                            elif (desktop is not None and set(command) == {"type", "generation", "allow_control"}
+                                  and command["type"] == DESKTOP_START and command["allow_control"] is True):
+                                generation = identifier(command["generation"])
+                                loop.call_soon_threadsafe(desktop.command, DESKTOP_START, generation, True)
+                            elif (preview is not None
+                                  and set(command) in ({"type", "generation", "task_code"},
+                                                       {"type", "generation", "task_code", "allow_control"},
+                                                       {"type", "generation", "task_code", "allow_control", "allow_login"})
+                                  and command["type"] == START and command.get("allow_control", True) is True
+                                  and command.get("allow_login", True) is True):
+                                generation = identifier(command["generation"])
+                                code = identifier(command["task_code"])
+                                loop.call_soon_threadsafe(preview.command, START, generation, code,
+                                                          command.get("allow_control", False),
+                                                          command.get("allow_login", False))
+                            else:
+                                return
+                        if len(pending) > _PARENT_COMMAND_BYTES:
                             break
                 except (OSError, ComputerProtocolError, RuntimeError):
                     pass
@@ -417,6 +485,11 @@ def main() -> int:
                     except RuntimeError:
                         pass
             threading.Thread(target=parent_lifetime, daemon=True).start()
+            if preview is not None or desktop is not None:
+                # run() already observes EOF for connect. A second cancellation
+                # could interrupt its browser and profile cleanup.
+                await run(config, emit, stop, persisted, browser_preview=preview, desktop_preview=desktop)
+                return
             work = asyncio.create_task(run(config, emit, stop, persisted))
             ended = asyncio.create_task(stop.wait())
             try:

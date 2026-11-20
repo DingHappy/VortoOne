@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import protocol as P
 from src.gateway.computer_file_authority import (
-    OwnerFileTurn, bind_prompt, current_file_confirmation, discard_prompt, owner_prompt,
+    OwnerTurn, bind_prompt, current_file_confirmation, current_owner_turn, discard_prompt, owner_prompt,
 )
 from src.gateway.sessions import SessionTable, SessionCapacityError
 from src.gateway.main_conversation import set_main_conversation_host, set_main_note_host
@@ -84,7 +84,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def handle_websocket_message(websocket: WebSocket, message: Dict[str, Any], *,
-                                   owner_turn: OwnerFileTurn | None = None, owner_confirmation: bool = False):
+                                   owner_turn: OwnerTurn | None = None, owner_confirmation: bool = False):
     """处理 WebSocket 消息（协议面见 gateway/protocol.py；不合法消息按旧行为静默忽略）"""
     try:
         msg_type, message = P.parse_event(message)
@@ -157,7 +157,7 @@ async def handle_websocket_message(websocket: WebSocket, message: Dict[str, Any]
         fut = pending.get("future") if isinstance(pending, dict) else pending
         if fut is not None and not fut.done():
             scope = message.get("scope", "once")
-            if isinstance(pending, dict) and pending.get("file_owner") and (not owner_confirmation or scope != "once"):
+            if isinstance(pending, dict) and pending.get("owner_confirmation") and (not owner_confirmation or scope != "once"):
                 return
             if scope == "once":
                 fut.set_result(bool(message.get("ok")))
@@ -239,9 +239,40 @@ async def _managed_im_observer(websocket):
 _PENDING_CONFIRMS: Dict[str, Any] = {}
 
 
-def requires_file_owner(cid: str) -> bool:
+def requires_owner_confirmation(cid: str) -> bool:
     item = _PENDING_CONFIRMS.get(cid)
-    return isinstance(item, dict) and item.get("file_owner") is not None
+    return isinstance(item, dict) and item.get("owner_confirmation") is True
+
+
+def _pending_website(root: str, session: str, cid: str):
+    item = _PENDING_CONFIRMS.get(cid)
+    if not isinstance(item, dict) or item.get("root") != root or item.get("session") != session:
+        return None
+    future = item.get("future")
+    if future is None or future.done() or future.get_loop() is not asyncio.get_running_loop():
+        return None
+    return item
+
+
+def pending_website_frame(root: str, session: str, cid: str):
+    """Return the live, process-owned source to the matching chat bridge only."""
+    item = _pending_website(root, session, cid)
+    return _live_website_frame(item) if item is not None else None
+
+
+def pending_paired_browser(root: str, session: str, cid: str):
+    item = _pending_website(root, session, cid)
+    return item.get("paired_browser") if item is not None else None
+
+
+def _live_website_frame(item: dict):
+    frame = item.get("website_frame")
+    if frame is None:
+        return None
+    from src.gateway.computer_browser_preview import browser_previews
+    if item.get("website_owner_epoch") is browser_previews.owner_epoch() and frame.current():
+        return frame
+    return None
 
 
 def pending_confirmations(session: str = "") -> list[dict]:
@@ -251,6 +282,9 @@ def pending_confirmations(session: str = "") -> list[dict]:
         if isinstance(record, dict):
             if session and record.get("session") != session:
                 continue
+            future = record.get("future")
+            if future is not None and future.done():
+                continue
             output.append({
                 "id": cid,
                 "text": str(record.get("text") or "")[:4000],
@@ -259,6 +293,8 @@ def pending_confirmations(session: str = "") -> list[dict]:
                 "session": str(record.get("session") or "")[:120],
                 "created": str(record.get("created") or "")[:80],
                 **({"website": dict(record["website"])} if record.get("website") else {}),
+                **({"website_preview": True} if _live_website_frame(record) is not None else {}),
+                **({"paired_browser": True} if record.get("paired_browser") is not None else {}),
             })
     output.sort(key=lambda item: item["created"], reverse=True)
     return output
@@ -291,13 +327,27 @@ def _make_ws_confirm(websocket, q):
         # 靠客户端匹配警示文案是 fail-open 的（换版本/改措辞就失效）——这里给它确定的信号。
         from src.agents.taint import is_tainted
         tainted = bool(is_tainted())
-        from src.agents.confirmation_context import website_confirmation
+        from src.agents.confirmation_context import paired_browser_task, website_confirmation, website_handoff_frame
         website = website_confirmation()
+        frame = website_handoff_frame() if website and website.get("action") == "login" and kind == "interact" else None
+        paired = paired_browser_task() if website and website.get("action") == "login" and kind == "interact" else None
+        if paired is not None:
+            paired.start(fut)
+        owner_epoch = None
+        if frame is not None:
+            from src.gateway.computer_browser_preview import browser_previews
+            from src.web.auth import get_api_token
+            if get_api_token():
+                owner_epoch = browser_previews.owner_epoch()
+            else:
+                frame = None
         from src.agents.confirmation_context import approval_details
         approval = approval_details(kind)
         from src.agents.scoped_approval import current_offer
-        file_owner = current_file_confirmation.get()
-        offer = current_offer() if file_owner is None else None
+        turn_owner = current_owner_turn.get()
+        owner_only = (current_file_confirmation.get() is not None or paired is not None
+                      or (website is not None and turn_owner is not None and turn_owner.task_browser is not None))
+        offer = None if owner_only else current_offer()
         scopes = ["once", "turn"] if offer is not None and offer.valid() else ["once"]
         _PENDING_CONFIRMS[cid] = {
             "future": fut,
@@ -306,14 +356,17 @@ def _make_ws_confirm(websocket, q):
             "session": _session_key(websocket),
             "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "website": website,
-            "file_owner": file_owner,
+            "website_frame": frame,
+            "website_owner_epoch": owner_epoch,
+            "paired_browser": paired,
+            "owner_confirmation": owner_only,
             **approval, "approval_scope": "once",
             "scope_options": scopes, "scope_limits": offer.limits if offer is not None else None, "scope_offer": offer, "root": os.getcwd(),
         }
         q.put_nowait(P.make_event(P.AGENT_CONFIRM, id=cid, text=str(message), tainted=tainted, website=website,
                                   **approval, approval_scope="once", scope_options=scopes, scope_limits=offer.limits if offer is not None else None))
         from src.gateway.im_runtime import start_confirmation_notice
-        notice = start_confirmation_notice(message) if file_owner is None else None
+        notice = None if owner_only else start_confirmation_notice(message)
         reason = "answered"
         try:
             result = await asyncio.wait_for(fut, timeout=300)
@@ -337,6 +390,8 @@ def _make_ws_confirm(websocket, q):
             reason = "cancelled"
             return False
         finally:
+            if paired is not None:
+                paired.close()
             if notice is not None:
                 notice.cancel()
                 await asyncio.gather(notice, return_exceptions=True)
@@ -1165,7 +1220,7 @@ def _cancel_agent_turn(websocket, *, reason: str = "stop") -> bool:
     return _ACTORS.cancel(_session_key(websocket), reason=reason, context=_actor_context(websocket))
 
 
-async def handle_agent_message(websocket, message: Dict[str, Any], *, owner_turn: OwnerFileTurn | None = None):
+async def handle_agent_message(websocket, message: Dict[str, Any], *, owner_turn: OwnerTurn | None = None):
     """启动一个 agent 回合（**后台任务**），随即返回——好让接收循环在回合执行期间
     仍能收到新消息（尤其是 agent_cancel「停止」）。回合事件由 _run_agent_turn 发回。
     """
@@ -1700,9 +1755,11 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
                                   dependency_audit=lambda owner: audit_dependencies_for_turn(task_repo_root, owner))
             if hint:
                 turn_text += "\n\n" + hint
-            await agent.run_turn(turn_text, mode=mode, say=agent_say, emit=agent_emit,
-                                 stream_cb=agent_stream, images=images, audio=audio,
-                                 owner_text=text, **extra_cbs)
+            from src.gateway.task_browser import task_browser_tools
+            async with task_browser_tools(agent, current_owner_turn.get()):
+                await agent.run_turn(turn_text, mode=mode, say=agent_say, emit=agent_emit,
+                                     stream_cb=agent_stream, images=images, audio=audio,
+                                     owner_text=text, **extra_cbs)
         except asyncio.CancelledError:        # 中断：直接上抛，不当成错误
             outcome = "cancelled"
             raise
@@ -1776,7 +1833,7 @@ async def attach_client(client) -> None:
     await _attach_session_subscriber(client, await _session_event_cursor(_session_key(client)))
 
 
-async def client_message(client, message: Dict[str, Any], *, owner_turn: OwnerFileTurn | None = None,
+async def client_message(client, message: Dict[str, Any], *, owner_turn: OwnerTurn | None = None,
                          owner_confirmation: bool = False) -> None:
     if owner_turn is None and not owner_confirmation:
         await handle_websocket_message(client, message)

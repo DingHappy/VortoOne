@@ -19324,6 +19324,10 @@ export const en = {
     screenOffHelp: "It turns on when someone watches.",
   },
   agentComputer: {
+    pairedRunComputer: "This turn uses {{computer}}",
+    pairedDisplayReady: "Display shared",
+    pairedDisplayWait: "Waiting for a display share",
+    watchPairedDisplay: "View display",
     title: "{{name}}'s computer",
     open: "Open",
     openOf: "Open {{name}}'s computer",

@@ -2,6 +2,8 @@ import { createRequester, useComputerSetup, useMachines } from "@agenteschat/cli
 import { can } from "@agenteschat/client/lib/permissions";
 import { Button, Card } from "@agenteschat/ui";
 import { useEffect, useRef, useState } from "react";
+import type { PrivatePreviewKind } from "../screen/private-browser-preview";
+import { ComputerScreenPreview } from "./ComputerScreenPreview";
 import { useOrg } from "./org-context";
 
 type Pairing = { pairing_id: string; code: string; expires_at: number; home_instance_id: string };
@@ -13,15 +15,28 @@ export function ConnectedComputerPairing() {
   const setup = useComputerSetup(org.id);
   const available = owner || setup.data?.memberPairing === true;
   const canPair = owner || can(org, "pair_computers");
+  const canWatch = owner || (["own_browsers", "own_computers", "control_browsers", "control_computers"] as const)
+    .some((permission) => can(org, permission));
+  const canWatchDesktop = owner || (["own_computers", "control_browsers", "control_computers"] as const)
+    .some((permission) => can(org, permission));
+  const viewer = `${org.id}/${me.user.id}`;
   const [pairing, setPairing] = useState<Pairing | null>(null);
+  const [watching, setWatching] = useState<{
+    viewer: string; machine: string; kind: PrivatePreviewKind; allowControl?: boolean;
+  } | null>(null);
   const [legacy, setLegacy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const machines = useMachines(org.id, available, pairing ? 3000 : false);
+  const machines = useMachines(org.id, available, (rows) => {
+    const tracksSharing = canWatch && rows?.some((machine) => typeof machine.browserPreviewAvailable === "boolean" ||
+      (canWatchDesktop && typeof machine.desktopPreviewAvailable === "boolean"));
+    return pairing || tracksSharing ? 3000 : false;
+  });
   const active = useRef<AbortController | null>(null);
   const base = `/api/app/organizations/${encodeURIComponent(org.id)}`;
   useEffect(() => {
     setPairing(null);
+    setWatching(null);
     setLegacy(false);
     setError("");
     setBusy(false);
@@ -55,7 +70,7 @@ export function ConnectedComputerPairing() {
   return <Card>
     <h2>连接的电脑</h2>
     {canPair && <p>生成配对码后，到目标电脑的 VortoOne Dev 菜单「连接的电脑…」输入。</p>}
-    {!owner && <p className="small muted">只有你能看到和管理这里的电脑。当前可查看设备连接状态。</p>}
+    {!owner && <p className="small muted">这里显示你自己配对的电脑。</p>}
     {!canPair && <p className="small muted">你当前的身份组无法生成配对码。</p>}
     {owner && <>
       <label><input type="checkbox" checked={legacy} disabled={busy || !!pairing} onChange={(event) => setLegacy(event.target.checked)} /> 这是仍由我管理、仅使用所有者密钥登录的旧家</label>
@@ -81,13 +96,27 @@ export function ConnectedComputerPairing() {
     {machines.isError && <p role="alert">连接列表读取失败，请刷新重试。</p>}
     <ul>{(machines.data ?? []).map((machine) => <li key={machine.id}>
       <strong>{machine.name}</strong> · {machine.online ? "已连接" : "未连接"} · 执行能力未就绪{" "}
+      {canWatch && machine.online && !machines.isError && typeof machine.browserPreviewAvailable === "boolean" &&
+        <span className="small muted">{machine.browserPreviewAvailable ? "浏览器画面已开放" : "等待本机开启分享"}{" "}</span>}
+      {canWatch && machine.online && !machines.isError && machine.browserPreviewAvailable !== false &&
+        <Button size="sm" disabled={busy || (watching?.viewer === viewer && watching.machine === machine.id && watching.kind === "browser")}
+          onClick={() => setWatching({ viewer, machine: machine.id, kind: "browser" })}>查看浏览器画面</Button>}{" "}
+      {canWatchDesktop && machine.online && !machines.isError && machine.desktopPreviewAvailable === true &&
+        <Button size="sm" disabled={busy || (watching?.viewer === viewer && watching.machine === machine.id && watching.kind === "desktop")}
+          onClick={() => setWatching({ viewer, machine: machine.id, kind: "desktop",
+            allowControl: machine.desktopControlAvailable === true })}>查看桌面画面</Button>}{" "}
       <Button size="sm" disabled={busy} onClick={() => {
         if (!window.confirm(`移除“${machine.name}”？此授权立即失效，重新使用需要在目标电脑上再次配对。`)) return;
+        if (watching?.machine === machine.id) setWatching(null);
         void act(async (signal) => {
           await request<void>(`${base}/machines/${encodeURIComponent(machine.id)}`, { method: "DELETE", signal });
           if (!signal.aborted) await machines.refetch();
         });
       }}>移除</Button>
+      {canWatch && watching?.viewer === viewer && watching.machine === machine.id &&
+        (watching.kind === "browser" || canWatchDesktop) &&
+        <ComputerScreenPreview key={watching.kind} orgId={org.id} machineId={machine.id} name={machine.name}
+          kind={watching.kind} allowControl={watching.allowControl === true} close={() => setWatching(null)} />}
     </li>)}</ul>
   </Card>;
 }

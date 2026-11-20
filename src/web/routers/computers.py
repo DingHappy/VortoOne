@@ -15,13 +15,14 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from starlette.requests import ClientDisconnect
+from starlette.requests import ClientDisconnect, HTTPConnection
 from starlette.responses import StreamingResponse
 
 from src.agents.identity_groups import screen_level_allows
 from src.agents.principal import MEMBER, OWNER, Principal
 from src.gateway.audit import append_audit
-from src.gateway.computer_browser_preview import browser_previews, serve_publisher, serve_viewer
+from src.gateway.computer_browser_preview import BrowserPreview, browser_previews, serve_publisher, serve_viewer
+from src.gateway.computer_browser_wire import PreviewKind
 from src.gateway.computer_connections import connections, serve
 from src.gateway.computer_native import (
     ComputerNativeDenied, ComputerNativeUnclaimed, ComputerNativeUnavailable, redeem,
@@ -106,6 +107,17 @@ def has_computer_owner_proof(request: Request) -> bool:
     except HTTPException:
         return False
     return True
+
+
+def has_owner_browser_session(connection: HTTPConnection) -> bool:
+    token = get_api_token()
+    return (bool(token) and ct_eq(connection.cookies.get(SESSION_COOKIE, ''), token)
+            and _secure(connection) and len(connection.headers.getlist('origin')) == 1 and _same_origin(connection))
+
+
+def has_local_owner_browser_session(request: Request) -> bool:
+    return (_native_loopback(request) and has_owner_browser_session(request)
+            and not any(name == 'forwarded' or name.startswith('x-forwarded-') for name in request.headers))
 
 
 def _pairer(request: Request, org_id: str) -> tuple[str, ConnectedComputers, str | None, str]:
@@ -244,7 +256,17 @@ async def machines(org_id: str, request: Request, response: Response):
     response.headers.update(_PRIVATE)
     root, store, member_id, name = _pairer(request, org_id)
     rows = await _call(store.list, member_id=member_id)
-    return {'machines': [_machine(root, row, member_id, name) for row in rows if row.get('revoked_at') is None]}
+    listed = [_machine(root, row, member_id, name) for row in rows if row.get('revoked_at') is None]
+    for machine in listed:
+        browser = desktop = None
+        if machine['online']:
+            browser = await _available_preview(request, root, member_id, machine['id'], 'browser')
+            desktop = await _available_preview(request, root, member_id, machine['id'], 'desktop')
+        machine['browserPreviewAvailable'] = browser is not None
+        machine['desktopPreviewAvailable'] = desktop is not None
+        if desktop is not None and desktop.allow_control and not desktop.controlling:
+            machine['desktopControlAvailable'] = True
+    return {'machines': listed}
 
 
 @router.patch(_ORG + '/machines/{machine_id}')
@@ -360,7 +382,16 @@ async def computer_socket(socket: WebSocket):
 
 @router.websocket('/api/computers/browser-preview')
 async def publish_browser_preview(socket: WebSocket):
-    """The local connector opens a separate, outbound data socket for a selected browser."""
+    await _publish_private_preview(socket, 'browser')
+
+
+@router.websocket('/api/computers/desktop-preview')
+async def publish_desktop_preview(socket: WebSocket):
+    await _publish_private_preview(socket, 'desktop')
+
+
+async def _publish_private_preview(socket: WebSocket, kind: PreviewKind) -> None:
+    """A connector opens an outbound data socket for the locally selected screen."""
     try:
         token = _computer_token(socket)
         if token is None:
@@ -368,7 +399,7 @@ async def publish_browser_preview(socket: WebSocket):
         root = str(Path(os.getcwd()).resolve())
         store = ConnectedComputers(root)
         binding = await asyncio.to_thread(store.authenticate, token)
-        await serve_publisher(socket, root, binding)
+        await serve_publisher(socket, root, binding, kind=kind)
     except (WebSocketDisconnect, ComputerDenied, RuntimeError, ValueError, KeyError, OSError, asyncio.TimeoutError):
         pass
     finally:
@@ -376,62 +407,118 @@ async def publish_browser_preview(socket: WebSocket):
             await socket.close(code=1008)
 
 
-def _browser_viewer(socket: WebSocket, root: str) -> tuple[Principal, object | None] | None:
+def private_screen_viewer(connection: HTTPConnection, root: str) -> tuple[Principal, object | None] | None:
     token = get_api_token()
     if not token:
         return None
-    if ct_eq(socket.cookies.get(SESSION_COOKIE, ''), token):
+    if ct_eq(connection.cookies.get(SESSION_COOKIE, ''), token):
         return Principal(OWNER, views.owner_id(root), root), browser_previews.owner_epoch()
-    member_id = member_auth.member_id(member_auth.account(socket))
+    member_id = member_auth.member_id(member_auth.account(connection))
     return (Principal(MEMBER, member_id, root), None) if member_id else None
 
 
-def _private_view_allowed(socket, root, viewer, binding):
+def _private_view_allowed(connection, root, viewer, binding, kind: PreviewKind):
     actor, _ = viewer
     member_id = actor.id if actor.is_member else None
     if not ConnectedComputers(root).check_pairer(binding, member_id):
         return False
     if member_id is not None:
         level = MemberRegistry(root).standing(member_id)["computer"]
-        if not screen_level_allows(level, "browser", own=True):
+        if not screen_level_allows(level, kind, own=True):
             return False
-    return _browser_viewer(socket, root) == viewer
+    return private_screen_viewer(connection, root) == viewer
+
+
+async def live_private_preview_allowed(connection: HTTPConnection, root: str, viewer: tuple[Principal, object | None],
+                                preview: BrowserPreview) -> bool:
+    _, owner_epoch = viewer
+    return (await preview.live()
+            and await asyncio.to_thread(_private_view_allowed, connection, root, viewer, preview.connection.binding, preview.kind)
+            and (owner_epoch is None or browser_previews.owner_epoch() is owner_epoch)
+            and preview.active())
+
+
+async def _available_preview(request: Request, root: str, member_id: str | None, machine_id: str,
+                             kind: PreviewKind) -> BrowserPreview | None:
+    preview = browser_previews.find(root, machine_id, kind)
+    if preview is None or preview.task is not None or not preview.active():
+        return None
+    try:
+        viewer = await asyncio.to_thread(private_screen_viewer, request, root)
+        if viewer is None:
+            return None
+        actor, _ = viewer
+        if (actor.id if actor.is_member else None) != member_id:
+            return None
+        return preview if await live_private_preview_allowed(request, root, viewer, preview) else None
+    except (ComputerDenied, ComputerUnavailable, Missing, OSError, ValueError):
+        return None
 
 
 @router.websocket(_ORG + '/machines/{machine_id}/browser-preview')
 async def watch_browser_preview(socket: WebSocket, org_id: str, machine_id: str):
-    """A human can pull frames from their own live offer. Each reply rechecks current authority."""
+    await _watch_private_preview(socket, org_id, machine_id, 'browser')
+
+
+@router.websocket(_ORG + '/machines/{machine_id}/desktop-preview')
+async def watch_desktop_preview(socket: WebSocket, org_id: str, machine_id: str):
+    await _watch_private_preview(socket, org_id, machine_id, 'desktop')
+
+
+async def _watch_private_preview(socket: WebSocket, org_id: str, machine_id: str, kind: PreviewKind) -> None:
+    """A person can watch their own live offer and claim its locally granted control."""
     watching = False
     try:
         root = str(Path(os.getcwd()).resolve())
         if (org_id != views.home_id(root) or not _ID.fullmatch(machine_id) or socket.query_params
                 or not _secure(socket) or len(socket.headers.getlist('origin')) != 1 or not _same_origin(socket)):
             return
-        viewer = await asyncio.to_thread(_browser_viewer, socket, root)
-        preview = browser_previews.find(root, machine_id)
-        if viewer is None or preview is None:
+        viewer = await asyncio.to_thread(private_screen_viewer, socket, root)
+        preview = browser_previews.find(root, machine_id, kind)
+        if viewer is None or preview is None or preview.task is not None:
             return
-        actor, owner_epoch = viewer
+        actor, _ = viewer
 
         async def allowed():
-            return (await preview.live()
-                    and await asyncio.to_thread(_private_view_allowed, socket, root, viewer, preview.connection.binding)
-                    and (owner_epoch is None or browser_previews.owner_epoch() is owner_epoch)
-                    and preview.active())
+            return await live_private_preview_allowed(socket, root, viewer, preview)
 
         if not await allowed() or not preview.begin_viewing():
             return
         watching = True
         event = {'category': 'decision', 'decision': 'allowed', 'decision_source': 'user',
-                 'operation': '观看私有浏览器', 'operation_kind': 'read', 'actor_id': actor.id,
+                 'operation': '观看私有桌面' if kind == 'desktop' else '观看私有浏览器',
+                 'operation_kind': 'read', 'actor_id': actor.id,
                  'connector_id': machine_id, 'surface_id': preview.surface_id}
         await asyncio.to_thread(append_audit, root, event)
-        await serve_viewer(socket, preview, allowed)
+
+        async def desktop_control(message: dict) -> str | None:
+            if message == {'type': 'take_control'} and not preview.controlling and await allowed():
+                result = await preview.take_desktop_control()
+                if result != 'control_ready':
+                    return result
+                recorded = await asyncio.to_thread(append_audit, root, {
+                    **event, 'operation': '接管私有桌面', 'operation_kind': 'interact',
+                })
+                return result if recorded and await allowed() else None
+            if (message.get('type') == 'input' and set(message) == {'type', 'action'}
+                    and preview.controlling and await allowed()):
+                return await preview.interact_desktop(message['action'])
+            return None
+
+        try:
+            await serve_viewer(socket, preview.capture, allowed,
+                               on_command=desktop_control if kind == 'desktop' and preview.allow_control else None)
+        finally:
+            if preview.controlling:
+                preview.end()
+                await asyncio.to_thread(append_audit, root, {
+                    **event, 'operation': '结束私有桌面接管', 'operation_kind': 'interact',
+                })
     except (WebSocketDisconnect, ComputerDenied, Missing, RuntimeError, ValueError, KeyError, OSError, asyncio.TimeoutError):
         pass
     finally:
         if watching:
-            preview.viewing = False
+            preview.end_viewing()
         with suppress(WebSocketDisconnect, RuntimeError, OSError):
             await socket.close(code=1008)
 

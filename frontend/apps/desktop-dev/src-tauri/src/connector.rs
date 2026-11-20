@@ -18,6 +18,8 @@ use tauri::Manager;
 
 const WINDOW: &str = "computers";
 const PAGE: &str = "/computers.html";
+const TASK_BROWSER_MARKER: &str = "task-browser.enabled";
+const CAPTURE_HELPER: &str = "vortoone-desktop-capture";
 const MAX_FRAME: usize = 8192;
 const MAX_RECORDS: usize = 16;
 
@@ -51,7 +53,8 @@ impl Registration {
         json!({"operation":"connect", "origin":self.origin, "home_instance_id":self.home_instance_id,
             "connector_id":self.connector_id, "paired_principal_id":self.paired_principal_id,
             "credential_epoch":self.credential_epoch, "trust_epoch":self.trust_epoch,
-            "allow_loopback_http":allow_loopback_http, "token":token, "file_access":cfg!(unix)})
+            "allow_loopback_http":allow_loopback_http, "token":token, "file_access":cfg!(unix),
+            "browser_preview":cfg!(unix)})
     }
 }
 
@@ -74,6 +77,53 @@ struct Slot {
     state: String,
     generation: u64,
     process: Option<WorkerProcess>,
+    browser_share: Option<ScreenShare>,
+    desktop_share: Option<ScreenShare>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScreenKind {
+    Browser,
+    Desktop,
+}
+
+impl Slot {
+    fn screen(&self, kind: ScreenKind) -> Option<&ScreenShare> {
+        match kind {
+            ScreenKind::Browser => self.browser_share.as_ref(),
+            ScreenKind::Desktop => self.desktop_share.as_ref(),
+        }
+    }
+
+    fn screen_slot(&mut self, kind: ScreenKind) -> &mut Option<ScreenShare> {
+        match kind {
+            ScreenKind::Browser => &mut self.browser_share,
+            ScreenKind::Desktop => &mut self.desktop_share,
+        }
+    }
+
+    fn clear_shares(&mut self) {
+        self.browser_share = None;
+        self.desktop_share = None;
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ScreenShareState {
+    Idle,
+    Starting,
+    StartingWithControl,
+    Sharing,
+    SharingWithControl,
+    Controlling,
+    Stopping,
+    Unavailable,
+}
+
+struct ScreenShare {
+    generation: String,
+    state: ScreenShareState,
 }
 #[derive(Default)]
 struct Inner {
@@ -103,6 +153,8 @@ pub struct ComputerView {
     secret_storage: Storage,
     enabled: bool,
     capabilities_ready: bool,
+    browser_share: Option<ScreenShareState>,
+    desktop_share: Option<ScreenShareState>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +303,14 @@ impl WorkerSource {
         command.arg("computer-connector");
         command
     }
+
+    fn desktop_capture(&self) -> Option<PathBuf> {
+        if !cfg!(target_os = "macos") || !matches!(self, Self::Bundled(_)) {
+            return None;
+        }
+        let path = std::env::current_exe().ok()?.with_file_name(CAPTURE_HELPER);
+        fs::symlink_metadata(&path).ok()?.file_type().is_file().then_some(path)
+    }
 }
 
 /// The trusted runtime owns validation, trust invalidation and publication. The
@@ -379,6 +439,28 @@ impl WorkerProcess {
             std::thread::sleep(Duration::from_millis(15));
         }
         self.stop()
+    }
+
+    fn share_screen(&mut self, generation: &str, kind: ScreenKind, share: bool, task_code: Option<&str>,
+                    allow_control: bool, allow_login: bool) -> Result<(), String> {
+        let command_name = match (kind, share) {
+            (ScreenKind::Browser, true) => "browser_preview_start",
+            (ScreenKind::Browser, false) => "browser_preview_stop",
+            (ScreenKind::Desktop, true) => "desktop_preview_start",
+            (ScreenKind::Desktop, false) => "desktop_preview_stop",
+        };
+        let input = self.input.as_mut().ok_or("连接器私有通道已关闭")?;
+        let mut command = json!({"type":command_name, "generation":generation});
+        if let Some(code) = task_code {
+            command["task_code"] = json!(code);
+        }
+        if allow_control {
+            command["allow_control"] = json!(true);
+        }
+        if allow_login {
+            command["allow_login"] = json!(true);
+        }
+        writeln!(input, "{command}").map_err(|_| "画面分享命令未送达，请检查电脑连接".into())
     }
 }
 impl Drop for WorkerProcess {
@@ -601,6 +683,16 @@ impl ConnectorManager {
                         secret_storage: record.storage,
                         enabled: record.enabled,
                         capabilities_ready: false,
+                        browser_share: inner
+                            .slots
+                            .get(&record.home_instance_id)
+                            .and_then(|slot| slot.browser_share.as_ref())
+                            .map(|share| share.state),
+                        desktop_share: inner
+                            .slots
+                            .get(&record.home_instance_id)
+                            .and_then(|slot| slot.desktop_share.as_ref())
+                            .map(|share| share.state),
                     })
                     .collect()
             })
@@ -647,8 +739,11 @@ fn connect_registration(
     }
     let (_, loopback) = clean_origin(&record.origin, local_proof(app).as_deref())?;
     let token = store(directory).get(&record.key(), record.storage)?;
-    let (process, frames) =
-        WorkerProcess::spawn(source.command(directory), &record.request(token, loopback))?;
+    let mut request = record.request(token, loopback);
+    if let Some(path) = source.desktop_capture().as_deref().and_then(Path::to_str) {
+        request["desktop_capture"] = json!(path);
+    }
+    let (process, frames) = WorkerProcess::spawn(source.command(directory), &request)?;
     let generation = {
         let mut inner = manager.inner.lock().map_err(|_| "电脑状态忙，请重试")?;
         if manager.closing.load(Ordering::Acquire) {
@@ -662,6 +757,8 @@ fn connect_registration(
                 state: "connecting".into(),
                 generation,
                 process: Some(process),
+                browser_share: None,
+                desktop_share: None,
             },
         );
         generation
@@ -683,14 +780,6 @@ fn connect_registration(
                     .and_then(|slot| slot.process.as_mut())
                     .is_some_and(|process| matches!(process.child.try_wait(), Ok(None)))
             });
-            let ended = frame.is_err();
-            let state = match &frame {
-                Ok(frame) => match accepted_status(frame, &record) {
-                    Some(state) => state,
-                    None => "error",
-                },
-                _ => "disconnected",
-            };
             let manager = handle.state::<ConnectorManager>();
             let Ok(mut inner) = manager.inner.lock() else {
                 return;
@@ -702,6 +791,29 @@ fn connect_registration(
             {
                 return;
             }
+            if let Some((kind, share)) = frame.as_ref().ok()
+                .and_then(|value| accepted_screen_share(value, &record))
+            {
+                let slot = inner.slots.get_mut(&record.home_instance_id).unwrap();
+                let current_session = slot.screen(kind).map_or(
+                    share.state == ScreenShareState::Idle,
+                    |current| current.generation == share.generation && match share.state {
+                        ScreenShareState::Sharing => current.state != ScreenShareState::Stopping,
+                        ScreenShareState::SharingWithControl => current.state == ScreenShareState::StartingWithControl,
+                        ScreenShareState::Controlling => current.state == ScreenShareState::SharingWithControl,
+                        _ => true,
+                    },
+                );
+                if slot.state == "online" && current_session {
+                    *slot.screen_slot(kind) = Some(share);
+                }
+                continue;
+            }
+            let ended = frame.is_err();
+            let state = match &frame {
+                Ok(frame) => accepted_status(frame, &record).unwrap_or("error"),
+                Err(_) => "disconnected",
+            };
             if state == "revoked" {
                 // Persist the local tombstone before this credential could be used on restart.
                 if disable_pair(
@@ -713,6 +825,7 @@ fn connect_registration(
                 {
                     let slot = inner.slots.get_mut(&record.home_instance_id).unwrap();
                     slot.state = "error".into();
+                    slot.clear_shares();
                     if let Some(mut process) = slot.process.take() {
                         let _ = process.stop();
                     }
@@ -723,6 +836,7 @@ fn connect_registration(
                     .is_ok();
                 let slot = inner.slots.get_mut(&record.home_instance_id).unwrap();
                 slot.state = "revoked".into();
+                slot.clear_shares();
                 if let Some(mut process) = slot.process.take() {
                     if deleted {
                         let _ = process.confirm_revocation();
@@ -734,6 +848,9 @@ fn connect_registration(
             }
             let slot = inner.slots.get_mut(&record.home_instance_id).unwrap();
             slot.state = state.into();
+            if state != "online" {
+                slot.clear_shares();
+            }
             if ended || matches!(state, "replaced" | "error") {
                 if let Some(mut process) = slot.process.take() {
                     let _ = process.stop();
@@ -761,6 +878,33 @@ fn accepted_status<'a>(frame: &'a Value, record: &Registration) -> Option<&'a st
         }
         _ => None,
     }
+}
+
+fn accepted_screen_share(frame: &Value, record: &Registration) -> Option<(ScreenKind, ScreenShare)> {
+    let kind = match frame["type"].as_str()? {
+        "browser_preview" => ScreenKind::Browser,
+        "desktop_preview" => ScreenKind::Desktop,
+        _ => return None,
+    };
+    if frame.as_object()?.len() != 5
+        || frame["home_instance_id"] != record.home_instance_id
+        || frame["connector_id"] != record.connector_id
+    {
+        return None;
+    }
+    let generation = frame["generation"].as_str().filter(|id| secrets::identifier(id))?;
+    let state = match frame["state"].as_str()? {
+        "idle" => ScreenShareState::Idle,
+        "sharing" => ScreenShareState::Sharing,
+        "sharing_with_control" if kind == ScreenKind::Desktop => ScreenShareState::SharingWithControl,
+        "controlling" if kind == ScreenKind::Desktop => ScreenShareState::Controlling,
+        "unavailable" => ScreenShareState::Unavailable,
+        _ => return None,
+    };
+    Some((kind, ScreenShare {
+        generation: generation.into(),
+        state,
+    }))
 }
 
 fn block_auto(
@@ -1122,6 +1266,8 @@ pub fn resume(app: tauri::AppHandle) {
                             state: "error".into(),
                             generation: 0,
                             process: None,
+                            browser_share: None,
+                            desktop_share: None,
                         });
                 }
             }
@@ -1288,6 +1434,211 @@ fn ask(app: &tauri::AppHandle, title: &str, text: String, accept: &str) -> bool 
         .blocking_show()
 }
 
+fn task_browser_marker(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(directory(app)?.with_file_name(TASK_BROWSER_MARKER))
+}
+
+fn read_task_browser(marker: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(marker) {
+        Ok(info) if info.is_file() && info.len() == 0 => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        _ => Err("无法读取任务浏览器设置".into()),
+    }
+}
+
+fn save_task_browser(marker: &Path, enabled: bool) -> Result<(), String> {
+    if read_task_browser(marker)? == enabled {
+        return Ok(());
+    }
+    if enabled {
+        let parent = marker.parent().ok_or("找不到本机设置目录")?;
+        fs::create_dir_all(parent).map_err(|_| "无法创建本机设置目录")?;
+        let mut options = fs::OpenOptions::new();
+        options.create_new(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(marker).map_err(|_| "无法启用任务浏览器")?;
+    } else {
+        fs::remove_file(marker).map_err(|_| "无法关闭任务浏览器")?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn task_browser_enabled(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<Option<bool>, String> {
+    check(&window)?;
+    if !cfg!(unix) {
+        return Ok(None);
+    }
+    read_task_browser(&task_browser_marker(&app)?).map(Some)
+}
+
+#[tauri::command]
+pub async fn task_browser_set(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    check(&window)?;
+    if !cfg!(unix) {
+        return Err("当前系统暂不支持任务浏览器".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = app.state::<ConnectorManager>();
+        let _gate = manager.gate.lock().map_err(|_| "电脑配置忙，请重试")?;
+        let marker = task_browser_marker(&app)?;
+        if enabled && !read_task_browser(&marker)? && !ask(
+            &app, "启用任务专用浏览器",
+            "本机所有者可在主助理里提出打开网站。每次打开都由你确认，窗口会随当前回合关闭。".into(),
+            "启用",
+        ) {
+            return Err("已取消启用".into());
+        }
+        check(&window)?;
+        save_task_browser(&marker, enabled)
+    }).await.map_err(|_| "无法更改任务浏览器设置")?
+}
+
+#[tauri::command]
+pub async fn computer_browser_share(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    registration_id: String,
+    share: bool,
+    task_code: Option<String>,
+    allow_control: Option<bool>,
+    allow_login: Option<bool>,
+) -> Result<(), String> {
+    check(&window)?;
+    let allow_control = allow_control.unwrap_or(false);
+    let allow_login = allow_login.unwrap_or(false);
+    if allow_login && !allow_control {
+        return Err("开启本站登录前，需要允许本次页面接管".into());
+    }
+    if allow_control && task_code.is_none() {
+        return Err("页面接管需要选定任务并输入一次性任务码".into());
+    }
+    if task_code.as_ref().is_some_and(|code| {
+        !share || code.len() != 32 || !code.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+    }) {
+        return Err("请输入接管卡生成的一次性任务码".into());
+    }
+    change_screen_share(window, app, registration_id, share, ScreenRequest {
+        kind: ScreenKind::Browser, task_code, allow_control, allow_login,
+    }).await
+}
+
+#[tauri::command]
+pub async fn computer_desktop_share(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    registration_id: String,
+    share: bool,
+    allow_control: Option<bool>,
+) -> Result<(), String> {
+    check(&window)?;
+    let allow_control = share && allow_control.unwrap_or(false);
+    change_screen_share(window, app, registration_id, share, ScreenRequest {
+        kind: ScreenKind::Desktop, task_code: None, allow_control, allow_login: false,
+    }).await
+}
+
+struct ScreenRequest {
+    kind: ScreenKind,
+    task_code: Option<String>,
+    allow_control: bool,
+    allow_login: bool,
+}
+
+async fn change_screen_share(
+    window: tauri::WebviewWindow, app: tauri::AppHandle, registration_id: String, share: bool,
+    request: ScreenRequest,
+) -> Result<(), String> {
+    let ScreenRequest { kind, task_code, allow_control, allow_login } = request;
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager = app.state::<ConnectorManager>();
+        let _gate = manager.gate.lock().map_err(|_| "电脑配置忙，请重试")?;
+        manager.ensure(&directory(&app)?)?;
+        let (record, process_generation, connection_generation) = {
+            let inner = manager.inner.lock().map_err(|_| "电脑状态忙，请重试")?;
+            let record = inner.config.as_ref().and_then(|config| config.registrations.iter()
+                .find(|record| record.home_instance_id == registration_id && record.enabled))
+                .ok_or("电脑配对已移除或停用")?;
+            let connected = inner.slots.get(&registration_id).and_then(|slot| {
+                let screen = slot.screen(kind)?;
+                (slot.state == "online").then_some((slot, screen))
+            });
+            let Some((slot, screen)) = connected else {
+                return if share {
+                    Err("电脑尚未连接，或当前连接器版本不支持分享".into())
+                } else {
+                    Ok(())
+                };
+            };
+            let available = matches!(screen.state, ScreenShareState::Idle | ScreenShareState::Unavailable);
+            if share && !available {
+                return Err("这块画面已有分享正在处理".into());
+            }
+            if !share && (available || screen.state == ScreenShareState::Stopping) {
+                return Ok(());
+            }
+            if kind == ScreenKind::Desktop && allow_control && inner.slots.values().any(|slot| {
+                slot.desktop_share.as_ref().is_some_and(|desktop| matches!(
+                    desktop.state, ScreenShareState::StartingWithControl | ScreenShareState::SharingWithControl
+                        | ScreenShareState::Controlling | ScreenShareState::Stopping
+                ))
+            }) {
+                return Err("本机已有一处桌面接管授权，请先停止那次分享".into());
+            }
+            (record.clone(), slot.generation, screen.generation.clone())
+        };
+        let introduction = if kind == ScreenKind::Desktop && allow_control {
+            "你即将为这个家的配对人开放一次桌面接管，最长 5 分钟。对方可以在你选定的显示器上点击，并向当前可编辑的普通文本框输入。打开的窗口和通知可能出现在画面上。可以随时在本机停止分享。"
+        } else if kind == ScreenKind::Desktop {
+            "在 macOS 的选择器里选一块要分享的显示器。配对人可以只读查看这块显示器，最长 5 分钟。通知和打开的窗口也可能出现在画面上。你可以在本机随时停止分享。"
+        } else if allow_login {
+            "为该任务打开临时浏览器，允许所有者从原接管卡操作网页，并向指定站点提交一次密码和一次登录验证码。登录信息加密送到这台电脑。关闭窗口或点「停止分享」结束授权。"
+        } else if allow_control {
+            "为该任务打开临时浏览器。允许所有者从原接管卡点击、滚动和输入普通文字，范围限于指定站点通过保护检查的页面。关闭窗口或点「停止分享」结束授权。"
+        } else if task_code.is_some() {
+            "为接管卡打开一个空白的临时浏览器。请在窗口中打开卡片指定的站点，家只能查看通过保护检查的页面。"
+        } else {
+            "打开一个使用临时资料的浏览器。仅配对人可以只读查看初始标签页，最长 5 分钟。关闭该标签页或点「停止分享」即可结束。"
+        };
+        let (title, confirm) = match (kind, allow_control) {
+            (ScreenKind::Browser, _) => ("分享专用浏览器画面", "打开并分享"),
+            (ScreenKind::Desktop, false) => ("只读分享显示器", "选择显示器"),
+            (ScreenKind::Desktop, true) => ("允许一次桌面接管", "允许并选择显示器"),
+        };
+        if share && !ask(&app, title, format!(
+            "家：{}\n电脑：{}\n\n{}",
+            record.origin, record.name, introduction,
+        ), confirm) {
+            return Err("已取消分享".into());
+        }
+        check(&window)?;
+        let mut inner = manager.inner.lock().map_err(|_| "电脑状态忙，请重试")?;
+        let slot = inner.slots.get_mut(&registration_id)
+            .filter(|slot| slot.state == "online" && slot.generation == process_generation
+                && !manager.closing.load(Ordering::Acquire))
+            .ok_or("连接已变化，请重新确认")?;
+        if !slot.screen(kind).is_some_and(|current| current.generation == connection_generation) {
+            return Err("连接已变化，请重新确认".into());
+        }
+        slot.process.as_mut().ok_or("电脑连接已停止")?
+            .share_screen(&connection_generation, kind, share, task_code.as_deref(), allow_control, allow_login)?;
+        slot.screen_slot(kind).as_mut().unwrap().state = match (share, kind, allow_control) {
+            (true, ScreenKind::Desktop, true) => ScreenShareState::StartingWithControl,
+            (true, _, _) => ScreenShareState::Starting,
+            (false, _, _) => ScreenShareState::Stopping,
+        };
+        Ok(())
+    }).await.map_err(|_| "画面分享操作未完成")?
+}
+
 fn pair_request(preview: &Preview, code: &str, name: &str) -> Result<Value, String> {
     // A revoked registration ID is permanently retired by the home. The stable
     // installation identity is metadata; each explicit pairing receives a new ID.
@@ -1346,7 +1697,8 @@ pub async fn computer_pair_confirm(
         if connect_registration(&app, &record, &source, &directory).is_err() {
             if let Ok(mut inner) = manager.inner.lock() {
                 inner.slots.entry(record.home_instance_id).or_insert(Slot {
-                    state: "error".into(), generation: 0, process: None,
+                    state: "error".into(), generation: 0, process: None, browser_share: None,
+                    desktop_share: None,
                 });
             }
             return Err("配对已保存在本机，但连接尚未就绪；请检查版本或重新打开 App".into());
@@ -1422,6 +1774,7 @@ pub async fn computer_remove(
             if let Some(slot) = inner.slots.get_mut(&registration_id) {
                 slot.generation = 0;
                 slot.state = "revoked".into();
+                slot.browser_share = None;
                 if let Some(mut process) = slot.process.take() { process.stop()?; }
             }
             Ok(())
@@ -1538,6 +1891,57 @@ mod tests {
             assert!(accepted_status(&frame, &record).is_none());
         }
     }
+    #[test]
+    fn preview_status_is_scoped_to_the_registration_and_contains_only_lifecycle_data() {
+        let (record, _) = grant_record(&grant(), &preview(), CONNECTOR, "My Mac".into()).unwrap();
+        let generation = "f".repeat(32);
+        let status = json!({"type":"browser_preview", "state":"sharing", "generation":generation,
+                            "home_instance_id":HOME, "connector_id":CONNECTOR});
+        let (kind, observed) = accepted_screen_share(&status, &record).unwrap();
+        assert!(kind == ScreenKind::Browser && observed.state == ScreenShareState::Sharing && observed.generation == generation);
+        let desktop = json!({"type":"desktop_preview", "state":"sharing", "generation":generation,
+                             "home_instance_id":record.home_instance_id, "connector_id":record.connector_id});
+        assert!(accepted_screen_share(&desktop, &record).is_some_and(|(kind, _)| kind == ScreenKind::Desktop));
+        let mut controlled = desktop.clone();
+        controlled["state"] = json!("sharing_with_control");
+        assert!(accepted_screen_share(&controlled, &record).is_some_and(|(kind, share)|
+            kind == ScreenKind::Desktop && share.state == ScreenShareState::SharingWithControl));
+        controlled["type"] = json!("browser_preview");
+        assert!(accepted_screen_share(&controlled, &record).is_none());
+        for (field, value) in [
+            ("home_instance_id", json!(CONNECTOR)),
+            ("connector_id", json!(HOME)),
+            ("generation", json!("invalid")),
+            ("url", json!("https://external.example")),
+        ] {
+            let mut invalid = status.clone();
+            invalid[field] = value;
+            assert!(accepted_screen_share(&invalid, &record).is_none());
+        }
+    }
+    #[test]
+    #[cfg(unix)]
+    fn task_browser_setting_defaults_off_and_requires_a_regular_local_marker() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!(
+            "vortoone-task-browser-{}",
+            secrets::random_id().unwrap()
+        ));
+        let marker = root.join(TASK_BROWSER_MARKER);
+        assert!(!read_task_browser(&marker).unwrap());
+        save_task_browser(&marker, true).unwrap();
+        assert!(read_task_browser(&marker).unwrap());
+        save_task_browser(&marker, false).unwrap();
+        assert!(!read_task_browser(&marker).unwrap());
+        let other = root.join("other-setting");
+        fs::write(&other, "keep").unwrap();
+        symlink(&other, &marker).unwrap();
+        assert!(read_task_browser(&marker).is_err());
+        assert!(save_task_browser(&marker, false).is_err());
+        assert_eq!(fs::read_to_string(other).unwrap(), "keep");
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn framed_protocol_rejects_unbounded_or_malformed_output() {
         assert!(read_frame(&mut std::io::Cursor::new(vec![b'x'; MAX_FRAME + 1])).is_err());

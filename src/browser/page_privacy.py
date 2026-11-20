@@ -5,6 +5,20 @@ body, URL or labels are read. This is a conservative DOM guard, not a promise to
 detect every QR login or arbitrary secret rendered as ordinary page text.
 """
 
+import re
+from urllib.parse import unquote
+
+_PROTECTED_PATH = re.compile(
+    r"(?:^|/)(?:login|signin|sign-in|oauth|sso|mfa|2fa|two-factor|password|passwd|"
+    r"credentials|secrets|tokens?|api[_-]?keys?|security|billing|checkout|payment)"
+    r"(?:\.(?:php|html?|aspx?))?(?:/|$)"
+)
+
+
+def protected_path(path: str) -> bool:
+    return bool(_PROTECTED_PATH.search(unquote(path).lower()))
+
+
 _HELPERS = r"""
 const visible = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el);
   return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -22,6 +36,40 @@ const label = el => (el.getAttribute('aria-label') || el.innerText || el.getAttr
 """
 
 AUTH_STATE_JS = "(() => {" + _HELPERS + "return { protected: protectedPage(), frames: [...document.querySelectorAll('iframe,frame')].some(visible) }; })()"
+
+_HANDOFF_STATE = r"""
+const state = () => ({ url: location.href, document: performance.timeOrigin, protected: protectedPage(),
+  frames: [...document.querySelectorAll('iframe,frame')].some(visible), width: innerWidth, height: innerHeight,
+  loaded: document.readyState === 'complete', scrollX, scrollY });
+"""
+
+HANDOFF_PREVIEW_STATE_JS = "(() => {" + _HELPERS + _HANDOFF_STATE + "return state();})()"
+
+HANDOFF_CONTROL_STATE_JS = "((kind, nx, ny) => {" + _HELPERS + _HANDOFF_STATE + r"""
+const page = state();
+const denied = { ...page, allowed: false };
+if (page.protected || page.frames) return denied;
+if (kind === 'scroll') return { ...page, allowed: true };
+if (kind === 'text' || kind === 'backspace') {
+  const el = document.activeElement;
+  const field = el instanceof HTMLTextAreaElement ||
+    (el instanceof HTMLInputElement && ['text', 'search', 'email', 'url', 'tel'].includes(el.type));
+  return { ...page, allowed: field && visible(el) && !el.disabled && !el.readOnly && !sensitive(el) };
+}
+const x = nx * innerWidth / 10000, y = ny * innerHeight / 10000;
+const hit = document.elementFromPoint(x, y);
+if (!hit || hit.shadowRoot) return denied;
+const fieldLabel = hit.closest('label');
+const field = hit.closest('input,textarea,select,button') || fieldLabel?.control;
+if (field && (field.disabled || field.type === 'file' || sensitive(field))) return denied;
+const link = hit.closest('a,area');
+if (link?.hasAttribute('href')) {
+  const url = new URL(link.href, location.href);
+  if (url.origin !== location.origin || url.search || url.hash || url.username || url.password ||
+      link.hasAttribute('download') || (link.target && link.target !== '_self')) return denied;
+}
+return { ...page, allowed: true, x, y };
+})"""
 
 SNAPSHOT_JS = "(() => {" + _HELPERS + r"""
 if (protectedPage()) return { needs_login: true };

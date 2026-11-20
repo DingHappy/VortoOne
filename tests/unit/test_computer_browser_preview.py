@@ -13,7 +13,7 @@ from src.agents.identity_groups import ADMINS, EVERYONE
 from src.agents.principal import OWNER, Principal
 from src.gateway.computer_protocol import hello
 from src.utils.state_dir import state_dir
-from src.web.auth import SESSION_COOKIE
+from src.web.auth import SESSION_COOKIE, auth_middleware
 from src.web.member_auth import MEMBER_COOKIE
 from src.web.routers.auth_routes import router as auth_router
 from src.web.routers.computers import router
@@ -53,6 +53,7 @@ def private_preview(home, monkeypatch):
 @contextmanager
 def _sockets():
     app = FastAPI()
+    app.middleware("http")(auth_middleware)
     app.include_router(router)
     app.include_router(auth_router)
     with TestClient(app, base_url=ORIGIN) as api:
@@ -86,6 +87,50 @@ def _captured(source, image=None):
     assert set(capture) == {"type", "request_id", "surface_id"}
     assert capture["type"] == "capture" and capture["surface_id"] == SURFACE
     return capture["request_id"].encode("ascii") + (_image() if image is None else image)
+
+
+def _machine_list(api, home, headers):
+    response = api.get(home["base"] + "/machines", headers=headers)
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    return response.json()["machines"]
+
+
+def test_machine_list_only_advertises_a_live_offer_to_its_authorized_pairer(private_preview):
+    home = private_preview
+    admin, admin_id = join_member(home, home["owner"], "other-admin@example.test")
+    registry = MemberRegistry(home["root"])
+    registry.set_member_groups(OWNER_ACTOR, admin_id, [ADMINS])
+    headers = {"Cookie": f"{MEMBER_COOKIE}={home['cookie']}"}
+    grant = home["grant"]
+    with _sockets() as api, connect(api, grant) as control:
+        control.send_json(hello(grant))
+        generation = control.receive_json()["generation"]
+        before, = _machine_list(api, home, headers)
+        assert before["online"] and before["browserPreviewAvailable"] is False
+        with _publisher(api, grant) as source:
+            source.send_json({"type": "offer", "generation": generation, "surface_id": SURFACE})
+            assert source.receive_json()["type"] == "offered"
+            machine, = _machine_list(api, home, headers)
+            assert machine == {**before, "browserPreviewAvailable": True}
+            assert SURFACE not in json.dumps(machine) and grant["token"] not in json.dumps(machine)
+            assert _machine_list(api, home, {"Cookie": f"{SESSION_COOKIE}={OWNER_TOKEN}"}) == []
+            assert _machine_list(api, home, {"Cookie": f"{MEMBER_COOKIE}={admin.cookies[MEMBER_COOKIE]}"}) == []
+            registry.change_group(OWNER_ACTOR, EVERYONE, computer="none")
+            assert _machine_list(api, home, headers) == [before]
+            registry.change_group(OWNER_ACTOR, EVERYONE, computer="own_browser")
+            assert _machine_list(api, home, headers) == [machine]
+        assert _machine_list(api, home, headers) == [before]
+
+
+def test_machine_list_owner_token_without_a_browser_cookie_does_not_advertise_a_share(home, monkeypatch):
+    claim_native_home(home, monkeypatch)
+    pairing = home["store"].create_pairing()
+    home["grant"] = home["store"].pair(pairing["code"], MACHINE, "Owner browser computer")
+    with _sockets() as api, _active_offer(api, home):
+        authorized, = _machine_list(api, home, {"Cookie": f"{SESSION_COOKIE}={OWNER_TOKEN}"})
+        bearer, = _machine_list(api, home, {"Authorization": f"Bearer {OWNER_TOKEN}"})
+        assert authorized["browserPreviewAvailable"] is True
+        assert bearer == {**authorized, "browserPreviewAvailable": False}
 
 
 def test_private_browser_requires_same_origin_and_the_pairers_session(private_preview):
@@ -157,6 +202,8 @@ def test_browser_reconnect_requires_a_new_preview_offer(private_preview):
             assert replacement.receive_json()["generation"] != generation
             assert old.receive_json()["reason"] == "connection_replaced"
             old.send_json({"type": "ack", "generation": generation})
+            status, = _machine_list(api, home, {"Cookie": f"{MEMBER_COOKIE}={home['cookie']}"})
+            assert status["online"] and status["browserPreviewAvailable"] is False
             with pytest.raises(WebSocketDisconnect):
                 source.receive_json()
             with _publisher(api, home["grant"]) as stale:
