@@ -11,6 +11,8 @@ export type BrowserInput =
   | { kind: "text"; text: string }
   | { kind: "backspace" };
 
+type DesktopInput = Extract<BrowserInput, { kind: "click" | "text" }>;
+
 export interface LoginFormOffer {
   offer: string;
   public_key: string;
@@ -20,6 +22,7 @@ export interface LoginFormOffer {
 }
 
 export type BrowserWatchEnd = "paused" | "ended" | "login_ready";
+export type PrivatePreviewKind = "browser" | "desktop";
 type LoginFields = { username?: string; password: string } | { code: string };
 
 interface PreviewOptions {
@@ -35,6 +38,8 @@ interface ControlOptions {
   onFrameReady: (ready: boolean) => void;
   onLoginForm?: (form: LoginFormOffer) => void;
   onLoginWaiting?: () => void;
+  onInputUnavailable?: () => void;
+  onControlBusy?: () => void;
 }
 
 export interface BrowserWatch {
@@ -44,12 +49,29 @@ export interface BrowserWatch {
   submitLogin: (offer: string, siteOrigin: string, fields: LoginFields) => Promise<boolean>;
 }
 
-export function watchPrivateScreen({ machineId, ...options }: PreviewOptions & { machineId: string }): () => void {
-  return watchBrowserFrames(options, "machines/" + encodeURIComponent(machineId) + "/browser-preview").stop;
+export type DesktopWatch = Pick<BrowserWatch, "stop" | "takeControl"> & {
+  sendInput: (action: DesktopInput) => boolean;
+};
+
+export function watchPrivateScreen({ machineId, kind = "browser", ...options }: PreviewOptions & {
+  machineId: string;
+  kind?: PrivatePreviewKind;
+}): () => void {
+  return watchBrowserFrames(options, `machines/${encodeURIComponent(machineId)}/${kind}-preview`).stop;
 }
 
 export function watchHandoffBrowser({ approvalId, ...options }: PreviewOptions & { approvalId: string }): () => void {
   return watchBrowserFrames(options, `approvals/${encodeURIComponent(approvalId)}/browser-preview/watch`).stop;
+}
+
+export function watchControllableDesktop({
+  machineId, onControl, onFrameReady, onInputUnavailable, onControlBusy, ...options
+}: PreviewOptions & Required<Pick<ControlOptions, "onControl" | "onFrameReady" | "onInputUnavailable" | "onControlBusy">> & {
+  machineId: string;
+}): DesktopWatch {
+  return watchBrowserFrames(options, `machines/${encodeURIComponent(machineId)}/desktop-preview`, {
+    onControl, onFrameReady, onInputUnavailable, onControlBusy,
+  });
 }
 
 export function watchControllableBrowser({
@@ -157,12 +179,16 @@ function watchBrowserFrames(options: PreviewOptions, path: string, controls?: Co
           return;
         }
         if (minFrameMs && awaiting && controls && control && Object.keys(control).length === 1 &&
-            ((awaiting === "control" && control.type === "control_ready") ||
-             (awaiting === "input" && control.type === "input_applied"))) {
+            ((awaiting === "control" && (control.type === "control_ready" ||
+               (control.type === "control_busy" && controls.onControlBusy))) ||
+             (awaiting === "input" && (control.type === "input_applied" ||
+               (control.type === "input_unavailable" && controls.onInputUnavailable))))) {
           if (control.type === "control_ready") {
             controlling = true;
             controls.onControl();
           }
+          if (control.type === "control_busy") controls.onControlBusy?.();
+          if (control.type === "input_unavailable") controls.onInputUnavailable?.();
           clearTimeout(timer);
           awaiting = null;
           if (!closed) timer = setTimeout(pull, minFrameMs);

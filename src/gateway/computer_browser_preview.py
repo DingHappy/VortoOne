@@ -1,4 +1,4 @@
-"""Short-lived browser offers scoped to the pairer or a single owner confirmation."""
+"""Short-lived, read-only browser frames from a paired computer's explicit offer."""
 from __future__ import annotations
 
 import asyncio
@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.gateway.computer_browser_wire import (
-    BrowserPreviewDenied, CONTROL_BYTES, FRAME_TIMEOUT, INPUT_APPLIED, INPUT_FRAME_SECONDS,
-    LOGIN_FORM, LOGIN_FORM_SECONDS, LOGIN_SENT, LOGIN_WAITING, LoginForm, MAX_PNG_BYTES,
-    MIN_FRAME_INTERVAL, OFFER_SECONDS, PROTECTED, SITE_READY, browser_input, validate_png,
+    BrowserPreviewDenied, CONTROL_BUSY, CONTROL_BYTES, CONTROL_READY, FRAME_TIMEOUT, INPUT_APPLIED, INPUT_FRAME_SECONDS,
+    INPUT_UNAVAILABLE, LOGIN_FORM, LOGIN_FORM_SECONDS, LOGIN_SENT, LOGIN_WAITING, LoginForm, MAX_PNG_BYTES,
+    MIN_FRAME_INTERVAL, OFFER_SECONDS, PROTECTED, SITE_READY, PreviewKind, browser_input, desktop_input, validate_png,
 )
 from src.gateway.computer_connections import HELLO_SECONDS, Connection, connections
 from src.gateway.computer_protocol import decode_frame, identifier
@@ -42,6 +42,7 @@ class BrowserPreview:
     allow_control: bool = False
     allow_login: bool = False
     controlling: bool = False
+    kind: PreviewKind = "browser"
     _read_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def active(self) -> bool:
@@ -76,6 +77,15 @@ class BrowserPreview:
         if pending is None or pending[1].done():
             raise BrowserPreviewDenied("no requested browser frame")
         request_id, reply, operation = pending
+        if self.kind == "desktop" and operation != "capture":
+            if not self.allow_control or not packet.startswith(request_id.encode("ascii")):
+                raise BrowserPreviewDenied("invalid desktop acknowledgement")
+            accepted = {"take_control": (CONTROL_READY, CONTROL_BUSY), "input": (INPUT_APPLIED, INPUT_UNAVAILABLE)}
+            result = packet[len(request_id):]
+            if result not in accepted.get(operation, ()):
+                raise BrowserPreviewDenied("invalid desktop acknowledgement")
+            reply.set_result(result)
+            return
         if self.task is not None:
             tag = request_id.encode("ascii")
             if packet == tag + PROTECTED:
@@ -118,6 +128,24 @@ class BrowserPreview:
         return (self.controlling and await self.live()
                 and await self._read("input", action=action) == INPUT_APPLIED and await self.live())
 
+    async def take_desktop_control(self) -> str | None:
+        if self.kind != "desktop" or not self.begin_control():
+            return None
+        result = await self._read("take_control")
+        if result == CONTROL_BUSY:
+            self.controlling = False
+            return "control_busy"
+        return "control_ready" if result == CONTROL_READY and await self.live() else None
+
+    async def interact_desktop(self, action: object) -> str | None:
+        value = desktop_input(action)
+        if self.kind != "desktop" or not self.controlling or not await self.live():
+            return None
+        result = await self._read("input", action=value)
+        if not await self.live():
+            return None
+        return {INPUT_APPLIED: "input_applied", INPUT_UNAVAILABLE: "input_unavailable"}.get(result)
+
     async def submit_login(self, message: dict) -> bool:
         return (self.allow_login and self.controlling and await self.live()
                 and await self._read("submit_login", action=message) == LOGIN_SENT and await self.live())
@@ -155,7 +183,7 @@ class BrowserPreview:
 class BrowserPreviews:
     def __init__(self):
         self._lock = threading.RLock()
-        self._offers: dict[tuple[str, str], BrowserPreview] = {}
+        self._offers: dict[tuple[str, str, PreviewKind], BrowserPreview] = {}
         self._owner_epoch = object()
 
     def owner_epoch(self) -> object:
@@ -169,7 +197,7 @@ class BrowserPreviews:
 
     def register(self, preview: BrowserPreview) -> bool:
         connection = preview.connection
-        key = connection.root, connection.binding["connector_id"]
+        key = connection.root, connection.binding["connector_id"], preview.kind
         with self._lock:
             prior = self._offers.get(key)
             if prior is not None and prior.connection is connection:
@@ -177,13 +205,13 @@ class BrowserPreviews:
             self._offers[key] = preview
             return True
 
-    def find(self, root: str, connector_id: str) -> BrowserPreview | None:
+    def find(self, root: str, connector_id: str, kind: PreviewKind = "browser") -> BrowserPreview | None:
         with self._lock:
-            return self._offers.get((root, connector_id))
+            return self._offers.get((root, connector_id, kind))
 
     def discard(self, preview: BrowserPreview) -> None:
         connection = preview.connection
-        key = connection.root, connection.binding["connector_id"]
+        key = connection.root, connection.binding["connector_id"], preview.kind
         with self._lock:
             if self._offers.get(key) is preview:
                 del self._offers[key]
@@ -202,14 +230,15 @@ async def _command(socket) -> dict:
     return decode_frame(message)
 
 
-async def serve_publisher(socket, root: str, binding: dict) -> None:
+async def serve_publisher(socket, root: str, binding: dict, *, kind: PreviewKind = "browser") -> None:
     """Accept the separate data socket only for the current control generation."""
     await socket.accept()
     offer = await asyncio.wait_for(_command(socket), timeout=HELLO_SECONDS)
     fields = {"type", "generation", "surface_id"}
     task_fields = fields | {"task_code"}
     controls = task_fields | {"allow_control"}
-    shapes = (fields, task_fields, controls, controls | {"allow_login"})
+    shapes = ((fields, task_fields, controls, controls | {"allow_login"}) if kind == "browser"
+              else (fields, fields | {"allow_control"}))
     if (set(offer) not in shapes or offer["type"] != "offer"
             or offer.get("allow_control", True) is not True or offer.get("allow_login", True) is not True):
         raise BrowserPreviewDenied("invalid browser offer")
@@ -217,7 +246,7 @@ async def serve_publisher(socket, root: str, binding: dict) -> None:
     connection = connections.active_binding(root, binding, generation)
     if connection is None or not await connection.valid():
         return
-    prior = browser_previews.find(root, binding["connector_id"])
+    prior = browser_previews.find(root, binding["connector_id"], kind)
     if prior is not None and prior.connection is connection:
         return
     task = None
@@ -227,7 +256,7 @@ async def serve_publisher(socket, root: str, binding: dict) -> None:
             return
     preview = BrowserPreview(connection, socket, surface, time.monotonic() + OFFER_SECONDS,
                              task=task, allow_control=offer.get("allow_control", False),
-                             allow_login=offer.get("allow_login", False))
+                             allow_login=offer.get("allow_login", False), kind=kind)
     if not preview.active() or not browser_previews.register(preview):
         return
     if task is not None:

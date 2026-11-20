@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { type LoginFormOffer, watchControllableBrowser, watchHandoffBrowser, watchPrivateScreen } from "../apps/web/src/screen/private-browser-preview";
+import { type LoginFormOffer, type PrivatePreviewKind, watchControllableBrowser, watchControllableDesktop, watchHandoffBrowser, watchPrivateScreen } from "../apps/web/src/screen/private-browser-preview";
 
 class Socket {
   binaryType = "";
@@ -16,13 +16,13 @@ class Socket {
   receive(data: unknown) { this.onmessage?.({ data }); }
 }
 
-function preview(origin = "https://home.example:8443") {
+function preview(origin = "https://home.example:8443", kind: PrivatePreviewKind = "browser") {
   const socket = new Socket();
   const urls: string[] = [];
   const frames: Blob[] = [];
   let ended = 0;
   const stop = watchPrivateScreen({
-    origin, orgId: "this-home", machineId: "my-mac",
+    origin, orgId: "this-home", machineId: "my-mac", kind,
     onFrame: (frame) => frames.push(frame),
     onEnd: () => { ended++; },
     createSocket(url) { urls.push(url); return socket as unknown as WebSocket; },
@@ -32,6 +32,71 @@ function preview(origin = "https://home.example:8443") {
 
 const ready = '{"type":"ready","min_frame_ms":500}';
 const image = new Blob([new Uint8Array(68)]);
+
+test("a desktop viewer can only pull frames from its own route", () => {
+  const { socket, frames, urls, stop, ended } = preview("https://home.example", "desktop");
+  try {
+    assert.deepEqual(urls, ["wss://home.example/api/app/organizations/this-home/machines/my-mac/desktop-preview"]);
+    socket.receive(ready);
+    socket.receive(image);
+    assert.deepEqual(socket.messages, ['{"type":"next"}']);
+    assert.equal(frames.length, 1);
+    socket.receive('{"type":"controlled"}');
+    assert.equal(socket.closed, true);
+    assert.equal(ended(), 1);
+  } finally {
+    stop();
+  }
+});
+
+test("desktop control claims and consumes one fresh frame for each deliberate input", async () => {
+  const socket = new Socket();
+  let active = false;
+  let busy = 0;
+  let unavailable = 0;
+  let ended = 0;
+  const watch = watchControllableDesktop({
+    origin: "https://home.example", orgId: "this-home", machineId: "my-mac",
+    onFrame() {}, onFrameReady() {}, onControl: () => { active = true; },
+    onControlBusy: () => { busy++; },
+    onInputUnavailable: () => { unavailable++; }, onEnd: () => { ended++; },
+    createSocket: (url) => {
+      assert.equal(url, "wss://home.example/api/app/organizations/this-home/machines/my-mac/desktop-preview");
+      return socket as unknown as WebSocket;
+    },
+  });
+  const click = { kind: "click", x: 2600, y: 5700 } as const;
+  try {
+    socket.receive(ready);
+    assert.equal(watch.takeControl(), false);
+    socket.receive(image);
+    assert.equal(watch.sendInput(click), false);
+    assert.equal(watch.takeControl(), true);
+    socket.receive('{"type":"control_busy"}');
+    assert.equal(busy, 1);
+    assert.equal(active, false);
+    assert.equal(socket.closed, false);
+    await delay(525);
+    socket.receive(image);
+    assert.equal(watch.takeControl(), true);
+    socket.receive('{"type":"control_ready"}');
+    assert.equal(active, true);
+    assert.equal(watch.sendInput(click), false);
+    await delay(525);
+    socket.receive(image);
+    assert.equal(watch.sendInput(click), true);
+    assert.equal(watch.sendInput(click), false);
+    assert.deepEqual(JSON.parse(socket.messages.at(-1)!), { type: "input", action: click });
+    socket.receive('{"type":"input_unavailable"}');
+    assert.equal(unavailable, 1);
+    assert.equal(socket.closed, false);
+    socket.close();
+    assert.equal(ended, 1);
+    assert.equal(watch.sendInput(click), false);
+  } finally {
+    watch.stop();
+  }
+});
 
 test("the viewer pulls one frame at a time on the current authenticated origin and closes without reconnecting", async () => {
   const { socket, frames, urls, stop, ended } = preview();

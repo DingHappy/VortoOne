@@ -7,7 +7,7 @@ import uuid
 
 import aiohttp
 
-from src.gateway.computer_browser_wire import BrowserPreviewDenied, CONTROL_BYTES, FRAME_TIMEOUT, OFFER_SECONDS
+from src.gateway.computer_browser_wire import BrowserPreviewDenied, CONTROL_BYTES, FRAME_TIMEOUT, OFFER_SECONDS, PreviewKind
 from src.gateway.computer_protocol import decode_frame
 
 
@@ -21,14 +21,14 @@ async def read_command(socket, timeout: float) -> dict | None:
 
 
 @asynccontextmanager
-async def preview_link(session, config: dict, generation: str, **options):
+async def preview_link(session, config: dict, generation: str, kind: PreviewKind, **options):
     origin = config["origin"].replace("https://", "wss://", 1).replace("http://", "ws://", 1)
     surface = uuid.uuid4().hex
     clock = asyncio.get_running_loop().time
     # aiohttp 3.9 supports a numeric close timeout; newer releases use ClientWSTimeout.
     timeout_type = getattr(aiohttp, "ClientWSTimeout", None)
     timeout = timeout_type(ws_close=0.25) if timeout_type else 0.25
-    async with session.ws_connect(origin + "/api/computers/browser-preview",
+    async with session.ws_connect(f"{origin}/api/computers/{kind}-preview",
                                   headers={"Authorization": "Bearer " + config["token"]},
                                   max_msg_size=CONTROL_BYTES, timeout=timeout) as socket:
         started_at = clock()
@@ -47,9 +47,10 @@ async def preview_link(session, config: dict, generation: str, **options):
 
 
 class PreviewSource:
-    def __init__(self, config: dict, emit, share):
+    def __init__(self, config: dict, emit, kind: PreviewKind, share):
         self._config = config
         self._emit = emit
+        self._event = kind + "_preview"
         self._share = share
         self._connection: tuple[aiohttp.ClientSession, str] | None = None
         self._task: asyncio.Task | None = None
@@ -57,7 +58,7 @@ class PreviewSource:
 
     def _status(self, generation: str, state: str) -> None:
         if self._connection is not None and self._connection[1] == generation:
-            self._emit({"type": "browser_preview", "state": state, "generation": generation,
+            self._emit({"type": self._event, "state": state, "generation": generation,
                         **{key: self._config[key] for key in ("home_instance_id", "connector_id")}})
 
     def connected(self, session: aiohttp.ClientSession, generation: str) -> None:
@@ -68,12 +69,12 @@ class PreviewSource:
         connection = self._connection
         if connection is None or generation != connection[1]:
             return
-        if name == "browser_preview_stop":
+        if name == self._event + "_stop":
             if self._task is None:
                 self._status(generation, "idle")
             else:
                 self._cancel()
-        elif name == "browser_preview_start" and self._task is None:
+        elif name == self._event + "_start" and self._task is None:
             self._task = asyncio.create_task(self._share(
                 connection[0], self._config, generation,
                 lambda state="sharing": self._status(generation, state), *args, **options,

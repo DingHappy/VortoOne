@@ -2878,7 +2878,15 @@
     "methods": []
   },
   {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
+    "methods": []
+  },
+  {
     "path": "/api/computers/browser-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/computers/desktop-preview",
     "methods": []
   },
   {
