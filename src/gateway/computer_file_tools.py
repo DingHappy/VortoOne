@@ -104,7 +104,7 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
 
     async def identity():
         owner = current_owner_turn.get()
-        if owner is None or owner.root != root:
+        if owner is None or owner.root != root or owner.file_identity is None:
             raise FileConnectionUnavailable(_OWNER)
         account = await asyncio.to_thread(store.identity)
         if not owner.matches(account):

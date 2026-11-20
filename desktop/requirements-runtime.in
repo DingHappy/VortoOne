@@ -11,6 +11,8 @@ aiohttp==3.14.5
 openai==3.14.1
 httpx==0.28.1
 fastapi==0.136.1
+# Open the one-time encrypted browser login box on the paired computer.
+cryptography==50.0.2
 jedi==0.19.2
 Markdown==3.8.1
 psutil==5.9.0

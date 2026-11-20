@@ -177,9 +177,14 @@ class Connections:
             self._schedule(connection)
 
     def online(self, root: str, connector_id: str) -> bool:
+        return self.online_connection(root, connector_id) is not None
+
+    def online_connection(self, root: str, connector_id: str) -> Connection | None:
         with self._lock:
             found = self._current.get((root, connector_id))
-            return found is not None and not found.revoking and not found.finished
+            if found is not None and not found.revoking and not found.finished:
+                return found
+            return None
 
     def active_binding(self, root: str, binding: dict, generation: str) -> Connection | None:
         with self._lock:

@@ -1,4 +1,4 @@
-import { type Agent, type Approval, type Member, useApprovalsDeciding } from "@agenteschat/client";
+import { type Agent, type Approval, type Member, useApprovalsDeciding, useDecideApproval } from "@agenteschat/client";
 import {
   approvalLine,
   approvalRuns,
@@ -41,6 +41,8 @@ import {
   expiryText,
   RefuseBox,
 } from "@/pages/ApprovalsPage";
+import { HandoffBrowserPreview } from "./HandoffBrowserPreview";
+import { PairedHandoffBrowser, usePairedHandoffBrowser } from "./PairedHandoffBrowser";
 import { type RequestAnswer, RequestCard, RequestFuse, useExpired } from "./RequestCard";
 
 /** The whole time a request has (24 h when the row doesn't say): the fuse burns down over it. */
@@ -75,10 +77,15 @@ export function ApprovalAsk({
   const { t, i18n } = useTranslation();
   const { org, me } = useOrg();
   const deciding = useApprovalsDeciding(org.id, [row.id]);
+  const decide = useDecideApproval(org.id);
   // Past its deadline it has expired, even before the server's event says so.
   const expired = useExpired(row.status === "pending" ? row.expiresAt : null);
   const approval: Approval = expired && row.status === "pending" ? { ...row, status: "expired" } : row;
   const pending = approval.status === "pending";
+  const website = approval.websiteLogin;
+  const paired = usePairedHandoffBrowser(org.id, row.id, pending && approval.canDecide && website?.pairedBrowser === true);
+  const pairedState = paired.isSuccess ? paired.data : undefined;
+  const pairedSharing = pairedState?.sharing === true;
   const [refusing, setRefusing] = useState(false);
   const why = approvalWords(approval);
   const origin = approvalOriginShort(approval);
@@ -88,7 +95,7 @@ export function ApprovalAsk({
   const owner = agent?.ownerUserId ? members.get(agent.ownerUserId) : undefined;
   const waits = approvalWaitsFor(approval, owner?.name);
   const requester = requesterDecidesLine(t, approval);
-  const title = approvalTitle(t, approval);
+  const title = website ? approval.title : approvalTitle(t, approval);
   const email = approval.email;
   const previewed = Boolean(email || approvalLetter(approval));
   // What the preview already shows isn't said again on the action's line. A connector's detail is its raw call
@@ -115,7 +122,7 @@ export function ApprovalAsk({
       mine={approval.canDecide}
       waitingFor={waits ? t("ask.waitingFor", { name: waits }) : t("approval.waitingAdmin")}
       answer={pending ? undefined : approvalAnswer(t, i18n.language, approval, me.user.id, members)}
-      lead={why ?? (summary ? undefined : approvalAskLine(t, pending && approval.canDecide))}
+      lead={why ?? (summary || website ? undefined : approvalAskLine(t, pending && approval.canDecide))}
       headless={summary}
       preview={previewed ? <ApprovalPreview approval={approval} /> : undefined}
       object={{
@@ -134,9 +141,38 @@ export function ApprovalAsk({
           )}
         </>
       }
-      body={<AheadLine approval={approval} className="ap-ask__ahead" />}
+      body={website && pending ? (
+        <>
+          <p className="rq__origin">
+            {website.origin} · {website.accountLabel} · {website.deviceMode === "mobile" ? "手机网页" : "桌面网页"}
+          </p>
+          {website.pairedBrowser && approval.canDecide &&
+            <PairedHandoffBrowser
+              key={`${org.id}/${me.user.id}/${approval.id}`}
+              orgId={org.id}
+              approvalId={approval.id}
+              siteOrigin={website.origin}
+              sharing={pairedSharing}
+              canControl={pairedState?.canControl === true}
+            />}
+          {!website.pairedBrowser && website.canPreview && approval.canDecide &&
+            <HandoffBrowserPreview
+              key={`${org.id}/${me.user.id}/${approval.id}`}
+              orgId={org.id}
+              approvalId={approval.id}
+              livePreview={website.livePreview}
+            />}
+        </>
+      ) : <AheadLine approval={approval} className="ap-ask__ahead" />}
       actions={
-        !pending || !approval.canDecide ? undefined : refusing ? (
+        !pending || !approval.canDecide ? undefined : website ? (
+          <>
+            <ApproveButton approval={approval} block={website.pairedBrowser && (!pairedSharing || pairedState?.controlling)} />
+            <Button size="sm" disabled={deciding} onClick={() => decide.mutate({ id: approval.id, decision: "refuse" })}>
+              保持暂停
+            </Button>
+          </>
+        ) : refusing ? (
           <RefuseBox approval={approval} agent={agent} onCancel={() => setRefusing(false)} />
         ) : (
           <>

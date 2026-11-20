@@ -19,7 +19,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 from src.utils.state_dir import home_state_dir
 
 _CANDIDATES = (
@@ -58,10 +58,15 @@ def find_browser() -> Optional[str]:
 class CdpBrowser:
     """一个独立浏览器实例 + 一个受控标签页（flatten 会话）。"""
 
-    def __init__(self, executable: str, profile_dir: Optional[Path] = None, *, device_mode: str = "desktop"):
+    def __init__(self, executable: str, profile_dir: Optional[Path] = None, *,
+                 device_mode: str = "desktop", private_preview: bool = False):
         if device_mode not in {"desktop", "mobile"}:
             raise ValueError("Unknown browser device mode")
+        if private_preview and profile_dir is None:
+            raise ValueError("A private preview requires its own browser profile")
         self.device_mode = device_mode
+        self._shutdown_timeout = 0.15 if private_preview else 5.0
+        self._private_preview = private_preview
         self._lifecycle = asyncio.Lock()
         self._fds = set()
         self._transport = None
@@ -73,12 +78,18 @@ class CdpBrowser:
         self._pending: Dict[int, asyncio.Future] = {}
         self._next_id = 0
         self._session: Optional[str] = None
+        self._page_detached = False
         self._pump: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 
     @property
     def running(self) -> bool:
         return self._proc is not None and self._proc.returncode is None
+
+    @property
+    def page_attached(self) -> bool:
+        return (self.running and self._session is not None and not self._page_detached
+                and self._pump is not None and not self._pump.done())
 
     async def start(self) -> None:
         async with self._lifecycle:
@@ -118,8 +129,10 @@ class CdpBrowser:
             "--no-default-browser-check",
             "--disable-features=Translate,OptimizationHints",
             "--window-size=1280,900",
-            "about:blank",
         ]
+        if self._private_preview:
+            args.append("--disable-sync")
+        args.append("about:blank")
         try:
             self._proc = await asyncio.create_subprocess_exec(
                 *args, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
@@ -152,6 +165,9 @@ class CdpBrowser:
                     message = json.loads(raw[:-1])
                 except ValueError:
                     continue
+                if (message.get("method") == "Target.detachedFromTarget"
+                        and (message.get("params") or {}).get("sessionId") == self._session):
+                    self._page_detached = True
                 future = self._pending.pop(message.get("id"), None) if "id" in message else None
                 if future is not None and not future.done():
                     if "error" in message:
@@ -183,16 +199,45 @@ class CdpBrowser:
     async def _attach_page(self) -> None:
         targets = await self.send("Target.getTargets", page=False)
         pages = [t for t in targets.get("targetInfos", []) if t.get("type") == "page"]
+        if self._private_preview:
+            pages = [page for page in pages if page.get("url") == "about:blank"]
+            if len(pages) != 1:
+                raise BrowserError("preview must start in a new blank tab")
         target_id = pages[0]["targetId"] if pages else (
             await self.send("Target.createTarget", {"url": "about:blank"}, page=False))["targetId"]
         attached = await self.send("Target.attachToTarget", {"targetId": target_id, "flatten": True}, page=False)
         self._session = attached["sessionId"]
+        self._page_detached = False
         await self.send("Page.enable")
         await self.send("Runtime.enable")
 
     async def evaluate(self, expression: str) -> Any:
+        return await self._evaluate(expression)
+
+    async def _isolated_context(self) -> int:
+        tree = await self.send("Page.getFrameTree")
+        frame_id = tree["frameTree"]["frame"]["id"]
+        world = await self.send("Page.createIsolatedWorld", {"frameId": frame_id, "worldName": "vortoone-handoff"})
+        return world["executionContextId"]
+
+    async def evaluate_isolated(self, expression: str) -> Any:
+        return await self._evaluate(expression, contextId=await self._isolated_context())
+
+    async def call_isolated(self, function: str, arguments: list[Any], *, current: Callable[[], bool]) -> Any:
+        context = await self._isolated_context()
+        if not current():
+            return None
+        result = await self.send("Runtime.callFunctionOn", {
+            "functionDeclaration": function, "executionContextId": context,
+            "arguments": [{"value": value} for value in arguments], "returnByValue": True,
+        })
+        if result.get("exceptionDetails"):
+            raise BrowserError("页面检查失败")
+        return (result.get("result") or {}).get("value")
+
+    async def _evaluate(self, expression: str, **context) -> Any:
         result = await self.send("Runtime.evaluate", {
-            "expression": expression, "returnByValue": True, "awaitPromise": True})
+            "expression": expression, "returnByValue": True, "awaitPromise": True, **context})
         if result.get("exceptionDetails"):
             raise BrowserError(str(result["exceptionDetails"].get("text") or "页面脚本出错"))
         return (result.get("result") or {}).get("value")
@@ -226,6 +271,11 @@ class CdpBrowser:
 
     async def insert_text(self, text: str) -> None:
         await self.send("Input.insertText", {"text": text})
+
+    async def backspace(self) -> None:
+        for kind in ("rawKeyDown", "keyUp"):
+            await self.send("Input.dispatchKeyEvent", {
+                "type": kind, "key": "Backspace", "code": "Backspace", "windowsVirtualKeyCode": 8})
 
     async def press_enter(self) -> None:
         for kind in ("keyDown", "keyUp"):
@@ -262,20 +312,20 @@ class CdpBrowser:
     async def _close(self):
         if self._proc is not None and self._proc.returncode is None:
             try:
-                await self.send("Browser.close", page=False, timeout=5)
+                await self.send("Browser.close", page=False, timeout=self._shutdown_timeout)
             except Exception:
                 try:
                     self._proc.terminate()
                 except ProcessLookupError:
                     pass  # The browser may exit before the close response arrives.
             try:
-                await asyncio.wait_for(self._proc.wait(), 5)
+                await asyncio.wait_for(self._proc.wait(), self._shutdown_timeout)
             except asyncio.TimeoutError:
                 try:
                     self._proc.kill()
                 except ProcessLookupError:
                     pass
-                await asyncio.wait_for(self._proc.wait(), 5)
+                await asyncio.wait_for(self._proc.wait(), self._shutdown_timeout)
         if self._pump is not None:
             self._pump.cancel()
             await asyncio.gather(self._pump, return_exceptions=True)

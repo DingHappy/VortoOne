@@ -6,32 +6,36 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 import time
+from typing import TYPE_CHECKING
 import uuid
+
+if TYPE_CHECKING:
+    from src.gateway.task_browser import TaskBrowserGrant
 
 
 @dataclass(frozen=True)
-class OwnerFileTurn:
+class OwnerTurn:
     root: str
     session: str
     rid: str
-    home: str
-    subject: str
-    epoch: str
+    file_identity: tuple[str, str, str] | None = None
+    task_browser: TaskBrowserGrant | None = None
+    paired_browser_epoch: object | None = None
 
     def matches(self, identity: dict) -> bool:
         return (identity.get("ownership_state") == "claimed" and
-                (self.home, self.subject, self.epoch) == (
+                self.file_identity == (
                     identity.get("home_instance_id"), identity.get("owner_subject"), identity.get("trust_epoch")))
 
 
-current_owner_turn: ContextVar[OwnerFileTurn | None] = ContextVar("computer_file_turn", default=None)
-current_file_confirmation: ContextVar[OwnerFileTurn | None] = ContextVar("computer_file_confirmation", default=None)
-_queued: OrderedDict[str, tuple[OwnerFileTurn, str, float]] = OrderedDict()
+current_owner_turn: ContextVar[OwnerTurn | None] = ContextVar("owner_turn", default=None)
+current_file_confirmation: ContextVar[OwnerTurn | None] = ContextVar("computer_file_confirmation", default=None)
+_queued: OrderedDict[str, tuple[OwnerTurn, str, float]] = OrderedDict()
 
 
-def bind_prompt(owner: OwnerFileTurn, item: dict) -> str:
+def bind_prompt(owner: OwnerTurn, item: dict) -> str:
     # The public request ID can come from other clients. Only the server mints this distinct queue ID.
-    prompt_id = "file-owner-" + uuid.uuid4().hex
+    prompt_id = "owner-" + uuid.uuid4().hex
     item["id"] = prompt_id
     _queued[prompt_id] = (owner, item["text"], time.monotonic() + 900)
     if len(_queued) > 256:
@@ -62,7 +66,7 @@ def owner_prompt(root: str, session: str, item: dict):
 
 
 @contextmanager
-def file_confirmation(owner: OwnerFileTurn):
+def file_confirmation(owner: OwnerTurn):
     token = current_file_confirmation.set(owner)
     try:
         yield
