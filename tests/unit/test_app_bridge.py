@@ -50,11 +50,14 @@ async def app_home(tmp_path, monkeypatch, request):
     from src.web.routers import realtime
     layout = getattr(request, "param", None)
     root = tmp_path
+    if layout == "native-desktop":
+        root = tmp_path / "home"
+        root.mkdir()
     monkeypatch.chdir(root)
     for name in ("VORTOONE_API_TOKEN", "VORTOCODE_API_TOKEN", "AUTODEV_API_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    if layout != "native":
+    if layout not in {"native", "native-desktop"}:
         stand_in = _Agent()
         monkeypatch.setattr(realtime, "_new_agent", lambda: stand_in)
     else:
@@ -424,9 +427,11 @@ async def test_website_login_live_view_stops_on_protection_disconnect_and_lost_a
 
 @pytest.mark.parametrize(("app_home", "ending"), [
     ("native", "resume"), ("native", "switch_off"),
+    ("native-desktop", "desktop_before_open"), ("native-desktop", "desktop_resume"),
 ], indirect=["app_home"])
 async def test_native_task_browser_is_opt_in_owner_bound_and_disposed_with_the_turn(app_home, monkeypatch, ending):
     import json
+    import os
     from pathlib import Path
 
     from src.agents import web_fetch
@@ -434,6 +439,7 @@ async def test_native_task_browser_is_opt_in_owner_bound_and_disposed_with_the_t
     from src.browser.backend import BrowserBackend
     from src.browser.page_privacy import HANDOFF_PREVIEW_STATE_JS, SNAPSHOT_JS
     from src.gateway import protocol, task_browser
+    from src.gateway.desktop_control_lease import claim_desktop, desktop_lease_file, mark_desktop_takeover
     from src.web.auth import SESSION_COOKIE
     from src.web.routers import realtime
     from tests.unit.test_browser_handoff import Window
@@ -445,6 +451,10 @@ async def test_native_task_browser_is_opt_in_owner_bound_and_disposed_with_the_t
     auth = {"Origin": origin, "Cookie": f"{SESSION_COOKIE}={token}"}
     bearer = {"Authorization": f"Bearer {token}"}
     root = Path.cwd()
+    desktop = ending.startswith("desktop_")
+    if desktop and os.name != "posix":
+        pytest.skip("the native desktop publisher uses POSIX file leases")
+    control_directory = root.parent / "computer-connections"
     monkeypatch.setenv("VORTOONE_API_TOKEN", token)
     monkeypatch.setattr(task_browser, "_native_home", None)
     task_browser.register_native_home(root)
@@ -481,12 +491,17 @@ async def test_native_task_browser_is_opt_in_owner_bound_and_disposed_with_the_t
         async def chat(self, messages, **_kwargs):
             self.calls += 1
             browser_tools = {name for name in agent.tools if name.startswith("browser_")}
-            assert browser_tools == ({"browser_open"} if self.allowed else set())
+            exposed = {"browser_open", "browser_login"} if desktop else {"browser_open"}
+            assert browser_tools == (exposed if self.allowed else set())
             if self.allowed and self.calls == 1:
                 return {"content": json.dumps({"tool": "browser_open", "args": {"url": "https://example.test/login"}})}
+            if self.allowed and ending == "desktop_resume" and self.calls == 2:
+                assert any("先前的确认已失效" in str(message.get("content")) for message in messages)
+                return {"content": json.dumps({"tool": "browser_login", "args": {}})}
             if self.allowed:
                 result = {
                     "resume": "主人已确认恢复", "switch_off": "先前的接管确认已失效",
+                    "desktop_before_open": "已暂停本次操作", "desktop_resume": "主人已确认恢复",
                 }[ending]
                 assert any(result in str(message.get("content")) for message in messages)
             return {"content": "浏览器回合已处理"}
@@ -526,6 +541,15 @@ async def test_native_task_browser_is_opt_in_owner_bound_and_disposed_with_the_t
         def approval_path(item):
             return f"{origin}{app_home['base']}/approvals/{item['id']}"
 
+        if ending == "desktop_before_open":
+            with desktop_lease_file(control_directory) as fd:
+                assert claim_desktop(fd)
+                mark_desktop_takeover(fd)
+                assert (await http.post(approval_path(opened) + "/approve", headers=auth, json={})).status_code == 200
+                await _until(lambda: len(socket.events("run.finished")) > finished)
+                assert not launches and not browser.reads and len(socket.events("approval.created")) == 1
+                assert socket.events("run.finished")[-1]["status"] == "done"
+            return
 
         assert (await http.post(approval_path(opened) + "/approve", headers=auth, json={})).status_code == 200
         await _until(lambda: len(socket.events("approval.created")) == 2)
@@ -541,11 +565,23 @@ async def test_native_task_browser_is_opt_in_owner_bound_and_disposed_with_the_t
             marker.unlink()
             marker.touch()
             assert (await http.post(route + "/browser-preview", headers=auth)).status_code == 404
-
+        if ending == "desktop_resume":
+            with desktop_lease_file(control_directory) as fd:
+                assert claim_desktop(fd)
+                mark_desktop_takeover(fd)
+                assert (await http.post(route + "/browser-preview", headers=auth)).status_code == 404
+                assert SNAPSHOT_JS not in browser.reads
+            assert (await http.post(route + "/browser-preview", headers=auth)).status_code == 404
+            assert (await http.post(route + "/approve", headers=auth, json={})).status_code == 200
+            await _until(lambda: len(socket.events("approval.created")) == 3)
+            renewed = socket.events("approval.created")[2]["approval"]
+            assert renewed["runId"] == opened["runId"] and "本机桌面已交还" in renewed["detail"]
+            assert browser.running and SNAPSHOT_JS not in browser.reads
+            route = approval_path(renewed)
         assert (await http.post(route + "/approve", headers=auth, json={})).status_code == 200
         await _until(lambda: any(event["runId"] == handoff["runId"] for event in socket.events("run.finished")))
         assert socket.events("run.finished")[-1]["status"] == "done"
-        assert browser.reads.count(SNAPSHOT_JS) == (1 if ending == "resume" else 0)
+        assert browser.reads.count(SNAPSHOT_JS) == (1 if ending in ("resume", "desktop_resume") else 0)
         launch, = launches
         assert not launch.profile_dir.exists() and not browser.running
         assert "browser_open" not in agent.tools

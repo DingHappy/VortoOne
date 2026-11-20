@@ -151,6 +151,49 @@ test("the computer card starts and stops preview through native commands for its
   assert.ok(button("打开并分享专用浏览器"));
 });
 
+test("the desktop share action targets its registration without changing browser sharing", async () => {
+  let desktopShare = "idle";
+  const ui = await page(async (name, args) => {
+    if (name === "computers_get") return { computers: [{ registrationId: HOME,
+      homeInstanceId: HOME, name: "This Mac", origin: "https://home.example",
+      state: "online", secretStorage: "keychain", enabled: true, browserShare: "idle", desktopShare }] };
+    assert.equal(name, "computer_desktop_share");
+    assert.deepEqual({ ...args }, { registrationId: HOME, share: desktopShare === "idle" });
+    desktopShare = args.share ? "sharing" : "idle";
+  });
+  const card = () => ui.element("connections").children[0];
+  const button = (label) => card().children.find((child) => child.tag === "button" && child.textContent === label);
+  await button("选择并分享显示器").fire("click");
+  assert.match(text(card()), /所选显示器正在只读分享/);
+  assert.ok(button("打开并分享专用浏览器"));
+  await button("停止桌面分享").fire("click");
+  assert.ok(button("选择并分享显示器"));
+});
+
+test("desktop control is requested only by the separate opt-in and can be stopped locally", async () => {
+  let desktopShare = "idle";
+  const ui = await page(async (name, args) => {
+    if (name === "computers_get") return { computers: [{ registrationId: HOME,
+      homeInstanceId: HOME, name: "This Mac", origin: "https://home.example",
+      state: "online", secretStorage: "keychain", enabled: true, desktopShare }] };
+    assert.equal(name, "computer_desktop_share");
+    if (args.share) {
+      assert.deepEqual({ ...args }, { registrationId: HOME, share: true, allowControl: true });
+      desktopShare = "controlling";
+    } else {
+      assert.deepEqual({ ...args }, { registrationId: HOME, share: false });
+      desktopShare = "idle";
+    }
+  });
+  const card = () => ui.element("connections").children[0];
+  const button = (label) => card().children.find((child) => child.tag === "button" && child.textContent === label);
+  await button("分享并允许接管").fire("click");
+  assert.match(text(card()), /配对人正在接管所选显示器/);
+  assert.equal(button("分享并允许接管"), undefined);
+  await button("停止桌面接管").fire("click");
+  assert.ok(button("选择并分享显示器"));
+});
+
 test("the task browser uses native consent and renders the saved setting after a decline", async () => {
   let enabled = false;
   let declined = true;

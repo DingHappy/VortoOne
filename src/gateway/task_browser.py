@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import stat
 from typing import TYPE_CHECKING
@@ -39,6 +40,7 @@ class TaskBrowserGrant:
     marker: Path
     revision: tuple[int, int, int]
     owner_epoch: object
+    desktop_directory: Path | None = None
 
     def current(self) -> bool:
         return (self.owner_epoch is browser_previews.owner_epoch()
@@ -54,7 +56,11 @@ def task_browser_grant(root: str) -> TaskBrowserGrant | None:
     revision = _revision(marker)
     if revision is None:
         return None
-    return TaskBrowserGrant(marker, revision, browser_previews.owner_epoch())
+    # The trusted native launcher puts the backend in app-data/home and
+    # the connector in its sibling computer-connections directory.
+    desktop = (_native_home.with_name("computer-connections")
+               if os.name == "posix" and _native_home.name == "home" else None)
+    return TaskBrowserGrant(marker, revision, browser_previews.owner_epoch(), desktop)
 
 
 @asynccontextmanager
@@ -69,7 +75,7 @@ async def task_browser_tools(agent, owner: OwnerTurn | None):
     grant = owner.task_browser
     if grant is not None and grant.current() and "browser_open" not in agent.tools:
         from src.agents.tools.website_browser import build_task_browser
-        tools, close = build_task_browser(owner.root, gate, grant.current)
+        tools, close = build_task_browser(owner.root, gate, grant.current, desktop_directory=grant.desktop_directory)
     if (owner.file_identity is not None and owner.paired_browser_epoch is browser_previews.owner_epoch()
             and "browser_paired_handoff" not in agent.tools):
         from src.gateway.computer_connections import connections

@@ -5,8 +5,11 @@ import base64
 from dataclasses import dataclass
 import json
 import struct
+from typing import Literal
 
 from src.gateway.computer_protocol import decode_frame, identifier
+
+PreviewKind = Literal["browser", "desktop"]
 
 OFFER_SECONDS = 300
 FRAME_TIMEOUT = 3.0
@@ -16,6 +19,9 @@ INPUT_APPLIED = b"\x02"
 LOGIN_FORM = b"\x03"
 LOGIN_SENT = b"\x04"
 LOGIN_WAITING = b"\x05"
+CONTROL_READY = b"\x06"
+INPUT_UNAVAILABLE = b"\x07"
+CONTROL_BUSY = b"\x08"
 LOGIN_FORM_SECONDS = 90
 LOGIN_VALUE_BYTES = 256
 LOGIN_PAYLOAD_BYTES = 1100
@@ -103,6 +109,13 @@ def browser_input(action: object) -> dict:
     elif kind == "backspace" and fields == {"kind"}:
         return action
     raise BrowserPreviewDenied("invalid browser input")
+
+
+def desktop_input(action: object) -> dict:
+    value = browser_input(action)
+    if value["kind"] not in ("click", "text"):
+        raise BrowserPreviewDenied("invalid desktop input")
+    return value
 
 
 def validate_png(data: bytes) -> bytes:

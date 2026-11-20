@@ -4831,6 +4831,9 @@ export interface Machine {
   online: boolean;
   /** This signed-in pairer can watch an open private browser offer. Absent on older homes. */
   browserPreviewAvailable?: boolean;
+  /** This signed-in pairer can watch one selected display on this computer. */
+  desktopPreviewAvailable?: boolean;
+  desktopControlAvailable?: boolean;
   /**
    * ADR 0161: the workspace's own computer is asleep in standby, offline by design: it wakes when something wants it,
    * and opens as it does. Absent from an older server: not in standby.

@@ -42,7 +42,7 @@ export function checkDevConfig(config, stable) {
   )
     throw new Error("Development and stable apps must remain separate");
   developmentVersion(config.version);
-  // 配置不能随意指定执行程序；只有打包脚本可以加入经锁文件与来源校验的内置后端。
+  // 只有打包脚本可以加入内置后端和来自本项目的原生辅助程序。
   const resources = JSON.stringify(config.bundle?.resources ?? null);
   if (
     config.plugins?.updater ||

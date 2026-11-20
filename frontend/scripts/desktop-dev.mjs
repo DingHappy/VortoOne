@@ -41,6 +41,7 @@ const dmg = join(out, `VortoOne_Dev_${config.version}_aarch64.dmg`);
 const manifest = join(out, "desktop-dev.json");
 const checksum = join(out, `vortoone-dev-${config.version}-SHA256SUMS`);
 const notes = join(out, "release-notes.md");
+const desktopCapture = "vortoone-desktop-capture";
 function run(cmd, args, options = {}) {
   return execFileSync(cmd, args, { cwd: repo, encoding: "utf8", ...options });
 }
@@ -77,6 +78,8 @@ function inspect(path) {
   run("codesign", ["--verify", "--deep", "--strict", path]);
   if (!existsSync(join(path, "Contents/Resources/runtime/vortocode-runtime")))
     throw new Error("Standalone Python backend is missing from application");
+  if (!existsSync(join(path, "Contents/MacOS", desktopCapture)))
+    throw new Error("Desktop capture helper is missing from application");
   return { ...result, sha256Tree: digestTree(path) };
 }
 function identity() {
@@ -170,6 +173,14 @@ if (action === "status") {
     throw new Error("This installer currently targets Apple Silicon macOS");
   const signing = identity();
   run("node", [join(repo, "desktop/scripts/build-sidecar.mjs")], {stdio: "inherit"});
+  const captureDirectory = join(tauri, "target/desktop-capture");
+  mkdirSync(captureDirectory, { recursive: true });
+  const capture = join(captureDirectory, desktopCapture);
+  run("xcrun", [
+    "swiftc", "-O", "-parse-as-library", "-target", "arm64-apple-macosx13.0",
+    "-module-cache-path", join(captureDirectory, "swift-cache"),
+    join(appRoot, "desktop-capture.swift"), "-o", `${capture}-aarch64-apple-darwin`,
+  ], { stdio: "inherit" });
   const buildEnv = { ...process.env };
   for (const key of Object.keys(buildEnv)) {
     if (/^APPLE_(ID|PASSWORD|APP_SPECIFIC_PASSWORD|API_(KEY|ISSUER))/.test(key))
@@ -185,6 +196,7 @@ if (action === "status") {
       "--ci",
       "--config",
       JSON.stringify({ bundle: {
+        externalBin: [capture],
         macOS: { signingIdentity: signing },
         resources: {
           "../../web/dist": "web",

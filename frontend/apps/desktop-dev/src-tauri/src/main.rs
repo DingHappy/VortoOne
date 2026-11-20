@@ -303,6 +303,7 @@ fn main() {
             connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
             connector::computer_remove, connector::computers_open, connector::computer_folder_settings,
             connector::computer_browser_share,
+            connector::computer_desktop_share,
             connector::task_browser_enabled, connector::task_browser_set,
             shell::servers_get, shell::server_choose, shell::server_remove, shell::server_sign_out, shell::workspaces_get,
             shell::welcome_mode_take, shell::welcome_add, shell::discover, shell::link_take, shell::open_external,

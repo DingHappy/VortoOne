@@ -24,6 +24,16 @@ const shareStates = {
   stopping: "正在停止分享…",
   unavailable: "重试分享专用浏览器",
 };
+const desktopShareStates = {
+  idle: "选择并分享显示器",
+  starting: "取消选择显示器",
+  starting_with_control: "取消选择显示器",
+  sharing: "停止桌面分享",
+  sharing_with_control: "停止桌面分享",
+  controlling: "停止桌面接管",
+  stopping: "正在停止桌面分享…",
+  unavailable: "重试桌面分享",
+};
 function message(error) { status.textContent = typeof error === "string" ? error : "操作未完成，请重试。"; }
 function node(tag, text, className) {
   const item = document.createElement(tag);
@@ -31,7 +41,7 @@ function node(tag, text, className) {
   if (className) item.className = className;
   return item;
 }
-function shareButton(record, state, label) {
+function shareButton(record, state, label, command, allowControl = false) {
   const action = node("button", label, "secondary");
   action.type = "button";
   action.disabled = state === "stopping";
@@ -41,7 +51,7 @@ function shareButton(record, state, label) {
     action.disabled = true;
     status.textContent = "";
     const share = state === "idle" || state === "unavailable";
-    try { await invoke("computer_browser_share", { registrationId: record.registrationId, share }); }
+    try { await invoke(command, { registrationId: record.registrationId, share, ...(allowControl && { allowControl }) }); }
     catch (error) { message(error); }
     finally { busy = false; await refresh(); }
   });
@@ -108,7 +118,7 @@ async function refresh() {
         card.append(configure);
         if (record.state === "online" && Object.hasOwn(shareStates, record.browserShare)) {
           const share = record.browserShare === "idle" || record.browserShare === "unavailable";
-          card.append(shareButton(record, record.browserShare, shareStates[record.browserShare]));
+          card.append(shareButton(record, record.browserShare, shareStates[record.browserShare], "computer_browser_share"));
           if (share) {
             const task = node("button", "打开任务浏览器", "secondary");
             task.type = "button";
@@ -131,7 +141,23 @@ async function refresh() {
             card.append(node("p", "分享未能启动或已中断。请检查本机 Chromium 系浏览器、电脑连接和家的版本。", "muted"));
           }
         }
-
+        if (record.state === "online" && Object.hasOwn(desktopShareStates, record.desktopShare)) {
+          const state = record.desktopShare;
+          card.append(shareButton(record, state, desktopShareStates[state], "computer_desktop_share"));
+          if (state === "idle" || state === "unavailable") {
+            card.append(shareButton(record, state, "分享并允许接管", "computer_desktop_share", true));
+          }
+          if (state === "controlling") {
+            card.append(node("p", "配对人正在接管所选显示器", "muted"));
+          } else if (state === "sharing_with_control") {
+            card.append(node("p", "本次显示器分享已允许配对人接管 · 最长 5 分钟", "muted"));
+          } else if (state === "sharing") {
+            card.append(node("p", "所选显示器正在只读分享 · 最长 5 分钟", "muted"));
+          } else if (state === "unavailable") {
+            card.append(node("p", "桌面分享暂不可用。请检查 macOS 版本、屏幕录制权限及电脑连接。", "muted"));
+            card.append(node("p", "桌面接管需要 macOS 15.2 或更新版本及辅助功能权限。", "muted"));
+          }
+        }
       }
       const remove = node("button", "移除本机连接", "secondary");
       remove.type = "button";

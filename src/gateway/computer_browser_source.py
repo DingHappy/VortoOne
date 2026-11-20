@@ -43,7 +43,7 @@ async def _publish(session, config: dict, generation: str, browser, sharing: Cal
         options["allow_control"] = True
     if allow_login:
         options["allow_login"] = True
-    async with preview_link(session, config, generation, **options) as (socket, surface, deadline, site_origin):
+    async with preview_link(session, config, generation, "browser", **options) as (socket, surface, deadline, site_origin):
         def current() -> bool:
             return not stopped.is_set() and not socket.closed and browser.page_attached and clock() < deadline
 
@@ -134,7 +134,7 @@ async def _share(session, config: dict, generation: str, sharing: Callable[[], N
 
 class BrowserPreviewSource(PreviewSource):
     def __init__(self, config: dict, emit: Callable[[dict], None]):
-        super().__init__(config, emit, _share)
+        super().__init__(config, emit, "browser", _share)
 
     def connected(self, session, generation: str) -> None:
         if os.name == "posix":
