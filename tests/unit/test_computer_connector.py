@@ -463,6 +463,36 @@ async def test_peer_disconnect_cannot_execute_and_only_uses_retry_path():
     assert [value['state'] for value in events] == ['connecting', 'online', 'disconnected']
 
 
+
+async def test_control_stops_when_the_final_receive_times_out():
+    from types import SimpleNamespace
+
+    stop = asyncio.Event()
+    events = []
+
+    class Socket:
+        async def send_json(self, _message):
+            pass
+
+        async def receive(self, *, timeout):
+            if not events or events[-1]["state"] != "online":
+                return SimpleNamespace(type=aiohttp.WSMsgType.TEXT, data=json.dumps(welcome(BINDING, GENERATION)))
+            if stop.is_set():
+                pytest.fail("the control loop read another frame after its parent stopped")
+            # The socket can report its receive deadline at the same time that
+            # the parent asks the connector to exit.
+            stop.set()
+            raise asyncio.TimeoutError
+
+    class Session:
+        @asynccontextmanager
+        async def ws_connect(self, _url, **_options):
+            yield Socket()
+
+    await worker.connect(Session(), config("https://home.test"), events.append, stop, asyncio.Event())
+    assert any(event["state"] == "online" for event in events)
+
+
 def isolated_environment(tmp_path):
     cwd, user_home = tmp_path / 'cwd', tmp_path / 'user-home'
     cwd.mkdir()
