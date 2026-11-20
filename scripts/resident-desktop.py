@@ -361,6 +361,15 @@ def prepare_password_store(env: dict[str, str]) -> None:
         raise RuntimeError("system password store unavailable; refusing to start browser with basic storage")
 
 
+_HANDOFF_SECONDS = 300
+_VISIBLE_WINDOWS = ['sh', '-c',
+    'for w in $(xdotool search --onlyvisible --name "." 2>/dev/null); do '
+    'n=$(xdotool getwindowname "$w" 2>/dev/null) || continue; [ -n "$n" ] || continue; '
+    'g=$(xdotool getwindowgeometry --shell "$w" 2>/dev/null | tr "\\n" " "); '
+    'printf "%s\\t%s\\t%s\\n" "$w" "$g" "$n"; done; '
+    'printf "ACTIVE\\t%s\\n" "$(xdotool getactivewindow getwindowname 2>/dev/null)"']
+
+
 class Control:
     """Cooperative authority for this desktop, not an OS sandbox or task ledger.
 
@@ -402,13 +411,48 @@ class Control:
         write_private(self.state / "control.json", json.dumps(data).encode())
 
     @staticmethod
-    def invalidate(data: dict) -> None:
-        data.update(epoch=secrets.token_hex(16), mode="human", lease_hash="", frame=None)
+    def invalidate(data: dict, *, viewer_event: bool = False, held: bool = True) -> None:
+        data.update(epoch=secrets.token_hex(16), mode="human", lease_hash="", frame=None, held=held)
+        if not viewer_event:
+            data.pop("handoff", None)
+
+    @staticmethod
+    def owns_control(data: dict, request: dict) -> bool:
+        lease = request.get("lease")
+        return (data["mode"] == "agent" and not data["viewers"] and request.get("epoch") == data["epoch"]
+                and isinstance(lease, str) and re.fullmatch(r"[a-f0-9]{64}", lease) is not None
+                and secrets.compare_digest(hashlib.sha256(lease.encode()).hexdigest(), data["lease_hash"]))
+
+    @staticmethod
+    def grant(data: dict) -> str:
+        lease = secrets.token_hex(32)
+        data.update(mode="agent", epoch=secrets.token_hex(16), lease_hash=hashlib.sha256(lease.encode()).hexdigest(),
+                    frame=None, held=False)
+        data.pop("handoff", None)
+        return lease
+
+    def screenshot(self) -> bytes:
+        fd, name = tempfile.mkstemp(suffix=".png", dir=self.state)
+        os.close(fd)
+        try:
+            self.command(["scrot", "-o", name])
+            png = Path(name).read_bytes()
+        finally:
+            Path(name).unlink(missing_ok=True)
+        if not png.startswith(b"\x89PNG\r\n\x1a\n") or len(png) > 8_000_000:
+            raise RuntimeError("invalid desktop screenshot")
+        return png
+
+    def issue_frame(self, data: dict, png: bytes) -> dict:
+        frame = {"id": secrets.token_hex(16), "time": time.time()}
+        data["frame"] = frame
+        self.save(data)
+        return {"png": base64.b64encode(png).decode(), "frame": frame["id"], "epoch": data["epoch"]}
 
     def start(self) -> None:
         with self.locked():
             data = {"version": 1, "ready": False, "heartbeat": time.time(), "viewers": [], "components": {}}
-            self.invalidate(data)
+            self.invalidate(data, held=False)
             self.save(data)
 
     def heartbeat(self, components: dict, *, ready: bool) -> None:
@@ -416,7 +460,7 @@ class Control:
             data = self.read()
             data.update(heartbeat=time.time(), components=components, ready=ready)
             if not ready:
-                self.invalidate(data)
+                self.invalidate(data, held=bool(data.get("held") or data["mode"] == "agent" or data["viewers"]))
             self.save(data)
 
     @staticmethod
@@ -520,6 +564,7 @@ class Control:
                 return {"version": 1, "ready": ready, "mode": data["mode"], "epoch": data["epoch"],
                         "viewers": len(data["viewers"]), "heartbeat_age_seconds": round(time.time() - data["heartbeat"], 2),
                         "password_store": password_store_status(desktop_environment(self.home)),
+                        "task_handoff": True, "held": bool(data.get("held") or data["viewers"]),
                         "observation": {"available": self.observer_available(data),
                                         "viewers": len(data.get("observation", {}).get("viewers", []))}}
             if op in ("takeover", "viewer-connect", "viewer-disconnect"):
@@ -535,7 +580,7 @@ class Control:
                     else:
                         viewers.discard(viewer)
                     data["viewers"] = sorted(viewers)
-                self.invalidate(data)
+                self.invalidate(data, viewer_event=op != "takeover")
                 self.save(data)
                 return {"mode": "human", "epoch": data["epoch"]}
             if not ready:
@@ -543,33 +588,43 @@ class Control:
             if op == "release":
                 if request.get("epoch") != data["epoch"] or data["viewers"] or data["mode"] != "human":
                     raise RuntimeError("desktop changed or a viewer is connected; disconnect and check status again")
-                lease = secrets.token_hex(32)
-                data.update(mode="agent", epoch=secrets.token_hex(16), lease_hash=hashlib.sha256(lease.encode()).hexdigest(), frame=None)
+                lease = self.grant(data)
                 self.save(data)
                 return {"lease": lease, "epoch": data["epoch"]}
-            if op == "screenshot":
-                fd, name = tempfile.mkstemp(suffix=".png", dir=self.state)
-                os.close(fd)
-                try:
-                    self.command(["scrot", "-o", name])
-                    png = Path(name).read_bytes()
-                finally:
-                    Path(name).unlink(missing_ok=True)
-                if not png.startswith(b"\x89PNG\r\n\x1a\n") or len(png) > 8_000_000:
-                    raise RuntimeError("invalid desktop screenshot")
-                frame = {"id": secrets.token_hex(16), "time": time.time()}
-                data["frame"] = frame
+            if op == "handoff":
+                if set(request) != {"op", "epoch", "lease"} or not self.owns_control(data, request):
+                    raise RuntimeError("desktop control expired; only the current role may hand it over")
+                handoff = secrets.token_hex(32)
+                self.invalidate(data)
+                data["handoff"] = {"hash": hashlib.sha256(handoff.encode()).hexdigest(),
+                                   "expires": time.monotonic() + _HANDOFF_SECONDS}
                 self.save(data)
-                return {"png": base64.b64encode(png).decode(), "frame": frame["id"], "epoch": data["epoch"]}
+                return {"handoff": handoff}
+            if op == "resume-handoff":
+                token = request.get("handoff")
+                handoff = data.get("handoff") or {}
+                if (set(request) != {"op", "handoff"} or data["mode"] != "human" or data["viewers"]
+                        or not isinstance(token, str) or re.fullmatch(r"[a-f0-9]{64}", token) is None
+                        or time.monotonic() >= handoff.get("expires", 0)
+                        or not secrets.compare_digest(hashlib.sha256(token.encode()).hexdigest(), handoff.get("hash", ""))):
+                    raise RuntimeError("desktop handoff expired or a viewer is connected")
+                # Take a new observation before granting any role input. Failure
+                # to capture leaves the desktop in human control.
+                png = self.screenshot()
+                lease = self.grant(data)
+                return {"lease": lease, **self.issue_frame(data, png)}
+            if op in ("screenshot", "active", "windows") and (data.get("held") or data["viewers"]):
+                raise RuntimeError("desktop is held by a human; approve return before observing again")
+            if op == "screenshot":
+                return self.issue_frame(data, self.screenshot())
             if op == "active":
                 return {"text": self.command(["xdotool", "getactivewindow", "getwindowname"]).decode("utf-8", "replace")[:300]}
+            if op == "windows":
+                return {"text": self.command(_VISIBLE_WINDOWS).decode("utf-8", "replace")[:65536]}
             if op != "action":
                 raise ValueError("unsupported desktop operation")
-            lease = str(request.get("lease", ""))
             frame = data.get("frame") or {}
-            if (data["mode"] != "agent" or data["viewers"] or not lease
-                    or not secrets.compare_digest(hashlib.sha256(lease.encode()).hexdigest(), data["lease_hash"])
-                    or request.get("epoch") != data["epoch"] or request.get("frame") != frame.get("id")
+            if (not self.owns_control(data, request) or request.get("frame") != frame.get("id")
                     or not 0 <= time.time() - frame.get("time", 0) <= 60):
                 raise RuntimeError("desktop control or screenshot expired; take a fresh screenshot and obtain control again if needed")
             # Consume before executing: timeout/response loss never permits replay.
