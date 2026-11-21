@@ -77,7 +77,7 @@ export function blockEvent(raw: unknown): BlockEvent | null {
   }
   if (!m || typeof m !== "object") return null;
   const e = m as Record<string, unknown>;
-  if (e.vortoone !== 1) return null;
+  if (e.vortoone !== 1 && e.agentes !== 1) return null;
   switch (e.type) {
     case "ready":
       return { type: "ready" };

@@ -56,7 +56,7 @@ import { softBreaks } from "@/lib/soft-breaks";
 import { useToast } from "@/lib/toast";
 import "./storage.css";
 
-type Choice = "vortoone" | "s3";
+type Choice = "agentes" | "s3";
 type BrandedProvider = Exclude<StorageProvider, "other">;
 
 /** Each service's mark and color (`public/connectors`, see its README); "Other" has none. */
@@ -152,7 +152,7 @@ export function StorageSection() {
   const metered = limits.data ? limits.data.storage.limitBytes !== null : limits.isPending;
   const edition = useComputerEdition(org.id);
   const reveals = useRevealsFiles();
-  const [choice, setChoice] = useState<Choice>("vortoone");
+  const [choice, setChoice] = useState<Choice>("agentes");
   const [connect, setConnect] = useState<"new" | "edit" | null>(null);
   useEffect(() => {
     if (storage.data) setChoice(storage.data.kind);
@@ -175,7 +175,7 @@ export function StorageSection() {
             className="stack-4"
             style={{ gap: 8 }}
           >
-            {(["vortoone", "s3"] as const).map((k) => (
+            {(["agentes", "s3"] as const).map((k) => (
               <RadioCard
                 key={k}
                 value={k}
@@ -200,7 +200,7 @@ export function StorageSection() {
                   config.kind === k && choice !== k ? <Chip icon="check">{t("storage.current")}</Chip> : undefined
                 }
                 detail={
-                  config.kind === k && !(k === "vortoone" && metered)
+                  config.kind === k && !(k === "agentes" && metered)
                     ? storageUsageLine(t, i18n.language, config)
                     : undefined
                 }
@@ -273,7 +273,7 @@ function InUse({ config, place, onEdit }: { config: StorageConfig; place: string
             loading={save.isPending}
             onClick={() =>
               save.mutate(
-                { kind: "vortoone" },
+                { kind: "agentes" },
                 {
                   onSuccess: () => {
                     setConfirm(false);

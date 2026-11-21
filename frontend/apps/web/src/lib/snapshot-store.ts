@@ -1,6 +1,7 @@
 import type { SnapshotStorage } from "@vortoone/client";
 
-const DB = "vortoone";
+// Use the existing cache so sign-out also clears snapshots saved by older versions.
+const DB = "agentes";
 const STORE = "snapshot";
 const KEY = "chats";
 

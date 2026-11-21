@@ -129,8 +129,8 @@ export function subscriptionBody(json: PushSubscriptionJSON, locale: string): Pu
   return { platform: "web", endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth }, locale };
 }
 
-/** The service worker's message when a notification is clicked on a page already open (public/sw.js). */
-export const PUSH_OPEN_MESSAGE = "vortoone.push.open";
+/** The service worker and an already-open tab can be running different versions. */
+export const PUSH_OPEN_MESSAGE = "agentes.push.open";
 
 /** An in-app path from a notification's address: only this site's own pages; anything else is `null`. */
 export function inAppPath(url: unknown, origin: string): string | null {

@@ -175,10 +175,10 @@ export type ServerCheck =
   | { ok: true; server: string; instance: Instance }
   | { ok: false; server: string; problem: ServerProblem };
 
-/** What `GET /api/instance` answered: an VortoOne server these apps can use, or why not. */
+/** What `GET /api/instance` answered and whether its API is compatible. */
 export function readInstance(server: string, body: unknown): ServerCheck {
   const instance = (body ?? {}) as Partial<Instance>;
-  if (!["VortoOne", "VortoOne"].includes(instance.name ?? "") || typeof instance.api !== "number")
+  if (!["VortoOne", "agentes.chat"].includes(instance.name ?? "") || typeof instance.api !== "number")
     return { ok: false, server, problem: "not-vortoone" };
   const fits = apiFits(instance.api, instance.minApi ?? 1);
   if (!fits.ok) return { ok: false, server, problem: fits.problem };

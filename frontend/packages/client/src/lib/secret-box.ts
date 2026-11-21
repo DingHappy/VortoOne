@@ -10,7 +10,8 @@ import type { SecretBox, SecretTarget } from "../api/types";
 export const MAX_SECRET_BYTES = 16 * 1024;
 
 const EC = { name: "ECDH", namedCurve: "P-256" } as const;
-const INFO = new TextEncoder().encode("vortoone secret v1");
+// Existing v1 recipients derive this label even when the page comes from a newer server.
+const INFO = new TextEncoder().encode("agentes.chat secret v1");
 
 const b64 = (bytes: ArrayBuffer | Uint8Array) => {
   const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -23,7 +24,7 @@ const unb64 = (text: string) => Uint8Array.from(atob(text), (ch) => ch.charCodeA
 export function secretAad(input: { requestId: string; orgId: string; name: string; target: SecretTarget }) {
   const t = input.target;
   const target = t.kind === "file" ? `file:${t.path}` : t.kind === "site" ? `site:${t.site}` : "env";
-  return `vortoone-secret|v1|${input.requestId}|${input.orgId}|${input.name}|${target}`;
+  return `agentes-secret|v1|${input.requestId}|${input.orgId}|${input.name}|${target}`;
 }
 
 /**

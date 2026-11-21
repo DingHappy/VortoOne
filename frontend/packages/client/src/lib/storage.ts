@@ -15,7 +15,7 @@ export function storageUsageLine(t: TFunction, locale: string, config: StorageCo
   const size = (bytes: number) => keepWhole(formatBytes(locale, bytes));
   const bytes = config.kind === "s3" ? usage.ownBucketBytes : usage.platformBytes;
   const files = bytes > 0 ? t("storage.usage.files", { size: size(bytes) }) : t("storage.usage.none");
-  const disk = config.kind === "vortoone" ? usage.disk : null;
+  const disk = config.kind === "agentes" ? usage.disk : null;
   return disk ? t("storage.usage.free", { files, size: size(disk.freeBytes) }) : files;
 }
 

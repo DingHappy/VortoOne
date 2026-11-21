@@ -29,7 +29,7 @@ export interface EmojiPickerLabels {
 /** Emoji per row in the grid (arrow keys move by this much up and down). */
 export const EMOJI_COLUMNS = 8;
 const COLUMN_KEYS = Array.from({ length: EMOJI_COLUMNS }, (_, i) => `c${i}`);
-const RECENT_KEY = "vortoone:emoji-recent";
+const RECENT_KEY = "agentes:emoji-recent";
 const RECENT_MAX = 16;
 
 /** The last emoji picked here (this browser), newest first; empty when storage is off. */
@@ -273,7 +273,7 @@ export interface PickerTab {
   render: (ctx: { close: () => void; autoFocus: boolean }) => ReactNode;
 }
 
-const TAB_KEY = "vortoone:picker-tab";
+const TAB_KEY = "agentes:picker-tab";
 
 /** The picker's tab last used in this browser, when it is still one of `ids` (else Emojis). */
 function readPickerTab(ids: string[]): string {

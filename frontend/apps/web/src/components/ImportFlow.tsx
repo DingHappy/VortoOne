@@ -91,6 +91,7 @@ import {
   importApplyErrorText,
   isGithubLink,
   isRequestCard,
+  isSameWorkspaceExport,
   itemId,
   kindsLine,
   MANY_FILES,
@@ -1062,7 +1063,7 @@ export function Preview({
           </p>
         </div>
       </header>
-      {bundle.source.ref === `vortoone:${orgId}` && (
+      {isSameWorkspaceExport(bundle.source.ref, orgId) && (
         <Alert tone="neutral">{t("onboarding.import.sameWorkspace")}</Alert>
       )}
 

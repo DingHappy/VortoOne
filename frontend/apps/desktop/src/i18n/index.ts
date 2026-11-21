@@ -87,7 +87,7 @@ export function detectedLocale(): AppLocale {
 /** The language picked in Preferences, else the system's. */
 export function systemLocale(): AppLocale {
   try {
-    const raw = localStorage.getItem(`vortoone.desktop.${LOCALE_PREF}`);
+    const raw = localStorage.getItem(`agentes.desktop.${LOCALE_PREF}`);
     const choice = raw ? JSON.parse(raw) : null;
     if (isAppLocale(choice)) return choice;
   } catch {

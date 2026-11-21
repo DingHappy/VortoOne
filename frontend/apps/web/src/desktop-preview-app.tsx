@@ -14,14 +14,12 @@ import { AppProviders, type AppServices } from "./app/providers";
 import { createQueryClient } from "./app/query-client";
 import { loadI18n, rememberLocale } from "./i18n";
 import { applyDesktopDevice } from "./lib/desktop";
+import { markDesktopPreview } from "./lib/desktop-metadata";
 import { createToastStore } from "./lib/toast";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
-(window as { __vortooneDesktop?: unknown }).__vortooneDesktop = {
-  platform: "mac",
-  renderer: "gpu",
-};
+markDesktopPreview();
 document.documentElement.dataset.desktop = "mac";
 document.documentElement.dataset.preview = "isolated-desktop-ui";
 const params = new URLSearchParams(window.location.search);

@@ -3979,7 +3979,7 @@ export function useSaveStorage(orgId: string) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { kind: "vortoone" } | { kind: "s3"; s3: S3Input }) => api.storage.save(orgId, input),
+    mutationFn: (input: { kind: "agentes" } | { kind: "s3"; s3: S3Input }) => api.storage.save(orgId, input),
     onSuccess: (config) => {
       qc.setQueryData(keys.storage(orgId), config);
       qc.removeQueries({ queryKey: keys.storageMigration(orgId) });

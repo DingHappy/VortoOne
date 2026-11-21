@@ -58,7 +58,7 @@ const i18n = await loadDesktopI18n(
 document.documentElement.lang = i18n.language;
 // A language picked in Preferences reaches every open window.
 window.addEventListener("storage", (e) => {
-  if (e.key === `vortoone.desktop.${LOCALE_PREF}`) switchDesktopLocale(i18n, systemLocale(), host.platform);
+  if (e.key === `agentes.desktop.${LOCALE_PREF}`) switchDesktopLocale(i18n, systemLocale(), host.platform);
 });
 
 // Light or dark like the system (`?theme=` while designing).

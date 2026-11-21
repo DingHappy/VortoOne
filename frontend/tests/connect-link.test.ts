@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { connectLink, parseConnectLink } from "../packages/client/src/lib/server";
+import { APP_API, connectLink, parseConnectLink, readInstance } from "../packages/client/src/lib/server";
 
 const SERVER = "https://box.tail1234.ts.net";
 const TOKEN = "a".repeat(43);
@@ -33,4 +33,16 @@ test("an app and a server work together while their api ranges overlap", async (
   // The server updated first (serves 3, no longer below 3): this app on 2 is too old.
   assert.deepEqual(apiFits(4, 3, { api: 2, min: 1 }), { ok: false, problem: "app-too-old" });
   assert.deepEqual(apiFits(4, 2, { api: 2, min: 1 }), { ok: true });
+});
+
+test("server discovery recognizes both advertised names and still checks the API", () => {
+  for (const name of ["VortoOne", "agentes.chat"]) {
+    const instance = { name, api: APP_API };
+    assert.deepEqual(readInstance(SERVER, instance), { ok: true, server: SERVER, instance });
+    assert.deepEqual(readInstance(SERVER, { name }), { ok: false, server: SERVER, problem: "not-vortoone" });
+    assert.deepEqual(
+      readInstance(SERVER, { name, api: APP_API + 1, minApi: APP_API + 1 }),
+      { ok: false, server: SERVER, problem: "app-too-old" },
+    );
+  }
 });

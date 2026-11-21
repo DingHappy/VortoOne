@@ -2,8 +2,8 @@
 // It has no fetch handler and caches nothing, so the app loads exactly as it does without it. The page
 // registers it only when the person turns notifications on (apps/web/src/lib/web-push.ts).
 
-/** What a click on a notification asks of a tab already open (`PUSH_OPEN_MESSAGE` in web-push.ts). */
-const OPEN_MESSAGE = "vortoone.push.open";
+/** Keep the notification-open event stable because a new worker may take over an older open tab. */
+const OPEN_MESSAGE = "agentes.push.open";
 const ICON = "/email/mark.png";
 const BADGE = "/push-badge.png";
 

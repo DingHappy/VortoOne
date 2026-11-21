@@ -39,103 +39,104 @@ export function storedStrings(key: string): string[] {
   }
 }
 
+/** Keep the stored keys stable so existing data survives both upgrades and rollbacks. */
 export const STORAGE_KEYS = {
-  theme: "vortoone.theme",
-  lastOrg: "vortoone.lastOrg",
+  theme: "agentes.theme",
+  lastOrg: "agentes.lastOrg",
   /** The last page shown in each workspace (JSON, by workspace id): where "Onde você parou" opens (ADR 0108). */
-  lastPlace: "vortoone.lastPlace",
+  lastPlace: "agentes.lastPlace",
   /** How this browser signed in last ("google", "github", "apple" or "email"): marked on the sign-in screen. */
-  lastSignIn: "vortoone.lastSignIn",
+  lastSignIn: "agentes.lastSignIn",
   /**
    * "1" after Sign out (or Switch account) by hand: on the server the desktop app runs here, the sign-in screen waits
    * for the owner's click instead of signing them in again at once. Any sign-in removes it.
    */
-  signedOut: "vortoone.signedOut",
+  signedOut: "agentes.signedOut",
   /**
    * sessionStorage, "1": the owner chose Forgot password › Continue on this Mac, so once signed in the app opens
    * "Create a new password" (ADR 0158).
    */
-  newPasswordAsk: "vortoone.newPasswordAsk",
+  newPasswordAsk: "agentes.newPasswordAsk",
   /**
    * sessionStorage: the new address typed in Sua conta › E-mail before signing in again instead of typing the code,
    * filled in again when the dialog comes back.
    */
-  emailChangeAsk: "vortoone.emailChangeAsk",
+  emailChangeAsk: "agentes.emailChangeAsk",
   /** sessionStorage: when this tab's window last traded the desktop app's sign-in (ms), for a deletion's proof. */
-  thisMacSignedInAt: "vortoone.thisMac.signedInAt",
+  thisMacSignedInAt: "agentes.thisMac.signedInAt",
   /** sessionStorage (JSON `{ to, at }`): the page to come back to after the desktop app signs the window in again. */
-  thisMacReturn: "vortoone.thisMac.return",
+  thisMacReturn: "agentes.thisMac.return",
   /** "0" when the person switched off the picture viewer's hover lens (on by default). */
-  imageLens: "vortoone.image.lens",
+  imageLens: "agentes.image.lens",
   /** The Drive's view: "grid" (default) or "list". */
-  driveView: "vortoone.drive.view",
+  driveView: "agentes.drive.view",
   /** Equipe's view (ADR 0148): "list" (default), "chart", "map", "sectors" or "usage". */
-  teamView: "vortoone.team.view",
+  teamView: "agentes.team.view",
   /** "1" when the person shrank the sidebar to its icon rail (desktop). */
-  sidebarCollapsed: "vortoone.sidebar.collapsed",
+  sidebarCollapsed: "agentes.sidebar.collapsed",
   /** Prefix (`.<user id>.<org id>`): the sidebar categories that person closed in that workspace (JSON array of ids). */
-  sidebarSections: "vortoone.sidebar.sections",
+  sidebarSections: "agentes.sidebar.sections",
   /** Prefix (`.<user id>.<org id>`): "1" or "0", the person opened or closed a channel's members column there. */
-  membersColumn: "vortoone.members.column",
+  membersColumn: "agentes.members.column",
   /** Prefix (`.<user id>.<org id>`): "1" or "0", the person opened or closed the sidebar of a DM with an agent there. */
-  dmSidebar: "vortoone.dm.sidebar",
+  dmSidebar: "agentes.dm.sidebar",
   /** Offline-computer notices the person closed (`machineId@offlineSince`), until that computer comes back. */
-  outagesDismissed: "vortoone.outages.dismissed",
+  outagesDismissed: "agentes.outages.dismissed",
   /** The workspace computer's notice the person closed (`setupNoticeKey`), until its state changes. */
-  setupNoticeHidden: "vortoone.setup.hidden",
+  setupNoticeHidden: "agentes.setup.hidden",
   /** `<user id>.<org id>` entries (JSON array): the person opened the right hand's DM there, so its "Novo" dot is gone. */
-  rightHandSeen: "vortoone.rightHand.seen",
+  rightHandSeen: "agentes.rightHand.seen",
   /** The desktop app's right click: "ours" (default) or "system" (lib/context-menu.ts). */
-  menuLook: "vortoone.desktop.menu",
+  menuLook: "agentes.desktop.menu",
   /** Prefix (`.<message id>`, in `sessionStore`): the Connect dialog already opened by itself for that message. */
-  noAiOpened: "vortoone.noAi.opened",
+  noAiOpened: "agentes.noAi.opened",
   /** Prefix (`.<orgId>`, in `sessionStore`): this tab came back from paying and the hold hasn't lifted yet. */
-  paidReturn: "vortoone.billing.paid",
+  paidReturn: "agentes.billing.paid",
   /** Prefix (`.<orgId>`, in `sessionStore`): the agents the onboarding imported there, with their models (JSON). */
-  onboardingImports: "vortoone.onboarding.imports",
+  onboardingImports: "agentes.onboarding.imports",
   /**
    * In `sessionStore`: the install an agent's card opened in this tab (`CardInstall`, JSON), so the agent survives
    * connecting GitHub on its site, and a link that only names an agent turns nothing on (`cardInstallAgent`).
    */
-  skillInstallFor: "vortoone.skills.installFor",
+  skillInstallFor: "agentes.skills.installFor",
   /** In `sessionStore`: the address this tab signed up with, when the server emailed it a confirmation link. */
-  confirmationSent: "vortoone.confirmation.sent",
+  confirmationSent: "agentes.confirmation.sent",
   /** In `sessionStore`: Criar agente's steps as filled in, while a sign-in elsewhere reloads the app (lib/flow-return.ts). */
-  newAgentDraft: "vortoone.newAgent.draft",
+  newAgentDraft: "agentes.newAgent.draft",
   /** In `sessionStore`: the last page this tab showed outside a flow, where the flow's exits go (lib/return-to.ts). */
-  flowReturn: "vortoone.flow.return",
+  flowReturn: "agentes.flow.return",
   /** In `sessionStore`: my messages waiting for the connection (the shared `outbox`), kept through a reload. */
-  outbox: "vortoone.outbox",
+  outbox: "agentes.outbox",
   /** In `sessionStore`: this tab is loading again as another of the browser's accounts (lib/accounts.ts, ADR 0183). */
-  accountMoved: "vortoone.accountMoved",
+  accountMoved: "agentes.accountMoved",
   /** When this browser's session last became another account's: the other tabs follow (lib/accounts.ts). */
-  accountChanged: "vortoone.accountChanged",
+  accountChanged: "agentes.accountChanged",
   /** The app icon this browser's tabs show (lib/app-icon.ts, ADR 0179); the desktop app keeps its own. */
-  appIcon: "vortoone.appIcon",
+  appIcon: "agentes.appIcon",
   /** The app's sounds on this device: "tactile" (default), "sky", "pixel" or "off" (lib/sounds.ts). */
-  sounds: "vortoone.sounds",
+  sounds: "agentes.sounds",
   /** In `sessionStore`, this tab's id; in `storage`, the tab the person used last (it plays sounds while hidden). */
-  soundTab: "vortoone.sounds.tab",
+  soundTab: "agentes.sounds.tab",
   /** How many times our notifications ask showed by itself in this browser (`usePushAsk`, ADR 0071). */
-  pushOffers: "vortoone.push.offers",
+  pushOffers: "agentes.push.offers",
   /** In `sessionStore`: when the boot last reloaded because the app's files didn't load (index.html keeps a copy). */
-  bootRetry: "vortoone.bootRetry",
+  bootRetry: "agentes.bootRetry",
   /** In `sessionStore`: when the app last reloaded into a new version (`reloadForNewVersion`). */
-  versionReload: "vortoone.versionReload",
+  versionReload: "agentes.versionReload",
   /**
    * Prefix (`.<invitation token>`, in `sessionStore`): the request this tab made through an invitation link, its key,
    * name and email as JSON, so a reload keeps waiting for the answer (ADR 0090).
    */
-  joinAsked: "vortoone.join.asked",
+  joinAsked: "agentes.join.asked",
   /** Prefix (`.<user id>.<org id>`): "1" once a newcomer closed their welcome in #general (ADR 0090). */
-  arrivalClosed: "vortoone.arrival.closed",
+  arrivalClosed: "agentes.arrival.closed",
   /** Prefix (`.<user id>.<org id>`): that person's recent searches there, newest first (JSON array, ADR 0123). */
-  searchRecent: "vortoone.search.recent",
+  searchRecent: "agentes.search.recent",
   /**
    * Prefix (`.<user id>`): what that person typed in each conversation and didn't send (JSON by conversation,
    * `@vortoone/client/lib/composer-drafts`), forgotten on sign-out.
    */
-  composerDrafts: "vortoone.drafts",
+  composerDrafts: "agentes.drafts",
 } as const;
 
 /** The right hand's DM opened, here or from any other way in (`rightHandSeenKey`): its row's "Novo" is gone. */

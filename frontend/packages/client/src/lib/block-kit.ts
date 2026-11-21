@@ -150,7 +150,7 @@ function mem(){var d={};return{getItem:function(k){return k in d?d[k]:null},setI
 ["localStorage","sessionStorage"].forEach(function(n){try{void window[n].length}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}});
 try{void document.cookie}catch(e){try{Object.defineProperty(document,"cookie",{get:function(){return""},set:function(){},configurable:true})}catch(_){}}
 var L=R.labels||{send:"Send",more:"More",thousand:"k"},LOC=R.locale||"en";
-var post=function(m){m.vortoone=1;try{var n=window.ReactNativeWebView;if(n)n.postMessage(JSON.stringify(m));else parent.postMessage(m,"*")}catch(_){}};
+var post=function(m){m.vortoone=m.agentes=1;try{var n=window.ReactNativeWebView;if(n)n.postMessage(JSON.stringify(m));else parent.postMessage(m,"*")}catch(_){}};
 var state=Object.assign({},R.state||{}),who=R.who||{},used=false,calc=[],subs=[],derived={},queued=false;
 var json=function(v){try{return JSON.stringify(v)}catch(_){return null}},seen={},posted=null,flushing=false,cascade=0,stuck=false,MAX_CASCADE=50;
 Object.keys(state).forEach(function(k){seen[k]=json(state[k])});
@@ -168,7 +168,8 @@ var fmt=function(v,f,u){if(v===undefined||v===null||v!==v)return"–";var n=Numb
 var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
 var opts=function(s){return String(s||"").split("|").map(function(x){return x.trim()}).filter(Boolean)};
 var fill=function(t,v){return t.replace(/\{(\w+)(?::(\w+))?\}/g,function(_,k,f){return fmt(v[k],f)})};
-var vortoone=window.vortoone={get state(){return view()},set:function(k,v){var j=json(v);if(j!==null&&k in state&&seen[k]===j)return;seen[k]=j;state[k]=v;touch()},compute:function(f){calc.push(f);touch()},on:function(f){subs.push(f);touch()},fmt:fmt,
+// Saved blocks can still call the original script API.
+var vortoone=window.vortoone=window.agentes={get state(){return view()},set:function(k,v){var j=json(v);if(j!==null&&k in state&&seen[k]===j)return;seen[k]=j;state[k]=v;touch()},compute:function(f){calc.push(f);touch()},on:function(f){subs.push(f);touch()},fmt:fmt,
   send:function(text,label,ready){post({type:"draft",text:text,label:label||L.send,ready:ready!==false})},
   draw:function(name,options){post({type:"draw",name:String(name),options:Array.prototype.slice.call(options||[]),used:used})},
   who:function(name){var c=who[name];return c?{name:c.name,at:c.at,drawn:!!c.drawn}:null}};
@@ -215,7 +216,7 @@ E("ac-result",class extends Base{build(){this.innerHTML='<div class="ac-result">
 E("ac-table",class extends Base{sync(v){var c=opts(this.a("columns")).map(function(x){var p=x.split(":");return{t:p[0],k:p[1],f:p[2]}}),d=v[this.a("bind")]||[];this.innerHTML='<table class="ac-t"><thead><tr>'+c.map(function(x){return'<th>'+esc(x.t)+'</th>'}).join("")+'</tr></thead><tbody>'+d.map(function(r){return'<tr>'+c.map(function(x){return'<td>'+esc(fmt(r[x.k],x.f))+'</td>'}).join("")+'</tr>'}).join("")+'</tbody></table>'}});
 function height(){post({type:"height",height:Math.ceil(document.body.getBoundingClientRect().height)})}
 function host(m){if(!m)return;if(m.theme){theme(m.theme,1);repaint.forEach(function(f){f()})}if(m.state&&typeof m.state==="object"){Object.assign(state,m.state);Object.keys(m.state).forEach(function(k){seen[k]=json(m.state[k])});if(m.who)who=m.who;touch()}}
-window.__vortooneHost=host;
+window.__vortooneHost=window.__agentesHost=host;
 addEventListener("message",function(e){if(e.source===parent&&e.source!==window)host(e.data)});
 addEventListener("error",function(e){post({type:"error",message:String(e.message||"").slice(0,200)})});
 addEventListener("DOMContentLoaded",function(){touch();if(window.ResizeObserver)new ResizeObserver(height).observe(document.body);height();post({type:"ready"})});

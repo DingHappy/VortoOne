@@ -3572,7 +3572,8 @@ export interface SecretBox {
 
 // ── File storage (expected: `GET/PUT …/storage`, `POST …/storage/test`, `…/storage/migrate`) ──
 
-export type StorageKind = "vortoone" | "s3";
+/** Values accepted by the workspace storage API. */
+export type StorageKind = "agentes" | "s3";
 
 /** The service an admin picked when connecting their own storage: which steps the app shows. */
 export type StorageProvider = "r2" | "s3" | "b2" | "other";

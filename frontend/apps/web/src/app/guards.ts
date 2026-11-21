@@ -22,4 +22,3 @@ export async function requireUserIn(context: RouterContext, href: string, orgId:
   if (!fresh) throw redirect({ to: "/login", search: { redirect: href } });
   return fresh;
 }
-

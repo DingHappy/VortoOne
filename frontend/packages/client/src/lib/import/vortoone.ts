@@ -23,7 +23,9 @@ import {
  */
 
 const FORMAT = "vortoone.bundle";
-const LEGACY_FORMAT = "vortoone.bundle";
+const LEGACY_FORMAT = "agenteschat.bundle";
+export const LEGACY_WORKSPACE_APP = "agenteschat";
+export const WORKSPACE_EXPORT_REF_PREFIX = /^(?:vortoone|agenteschat):/;
 const NOTE_KINDS: BundleNote["kind"][] = ["fact", "preference", "decision", "note", "lesson"];
 const TODO_KINDS: BundleTodo["kind"][] = ["connection", "app", "secret", "model", "file"];
 const LEFT_OUT_KINDS = new Set<string>([
@@ -120,8 +122,10 @@ export function parse(files: ImportFile[], d: Draft) {
   const app = slug(str(source.app));
   // Our export names the workspace. A reply's `ref` is a model's guess that changes from one export to the next, so
   // every reply from one app is one package: asking again updates what came before, it never makes it twice.
-  const reply = app !== "vortoone";
-  d.ref = reply ? app || str(source.ref) : `${app}:${str(source.ref)}`;
+  const reply = app !== "vortoone" && app !== LEGACY_WORKSPACE_APP;
+  const ref = str(source.ref);
+  // Re-imports of this workspace reuse the identity from before the product rename.
+  d.ref = reply ? app || ref : `${LEGACY_WORKSPACE_APP}:${ref.replace(WORKSPACE_EXPORT_REF_PREFIX, "")}`;
 
   const skills = new Map<string, string>();
   for (const s of list(b.skills).map(obj)) {
