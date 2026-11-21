@@ -21,6 +21,12 @@ from src.workflow.staff.executions import execution_projection
 from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger
 
 _REQUEST = re.compile(r'[a-f0-9]{32}')
+ANYONE = object()      # read() 不按发起人筛（原有调用方的默认）
+
+
+def _initiator(task):
+    value = task.collaboration.get('dispatch', {}).get('initiator')
+    return value.get('id') if isinstance(value, dict) else (None if value is None else '\0broken')
 
 
 class StaffConversations:
@@ -73,17 +79,22 @@ class StaffConversations:
         return {**task.to_dict(), 'execution': execution_projection(task), 'confirmation': {'digest': task_digest(task),
                 'round': task.collaboration['round'], 'instance': self.instance}}
 
-    def read(self, member_id, *, before='', limit=30, request_id=''):
+    def read(self, member_id, *, before='', limit=30, request_id='', initiator=ANYONE):
+        """initiator：None 只看所有者自己交代的事；一个成员 id 只看那个成员发起的事；不传则全部。
+        筛选在分页之前做，摘要（busy、recent_tasks）也只按筛过的算——成员看不到别人交代了什么。"""
         if type(limit) is not int or not 1 <= limit <= 50:
             raise ValueError('每页最多读取 50 件任务')
         with TASK_STATE_LOCK:
             member, role = self._identity(member_id)
             inventory = self.ledger.scan()
-            tasks = sorted((t for t in inventory.tasks if self._matches(t, member_id)),
+            tasks = sorted((t for t in inventory.tasks if self._matches(t, member_id)
+                            and (initiator is ANYONE or _initiator(t) == initiator)),
                            key=lambda t: (t.created, t.id), reverse=True)
             all_tasks = tasks
             if before:
                 cursor = self._task(member_id, before)
+                if initiator is not ANYONE and _initiator(cursor) != initiator:
+                    raise ValueError('这件任务不属于当前对话')
                 tasks = [t for t in tasks if (t.created, t.id) < (cursor.created, cursor.id)]
             page = tasks[:limit]
             shown_member = {**member, 'busy': sum(t.status in {'queued', 'running', 'blocked'} for t in all_tasks),
@@ -95,7 +106,7 @@ class StaffConversations:
                 self._request(request_id)
                 task_id = self.request_task_id(member_id, request_id)
                 existing = self.ledger.load(task_id)
-                if existing is not None:
+                if existing is not None and (initiator is ANYONE or _initiator(existing) == initiator):
                     submitted = self._view(self._task(member_id, task_id))
             available, unavailable = True, ''
             try:
@@ -122,7 +133,7 @@ class StaffConversations:
                 'instance': self.instance, 'approval_source': 'owner_role_conversation'}, durable=True):
             raise OSError('主人操作审计未能保存，未放行')
 
-    def submit(self, member_id, body):
+    def submit(self, member_id, body, *, via=None):
         require_owner_route(self.root)
         self._instance(body['instance'])
         self._request(body['request_id'])
@@ -150,7 +161,7 @@ class StaffConversations:
                     raise ValueError('该请求标识已有其它内容，未重复派发')
                 return {'task': self._view(existing), 'replayed': True}
             self._audit('主人交给角色处理任务', task_id, digest(args))
-            task = service.assign(owner, args, expected=(member, role), task_id=task_id)
+            task = service.assign(owner, args, expected=(member, role), task_id=task_id, via=via)
             return {'task': self._view(task), 'replayed': False}
 
     def act(self, member_id, task_id, body):

@@ -14,6 +14,8 @@ from typing import Optional
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
+from src.gateway.computer_protocol import TRANSFER_PATH
+
 
 def resolve_within(base, rel) -> Optional[Path]:
     """把 rel 安全解析到 base 目录内；越界返回 None。**实现在 src/utils/paths，全仓唯一一份。**
@@ -42,10 +44,24 @@ SESSION_COOKIE = "vortocode_session"
 # 鉴权豁免：页面 HTML 外壳（本身不含数据，数据走各自需鉴权的 API）、API 文档、健康检查、
 # 登录/状态端点（必须能在鉴权前访问，否则没法登录）。
 # 浏览器对话台与 PWA 已于 2026-10-17 退役；剩下的页面只有服务首页 / 与流水线审批台 /review。
-_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static")
+# /api/auth/handover/<一次性交接码>：Desktop 外壳换登录用，凭码本身校验（routers/app_api.py）；
+# 发码的 POST /api/auth/handover 不在此列，仍要主人令牌。
+# /api/app/invitations/<邀请令牌>…：收到邀请的人还没有账号，凭令牌本身看邀请；接受邀请那一条由路由自己
+# 核对成员会话（routers/app_api.py）。这个前缀下没有任何按空间读数据的接口。
+_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static", "/api/auth/handover/",
+                    "/api/app/invitations/")
 _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",
+                 # 新版 Desktop 界面在登录前要读的服务信息与登录入口（routers/app_api.py）：不含任何数据
+                 "/api/instance", "/api/app/auth-config", "/api/app/sign-in-options",
+                 "/api/auth/sign-in/email", "/api/auth/sign-out",
+                 # 成员凭邀请注册、凭重置链接改密码：各自核对邀请令牌 / 重置令牌
+                 "/api/auth/sign-up/email", "/api/auth/reset-password",
+                 # 另一台设备凭一次性登录换登录：核对它自己的一次性凭据（members/one_time.py）
+                 "/api/auth/sign-in/one-time-token",
+                 # 装好时的一次性认领链接（members/owner_account.py）：核对它自己的认领令牌
+                 "/api/auth/owner-claim",
                  # 小智语音端点用自己的专用令牌（routers/voice.py），不收也不放行主 API 令牌
                  "/api/voice/mcp",
                  # 运维心跳报到与运维消息同样只认自己的专用令牌（routers/ops_heartbeat.py）
@@ -58,7 +74,13 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/assistant/app-relay/teams", "/api/assistant/app-relay/team",
                  "/api/assistant/app-relay/team-op", "/api/assistant/app-relay/side-chats",
                  "/api/assistant/app-relay/side-chat",
-                 '/api/assistant/app-relay/staff-actions', '/api/assistant/app-relay/staff-action'}
+                 '/api/assistant/app-relay/staff-actions', '/api/assistant/app-relay/staff-action',
+                 # AI 应用接入（routers/ai_apps.py）：发现文档与 OAuth 端点各自核对授权码、令牌；
+                 # /mcp 只认它自己发的 Bearer 令牌（主人令牌在那里不算数）。没设主人令牌时这一套整个关着
+                 "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp",
+                 "/.well-known/oauth-authorization-server", "/.well-known/openid-configuration",
+                 "/api/oauth/authorize", "/api/oauth/token", "/api/oauth/register", "/api/oauth/revoke",
+                 "/mcp", "/mcp/"}
 
 
 # 手机端自带凭据的路由：不走管理员令牌，改由路由自己的依赖校验（设备令牌、配对窗口 + 逐次证明、
@@ -102,6 +124,16 @@ MOBILE_SELF_AUTHENTICATED = frozenset({
 })
 
 
+# Computers use only these exact HTTP exchanges before owner authentication.
+COMPUTER_SELF_AUTHENTICATED = frozenset({
+    ("GET", "/api/computers/identity"),
+    ("POST", "/api/computers/pair"),
+    ("POST", "/api/computers/native-pair"),
+    ("PUT", TRANSFER_PATH),
+    ("GET", TRANSFER_PATH),
+})
+
+
 def ct_eq(candidate: str, token: str) -> bool:
     """常时比较（防时序侧信道）——token 校验点专用。
 
@@ -135,12 +167,26 @@ async def auth_middleware(request, call_next):
     """仅当配置了 VORTOONE_API_TOKEN 时，对非豁免路径强制校验。"""
     path = request.url.path
     exempt = (path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIXES)
-              or (request.method, path) in MOBILE_SELF_AUTHENTICATED)
+              or (request.method, path) in MOBILE_SELF_AUTHENTICATED
+              or (request.method, path) in COMPUTER_SELF_AUTHENTICATED)
+    refused = 0
     if not exempt and not _token_ok(request):
-        response = JSONResponse({"detail": "Unauthorized"}, status_code=401)
+        # 主人令牌没过：成员的会话只在它自己的白名单接口上算数（web/member_auth.py），其余一律不放行
+        from src.web.member_auth import admit
+        refused = admit(request)
+    if isinstance(refused, (dict, list)):      # 对成员回固定的空结构，不进处理函数
+        response = JSONResponse(refused)
+    elif refused:
+        response = JSONResponse({"detail": "Unauthorized" if refused == 401 else "Forbidden"}, status_code=refused)
     else:
         response = await call_next(request)
-    if path.startswith("/api/mobile/"):  # 手机数据一律不进浏览器/代理缓存
+    computer_data = path.startswith("/api/computers/") or (
+        path.startswith("/api/app/organizations/") and any(
+            f"/{part}" in path for part in ("machines", "computer-pairings")))
+    app_path = path.removeprefix("/api/app/organizations/")
+    channel_data = app_path != path and app_path.partition("/")[2].partition("/")[0] in {
+        "channels", "archived-channels", "messages", "threads"}
+    if path.startswith("/api/mobile/") or computer_data or channel_data:
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

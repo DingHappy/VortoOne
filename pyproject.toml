@@ -78,6 +78,10 @@ vc = "src.cli:main"
 where = ["."]
 include = ["src*"]
 
+# 审批台页面（/review）不在 src 包里：装进 <环境>/share/vortoone/web/，src/web/routers/pages.py 在那里找
+[tool.setuptools.data-files]
+"share/vortoone/web" = ["web/review.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

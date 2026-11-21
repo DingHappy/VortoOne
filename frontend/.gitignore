@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-preview/
+dist-live/
+.npm-cache/
+.env.local
+qa-artifacts/
+*.tsbuildinfo
+apps/desktop-dev/src-tauri/target/
+apps/desktop-dev/src-tauri/gen/
+
+# Upstream translator bookkeeping; runtime locale JSON remains versioned.
+packages/i18n/src/locales/*.source.json
+
+# The Python repository ignores lib/ globally; these are frontend source files.
+!**/src/lib/
+!**/src/lib/**

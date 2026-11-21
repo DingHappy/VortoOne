@@ -10,6 +10,8 @@ import time
 import pytest
 
 from src.agents.tools import desktop
+from src.agents.confirmation_context import start_confirmation_turn
+from src.agents.principal import MEMBER, OWNER, Principal, reset_principal, set_principal
 from src.agents.trust import INTERACT
 
 helper = runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts/resident-desktop.py"))
@@ -186,6 +188,71 @@ def test_release_is_bound_to_epoch_and_one_session(authority):
     assert lease["lease"] not in json.dumps(control.read())
 
 
+def test_task_handoff_fences_the_role_until_a_fresh_frame_and_lease(authority, monkeypatch):
+    control, calls = authority
+    old = permit(control, release(control))
+    with pytest.raises(RuntimeError, match="current role"):
+        control.rpc({"op": "handoff", "epoch": old["epoch"], "lease": "0" * 64})
+    token = control.rpc({"op": "handoff", "epoch": old["epoch"], "lease": old["lease"]})["handoff"]
+    assert token not in json.dumps(control.read())
+    monkeypatch.setenv("RFB_CLIENT_ID", "0x4")
+    control.rpc({"op": "viewer-connect"})
+    for op in ("screenshot", "active", "windows"):
+        with pytest.raises(RuntimeError, match="held by a human"):
+            control.rpc({"op": op})
+    with pytest.raises(RuntimeError, match="expired"):
+        action(control, old)
+    with pytest.raises(RuntimeError, match="viewer"):
+        control.rpc({"op": "resume-handoff", "handoff": token})
+    assert calls == []
+
+    control.rpc({"op": "viewer-disconnect"})
+    assert control.rpc({"op": "status"})["held"]
+    with pytest.raises(RuntimeError, match="held by a human"):
+        control.rpc({"op": "screenshot"})
+    resumed = control.rpc({"op": "resume-handoff", "handoff": token})
+    assert resumed["epoch"] != old["epoch"] and resumed["frame"] != old["frame"] and resumed["lease"] != old["lease"]
+    assert base64.b64decode(resumed["png"]) == PNG
+    with pytest.raises(RuntimeError, match="expired"):
+        control.rpc({"op": "resume-handoff", "handoff": token})
+    with pytest.raises(RuntimeError, match="expired"):
+        action(control, old)
+    action(control, {key: resumed[key] for key in ("epoch", "frame", "lease")})
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("change", ["expiry", "restart", "manual_takeover", "capture_failure"])
+def test_unavailable_task_handoff_never_releases_human_control(authority, change):
+    control, _ = authority
+    token = control.rpc({"op": "handoff", **release(control)})["handoff"]
+    if change == "expiry":
+        with control.locked():
+            data = control.read()
+            data["handoff"]["expires"] = time.monotonic() - 1
+            control.save(data)
+    elif change == "restart":
+        control.start()
+        control.heartbeat({}, ready=True)
+    elif change == "manual_takeover":
+        control.rpc({"op": "takeover"})
+    else:
+        def capture_failed(*_args):
+            raise RuntimeError("synthetic capture failure")
+        control.screenshot = capture_failed
+    with pytest.raises(RuntimeError, match="expired|capture failure"):
+        control.rpc({"op": "resume-handoff", "handoff": token})
+    data = control.read()
+    assert data["mode"] == "human" and not data["lease_hash"] and data["frame"] is None
+
+
+def test_a_new_desktop_release_invalidates_an_older_handoff(authority):
+    control, _ = authority
+    token = control.rpc({"op": "handoff", **release(control)})["handoff"]
+    release(control)
+    with pytest.raises(RuntimeError, match="expired"):
+        control.rpc({"op": "resume-handoff", "handoff": token})
+
+
 def test_viewer_acceptance_waits_for_running_action_then_blocks_later_actions(authority, monkeypatch):
     control, _ = authority
     token = permit(control, release(control))
@@ -321,6 +388,59 @@ async def test_release_refusal_and_denied_confirmation_do_not_grant_lease(author
     asked.clear()
     assert (await tools["desktop_release"].handler({}))["ok"] is False
     assert asked == []
+
+
+@pytest.mark.parametrize("outcome", ["resume", "refuse_return", "new_turn", "wrong_owner"])
+async def test_handoff_tool_preserves_owner_and_turn_and_returns_only_the_new_frame(authority, tmp_path, monkeypatch, outcome):
+    control, calls = authority
+    backend = Transport(control)
+    confirmations = []
+    before = control.command
+    after = PNG + b" after human interaction"
+
+    async def confirm(message, kind=None):
+        confirmations.append((message, kind))
+        if len(confirmations) != 2:
+            return True
+        assert control.rpc({"op": "status"})["held"]
+        assert not backend._lease
+        monkeypatch.setenv("RFB_CLIENT_ID", "0x6")
+        control.rpc({"op": "viewer-connect"})
+        control.rpc({"op": "viewer-disconnect"})
+
+        def after_screen(argv, *, stdin=b""):
+            if argv[0] == "scrot":
+                Path(argv[-1]).write_bytes(after)
+                return b""
+            return before(argv, stdin=stdin)
+
+        control.command = after_screen
+        if outcome == "new_turn":
+            start_confirmation_turn()
+        return outcome != "refuse_return"
+
+    owner = set_principal(Principal(OWNER if outcome != "wrong_owner" else MEMBER, "test-person", str(tmp_path)))
+    try:
+        start_confirmation_turn()
+        epoch = control.rpc({"op": "status"})["epoch"]
+        assert (await backend.release_control(epoch))["ok"]
+        tools = {tool.name: tool for tool in desktop.build_desktop_tools(str(tmp_path), confirm, backend=backend)}
+        result = await tools["desktop_handoff"].handler({})
+    finally:
+        reset_principal(owner)
+    if outcome == "wrong_owner":
+        assert confirmations == [] and result["ok"] is False
+        assert control.read()["mode"] == "agent"
+    else:
+        assert [kind for _, kind in confirmations] == [INTERACT, INTERACT]
+        if outcome == "resume":
+            (image,) = result["images"]
+            assert Path(image).read_bytes() == after
+            assert control.read()["mode"] == "agent" and backend._frame
+        else:
+            assert control.read()["mode"] == "human" and not backend._lease
+            assert not list(tmp_path.rglob("desktop-*.png"))
+    assert calls == [] and backend.raw_actions == []
 
 
 async def test_installed_broken_protocol_never_falls_back(authority):

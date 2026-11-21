@@ -105,6 +105,9 @@ from src.web.routers.app_relay import router as app_relay_router
 from src.web.routers.timeline import router as timeline_router
 from src.web.routers.teams import router as teams_router
 from src.web.routers.staff import router as staff_router
+from src.web.routers.app_api import router as app_api_router, install_error_handler as _install_app_errors
+from src.web.routers.ai_apps import router as ai_apps_router
+from src.web.routers.computers import router as computers_router
 
 for _router in (
     pages_router, git_router, context_router,
@@ -113,9 +116,14 @@ for _router in (
     journal_router, hooks_router, extensions_router, cron_router, dev_plans_router,
     pipelines_router, trust_router, resident_router, assistant_router, personal_goals_router, voice_router, ops_heartbeat_router,
     codex_router, mobile_router, mobile_pages_router, account_access_router, mobile_browser_router, mobile_native_router, mobile_owner_router,
-    phone_keys_router, app_relay_router, timeline_router, teams_router, staff_router,
+    phone_keys_router, app_relay_router, timeline_router, teams_router, staff_router, app_api_router,
+    ai_apps_router, computers_router,
 ):
     app.include_router(_router)
+_install_app_errors(app)
+# 最后注册 = 最外层：静态界面文件与界面自己的页面地址不含数据，先于鉴权应答；其余请求原样往里走
+from src.web.app_ui import app_ui_middleware as _app_ui_middleware
+app.middleware("http")(_app_ui_middleware)
 
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
@@ -149,6 +157,9 @@ def start_server(host: str = "127.0.0.1", port: int = 8000, im: str = "", *, uds
     """
     import os
     import uvicorn
+
+    from src.runtime_bootstrap import prepare_server_ownership
+    prepare_server_ownership(os.getcwd())
 
     import src.llm.client  # noqa: F401 —— 导入即加载 .env（OPENAI_API_KEY 等进 os.environ）。
     # 不导它的话：shell 没 export key 时，/agent 首回合的 key 早检查（realtime.handle_agent_message）

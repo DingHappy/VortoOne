@@ -2,50 +2,36 @@
 from __future__ import annotations
 
 import os
-import stat
 from pathlib import Path
-from src.utils.state_dir import home_state_dir
+from src.utils.state_dir import home_state_dir, state_dir
+from src.utils.home_maintenance import FileLease, HomeMaintenanceError, home_maintenance
 
 
-class ProcessLease:
-    def __init__(self, path):
-        self.path = Path(path)
-        self._fd = None
+class ProcessLease(FileLease):
+    def acquire(self):
+        try:
+            return super().acquire()
+        except HomeMaintenanceError as exc:
+            raise RuntimeError("Another Runtime owns this workspace or IM channel") from exc
+
+
+class RuntimeLease(ProcessLease):
+    """所有 Runtime 入口共享的启动准入；在维护锁内确定目录并拿长期租约。"""
+    def __init__(self, root):
+        self.root = root
+        # 真正的状态目录可能还要迁移，直到拿到维护锁后才确定。
+        super().__init__(Path(root) / "runtime.lock")
 
     def acquire(self):
         if self._fd is not None:
             return self
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        try:
-            info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode):
-                raise RuntimeError("Runtime ownership lock must be a regular file")
-            if os.name == "nt":
-                import msvcrt
-                if info.st_size == 0:
-                    os.write(fd, b"0")
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except Exception as exc:
-            os.close(fd)
-            raise RuntimeError("Another Runtime owns this workspace or IM channel") from exc
-        self._fd = fd
-        return self
-
-    def release(self):
-        if self._fd is not None:
-            os.close(self._fd)
-            self._fd = None
-
-    def __enter__(self):
-        return self.acquire()
-
-    def __exit__(self, *_):
-        self.release()
+        with home_maintenance(self.root):
+            state = state_dir(self.root)
+            marker = state / "moved.json"
+            if marker.exists() or marker.is_symlink():
+                raise RuntimeError("这个家已经搬走，这里不能再启动 Runtime")
+            self.path = state / "runtime.lock"
+            return super().acquire()
 
 
 def channel_lease(channel: str, identity: str) -> ProcessLease:

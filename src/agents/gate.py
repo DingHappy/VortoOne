@@ -151,13 +151,20 @@ def make_confirm_gate(
                     _task_authorized: bool = False, _protective_authorized: bool = False) -> bool:
         operation = str(message)                   # 原始操作文案（端展示"拒了什么"用这个）
         tainted = is_tainted()
+        from src.agents.principal import current_member_allowance, current_principal, pre_authorized_for
         from src.agents.scoped_approval import consume_scope, make_offer, offering
-        offer = make_offer(kind, enabled=enable_turn_scope, profile=capability_profile, can_ask=can_ask_human and ask_human is not None)
+        principal = current_principal()
+        may_use_host_scope = not principal.is_member
+        offer = make_offer(kind, enabled=enable_turn_scope and may_use_host_scope, profile=capability_profile,
+                           can_ask=can_ask_human and ask_human is not None)
         scoped = not force_prompt and not tainted and consume_scope(offer)
-        task_authorized = _task_authorized and kind in {"write", "execute"}
-        protective = (_protective_authorized and can_ask_human and capability_profile != "unattended"
+        task_authorized = may_use_host_scope and _task_authorized and kind in {"write", "execute"}
+        protective = (may_use_host_scope and _protective_authorized and can_ask_human and capability_profile != "unattended"
                       and kind in {"write", "execute"})
-        verdict = decide(tainted=tainted, pre_authorized=not force_prompt and (protective or task_authorized or scoped or pre_authorized(_level(), kind)),
+        # ADR-019：成员不继承所有者的授权档位、任务授权或回合授权。
+        standing = pre_authorized_for(principal, kind or "write", owner_pre_authorized=pre_authorized(_level(), kind),
+                                      member_allowed=current_member_allowance(), tainted=tainted)
+        verdict = decide(tainted=tainted, pre_authorized=not force_prompt and (protective or task_authorized or scoped or standing),
                          can_ask_human=can_ask_human)
         from src.agents.confirmation_context import approval_context, presenting_approval, record_approval_outcome
         source = "preauthorized" if verdict == ALLOW else "system" if verdict == DENY or ask_human is None else "user"

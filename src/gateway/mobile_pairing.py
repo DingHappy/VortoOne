@@ -123,10 +123,11 @@ class MobilePairing(MobileDevices):
     def window(self, enabled: bool) -> dict:
         if type(enabled) is not bool:
             raise ValueError("需要明确配对窗口状态")
+        instance_id = self.ensure_instance()
         with self._lock():
             data = self._load() or {
                 "schema_version": 1,
-                "instance_id": uuid.uuid4().hex,
+                "instance_id": instance_id,
                 "devices": [],
                 "pairings": [],
             }

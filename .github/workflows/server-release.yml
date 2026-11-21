@@ -1,0 +1,138 @@
+name: Server release
+
+# 常开电脑用的发布：安装命令（deploy/install.sh）、安装包、界面、Docker 镜像。
+# - 改到这些文件的 PR：只构建并冒烟（装一遍、起服务、起容器），不发布任何东西。
+# - 推送 server-v<版本> 标签：同样构建冒烟，然后发 GitHub Release、推 ghcr.io/dinghappy/vortoone:<版本> 与 :latest，
+#   并更新滚动的 server-latest 发布（安装命令从那里取）。标签只在主人说发版时打。
+on:
+  pull_request:
+    paths:
+      - "deploy/install.sh"
+      - "deploy/Dockerfile"
+      - "deploy/docker-compose.yml"
+      - "scripts/build-server-release.sh"
+      - "scripts/check-server-upgrade.sh"
+      - "src/workflow/home_backup.py"
+      - ".github/workflows/server-release.yml"
+  push:
+    tags: ["server-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv (pinned)
+        run: python -m pip install "uv==0.12.9"
+      - name: Build the web UI
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build --workspace @agenteschat/web
+      - name: Build release files
+        run: scripts/build-server-release.sh dist/release
+      - id: version
+        name: The tag names the version in pyproject.toml
+        run: |
+          version=$(cat dist/release/VERSION)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "server-v$version" ]; then
+            echo "标签 ${GITHUB_REF_NAME} 和 pyproject.toml 的版本 $version 对不上" >&2; exit 1
+          fi
+      - name: Smoke - install from these files, start, claim
+        run: |
+          sh deploy/install.sh --from dist/release --dir "$RUNNER_TEMP/vortoone" --port 18080 --no-service | tee install.log
+          grep -q "/owner#claim=" install.log
+          "$RUNNER_TEMP/vortoone/run.sh" > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 120); do curl -fsS http://127.0.0.1:18080/api/health/quick >/dev/null && break; sleep 0.5; done
+          curl -fsS http://127.0.0.1:18080/api/instance | python -c "import json,sys; d=json.load(sys.stdin); assert d['ownerClaim'] is True, d; print(d['version'])"
+          curl -fsS -o /dev/null http://127.0.0.1:18080/login
+          # 没有令牌进不去
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/app/me)" = 401
+      - name: Smoke - upgrade, and roll back from a broken version
+        run: scripts/check-server-upgrade.sh 18081
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-release
+          path: dist/release/
+          retention-days: 7
+
+  image:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-release
+          path: dist/release
+      - name: Build the image
+        run: |
+          docker build -f deploy/Dockerfile --build-arg VERSION="${{ needs.build.outputs.version }}" \
+            -t vortoone:test dist/release
+      - name: Smoke - the container starts, asks for a token, prints a claim link
+        run: |
+          docker run -d --name vortoone -p 127.0.0.1:18080:8080 vortoone:test
+          for i in $(seq 1 120); do curl -fsS http://127.0.0.1:18080/api/health/quick >/dev/null && break; sleep 0.5; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/app/me)" = 401
+          docker logs vortoone 2>&1 | grep -q "/owner#claim="
+          docker exec vortoone sh -c 'stat -c %a /data/server.env' | grep -qx 600
+          docker rm -f vortoone
+      - name: Push to ghcr.io (tags only)
+        if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in "$VERSION" latest; do
+            docker tag vortoone:test "ghcr.io/dinghappy/vortoone:$tag"
+            docker push "ghcr.io/dinghappy/vortoone:$tag"
+          done
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [build, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-release
+          path: dist/release
+      - name: GitHub Release for this version, and the rolling server-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "server-v$VERSION" dist/release/* --repo "$GITHUB_REPOSITORY" --latest=false \
+            --title "VortoOne server $VERSION" \
+            --notes "常开电脑上的 VortoOne $VERSION。安装：curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/server-latest/install.sh | sh ；Docker：ghcr.io/dinghappy/vortoone:$VERSION"
+          if ! gh release view server-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create server-latest --repo "$GITHUB_REPOSITORY" --latest=false --prerelease \
+              --title "VortoOne server（最新）" --notes "安装命令从这里取最新的服务版本；每次发服务版都会更新。"
+          fi
+          gh release upload server-latest dist/release/install.sh dist/release/VERSION --clobber --repo "$GITHUB_REPOSITORY"

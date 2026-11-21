@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VortoOne Dev",
+  "version": "0.3.0-dev.7",
+  "identifier": "com.vorto.vortoone.dev",
+  "build": {
+    "beforeBuildCommand": "node ../../scripts/prepare-desktop-dev.mjs",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* https:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "createUpdaterArtifacts": false,
+    "category": "DeveloperTool",
+    "shortDescription": "VortoOne desktop with an independent bundled local backend",
+    "icon": [
+      "../../../../desktop/src-tauri/icons/32x32.png",
+      "../../../../desktop/src-tauri/icons/128x128.png",
+      "../../../../desktop/src-tauri/icons/128x128@2x.png",
+      "../../../../desktop/src-tauri/icons/icon.icns"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-"
+    },
+    "resources": {
+      "../../web/dist": "web"
+    }
+  }
+}

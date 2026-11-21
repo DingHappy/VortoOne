@@ -3,19 +3,30 @@
 Never read model arguments or prompt text as presentation authority. This adds no
 approval channel: the original gate and pending Future still own the decision.
 """
+from __future__ import annotations
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.browser.handoff_preview import BrowserHandoffFrame
+    from src.gateway.paired_browser_task import PairedBrowserTask
 
 _TURN: ContextVar[object | None] = ContextVar("confirmation_turn", default=None)
 _WEBSITE: ContextVar[dict | None] = ContextVar("website_confirmation", default=None)
+_WEBSITE_FRAME: ContextVar[BrowserHandoffFrame | None] = ContextVar("website_handoff_frame", default=None)
+_PAIRED_BROWSER: ContextVar[PairedBrowserTask | None] = ContextVar("paired_browser_task", default=None)
 
 
 def start_confirmation_turn() -> None:
     """Called once per real user turn, not per tool or model retry."""
     _TURN.set(object())
     _WEBSITE.set(None)
+    _WEBSITE_FRAME.set(None)
+    _PAIRED_BROWSER.set(None)
 
 
 def confirmation_turn() -> object | None:
@@ -26,13 +37,26 @@ def website_confirmation() -> dict | None:
     return deepcopy(_WEBSITE.get())
 
 
+def website_handoff_frame() -> BrowserHandoffFrame | None:
+    return _WEBSITE_FRAME.get()
+
+
+def paired_browser_task() -> PairedBrowserTask | None:
+    return _PAIRED_BROWSER.get()
+
+
 @contextmanager
-def presenting_website(details: dict):
+def presenting_website(details: dict, *, frame: BrowserHandoffFrame | None = None,
+                       paired: PairedBrowserTask | None = None):
     """Only a trusted website tool supplies public origin/account metadata."""
     token = _WEBSITE.set(deepcopy(details))
+    frame_token = _WEBSITE_FRAME.set(frame)
+    paired_token = _PAIRED_BROWSER.set(paired)
     try:
         yield
     finally:
+        _PAIRED_BROWSER.reset(paired_token)
+        _WEBSITE_FRAME.reset(frame_token)
         _WEBSITE.reset(token)
 
 

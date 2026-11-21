@@ -63,3 +63,15 @@ assert.equal(vm.runInContext('cur.review_token', context), 'current-A-v2');
     result = subprocess.run([shutil.which("node"), "--input-type=module", "-e", script, str(page)],
                             capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_an_installed_package_finds_the_review_page_in_its_share_folder(tmp_path, monkeypatch):
+    """用安装包装的家没有源码目录的 web/：审批台页面在 <环境>/share/vortoone/web/。"""
+    from src.web.routers import pages
+    monkeypatch.setattr(pages, "_WEB_DIR", tmp_path / "no-source-tree")
+    monkeypatch.setattr("sys.prefix", str(tmp_path / "prefix"))
+    assert pages._review_page() is None                    # 两处都没有：页面缺失
+    shared = tmp_path / "prefix" / "share" / "vortoone" / "web"
+    shared.mkdir(parents=True)
+    (shared / "review.html").write_text("<html>审批台</html>", encoding="utf-8")
+    assert pages._review_page() == shared / "review.html"

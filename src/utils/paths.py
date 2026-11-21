@@ -24,8 +24,10 @@ CLAUDE.md 的原话是"安全规则**上收到内核一处**，别在每个端�
 """
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Optional
+
+from src.utils.state_dir import STATE_DIRNAMES
 
 
 def resolve_within(base: Any, rel: Any) -> Optional[Path]:
@@ -47,3 +49,71 @@ def resolve_within(base: Any, rel: Any) -> Optional[Path]:
     except (ValueError, OSError):
         return None
     return target
+
+
+_SAFE_ENV_TEMPLATES = {
+    ".env.example",
+    ".env.sample",
+    ".env.template",
+    ".env.defaults",
+}
+_SENSITIVE_NAMES = {
+    ".env",
+    ".envrc",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".git-credentials",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "credentials.json",
+    "client_secret.json",
+    "service-account.json",
+}
+_SENSITIVE_DIRS = {".ssh", ".aws", ".docker", ".gnupg", ".kube", "secrets"}
+_SENSITIVE_STATE_DIRS = set(STATE_DIRNAMES)          # .vortoone 与改名前留下的 .vortocode 链接
+_SENSITIVE_STATE_FILES = {"cli_session.json", "sessions.db", "sessions.db-shm", "sessions.db-wal"}
+_SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".keystore"}
+
+
+def _raw_sensitive_repo_path(path: object) -> bool:
+    raw = str(path or "").strip().replace("\\", "/").lstrip("@/")
+    if not raw:
+        return False
+    parts = [part.lower() for part in PurePosixPath(raw).parts if part not in {"", "."}]
+    if not parts:
+        return False
+    name = parts[-1]
+    if name in _SAFE_ENV_TEMPLATES:
+        return False
+    if (
+        name in _SENSITIVE_NAMES
+        or (name.startswith(".env.") and name not in _SAFE_ENV_TEMPLATES)
+        or name.startswith("secrets.")
+    ):
+        return True
+    if any(part in _SENSITIVE_DIRS or part in _SENSITIVE_STATE_DIRS for part in parts):
+        return True
+    if name in _SENSITIVE_STATE_FILES:
+        return True
+    return any(name.endswith(suffix) for suffix in _SENSITIVE_SUFFIXES)
+
+
+def is_sensitive_repo_path(path: object, repo_root: str | None = None) -> bool:
+    """Return whether a raw or resolved repository path can hold credentials/state."""
+    if _raw_sensitive_repo_path(path):
+        return True
+    if not repo_root:
+        return False
+    raw = str(path or "").strip().lstrip("@")
+    if not raw:
+        return False
+    try:
+        root = Path(repo_root).resolve()
+        resolved = (root / raw).resolve()
+        rel = resolved.relative_to(root).as_posix()
+    except (OSError, ValueError):
+        return False
+    return _raw_sensitive_repo_path(rel)

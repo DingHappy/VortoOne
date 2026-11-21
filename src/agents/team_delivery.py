@@ -53,6 +53,16 @@ def prepare(repo_root: str, child_id: str, number: int, previous_branch: str = "
     return path
 
 
+def continuable(repo_root: str, branch: str) -> bool:
+    """私聊里上一件交回的分支能不能接着改：分支还在（删掉表示不要了），且还没合进项目当前的代码。"""
+    if not isinstance(branch, str) or not branch.startswith("vorto/team-"):
+        return False
+    ref = f"refs/heads/{branch}"
+    if _git(repo_root, "rev-parse", "--verify", "--quiet", ref, check=False).returncode != 0:
+        return False
+    return _git(repo_root, "merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode != 0
+
+
 def cleanup(repo_root: str, path: Any) -> None:
     from src.agents.worktree import remove_worktree
     remove_worktree(repo_root, path)
@@ -149,6 +159,8 @@ def describe(delivery: Dict[str, Any], project: str) -> str:
     verified = delivery.get("verified")
     status = "通过" if verified is True else "没通过" if verified is False else "没跑"
     lines = [f"【交付】分支 {delivery.get('branch')}（常驻电脑上 {project} 仓库的本地分支，未推送、未合并）",
+             *([f"接着上一件的分支 {delivery['continues']} 改的：这个分支里也有那一件的改动，合这一个就够了；"
+                "不要那一件的话，先删掉那个分支再交代"] if delivery.get("continues") else []),
              f"改动文件（{len(files)}）：{shown}",
              f"验证：{status}" + (f"（{delivery['verify_cmd']}）" if delivery.get("verify_cmd") else "")
              + (f"；另有 {delivery['preexisting_failures']} 个测试在改动前的代码上同样失败，不计入本次改动"

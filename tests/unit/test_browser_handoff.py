@@ -162,6 +162,65 @@ async def test_revoked_grant_during_login_cannot_resume(flow):
     assert "撤销" in await task and not browser.reads
 
 
+@pytest.mark.parametrize("replace_window", [False, True])
+async def test_older_login_card_cannot_resume_a_new_turn_or_window(flow, replace_window):
+    registry, browser, client, queue, run, next_card, answer = flow
+    row, first, old_card = await open_login(flow)
+    if replace_window:
+        closed = run("browser_close")
+        await answer(await next_card(), True)
+        assert "已关闭" in await closed
+
+    start_confirmation_turn()
+    if replace_window:
+        current = run("browser_open", {"url": "https://example.com/", "connection_id": row["id"]})
+        await answer(await next_card(), True)
+    else:
+        current = run("browser_login")
+    new_card = await next_card()
+    assert new_card["id"] != old_card["id"] and new_card["website"] == old_card["website"]
+    browser.url = "https://example.com/ready"
+    await answer(old_card, True)
+    assert "先前的接管确认已失效" in await first and not browser.reads
+    assert not current.done()
+    await answer(new_card, True)
+    assert "主人已确认恢复" in await current
+
+
+async def test_login_drops_a_projection_from_the_wrong_site(flow):
+    registry, browser, client, queue, run, next_card, answer = flow
+    _, task, card = await open_login(flow)
+    browser.url = "https://example.com/ready"
+    evaluate = browser.evaluate
+
+    async def changed(expression):
+        if expression == SNAPSHOT_JS:
+            return {"url": "https://other.example/ready", "text": "should-not-reach-model"}
+        return await evaluate(expression)
+
+    browser.evaluate = changed
+    await answer(card, True)
+    result = await task
+    assert "浏览器已交还真人" in result and "should-not-reach-model" not in result
+
+
+async def test_revocation_during_the_resume_check_blocks_page_read(flow):
+    registry, browser, client, queue, run, next_card, answer = flow
+    row, task, card = await open_login(flow)
+    browser.url = "https://example.com/ready"
+    evaluate = browser.evaluate
+
+    async def revoke_during_check(expression):
+        result = await evaluate(expression)
+        if expression == AUTH_STATE_JS:
+            registry.revoke(row["id"])
+        return result
+
+    browser.evaluate = revoke_during_check
+    await answer(card, True)
+    assert "撤销" in await task and SNAPSHOT_JS not in browser.reads
+
+
 async def test_anonymous_handoff_cannot_resume_on_a_different_public_site(flow):
     registry, browser, client, queue, run, next_card, answer = flow
     task = run("browser_open", {"url": "https://example.com/login"})
@@ -191,6 +250,7 @@ async def test_pending_handoff_replays_original_card_and_no_new_approval(flow, m
     row, task, card = await open_login(flow)
     stored = realtime.pending_confirmations("sid-browser-owner")[0]
     assert stored["website"] == card["website"]
+    assert "website_preview" not in stored  # This is a registered profile.
     stored["website"]["origin"] = "https://changed.example"
     assert realtime.pending_confirmations("sid-browser-owner")[0]["website"] == card["website"]
     monkeypatch.setattr(realtime, "_get_session", lambda _ws: {"transcript": [], "agent": None})

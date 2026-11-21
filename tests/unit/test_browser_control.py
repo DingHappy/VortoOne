@@ -99,6 +99,16 @@ def _tools(tmp_path, confirm, fake):
     return {t.name: t for t in build_browser_tools(str(tmp_path), confirm, browser_factory=lambda: fake)}
 
 
+async def test_legacy_browser_screenshot_uses_the_workspace_artifact_directory(tmp_path):
+    tools = _tools(tmp_path, make_confirm_gate(), _FakeBrowser())
+    assert "正文" in await tools["browser_open"].handler({"url": "https://example.com/"})
+    result = await tools["browser_screenshot"].handler({})
+    prefix = "已截图："
+    assert result.startswith(prefix)
+    artifact = tmp_path / result.removeprefix(prefix)
+    assert artifact.parent.name == "artifacts" and artifact.read_bytes() == b"png"
+
+
 async def test_click_asks_even_at_full_trust_and_respects_no(tmp_path):
     asked = []
 

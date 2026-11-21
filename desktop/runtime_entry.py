@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Minimal entry point for the VortoOne Desktop bundled runtime.
 
-The sidecar intentionally exposes only the local Gateway server command. The
-internal ``src.runtime_entry`` handles installed service and diagnostic commands.
+The sidecar exposes the local Gateway and native-managed computer/restore
+commands. The internal ``src.runtime_entry`` also handles service diagnostics.
 Public ``vc`` wrappers are retained temporarily while their callers migrate.
 """
 
@@ -30,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
     subcommands = parser.add_subparsers(dest="command", required=True)
+    subcommands.add_parser("computer-connector", help="native-managed outbound computer control worker")
+    subcommands.add_parser("computer-folder-settings", help="manage local folder grants through the native settings pipe")
+    subcommands.add_parser("computer-file-action", help=argparse.SUPPRESS)
+    desktop_restore = subcommands.add_parser("desktop-home-restore", help="restore native Desktop home data without reviving computer trust")
+    desktop_restore.add_argument("--data-dir", required=True)
+    desktop_restore.add_argument("--archive", required=True)
     subcommands.add_parser(
         "model-capabilities", help="check bundled model client without inference or credentials"
     )
@@ -37,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     server = subcommands.add_parser("server", help="start the local Gateway server")
     server.add_argument("--host", choices=("127.0.0.1", "localhost"), default="127.0.0.1")
     server.add_argument("--port", type=local_port, default=8080)
+    server.add_argument("--native-computer-control", action="store_true", help="read a native launch ticket from private stdin")
     resident = subcommands.add_parser(
         "resident-server", help="start the native-managed local resident"
     )
@@ -67,6 +74,18 @@ async def model_capabilities() -> dict:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "computer-connector":
+        from src.gateway.computer_connector import main as connector_main
+        return connector_main()
+    if args.command == "computer-folder-settings":
+        from src.gateway.computer_folder_settings import main as folder_settings
+        return folder_settings()
+    if args.command == "computer-file-action":
+        from src.gateway.computer_file_process import main as file_action
+        return file_action()
+    if args.command == "desktop-home-restore":
+        from src.runtime_entry import run_desktop_restore
+        return run_desktop_restore(args.data_dir, args.archive)
     if args.command == "resident-capabilities":
         import json
 
@@ -79,6 +98,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(asyncio.run(model_capabilities())))
         return 0
     if args.command == "server":
+        from src.runtime_bootstrap import prepare_server_ownership
+        prepare_server_ownership(os.getcwd())
+        if args.native_computer_control:
+            from src.gateway.computer_native import ComputerNativeDenied, ComputerNativeUnavailable, read_bootstrap
+            try:
+                read_bootstrap(os.getcwd())
+            except (ComputerNativeDenied, ComputerNativeUnavailable, OSError, ValueError):
+                raise SystemExit("本机启动票据不可用，服务未启动") from None
         os.environ["VORTOONE_DESKTOP_SIDECAR"] = "1"
         from src.web.server import start_server
 

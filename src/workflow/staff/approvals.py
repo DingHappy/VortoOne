@@ -26,15 +26,17 @@ class StaffApprovals:
     def instance(self):
         return owner_instance(self.registry.root)
 
-    def snapshot(self, kind, data):
+    def snapshot(self, kind, data, *, initiator=None):
         if not isinstance(data, dict):
             raise ValueError('提议内容必须是对象')
+        if initiator is not None and kind != 'routine':
+            raise ValueError('成员只能提议例行工作')
         if kind == 'bundle':
             from src.workflow.staff.bundles import StaffBundles
             return StaffBundles(self.registry).snapshot(data)
         if kind == 'routine':
             from src.workflow.staff.routines import Routines
-            return Routines(self.registry.root, registry=self.registry).snapshot(data)
+            return Routines(self.registry.root, registry=self.registry).snapshot(data, initiator=initiator)
         if kind == 'routine_migration':
             from src.workflow.staff.routine_migration import RoutineMigration
             return RoutineMigration(self.registry.root).snapshot(data)
@@ -112,6 +114,8 @@ class StaffApprovals:
             for record in records:
                 try:
                     keys = ('id', 'snapshot', 'owner', 'reason', 'created_at', 'nonce')
+                    if 'submission_digest' in record:
+                        keys += ('submission_digest',)
                     level = self.approval_level(record['snapshot'])
                     if 'requires_desktop_key' in record:
                         # Preserve the original digest and receipt; the retired key file is never read.
@@ -139,11 +143,50 @@ class StaffApprovals:
     def list(self):
         return [self._view(item) for item in self._records()]
 
-    def propose(self, owner, kind, data, reason, *, expected=None):
+    @staticmethod
+    def _is_member_routine(item):
+        snapshot = item['snapshot']
+        return snapshot['kind'] == 'routine' and bool(snapshot.get('initiator'))
+
+    def member_routine_proposals(self, member_id):
+        return [item for item in self._records()
+                if self._is_member_routine(item) and item['snapshot']['initiator'] == member_id]
+
+    def pending_member_routine_reviews(self):
+        return [self._view(item) for item in self._records()
+                if self._is_member_routine(item) and item['status'] in {'pending', 'applying'}]
+
+    def decide_member_routine(self, proposal_id, approve, expected_digest, *, nonce, round, instance):
+        require_owner_route(self.registry.root)
+        with TASK_STATE_LOCK:
+            item = next((row for row in self._records() if row['id'] == proposal_id), None)
+            if item is None or not self._is_member_routine(item):
+                raise LookupError('没有这个成员例行工作提议')
+            return self.decide(proposal_id, approve, expected_digest, nonce=nonce, round=round, instance=instance)
+
+    def propose(self, owner, kind, data, reason, *, expected=None, initiator=None):
         if not isinstance(owner, str) or not owner or not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
             raise ValueError('提议需要发起会话和明确理由')
         with TASK_STATE_LOCK:
-            snapshot = self.snapshot(kind, data)
+            entries = self._records()
+            submission_digest = None
+            if kind == 'routine' and initiator is not None and isinstance(data, dict):
+                submission_digest = digest({'definition': data, 'reason': reason})
+                for entry in entries:
+                    saved = entry['snapshot']
+                    if (saved['kind'] != 'routine' or saved.get('initiator') != initiator
+                            or saved['data']['id'] != data.get('id')):
+                        continue
+                    # Records written before the member form stored only the normalized definition.
+                    if 'submission_digest' in entry:
+                        same_request = entry['submission_digest'] == submission_digest
+                    else:
+                        same_request = reason == entry['reason'] and all(
+                            key in saved['data'] and saved['data'][key] == value for key, value in data.items())
+                    if not same_request:
+                        raise ValueError('这份例行工作提议已提交，修改内容后请新建提议')
+                    return self._view(entry)
+            snapshot = self.snapshot(kind, data, initiator=initiator)
             if expected is not None and snapshot != expected:
                 raise ValueError('确认期间岗位或专员已变化')
             item = {'id': 'staff-proposal-' + uuid.uuid4().hex, 'snapshot': snapshot,
@@ -151,8 +194,9 @@ class StaffApprovals:
                     'created_at': datetime.now(timezone.utc).isoformat(), 'nonce': uuid.uuid4().hex,
                     'approval_level': self.approval_level(snapshot),
                     'round': snapshot['previous']['revision'] + 1 if snapshot['previous'] else 1}
+            if submission_digest is not None:
+                item['submission_digest'] = submission_digest
             item['digest'] = digest(item)
-            entries = self._records()
             self.registry._write('proposals.json', {'version': 1, 'proposals': [item, *entries]})
             return self._view(item)
 
@@ -233,7 +277,9 @@ class StaffApprovals:
                             {'id': data['id'], 'revision': data['revision'], 'upgrade': True})
                 elif kind == 'department':
                     data = {key: value for key, value in data.items() if key not in {'notes_revision', 'routines'}}
-                if (approve or kind != 'bundle') and self.snapshot(kind, data) != snapshot:
+                initiator = snapshot.get('initiator')
+                check_snapshot = approve or (kind != 'bundle' and initiator is None)
+                if check_snapshot and self.snapshot(kind, data, initiator=initiator) != snapshot:
                     raise ValueError('岗位或专员版本已变化，旧提议不能批准')
                 self._audit(item, approve)
                 item['decision'] = {'at': datetime.fromtimestamp(self.clock(), timezone.utc).isoformat(),
@@ -270,8 +316,10 @@ class StaffApprovals:
                     if snapshot['kind'] == 'member' and self.registry.role(snapshot['data']['role']) != snapshot['role_snapshot']:
                         raise ValueError('所属岗位已变化，请重新提议')
                     if snapshot['kind'] == 'routine':
-                        Routines(self.registry.root).check_binding(item['target'])
-                        Routines(self.registry.root).apply(item['target'], snapshot['previous'])
+                        routines = Routines(self.registry.root)
+                        member, _ = routines.check_binding(item['target'])
+                        routines.check_creator(item['target'], member)
+                        routines.apply(item['target'], snapshot['previous'])
                     elif snapshot['kind'] == 'role':
                         if snapshot['data'].get('builtin'):
                             if snapshot['previous'] is None:

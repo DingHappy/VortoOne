@@ -55,6 +55,8 @@ def _key(task: Any) -> Optional[str]:
     legacy = (task.collaboration.get('dispatch', {}).get('routine') or {}).get('legacy')
     if legacy and task.status == 'done' and legacy['announce'] != 'im':
         return None
+    if task.collaboration.get('dispatch', {}).get('initiator') and task.status != 'blocked':
+        return None        # 成员发起的事：卡住要所有者处理（等批准、额度）时才提醒，做完不往主人这边推
     quota = task.collaboration.get('quota') or {}
     if task.status == 'blocked' and quota.get('status') == 'waiting':
         return f"quota:{quota.get('scope')}:{task.collaboration.get('dispatch', {}).get('department', '')}:{quota.get('day')}"

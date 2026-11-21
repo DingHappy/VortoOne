@@ -1836,5 +1836,1101 @@
     "methods": [
       "POST"
     ]
+  },
+  {
+    "path": "/api/app/auth-config",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/me",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/models",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/active-runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-groups",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-status",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/handoff",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/desktop",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/desktop/paired-preview/{run_id}",
+    "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/member-action-levels",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/member-action-levels/{member_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/member-policy",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/member-policy",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/scopes",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/ai-status",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/archived-channels",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/card",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/join",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/leave",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members/people/{person_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/messages",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/permissions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/permissions",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/pins",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/pins/{message_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/pins/{message_id}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/read",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/roster",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/threads",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/unarchive",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/card",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/computer-setup",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/dashboards",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/dashboards/home",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/dms",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/dms",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/former-agents",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/outages",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/order",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/tools",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/view",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/roles",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/count",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/overview",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/people",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles/order",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles/{role_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/roles/{role_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/proposals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/proposals",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/proposals/review",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/proposals/{proposal_id}/decision",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/settings",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/task-manager",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/unread-tasks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/unread-threads",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/waiting",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/sign-in/email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/sign-out",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/instance",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ws",
+    "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/browser-preview",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/browser-preview/watch",
+    "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/paired-browser",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/refuse",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/active-runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/messages",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/runs/{run_id}/cancel",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/memories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/skills",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/memories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/proposals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skill-settings",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-memories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/connectors/catalog",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/access",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/brain",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/computer",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/holds",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/repositories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/memories/{memory_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/take-over",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/take-over",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/skills",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/password-link",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/handover",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/handover/{code}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/phone-sign-in",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/sign-in/one-time-token",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/owner-claim",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/sign-in-options",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/device-accounts/sign-out",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/accept",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/reset-password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/sign-up/email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-authorization-server",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-authorization-server",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource/mcp",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/oauth-protected-resource/mcp",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/.well-known/openid-configuration",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/.well-known/openid-configuration",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/app/authorize/{request_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/authorize/{request_id}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/apps",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/apps/{grant_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/tokens",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/tokens/{grant_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/oauth/authorize",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/oauth/register",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/oauth/register",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/oauth/revoke",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/oauth/revoke",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/oauth/token",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/api/oauth/token",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/mcp",
+    "methods": [
+      "DELETE",
+      "GET"
+    ]
+  },
+  {
+    "path": "/mcp",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/mcp",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/mcp/",
+    "methods": [
+      "DELETE",
+      "GET"
+    ]
+  },
+  {
+    "path": "/mcp/",
+    "methods": [
+      "OPTIONS"
+    ]
+  },
+  {
+    "path": "/mcp/",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/authorize-requests",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/unarchive",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/setup/{step}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/computer-pairings",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/computer-pairings/{pairing_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/browser-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/computers/browser-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/computers/desktop-preview",
+    "methods": []
+  },
+  {
+    "path": "/api/computers/downloads/{transfer_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/computers/identity",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/computers/native-pair",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/computers/pair",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/computers/transfer",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/computers/transfer",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/computers/ws",
+    "methods": []
   }
 ]

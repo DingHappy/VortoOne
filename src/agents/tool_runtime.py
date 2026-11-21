@@ -27,8 +27,21 @@ from src.llm.hard_budget import claim_check_tool
 
 logger = logging.getLogger(__name__)
 _EXECUTION_CONTEXT: ContextVar[ToolExecutionContext | None] = ContextVar("tool_execution_context", default=None)
+_CALL_ID: ContextVar[str | None] = ContextVar("tool_call_id", default=None)
 _AUTHORITY: ContextVar[tuple | None] = ContextVar("tool_authority", default=None)
 _APPROVAL_CALL: ContextVar[dict | None] = ContextVar("tool_approval_call", default=None)
+
+
+def current_tool_call_id() -> str | None:
+    """Host-generated identity shared by a tool invocation and its audit events."""
+    return _CALL_ID.get()
+
+
+def check_tool_execution() -> None:
+    """Recheck the current invocation before resuming an awaiting side effect."""
+    context = _EXECUTION_CONTEXT.get()
+    if context is not None:
+        context.check_execution()
 
 
 def pending_tool_approval() -> dict | None:
@@ -422,9 +435,11 @@ class ToolRuntime:
         ctx.check_execution()
         try:
             context_token = _EXECUTION_CONTEXT.set(ctx)
+            call_token = _CALL_ID.set(call_id)
             try:
                 raw = await invoke_tool_handler(tool, args)
             finally:
+                _CALL_ID.reset(call_token)
                 _EXECUTION_CONTEXT.reset(context_token)
             if isinstance(raw, ToolResult):
                 status, raw = raw.status, raw.text

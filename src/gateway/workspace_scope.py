@@ -65,6 +65,9 @@ _GENERAL_HTTP_PREFIXES = (
     "/api/voice/",              # 小智语音端点：只读今日事项/任务单 + 记一张待确认提议，专用令牌（routers/voice.py）
     "/api/artifacts",
     "/artifact/",
+    "/api/instance",            # 新版 Desktop 界面登录前读的服务信息
+    "/api/app/",                # 新版 Desktop 界面的接口：名册、主要聊天、专员派活、记忆/例行/技能/制品的整理，不碰项目文件、Shell 或 Git
+    "/api/oauth/",              # AI 应用接入的 OAuth 端点（注册、授权、令牌、撤销）：只读写 ai_apps 状态，不碰项目文件、Shell 或 Git
     "/api/decisions",
     "/api/runtime-inbox",
     "/api/audit",
@@ -122,6 +125,12 @@ def http_workspace_requirement(path: str, scope: str | None = None) -> str | Non
     normalized = "/" + str(path or "").lstrip("/")
     if normalized == "/api/trust" and os.getenv("VORTOONE_DESKTOP_SIDECAR") == "1":
         return None  # Desktop General can select read approval without gaining a project.
+    from src.gateway.computer_protocol import DOWNLOAD_PREFIX, TRANSFER_PATH
+    if normalized in ("/api/computers/identity", "/api/computers/pair", "/api/computers/native-pair",
+                      "/api/computers/ws", TRANSFER_PATH):
+        return None  # These routes authenticate each computer directly.
+    if re.fullmatch(re.escape(DOWNLOAD_PREFIX) + r"[a-f0-9]{32}", normalized):
+        return None  # The download route requires home ownership.
     if normalized in ("/", "/mobile", "/mobile/", "/mobile/manage", "/ws", "/api/extensions/mcp", "/api/extensions/mcp/connect"):
         return None
     if any(normalized == prefix.rstrip("/") or normalized.startswith(prefix)

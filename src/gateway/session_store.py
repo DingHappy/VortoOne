@@ -35,17 +35,23 @@ def channel_metadata(value: Any) -> Optional[dict]:
     return {"version": 1, "topic": value["topic"]}
 
 
+def normalize_channel(name: str, topic: str, *, name_limit: int = 30) -> tuple[str, dict]:
+    """Share the channel title and versioned topic format across Desktop channel entry points."""
+    if not isinstance(name, str) or not isinstance(topic, str):
+        raise ValueError("频道名称和说明必须是文字")
+    title, topic = name.strip().lstrip("#").strip(), topic.strip()
+    if not 1 <= len(title) <= name_limit or any(ord(char) < 32 or ord(char) == 127 for char in title):
+        raise ValueError(f"频道名称需要 1～{name_limit} 个字，不能包含换行或控制字符")
+    if len(topic) > 300:
+        raise ValueError("频道说明最多 300 个字")
+    return title, {"version": 1, "topic": topic}
+
+
 def create_channel(repo_root: str, name: str, topic: str = "") -> dict:
     """Create an empty ordinary sid record, without constructing an Agent or selecting another root."""
     import uuid
     from src.workflow.pipeline.pipeline_storage import pipeline_lock
-    if not isinstance(name, str) or not isinstance(topic, str):
-        raise ValueError("频道名称和说明必须是文字")
-    title, topic = name.strip().lstrip("#").strip(), topic.strip()
-    if not 1 <= len(title) <= 30 or any(ord(char) < 32 or ord(char) == 127 for char in title):
-        raise ValueError("频道名称需要 1～30 个字，不能包含换行或控制字符")
-    if len(topic) > 300:
-        raise ValueError("频道说明最多 300 个字")
+    title, channel = normalize_channel(name, topic)
     # Only the name check and creation share this lock; no model or execution is held behind it.
     with pipeline_lock(repo_root, "session-channels", kind="create"):
         if any(item.get("channel") and item["title"].casefold() == title.casefold()
@@ -55,10 +61,10 @@ def create_channel(repo_root: str, name: str, topic: str = "") -> dict:
         if _path(repo_root, sid).exists():
             raise OSError("频道标识冲突，请重试")
         if not save_session(repo_root, f"sid-{sid}", [], [], None, title=title,
-                            channel={"version": 1, "topic": topic}, durable=True):
+                            channel=channel, durable=True):
             raise OSError("频道尚未保存，请重试")
         return {"sid": sid, "title": title, "messages": 0, "updated": _path(repo_root, sid).stat().st_mtime,
-                "channel": {"version": 1, "topic": topic}}
+                "channel": channel}
 
 
 def session_has_content(data: dict) -> bool:

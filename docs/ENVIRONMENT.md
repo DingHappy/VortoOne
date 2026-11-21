@@ -199,6 +199,9 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | --- | --- | --- | --- |
 | `VORTOONE_DESKTOP_SIDECAR` | Desktop | 标记 runtime 由 Desktop 托管，放开本机文件等 Desktop 专属能力。 | `web/routers/realtime.py`、`agents/tools/browser.py` 等 |
 | `VORTOONE_WORKSPACE_SCOPE` | Desktop | 工作区范围：`general` / `scratch` / `project`（不设按 `project`）。 | `gateway/workspace_scope.py` |
+| `VORTOONE_PUBLIC_URL` | 请求自己的地址 | 本服务对外的地址（如 `https://one.example.com`）。AI 应用接入的发现文档、授权地址和设置页显示的 `/mcp` 地址都由它给出；不设则用这次请求自己用的地址。 | `web/routers/ai_apps.py` |
+| `VORTOONE_APP_UI_DIR` | Desktop | 新版界面构建产物的目录（含 `index.html`）。设了才由本服务把它当自己的网站提供；不设则页面与原来一样。 | `web/app_ui.py` |
+| `VORTOONE_UPGRADE_FILE` | 安装命令 | 安装命令记下的升级结果（`<安装目录>/upgrade.json`）。服务启动时读一次，没报过的成功或退回写进通知。不设则不读。 | `scheduling/upgrade_notice.py` |
 | `VORTOONE_SUPERVISOR_PID` | Desktop | 监护进程 pid；它退出时 runtime 随之退出，不留孤儿。 | `gateway/supervisor_watchdog.py` |
 | `VORTOONE_MODEL_CONFIGURATION_REVISION` | Desktop | 不含凭据的模型配置版本。运行时就绪后回传启动回执；不代表模型服务可用或推理成功。 | `gateway/configuration_receipt.py` |
 | `VORTOONE_CONFIGURATION_LAUNCH_ID` | Desktop | 每次启动独有的身份，与配置版本共同核对，防止旧进程响应被当作新进程的回执。 | `gateway/configuration_receipt.py` |

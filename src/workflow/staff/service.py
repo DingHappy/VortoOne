@@ -282,14 +282,29 @@ class StaffService:
                     count[0] -= 1
                     condition.notify_all()
 
-    def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None):
+    def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
+               via=None):
+        """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。
+
+        via：这件事经哪个 AI 应用发来（``{"kind": "ai_app", "grant", "name"}``，只由 web 层的 /mcp 填）。
+        这样的任务从一开始就带外部内容标记：文字出自那个应用，可能夹带它读到的东西，执行时不能当作授权。"""
+        if via is not None and (not isinstance(via, dict) or via.get('kind') != 'ai_app'
+                                or not isinstance(via.get('name'), str)):
+            raise ValueError('来源标记无效')
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)
+            started_by = None
+            if initiator is not None:
+                from src.workflow.staff.initiators import record
+                started_by = record(initiator)
+            if routine:
+                from src.workflow.staff.routines import Routines
+                Routines(self.root).check_dispatch(routine, initiator)
             if expected is not None and (member, role) != expected:
                 raise ValueError('确认期间专员或岗位已变化，未创建任务')
             notes = None
-            if member['department']:
+            if member['department'] and started_by is None:      # 部门笔记是主人确认的内部资料，不带进成员的任务
                 from src.workflow.staff.notes import StaffNotes
                 notes = StaffNotes(self.root).snapshot(member['department'])
             task = self.collaboration(owner).create(args['prompt'], member['id'], args.get('acceptance'),
@@ -297,11 +312,15 @@ class StaffService:
                 dispatch={'source': 'staff', 'member': member['id'], 'member_revision': member['revision'],
                           'role': role['id'], 'role_revision': role['revision'], 'department': member['department'],
                           **({'notes': notes} if notes is not None else {}),
+                          **({'initiator': started_by} if started_by is not None else {}),
+                          **({'via': dict(via)} if via is not None else {}),
                           'delivery': args.get('delivery', 'review'), 'max_steps': role['max_steps'],
                           'timeout_seconds': role['timeout_seconds'], **({'routine': routine} if routine else {})})
             from src.workflow.staff.recovery import seed_queue_proof
             def seed(current):
                 seed_queue_proof(current)
+                if via is not None:
+                    current.collaboration['tainted'] = True
             task = self.collaboration(owner).update_staff_action(task.id, 1, seed)
             try:
                 self.schedule(task, member, role, after=after)

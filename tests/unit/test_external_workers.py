@@ -123,8 +123,8 @@ def test_claude_reviewer_gets_no_edit_tools_and_ignores_user_settings():
     read = ew.build_argv("claude", cwd="/w", write=False, system="rules")
     write = ew.build_argv("claude", cwd="/w", write=True)
     tools = read[read.index("--allowedTools") + 1:]
-    assert "Edit" not in tools and "Write" not in tools and "Read" in tools
-    assert "Edit" in write[write.index("--allowedTools") + 1:]
+    assert not any(t.startswith(("Edit", "Write")) for t in tools) and "Read(./**)" in tools
+    assert "Edit(./**)" in write[write.index("--allowedTools") + 1:]
     assert read[read.index("--append-system-prompt") + 1] == "rules"
     assert ew.stdin_text("claude", "task", "rules") == "task"
     assert read[read.index("--permission-mode") + 1] == "dontAsk"
@@ -904,3 +904,16 @@ async def test_each_worker_attempt_has_a_distinct_process_scoped_identity(fake_c
     assert first.execution_report.ref.key != second.execution_report.ref.key
     assert first.execution_report.ref == first.execution_report.ref
     assert first.execution_report.ref.scope == "process"
+
+
+@pytest.mark.parametrize("write", [True, False])
+@pytest.mark.parametrize("commands", [True, False])
+def test_claude_file_tools_are_always_limited_to_the_working_directory(write, commands):
+    """不带路径的 Read / Edit 等于允许读写任何路径（2026-11-16 本机实测）。"""
+    argv = ew.build_argv("claude", cwd="/w", write=write, commands=commands)
+    rules = argv[argv.index("--allowedTools") + 1:]
+    for rule in rules:
+        name = rule.split("(", 1)[0]
+        if name in {"Read", "Glob", "Grep", "Edit", "Write", "MultiEdit"}:
+            assert rule == f"{name}(./**)", rule
+    assert {"Read(./**)", "Glob(./**)", "Grep(./**)"} <= set(rules)

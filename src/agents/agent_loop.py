@@ -517,6 +517,9 @@ class MainAgent:
         # 置位后每个回合在 reset_taint() 之后立刻重新打污点（见 run_turn），
         # 因为污点是回合作用域的——在 run_turn 外面调 mark_tainted() 会被回合开头的 reset 抹掉。
         self._untrusted_input = bool(untrusted_input)
+        # 这位 agent 的回合由谁发起（ADR-019）。宿主装配后设定；None = 没申报，按没有真人发起。
+        self.principal = None
+        self.member_allowed: tuple = ()
         self._confirm_gate = confirm_gate
         self._supervised = bool(supervised)
         from src.agents.mcp_session import McpAttachment
@@ -1718,6 +1721,8 @@ class MainAgent:
         # 都能在 reset 之后重新标污点。用户伪造该标记只会触发更保守的确认，不会获得权限。
         if "<vortocode_untrusted_memory>" in str(user_text):
             mark_tainted()
+        from src.agents.principal import NOBODY, reset_principal, set_principal
+        principal_token = set_principal(self.principal or NOBODY, member_allowed=self.member_allowed)
         try:
             await self._fire_hook("agent_start", {"text": str(user_text)[:500], "mode": mode})
             text = await self._run_turn_body(
@@ -1741,21 +1746,22 @@ class MainAgent:
             report_error = ExecutionFailure("execution_failed", str(error), effect="possible")
             raise
         finally:
-            close_current_scope()
-            if say is not None:
-                note = self._unverified_writes_note()
-                if note:
-                    try:
-                        say(housekeeping(note))
-                    except Exception:  # noqa: BLE001 —— 提示失败不该影响本回合结果
-                        pass
             try:
+                close_current_scope()
+                if say is not None:
+                    note = self._unverified_writes_note()
+                    if note:
+                        try:
+                            say(housekeeping(note))
+                        except Exception:  # noqa: BLE001 —— 提示失败不该影响本回合结果
+                            pass
                 await self._fire_hook("agent_end", {"mode": mode})
             except asyncio.CancelledError:
                 report_state, report_result = ExecutionState.CANCELLED, None
                 report_error = ExecutionFailure("cancelled", "本机回合清理被取消", effect="possible")
                 raise
             finally:
+                reset_principal(principal_token)
                 if self._execution_report is not None and self._execution_report.ref == ref:
                     self._execution_report = replace(self._execution_report, state=report_state,
                         observed_at=time.time(), native_state=report_state.value,
