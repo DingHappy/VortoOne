@@ -1,12 +1,12 @@
-import type { AiStatus, AppNotification, Dashboard } from "@agenteschat/client";
-import { cacheNotification, keys, useApi } from "@agenteschat/client";
+import type { AiStatus, AppNotification, Dashboard } from "@vortoone/client";
+import { cacheNotification, keys, useApi } from "@vortoone/client";
 import {
   homeTarget,
   type OpenTarget,
   opensConnectAi,
   opensOnComputer,
   openTarget,
-} from "@agenteschat/client/lib/notifications";
+} from "@vortoone/client/lib/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useCallback, useContext, useEffect, useRef } from "react";

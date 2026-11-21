@@ -1,8 +1,8 @@
-import type { Agent, Member, Message } from "@agenteschat/client";
-import { useAgents, useFormerAgents, useMembers, useRoles } from "@agenteschat/client";
-import { agentsByAnyHandle, formerById } from "@agenteschat/client/lib/directory";
-import { memberRoleColor } from "@agenteschat/client/lib/member-groups";
-import { type AgentColor, agentGradient } from "@agenteschat/ui";
+import type { Agent, Member, Message } from "@vortoone/client";
+import { useAgents, useFormerAgents, useMembers, useRoles } from "@vortoone/client";
+import { agentsByAnyHandle, formerById } from "@vortoone/client/lib/directory";
+import { memberRoleColor } from "@vortoone/client/lib/member-groups";
+import { type AgentColor, agentGradient } from "@vortoone/ui";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { lookOf } from "@/lib/look";

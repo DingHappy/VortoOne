@@ -922,7 +922,7 @@ export type PhoneScreenState =
 /** Why control was refused, or ended: the screen opens again as a watcher and says so. */
 export type PhoneControlRefusal = "in_use" | "someone" | "unsupported" | "paused" | "held" | "lost";
 
-/** The most text one `text` frame carries (mirror of `PHONE_VIEW.text` in `@agenteschat/adapters`). */
+/** The most text one `text` frame carries (mirror of `PHONE_VIEW.text` in `@vortoone/adapters`). */
 export const PHONE_TEXT_MAX = 2000;
 
 /** A person's socket to a phone's screen. `text`: its pictures as base64 text frames (the phone app). */

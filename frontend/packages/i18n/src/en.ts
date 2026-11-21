@@ -12682,7 +12682,7 @@ export const en = {
       },
       inUse: "{{provider}} · {{bucket}}",
       inUseAt: "{{bucket}} at {{host}}",
-      /** A failed test step by its code (`stepErrorText` in `@agenteschat/client/lib/storage`). */
+      /** A failed test step by its code (`stepErrorText` in `@vortoone/client/lib/storage`). */
       stepError: {
         auth: "The access key or the secret wasn't accepted.",
         permission: "The key isn't allowed to do this step.",

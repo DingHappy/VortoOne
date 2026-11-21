@@ -1,6 +1,6 @@
-import { type Channel, keys, useApi, useLeaveChannel, useRoster } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { Button, Dialog, DialogFooter } from "@agenteschat/ui";
+import { type Channel, keys, useApi, useLeaveChannel, useRoster } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { Button, Dialog, DialogFooter } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";

@@ -1,7 +1,7 @@
-import type { ArtifactDetail } from "@agenteschat/client";
-import { useUploadFile } from "@agenteschat/client";
-import { fitsUpload, MAX_UPLOAD_MB } from "@agenteschat/client/lib/files";
-import { Button, type ButtonProps } from "@agenteschat/ui";
+import type { ArtifactDetail } from "@vortoone/client";
+import { useUploadFile } from "@vortoone/client";
+import { fitsUpload, MAX_UPLOAD_MB } from "@vortoone/client/lib/files";
+import { Button, type ButtonProps } from "@vortoone/ui";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useUploadFailed } from "@/components/Limits";

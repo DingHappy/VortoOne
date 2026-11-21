@@ -1,6 +1,6 @@
-import { listsAgent } from "@agenteschat/client/lib/audience";
-import { joinsChannels } from "@agenteschat/client/lib/right-hand";
-import { Checkbox, InfoHint, SearchField, Token, TokenList } from "@agenteschat/ui";
+import { listsAgent } from "@vortoone/client/lib/audience";
+import { joinsChannels } from "@vortoone/client/lib/right-hand";
+import { Checkbox, InfoHint, SearchField, Token, TokenList } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActorAvatar } from "@/components/AgentAvatar";

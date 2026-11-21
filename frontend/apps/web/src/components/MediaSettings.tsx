@@ -1,8 +1,8 @@
-import type { Agent, AgentMediaLevel, GifRating, OrgSettings } from "@agenteschat/client";
-import { useAgents, useSettings, useUpdateAgent, useUpdateSettings } from "@agenteschat/client";
-import { shownMediaSettings } from "@agenteschat/client/lib/media";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Card, CardFooter, CardHeader, Segmented, Switch } from "@agenteschat/ui";
+import type { Agent, AgentMediaLevel, GifRating, OrgSettings } from "@vortoone/client";
+import { useAgents, useSettings, useUpdateAgent, useUpdateSettings } from "@vortoone/client";
+import { shownMediaSettings } from "@vortoone/client/lib/media";
+import { can } from "@vortoone/client/lib/permissions";
+import { Card, CardFooter, CardHeader, Segmented, Switch } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { GifKeyCard } from "@/components/GifKeyCard";

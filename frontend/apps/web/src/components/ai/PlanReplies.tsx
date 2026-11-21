@@ -1,5 +1,5 @@
-import { type CodingPlan, planReplies } from "@agenteschat/client/lib/plans";
-import { InfoHint, Switch } from "@agenteschat/ui";
+import { type CodingPlan, planReplies } from "@vortoone/client/lib/plans";
+import { InfoHint, Switch } from "@vortoone/ui";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { usePersonalView } from "@/hooks/usePersonalView";

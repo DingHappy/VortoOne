@@ -1,8 +1,8 @@
-import type { AgentDatabase, DatabaseConnection, DatabasePolicy } from "@agenteschat/client";
-import { useAgentDatabases, useDatabases, useSetAgentDatabase } from "@agenteschat/client";
-import type { Level } from "@agenteschat/client/lib/access-levels";
-import { databaseRulesCount, defaultDatabasePolicy } from "@agenteschat/client/lib/databases";
-import { Alert, Button, Card } from "@agenteschat/ui";
+import type { AgentDatabase, DatabaseConnection, DatabasePolicy } from "@vortoone/client";
+import { useAgentDatabases, useDatabases, useSetAgentDatabase } from "@vortoone/client";
+import type { Level } from "@vortoone/client/lib/access-levels";
+import { databaseRulesCount, defaultDatabasePolicy } from "@vortoone/client/lib/databases";
+import { Alert, Button, Card } from "@vortoone/ui";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LevelRow, RulesToggle } from "@/components/AccessLevels";

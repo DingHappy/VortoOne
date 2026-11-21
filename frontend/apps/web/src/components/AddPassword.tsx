@@ -1,7 +1,7 @@
-import { keys, type Me } from "@agenteschat/client";
-import { errorCode, errorText, REAUTH_SIGN_IN } from "@agenteschat/client/lib/errors";
-import { passwordState } from "@agenteschat/client/lib/text";
-import { Alert, Button, Dialog, DialogBody, DialogFooter, Field, Input, Locked } from "@agenteschat/ui";
+import { keys, type Me } from "@vortoone/client";
+import { errorCode, errorText, REAUTH_SIGN_IN } from "@vortoone/client/lib/errors";
+import { passwordState } from "@vortoone/client/lib/text";
+import { Alert, Button, Dialog, DialogBody, DialogFooter, Field, Input, Locked } from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

@@ -1,17 +1,17 @@
-import type { AppAccess, AppConsent } from "@agenteschat/client";
-import { useAppConsent, useDecideAppConsent } from "@agenteschat/client";
+import type { AppAccess, AppConsent } from "@vortoone/client";
+import { useAppConsent, useDecideAppConsent } from "@vortoone/client";
 import {
   appName,
   type ConsentError,
   consentErrorOf,
   defaultWorkspace,
   requestedAccess,
-} from "@agenteschat/client/lib/apps";
-import { workspaceLabel, workspaceNotes } from "@agenteschat/client/lib/deletion";
-import { signInPath } from "@agenteschat/client/lib/guards";
-import { visibleText } from "@agenteschat/client/lib/text";
-import { isAppLocale } from "@agenteschat/i18n/locale";
-import { Alert, Button, Card, EmptyState, Field, Icon, Locked, OptionList, Select } from "@agenteschat/ui";
+} from "@vortoone/client/lib/apps";
+import { workspaceLabel, workspaceNotes } from "@vortoone/client/lib/deletion";
+import { signInPath } from "@vortoone/client/lib/guards";
+import { visibleText } from "@vortoone/client/lib/text";
+import { isAppLocale } from "@vortoone/i18n/locale";
+import { Alert, Button, Card, EmptyState, Field, Icon, Locked, OptionList, Select } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";

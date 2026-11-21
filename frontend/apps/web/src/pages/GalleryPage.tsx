@@ -42,7 +42,7 @@ import {
   TabPanel,
   Tabs,
   Toolbar,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";

@@ -1,4 +1,4 @@
-import { helpDocument } from "@agenteschat/i18n/help";
+import { helpDocument } from "@vortoone/i18n/help";
 /**
  * The welcome window: how the app finds its server. "Onde fica o seu workspace?" first, the Cloud chosen and one's
  * own server beside it; one's own server leads to Connect (an address, or one found on this computer or the Tailscale
@@ -14,8 +14,8 @@ import {
   isLoopback,
   parseConnectLink,
   type ServerCheck,
-} from "@agenteschat/client/lib/server";
-import { isEmail } from "@agenteschat/client/lib/text";
+} from "@vortoone/client/lib/server";
+import { isEmail } from "@vortoone/client/lib/text";
 import {
   Avatar,
   Button,
@@ -30,7 +30,7 @@ import {
   PlaceScene,
   Switch,
   useNow,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost } from "../app";

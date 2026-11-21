@@ -1,4 +1,4 @@
-import type { Message, Proposal } from "@agenteschat/client";
+import type { Message, Proposal } from "@vortoone/client";
 import {
   keys,
   useActOnTeamWeek,
@@ -11,12 +11,12 @@ import {
   useSetTeamWeekPrefs,
   useTeamWeekPrefs,
   useWaitingOnMe,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { clockAt, formatUsd, joinNames } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { type TeamWeekPeriod, teamWeekOn, teamWeekWhen } from "@agenteschat/client/lib/right-hand-prefs";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { clockAt, formatUsd, joinNames } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { type TeamWeekPeriod, teamWeekOn, teamWeekWhen } from "@vortoone/client/lib/right-hand-prefs";
 import {
   appliesInBulk,
   skipsAlone,
@@ -31,8 +31,8 @@ import {
   teamWeekRowState,
   teamWeekRowText,
   teamWeekTitleKey,
-} from "@agenteschat/client/lib/team-week";
-import { Button, Icon, Popover } from "@agenteschat/ui";
+} from "@vortoone/client/lib/team-week";
+import { Button, Icon, Popover } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";

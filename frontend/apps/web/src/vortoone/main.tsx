@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import i18next from "i18next";
-import { installTitleTips, trackInput } from "@agenteschat/ui";
+import { installTitleTips, trackInput } from "@vortoone/ui";
 import { ThemeProvider } from "../lib/theme";
 import { App } from "./App";
 import "../styles.css";

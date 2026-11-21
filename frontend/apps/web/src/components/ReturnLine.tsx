@@ -1,9 +1,9 @@
-import { type PendingReturn, useCancelFollowUp } from "@agenteschat/client";
-import { markedPieces, markInk } from "@agenteschat/client/lib/activity";
-import { returnClock, returnFaces, returnSentence, returnWhen } from "@agenteschat/client/lib/agent-work";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { Button, Icon, Popover, useNow } from "@agenteschat/ui";
+import { type PendingReturn, useCancelFollowUp } from "@vortoone/client";
+import { markedPieces, markInk } from "@vortoone/client/lib/activity";
+import { returnClock, returnFaces, returnSentence, returnWhen } from "@vortoone/client/lib/agent-work";
+import { errorText } from "@vortoone/client/lib/errors";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { Button, Icon, Popover, useNow } from "@vortoone/ui";
 import { type ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActorAvatar, AgentAvatar } from "@/components/AgentAvatar";

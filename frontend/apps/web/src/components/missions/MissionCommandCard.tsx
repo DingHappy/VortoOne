@@ -1,9 +1,9 @@
-import type { MissionCommandDecision, MissionCommandMeta } from "@agenteschat/client";
-import { ApiError, useMission, useMissionAct, useMissionCommands } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatTime } from "@agenteschat/client/lib/format";
-import { executorName } from "@agenteschat/client/lib/missions";
-import { Button, Checkbox, Chip, DetailsDialog, DetailsSection, Icon, Skeleton, Tip } from "@agenteschat/ui";
+import type { MissionCommandDecision, MissionCommandMeta } from "@vortoone/client";
+import { ApiError, useMission, useMissionAct, useMissionCommands } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatTime } from "@vortoone/client/lib/format";
+import { executorName } from "@vortoone/client/lib/missions";
+import { Button, Checkbox, Chip, DetailsDialog, DetailsSection, Icon, Skeleton, Tip } from "@vortoone/ui";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";

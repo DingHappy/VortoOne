@@ -9,7 +9,7 @@ import type {
   MissionReportMeta,
   MissionSetupMeta,
   MissionSuggestionMeta,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   keys,
   useAgentRepos,
@@ -26,11 +26,11 @@ import {
   useSetMissionExecutor,
   useThreadMission,
   useThreadTasks,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { folderName } from "@agenteschat/client/lib/machines";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { folderName } from "@vortoone/client/lib/machines";
 import {
   executorName,
   findingRefUrl,
@@ -46,7 +46,7 @@ import {
   summaryParts,
   taskNoticeOf,
   viaText,
-} from "@agenteschat/client/lib/missions";
+} from "@vortoone/client/lib/missions";
 import {
   Button,
   Checkbox,
@@ -63,7 +63,7 @@ import {
   Skeleton,
   Switch,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";

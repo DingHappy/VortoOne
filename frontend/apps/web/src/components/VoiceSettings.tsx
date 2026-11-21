@@ -1,13 +1,13 @@
-import type { SpeechKey, SpeechProvider } from "@agenteschat/client";
+import type { SpeechKey, SpeechProvider } from "@vortoone/client";
 import {
   useRemoveSpeechKey,
   useSaveSpeechKey,
   useSettings,
   useSpeechKey,
   useUpdateSettings,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   Button,
   Card,
@@ -20,7 +20,7 @@ import {
   RadioGroup,
   SettingNote,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorState, LoadingList } from "@/components/Loading";

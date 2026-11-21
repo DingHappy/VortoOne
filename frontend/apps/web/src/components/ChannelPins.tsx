@@ -1,8 +1,8 @@
-import { type MessagePin, usePinMessage, usePins } from "@agenteschat/client";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
-import { pinPreview, pinsIn } from "@agenteschat/client/lib/pins";
-import { Button, CountChip, Icon, Popover } from "@agenteschat/ui";
+import { type MessagePin, usePinMessage, usePins } from "@vortoone/client";
+import { clockAt } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
+import { pinPreview, pinsIn } from "@vortoone/client/lib/pins";
+import { Button, CountChip, Icon, Popover } from "@vortoone/ui";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActorAvatar } from "@/components/AgentAvatar";

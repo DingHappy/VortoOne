@@ -1,5 +1,5 @@
-import type { ErrorReportsConfig } from "@agenteschat/client";
-import { noAnswer } from "@agenteschat/client/lib/errors";
+import type { ErrorReportsConfig } from "@vortoone/client";
+import { noAnswer } from "@vortoone/client/lib/errors";
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { reloadingForNewVersion } from "./app-version";
 

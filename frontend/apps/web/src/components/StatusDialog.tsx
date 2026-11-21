@@ -1,5 +1,5 @@
-import type { Availability, StatusInput } from "@agenteschat/client";
-import { useSetMyStatus } from "@agenteschat/client";
+import type { Availability, StatusInput } from "@vortoone/client";
+import { useSetMyStatus } from "@vortoone/client";
 import {
   AVAILABILITIES,
   clearsText,
@@ -8,7 +8,7 @@ import {
   UNTIL_CHOICES,
   type UntilChoice,
   untilFor,
-} from "@agenteschat/client/lib/presence";
+} from "@vortoone/client/lib/presence";
 import {
   Avatar,
   Button,
@@ -21,7 +21,7 @@ import {
   Radio,
   RadioGroup,
   Select,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

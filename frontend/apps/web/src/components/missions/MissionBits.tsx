@@ -4,11 +4,11 @@ import type {
   MissionExecutor,
   MissionFileName,
   ThreadMissionSummary,
-} from "@agenteschat/client";
-import { engineOfExecutor } from "@agenteschat/client/lib/brain";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { executorOnText, type PlanCell, tickFor } from "@agenteschat/client/lib/missions";
-import { Chip, type IconName, PlanStrip, ProviderLogo, Select } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { engineOfExecutor } from "@vortoone/client/lib/brain";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { executorOnText, type PlanCell, tickFor } from "@vortoone/client/lib/missions";
+import { Chip, type IconName, PlanStrip, ProviderLogo, Select } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

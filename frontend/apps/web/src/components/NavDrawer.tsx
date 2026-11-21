@@ -1,5 +1,5 @@
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
-import { Button, OPEN_LAYER } from "@agenteschat/ui";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
+import { Button, OPEN_LAYER } from "@vortoone/ui";
 import { useRouterState } from "@tanstack/react-router";
 import {
   createContext,

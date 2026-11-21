@@ -1,4 +1,4 @@
-import type { ServerCheck } from "@agenteschat/client/lib/server";
+import type { ServerCheck } from "@vortoone/client/lib/server";
 import type { HelloLine } from "../control/client";
 import type { Candidate } from "../control/first-run";
 import type {

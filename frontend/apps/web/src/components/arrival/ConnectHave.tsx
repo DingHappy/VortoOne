@@ -1,9 +1,9 @@
-import type { PlanUsage } from "@agenteschat/client";
-import { accountAbout, accountTitle, type ExistingAi } from "@agenteschat/client/lib/ai-accounts";
-import { namesText } from "@agenteschat/client/lib/format";
-import { type PlanChoice, planOfAccount } from "@agenteschat/client/lib/no-ai";
-import { keyLine } from "@agenteschat/client/lib/providers";
-import { Icon, ProviderLogo, planState, Radio, RadioGroup } from "@agenteschat/ui";
+import type { PlanUsage } from "@vortoone/client";
+import { accountAbout, accountTitle, type ExistingAi } from "@vortoone/client/lib/ai-accounts";
+import { namesText } from "@vortoone/client/lib/format";
+import { type PlanChoice, planOfAccount } from "@vortoone/client/lib/no-ai";
+import { keyLine } from "@vortoone/client/lib/providers";
+import { Icon, ProviderLogo, planState, Radio, RadioGroup } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type CSSProperties, Fragment, type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";

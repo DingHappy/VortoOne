@@ -1,11 +1,11 @@
-import { ApiError, type OrgSummary, useApi, useAuthConfig, useDeleteWorkspace, useMe } from "@agenteschat/client";
-import { formatTimeLeft } from "@agenteschat/client/lib/actions";
-import { computerEdition } from "@agenteschat/client/lib/computer";
-import { deletionDueFrom, deletionProof, proofToSend } from "@agenteschat/client/lib/deletion";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { formatShortDate, formatTime } from "@agenteschat/client/lib/format";
-import { sendsEmail, typedCode } from "@agenteschat/client/lib/join-requests";
-import { matchesName } from "@agenteschat/client/lib/text";
+import { ApiError, type OrgSummary, useApi, useAuthConfig, useDeleteWorkspace, useMe } from "@vortoone/client";
+import { formatTimeLeft } from "@vortoone/client/lib/actions";
+import { computerEdition } from "@vortoone/client/lib/computer";
+import { deletionDueFrom, deletionProof, proofToSend } from "@vortoone/client/lib/deletion";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { formatShortDate, formatTime } from "@vortoone/client/lib/format";
+import { sendsEmail, typedCode } from "@vortoone/client/lib/join-requests";
+import { matchesName } from "@vortoone/client/lib/text";
 import {
   Alert,
   Button,
@@ -18,7 +18,7 @@ import {
   InfoHint,
   Input,
   Locked,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";

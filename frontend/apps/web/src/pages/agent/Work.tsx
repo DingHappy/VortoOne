@@ -1,4 +1,4 @@
-import type { BrainKind, Machine } from "@agenteschat/client";
+import type { BrainKind, Machine } from "@vortoone/client";
 import {
   DESKTOP_TOOL_SCOPE,
   profilesApply,
@@ -11,12 +11,12 @@ import {
   useModels,
   useSetComputerTarget,
   useUpdateAgentBrowserSettings,
-} from "@agenteschat/client";
-import { saveLevels } from "@agenteschat/client/lib/access-levels";
-import type { BrainScreen } from "@agenteschat/client/lib/agent-edit";
-import { ownSignInName } from "@agenteschat/client/lib/ai-accounts";
-import { effortOf } from "@agenteschat/client/lib/brain-advanced";
-import { computerNameOf, setupPortrait, WORKSPACE_COMPUTER_KIND } from "@agenteschat/client/lib/computer";
+} from "@vortoone/client";
+import { saveLevels } from "@vortoone/client/lib/access-levels";
+import type { BrainScreen } from "@vortoone/client/lib/agent-edit";
+import { ownSignInName } from "@vortoone/client/lib/ai-accounts";
+import { effortOf } from "@vortoone/client/lib/brain-advanced";
+import { computerNameOf, setupPortrait, WORKSPACE_COMPUTER_KIND } from "@vortoone/client/lib/computer";
 import {
   allowsInApp,
   commandInReason,
@@ -24,7 +24,7 @@ import {
   computerState,
   machineReasonText,
   toolOnCommand,
-} from "@agenteschat/client/lib/machines";
+} from "@vortoone/client/lib/machines";
 import {
   type AiChoice,
   aiChoiceOf,
@@ -32,12 +32,12 @@ import {
   planLabel,
   planMark,
   planOfAccount,
-} from "@agenteschat/client/lib/no-ai";
-import { can as canDo } from "@agenteschat/client/lib/permissions";
-import { brainModelChoice, brainModelChoices, isPlanId, planOf } from "@agenteschat/client/lib/plans";
-import { apiProviderOf, isAuto } from "@agenteschat/client/lib/providers";
-import { cleanSite, SITE } from "@agenteschat/client/lib/sites";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/no-ai";
+import { can as canDo } from "@vortoone/client/lib/permissions";
+import { brainModelChoice, brainModelChoices, isPlanId, planOf } from "@vortoone/client/lib/plans";
+import { apiProviderOf, isAuto } from "@vortoone/client/lib/providers";
+import { cleanSite, SITE } from "@vortoone/client/lib/sites";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   ComputerPortrait,
@@ -53,7 +53,7 @@ import {
   OptionList,
   ProviderLogo,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

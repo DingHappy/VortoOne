@@ -1,5 +1,5 @@
-import { meQuery } from "@agenteschat/client";
-import { earlyAccessToken, safeRedirect } from "@agenteschat/client/lib/guards";
+import { meQuery } from "@vortoone/client";
+import { earlyAccessToken, safeRedirect } from "@vortoone/client/lib/guards";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AuthPage } from "@/pages/AuthPage";
 

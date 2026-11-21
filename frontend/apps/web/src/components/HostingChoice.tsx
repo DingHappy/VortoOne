@@ -6,8 +6,8 @@ import {
   helpUrl,
   normalizeServer,
   serverHost,
-} from "@agenteschat/client/lib/server";
-import { DOWNLOAD_URL } from "@agenteschat/i18n/docs";
+} from "@vortoone/client/lib/server";
+import { DOWNLOAD_URL } from "@vortoone/i18n/docs";
 import {
   Button,
   Chip,
@@ -20,7 +20,7 @@ import {
   Icon,
   Input,
   OptionList,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./hosting.css";

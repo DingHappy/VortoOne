@@ -1,4 +1,4 @@
-import type { Widen } from "@agenteschat/i18n/widen";
+import type { Widen } from "@vortoone/i18n/widen";
 
 /** The desktop app's own strings in English, the source: every other language follows this shape. */
 export const desktopEn = {

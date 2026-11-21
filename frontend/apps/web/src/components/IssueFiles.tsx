@@ -1,8 +1,8 @@
-import type { Issue, IssueActivity } from "@agenteschat/client";
-import { useArtifact, useIssueAction } from "@agenteschat/client";
-import { formatBytes } from "@agenteschat/client/lib/files";
-import { whenAt } from "@agenteschat/client/lib/format";
-import { Button, EmptyState, Icon, Segmented, Spinner } from "@agenteschat/ui";
+import type { Issue, IssueActivity } from "@vortoone/client";
+import { useArtifact, useIssueAction } from "@vortoone/client";
+import { formatBytes } from "@vortoone/client/lib/files";
+import { whenAt } from "@vortoone/client/lib/format";
+import { Button, EmptyState, Icon, Segmented, Spinner } from "@vortoone/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActors } from "@/components/actors";

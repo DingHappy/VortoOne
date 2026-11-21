@@ -1,7 +1,7 @@
-import type { Issue } from "@agenteschat/client";
-import { useIssueAction } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
+import type { Issue } from "@vortoone/client";
+import { useIssueAction } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   type AudienceChoice,
   type AudienceKind,
@@ -9,8 +9,8 @@ import {
   audienceOfKind,
   pickedOf,
   whoSeesLabel,
-} from "@agenteschat/client/lib/who-sees";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/who-sees";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Avatar,
   Button,
@@ -22,7 +22,7 @@ import {
   Input,
   Locked,
   OptionCard,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

@@ -75,7 +75,7 @@ html[data-desktop=mac] .strip{display:block}
     return "en";
   };
   html.lang = lang();
-  const app = window.__agentesDesktop;
+  const app = window.__vortooneDesktop;
   if (app) html.dataset.desktop = app.platform === "windows" || app.platform === "linux" ? app.platform : "mac";
 })();
 </script>
@@ -155,7 +155,7 @@ html[data-desktop=mac] .strip{display:block}
   // In the desktop app's window: the app's cover lifts once this page is on the glass (pageReady in
   // apps/web/src/lib/desktop.ts).
   const tauri = window.__TAURI_INTERNALS__;
-  if (window.__agentesDesktop && tauri && typeof tauri.invoke === "function") {
+  if (window.__vortooneDesktop && tauri && typeof tauri.invoke === "function") {
     requestAnimationFrame(() => requestAnimationFrame(() => Promise.resolve(tauri.invoke("page_ready", {})).catch(() => {})));
   }
 })();

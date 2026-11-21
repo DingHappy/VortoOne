@@ -1,5 +1,5 @@
 {
-  "name": "@agenteschat/desktop",
+  "name": "@vortoone/desktop",
   "version": "0.8.9",
   "private": true,
   "type": "module",
@@ -12,10 +12,10 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@agenteschat/adapters": "*",
-    "@agenteschat/client": "*",
-    "@agenteschat/i18n": "*",
-    "@agenteschat/ui": "*",
+    "@vortoone/adapters": "*",
+    "@vortoone/client": "*",
+    "@vortoone/i18n": "*",
+    "@vortoone/ui": "*",
     "@fontsource-variable/martian-mono": "^5.3.0",
     "@fontsource-variable/onest": "^5.3.1",
     "@tauri-apps/api": "^2.5.0",

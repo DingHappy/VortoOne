@@ -1,7 +1,7 @@
-import { browserSteps, isQuiet, type LiveRun } from "@agenteschat/client";
-import { waitsForWords } from "@agenteschat/client/lib/activity";
-import { isMediaAfterReply } from "@agenteschat/client/lib/media";
-import { makingImage } from "@agenteschat/client/lib/work";
+import { browserSteps, isQuiet, type LiveRun } from "@vortoone/client";
+import { waitsForWords } from "@vortoone/client/lib/activity";
+import { isMediaAfterReply } from "@vortoone/client/lib/media";
+import { makingImage } from "@vortoone/client/lib/work";
 
 /**
  * One block per agent answer, from "pensando" to the final message, at the end of the conversation, where its message

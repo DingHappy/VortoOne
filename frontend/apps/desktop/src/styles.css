@@ -1,9 +1,9 @@
 /* The desktop app's styles: fonts, the design system, and the app's own layout. Component visuals
-   come from @agenteschat/ui. */
+   come from @vortoone/ui. */
 @import "@fontsource-variable/onest/index.css";
 @import "@fontsource-variable/martian-mono/index.css";
 @import "./fonts.css";
-@import "@agenteschat/ui/styles.css";
+@import "@vortoone/ui/styles.css";
 
 :root {
   --font-sans: "Onest Variable", Onest, system-ui, sans-serif;

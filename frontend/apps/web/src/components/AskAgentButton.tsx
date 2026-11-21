@@ -1,9 +1,9 @@
-import type { Agent } from "@agenteschat/client";
-import { mayAsk } from "@agenteschat/client/lib/audience";
-import { setDraftFor } from "@agenteschat/client/lib/drafts";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { rightHandOf } from "@agenteschat/client/lib/right-hand";
-import { Button, type ButtonProps } from "@agenteschat/ui";
+import type { Agent } from "@vortoone/client";
+import { mayAsk } from "@vortoone/client/lib/audience";
+import { setDraftFor } from "@vortoone/client/lib/drafts";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { rightHandOf } from "@vortoone/client/lib/right-hand";
+import { Button, type ButtonProps } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

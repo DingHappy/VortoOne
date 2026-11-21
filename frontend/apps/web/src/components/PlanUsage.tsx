@@ -1,11 +1,11 @@
-import type { PlanAccountInfo, PlanAccountUsage, PlanServes } from "@agenteschat/client";
-import { keys, useAiAccounts, useApi, useModels, usePlanUsage } from "@agenteschat/client";
-import { computerNameOf } from "@agenteschat/client/lib/computer";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatPercent, formatTokensShort, formatUsd } from "@agenteschat/client/lib/format";
-import { planName } from "@agenteschat/client/lib/plans";
-import { AUTO, apiProviderOf } from "@agenteschat/client/lib/providers";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+import type { PlanAccountInfo, PlanAccountUsage, PlanServes } from "@vortoone/client";
+import { keys, useAiAccounts, useApi, useModels, usePlanUsage } from "@vortoone/client";
+import { computerNameOf } from "@vortoone/client/lib/computer";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatPercent, formatTokensShort, formatUsd } from "@vortoone/client/lib/format";
+import { planName } from "@vortoone/client/lib/plans";
+import { AUTO, apiProviderOf } from "@vortoone/client/lib/providers";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   agentGradient,
   Button,
@@ -23,7 +23,7 @@ import {
   planLevel,
   planLine,
   Segmented,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Fragment, useEffect, useId, useState } from "react";

@@ -1,5 +1,5 @@
-import type { Agent, Approval, Member } from "@agenteschat/client";
-import { useCancelApproval, useDecideApproval, useDecideApprovals } from "@agenteschat/client";
+import type { Agent, Approval, Member } from "@vortoone/client";
+import { useCancelApproval, useDecideApproval, useDecideApprovals } from "@vortoone/client";
 import {
   type ApprovalAction,
   aheadPhase,
@@ -7,16 +7,16 @@ import {
   approvalRisk,
   approvalTraits,
   approveAlwaysOffered,
-} from "@agenteschat/client/lib/approval-kind";
+} from "@vortoone/client/lib/approval-kind";
 import {
   alwaysRoutineName,
   approveAlwaysHint,
   approveAlwaysLabel,
   decisionOutcome,
-} from "@agenteschat/client/lib/approval-words";
-import { nextLabel, whenAt } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { Button, cx, Icon, Tip } from "@agenteschat/ui";
+} from "@vortoone/client/lib/approval-words";
+import { nextLabel, whenAt } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { Button, cx, Icon, Tip } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { useContext } from "react";
@@ -33,7 +33,7 @@ export {
   approvalReadsOnly,
   approvalTitle,
   approvalValues,
-} from "@agenteschat/client/lib/approval-words";
+} from "@vortoone/client/lib/approval-words";
 export { type ApprovalAction, approvalAction, approvalRisk, approvalTraits };
 
 /** "Aprovado por você · agora" / "Recusado por João · ontem 18:02" / "Expirou · ontem". */

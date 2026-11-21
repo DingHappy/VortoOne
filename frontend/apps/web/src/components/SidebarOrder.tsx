@@ -1,7 +1,7 @@
-import type { SidebarSection } from "@agenteschat/client";
-import { useSetSidebarOrder, useSidebarOrder } from "@agenteschat/client";
-import { moveSection, sameOrder, sidebarSections } from "@agenteschat/client/lib/sidebar-items";
-import { Icon } from "@agenteschat/ui";
+import type { SidebarSection } from "@vortoone/client";
+import { useSetSidebarOrder, useSidebarOrder } from "@vortoone/client";
+import { moveSection, sameOrder, sidebarSections } from "@vortoone/client/lib/sidebar-items";
+import { Icon } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type DragEvent, type ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

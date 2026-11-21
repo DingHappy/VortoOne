@@ -1,4 +1,4 @@
-import type { CommandApproval, Mission, MissionExecutor, MissionParticipantRole } from "@agenteschat/client";
+import type { CommandApproval, Mission, MissionExecutor, MissionParticipantRole } from "@vortoone/client";
 import {
   cacheMission,
   keys,
@@ -10,14 +10,14 @@ import {
   useEligibleAgents,
   useMissionJoinRequests,
   useMissionParticipants,
-} from "@agenteschat/client";
-import { canTalk } from "@agenteschat/client/lib/audience";
-import { computerNameOf } from "@agenteschat/client/lib/computer";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { executorName } from "@agenteschat/client/lib/missions";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { canTalk } from "@vortoone/client/lib/audience";
+import { computerNameOf } from "@vortoone/client/lib/computer";
+import { errorText } from "@vortoone/client/lib/errors";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { executorName } from "@vortoone/client/lib/missions";
+import { can } from "@vortoone/client/lib/permissions";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Dialog,
@@ -39,7 +39,7 @@ import {
   Switch,
   Textarea,
   Toolbar,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useId, useMemo, useState } from "react";

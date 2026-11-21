@@ -10,7 +10,7 @@ import {
   type ServerCheck,
   type ServerProblem,
   serverHost,
-} from "@agenteschat/client/lib/server";
+} from "@vortoone/client/lib/server";
 import { appServer, serverName } from "./server";
 
 export type FirstScreen = "choose" | "install" | "connect" | "here" | "link" | "pair";

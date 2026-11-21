@@ -1,9 +1,9 @@
-import type { AppAccess, AppsList, ConnectedApp, Me, PersonalToken, PersonalTokenInput } from "@agenteschat/client";
-import { ApiError, keys, useAppActions, useApps, useMe } from "@agenteschat/client";
-import { APP_CLIENT_GROUPS, APP_CLIENTS, type AppClient, type GuideStep } from "@agenteschat/client/lib/app-clients";
-import { appFacts, appMark, isAppsEmpty, newlyConnected, tokenFacts } from "@agenteschat/client/lib/apps";
-import { errorCode, errorText, REAUTH_SIGN_IN } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
+import type { AppAccess, AppsList, ConnectedApp, Me, PersonalToken, PersonalTokenInput } from "@vortoone/client";
+import { ApiError, keys, useAppActions, useApps, useMe } from "@vortoone/client";
+import { APP_CLIENT_GROUPS, APP_CLIENTS, type AppClient, type GuideStep } from "@vortoone/client/lib/app-clients";
+import { appFacts, appMark, isAppsEmpty, newlyConnected, tokenFacts } from "@vortoone/client/lib/apps";
+import { errorCode, errorText, REAUTH_SIGN_IN } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   Alert,
   Button,
@@ -28,7 +28,7 @@ import {
   SettingNote,
   TabPanel,
   Tabs,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";

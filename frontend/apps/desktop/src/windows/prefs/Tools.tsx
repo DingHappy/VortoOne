@@ -6,9 +6,9 @@ import {
   isInstallableCli,
   type RunnerExecutorInfo,
   type RunnerTools,
-} from "@agenteschat/adapters/machine-protocol";
-import type { ControlStatus } from "@agenteschat/adapters/runner-control";
-import { CLI_INSTALL_POLL_MS, GIT_FOR_WINDOWS_URL } from "@agenteschat/client/lib/machines";
+} from "@vortoone/adapters/machine-protocol";
+import type { ControlStatus } from "@vortoone/adapters/runner-control";
+import { CLI_INSTALL_POLL_MS, GIT_FOR_WINDOWS_URL } from "@vortoone/client/lib/machines";
 import {
   BrainPortrait,
   type BrainPortraitState,
@@ -21,7 +21,7 @@ import {
   InfoHint,
   ProviderLogo,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost, useSnapshot, useStore } from "../../app";

@@ -1,4 +1,4 @@
-import type { GitHubAppInstallation } from "@agenteschat/client";
+import type { GitHubAppInstallation } from "@vortoone/client";
 import {
   useConnections,
   useGitHubApp,
@@ -6,16 +6,16 @@ import {
   useRemoveGitHubApp,
   useRemoveGitHubAppSettings,
   useStartGitHubAppManifest,
-} from "@agenteschat/client";
-import { GITHUB_APP_AUTH } from "@agenteschat/client/lib/connected";
+} from "@vortoone/client";
+import { GITHUB_APP_AUTH } from "@vortoone/client/lib/connected";
 import {
   githubAppPanel,
   installationReach,
   missingEventsText,
   removedText,
   removeInstallationText,
-} from "@agenteschat/client/lib/github-app";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/github-app";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   Button,
   Card,
@@ -27,7 +27,7 @@ import {
   InfoHint,
   List,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { KEY_STATE_CHIP } from "@/components/GifKeyCard";

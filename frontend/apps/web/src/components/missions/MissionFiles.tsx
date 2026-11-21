@@ -1,9 +1,9 @@
-import type { MissionFileName } from "@agenteschat/client";
-import { useMission, useMissionFiles } from "@agenteschat/client";
-import { formatTime, relativeTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { editDiff, executorName, type MdLine, mdLines, newLineIndexes } from "@agenteschat/client/lib/missions";
-import { DetailsDialog, Diff, Icon, Segmented, Skeleton } from "@agenteschat/ui";
+import type { MissionFileName } from "@vortoone/client";
+import { useMission, useMissionFiles } from "@vortoone/client";
+import { formatTime, relativeTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { editDiff, executorName, type MdLine, mdLines, newLineIndexes } from "@vortoone/client/lib/missions";
+import { DetailsDialog, Diff, Icon, Segmented, Skeleton } from "@vortoone/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/Loading";

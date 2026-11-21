@@ -1,6 +1,6 @@
-import type { GifKey } from "@agenteschat/client";
-import { useGifKey, useRemoveGifKey, useSaveGifKey } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
+import type { GifKey } from "@vortoone/client";
+import { useGifKey, useRemoveGifKey, useSaveGifKey } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
 import {
   Button,
   Card,
@@ -15,7 +15,7 @@ import {
   List,
   Locked,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type Ref, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

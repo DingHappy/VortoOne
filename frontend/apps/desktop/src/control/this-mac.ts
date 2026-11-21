@@ -9,7 +9,7 @@
  * before a `connect` gets here.
  */
 
-import type { RunnerTools } from "@agenteschat/adapters/machine-protocol";
+import type { RunnerTools } from "@vortoone/adapters/machine-protocol";
 import { ControlError } from "./client";
 import { filesFolder } from "./local-server";
 import { homeServer } from "./server";

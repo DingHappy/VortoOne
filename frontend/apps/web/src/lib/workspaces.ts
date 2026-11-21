@@ -1,5 +1,5 @@
-import type { DeviceAccount } from "@agenteschat/client";
-import { CLOUD_SERVER, serverHost } from "@agenteschat/client/lib/server";
+import type { DeviceAccount } from "@vortoone/client";
+import { CLOUD_SERVER, serverHost } from "@vortoone/client/lib/server";
 
 /**
  * The workspace menu's "Your workspaces" by server and by account. In the desktop app (ADR 0154): this server's

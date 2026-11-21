@@ -1,13 +1,13 @@
-import { useCatalog, useConnections, useCustomServers } from "@agenteschat/client";
-import { connectedItems } from "@agenteschat/client/lib/connected";
+import { useCatalog, useConnections, useCustomServers } from "@vortoone/client";
+import { connectedItems } from "@vortoone/client/lib/connected";
 import {
   noAppWorks,
   type RoutineTemplateArea,
   type RoutineTemplateOption,
   routineTemplateOptions,
-} from "@agenteschat/client/lib/routine-templates";
-import { Field, Icon, type IconName, SearchSelect, type SelectOption } from "@agenteschat/ui";
-import { matchesWords } from "@agenteschat/ui/search";
+} from "@vortoone/client/lib/routine-templates";
+import { Field, Icon, type IconName, SearchSelect, type SelectOption } from "@vortoone/ui";
+import { matchesWords } from "@vortoone/ui/search";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";

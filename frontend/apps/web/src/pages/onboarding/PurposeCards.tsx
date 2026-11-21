@@ -1,6 +1,6 @@
-import type { WorkspaceMode } from "@agenteschat/client";
-import { type PurposeKind, SCENE_ACTIVITIES, SCENE_FACES } from "@agenteschat/client/lib/purpose-scene";
-import { type AgentAppearance, cx, OptionList } from "@agenteschat/ui";
+import type { WorkspaceMode } from "@vortoone/client";
+import { type PurposeKind, SCENE_ACTIVITIES, SCENE_FACES } from "@vortoone/client/lib/purpose-scene";
+import { type AgentAppearance, cx, OptionList } from "@vortoone/ui";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";

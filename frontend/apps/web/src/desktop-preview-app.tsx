@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { installTitleTips, switchTheme } from "@agenteschat/ui";
+import { installTitleTips, switchTheme } from "@vortoone/ui";
 import { createFakeApi, ORG_ID, seedState } from "../demo/fake-api";
 import { createFakeAuth } from "../demo/fake-auth";
 import { FakeSocket } from "../demo/fake-socket";
@@ -18,7 +18,7 @@ import { createToastStore } from "./lib/toast";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
-(window as { __agentesDesktop?: unknown }).__agentesDesktop = {
+(window as { __vortooneDesktop?: unknown }).__vortooneDesktop = {
   platform: "mac",
   renderer: "gpu",
 };

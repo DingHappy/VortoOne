@@ -1,6 +1,6 @@
-import { type LocaleState, useLocaleSync } from "@agenteschat/client/lib/locale-sync";
-import { resources } from "@agenteschat/i18n";
-import { loadStrings } from "@agenteschat/i18n/load";
+import { type LocaleState, useLocaleSync } from "@vortoone/client/lib/locale-sync";
+import { resources } from "@vortoone/i18n";
+import { loadStrings } from "@vortoone/i18n/load";
 import {
   type AppLocale,
   appLocale,
@@ -9,7 +9,7 @@ import {
   LOCALE_CODES,
   localeInfo,
   readyLocales,
-} from "@agenteschat/i18n/locale";
+} from "@vortoone/i18n/locale";
 import i18n, { type i18n as I18n, type InitOptions } from "i18next";
 import { useEffect, useState } from "react";
 import { initReactI18next, useTranslation } from "react-i18next";

@@ -1,8 +1,8 @@
-import { ApiError, useAiStatus, useApi, useAuthConfig } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatBytes } from "@agenteschat/client/lib/files";
-import { aiStateOf } from "@agenteschat/client/lib/no-ai";
-import { rightHandOf } from "@agenteschat/client/lib/right-hand";
+import { ApiError, useAiStatus, useApi, useAuthConfig } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatBytes } from "@vortoone/client/lib/files";
+import { aiStateOf } from "@vortoone/client/lib/no-ai";
+import { rightHandOf } from "@vortoone/client/lib/right-hand";
 import {
   Button,
   Chip,
@@ -15,7 +15,7 @@ import {
   overLimit,
   PixelSpinner,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";

@@ -4,7 +4,7 @@
  * banners, the cover's line, Preferences' words). Pure, so it is tested without the app.
  */
 
-import { CLOUD_SERVER } from "@agenteschat/client/lib/server";
+import { CLOUD_SERVER } from "@vortoone/client/lib/server";
 import type { Platform } from "./platform";
 
 /** `restarting`: it stopped by itself and starts again in a moment (nobody has to start it). */

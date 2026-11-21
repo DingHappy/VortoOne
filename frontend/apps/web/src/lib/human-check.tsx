@@ -1,5 +1,5 @@
-import { useAuthConfig } from "@agenteschat/client";
-import { createHumanCheck, type HumanAction, type HumanCheck } from "@agenteschat/client/lib/human-check";
+import { useAuthConfig } from "@vortoone/client";
+import { createHumanCheck, type HumanAction, type HumanCheck } from "@vortoone/client/lib/human-check";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 

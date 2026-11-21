@@ -5,13 +5,13 @@ import {
   useModels,
   useSettings,
   useUsage,
-} from "@agenteschat/client";
-import { groupOf, NO_GROUP } from "@agenteschat/client/lib/agent-groups";
-import { audienceSummary } from "@agenteschat/client/lib/audience";
-import { engineOfBrain } from "@agenteschat/client/lib/brain";
-import { modelUnpriced } from "@agenteschat/client/lib/endpoints";
-import { formatMonth, formatPercent, formatTokensShort, formatUsd } from "@agenteschat/client/lib/format";
-import { addsAgentsTo } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { groupOf, NO_GROUP } from "@vortoone/client/lib/agent-groups";
+import { audienceSummary } from "@vortoone/client/lib/audience";
+import { engineOfBrain } from "@vortoone/client/lib/brain";
+import { modelUnpriced } from "@vortoone/client/lib/endpoints";
+import { formatMonth, formatPercent, formatTokensShort, formatUsd } from "@vortoone/client/lib/format";
+import { addsAgentsTo } from "@vortoone/client/lib/permissions";
 import {
   type AgentAppearance,
   agentGradient,
@@ -27,7 +27,7 @@ import {
   randomAppearance,
   Select,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AudienceChoice } from "@/components/AgentAudience";

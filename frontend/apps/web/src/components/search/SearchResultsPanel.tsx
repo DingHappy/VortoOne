@@ -1,14 +1,14 @@
-import type { SearchHit } from "@agenteschat/client";
-import { useChannelCategories, useChannels } from "@agenteschat/client";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { hitText } from "@agenteschat/client/lib/media";
+import type { SearchHit } from "@vortoone/client";
+import { useChannelCategories, useChannels } from "@vortoone/client";
+import { clockAt } from "@vortoone/client/lib/format";
+import { hitText } from "@vortoone/client/lib/media";
 import {
   groupHitsByPlace,
   markTerms,
   SEARCH_SORTS,
   searchChipLabel,
   searchTerms,
-} from "@agenteschat/client/lib/search-filters";
+} from "@vortoone/client/lib/search-filters";
 import {
   Button,
   CountChip,
@@ -19,7 +19,7 @@ import {
   Message,
   MessageText,
   Select,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";

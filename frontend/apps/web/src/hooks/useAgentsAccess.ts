@@ -1,5 +1,5 @@
-import type { Agent, AgentAccess } from "@agenteschat/client";
-import { keys } from "@agenteschat/client";
+import type { Agent, AgentAccess } from "@vortoone/client";
+import { keys } from "@vortoone/client";
 import { useQueries } from "@tanstack/react-query";
 import { useApi } from "@/api/context";
 import { useOrg } from "@/components/org-context";

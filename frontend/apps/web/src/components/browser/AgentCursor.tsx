@@ -7,8 +7,8 @@ import {
   glideMs,
   glidePoint,
   glideStart,
-} from "@agenteschat/client";
-import { gradientOf } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { gradientOf } from "@vortoone/ui";
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";

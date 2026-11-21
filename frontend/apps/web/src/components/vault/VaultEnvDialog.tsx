@@ -1,4 +1,4 @@
-import type { VaultAccess, VaultOverview, VaultScope } from "@agenteschat/client";
+import type { VaultAccess, VaultOverview, VaultScope } from "@vortoone/client";
 import {
   ENV_MAX_BYTES,
   ENV_MAX_KEYS,
@@ -8,8 +8,8 @@ import {
   envReview,
   parseEnvFile,
   savedKeyNames,
-} from "@agenteschat/client/lib/vault";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/vault";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Checkbox,
@@ -22,7 +22,7 @@ import {
   Segmented,
   SettingNote,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type DragEvent, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

@@ -6,9 +6,9 @@
  * its banners. This window also owns the tray icon's state, answers the site's questions about this computer
  * and raises the notifications for folder requests (it lives, hidden, for as long as the app runs).
  */
-import type { ControlAccessRequest, ControlBrowser, ControlJob } from "@agenteschat/adapters/runner-control";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { Button, Icon, Kbd, normalizeAppearance, PixelSpinner, Segmented } from "@agenteschat/ui";
+import type { ControlAccessRequest, ControlBrowser, ControlJob } from "@vortoone/adapters/runner-control";
+import { joinNames } from "@vortoone/client/lib/format";
+import { Button, Icon, Kbd, normalizeAppearance, PixelSpinner, Segmented } from "@vortoone/ui";
 import {
   type CSSProperties,
   Fragment,

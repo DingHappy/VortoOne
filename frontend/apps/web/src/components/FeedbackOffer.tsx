@@ -1,6 +1,6 @@
-import { type Message, useAuthConfig, useFeedbackOffer, useMe, useSetChatPrefs } from "@agenteschat/client";
-import { feedbackOfferFor } from "@agenteschat/client/lib/feedback-offer";
-import { EventPillAction, Icon } from "@agenteschat/ui";
+import { type Message, useAuthConfig, useFeedbackOffer, useMe, useSetChatPrefs } from "@vortoone/client";
+import { feedbackOfferFor } from "@vortoone/client/lib/feedback-offer";
+import { EventPillAction, Icon } from "@vortoone/ui";
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useOrg } from "./org-context";

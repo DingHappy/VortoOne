@@ -19,8 +19,8 @@ import type {
   ArtifactFilters,
   ArtifactKind,
   ArtifactVersion,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
 import { clone, type MockContext, MockNotFoundError, minutesAgo, mockId, perOrg } from "./context";
 
 interface Stored {

@@ -1,8 +1,8 @@
-import type { ChannelMember } from "@agenteschat/client";
-import { canTalk } from "@agenteschat/client/lib/audience";
-import { everyoneSuggestion } from "@agenteschat/client/lib/everyone";
-import { mentionReaches } from "@agenteschat/client/lib/right-hand";
-import { Avatar, type ComposerSuggestion, Icon } from "@agenteschat/ui";
+import type { ChannelMember } from "@vortoone/client";
+import { canTalk } from "@vortoone/client/lib/audience";
+import { everyoneSuggestion } from "@vortoone/client/lib/everyone";
+import { mentionReaches } from "@vortoone/client/lib/right-hand";
+import { Avatar, type ComposerSuggestion, Icon } from "@vortoone/ui";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";

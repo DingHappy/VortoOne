@@ -1,7 +1,7 @@
-import type { Message, MessageVoice } from "@agenteschat/client";
-import { VOICE_WAITING, voiceLocalUrl } from "@agenteschat/client";
-import { voiceAudioGone, voiceAudioUrl, voiceExpired } from "@agenteschat/client/lib/voice";
-import { Icon, VoicePlayer } from "@agenteschat/ui";
+import type { Message, MessageVoice } from "@vortoone/client";
+import { VOICE_WAITING, voiceLocalUrl } from "@vortoone/client";
+import { voiceAudioGone, voiceAudioUrl, voiceExpired } from "@vortoone/client/lib/voice";
+import { Icon, VoicePlayer } from "@vortoone/ui";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

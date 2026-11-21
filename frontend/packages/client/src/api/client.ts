@@ -1,5 +1,5 @@
-import type { AppLocale } from "@agenteschat/i18n/locale";
-import type { PlanModel } from "@agenteschat/providers/plans";
+import type { AppLocale } from "@vortoone/i18n/locale";
+import type { PlanModel } from "@vortoone/providers/plans";
 import type { DashboardsApi } from "../dashboards/api";
 import type { ChatPrefs } from "../lib/chat-look";
 import type { OnboardingStepId } from "../lib/onboarding";

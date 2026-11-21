@@ -9,7 +9,7 @@ import type {
   Member,
   SidebarSection as SectionKey,
   SidebarItem,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   agentStateIn,
   agentWorkingIn,
@@ -37,9 +37,9 @@ import {
   useSkills,
   useTasksUnread,
   useUnreadThreads,
-} from "@agenteschat/client";
-import { agentSections, groupOf } from "@agenteschat/client/lib/agent-groups";
-import { WORK_TICK_MS, workLine } from "@agenteschat/client/lib/agent-work";
+} from "@vortoone/client";
+import { agentSections, groupOf } from "@vortoone/client/lib/agent-groups";
+import { WORK_TICK_MS, workLine } from "@vortoone/client/lib/agent-work";
 import {
   audienceChip,
   audienceNames,
@@ -47,27 +47,27 @@ import {
   canTalk,
   hiddenAgentIds,
   listsAllAgents,
-} from "@agenteschat/client/lib/audience";
-import { workspaceNotes } from "@agenteschat/client/lib/deletion";
-import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatTime, upperFirst } from "@agenteschat/client/lib/format";
-import { waitingAgents } from "@agenteschat/client/lib/outages";
-import { can, makesAgents, managesChannel } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/audience";
+import { workspaceNotes } from "@vortoone/client/lib/deletion";
+import { ErrorBoundary } from "@vortoone/client/lib/error-boundary";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatTime, upperFirst } from "@vortoone/client/lib/format";
+import { waitingAgents } from "@vortoone/client/lib/outages";
+import { can, makesAgents, managesChannel } from "@vortoone/client/lib/permissions";
 import {
   AVAILABILITIES,
   agentFaceWord,
   isOutOfOffice,
   presenceOfAvailability,
   statusEndNote,
-} from "@agenteschat/client/lib/presence";
-import { recentDms } from "@agenteschat/client/lib/recent";
-import { isRightHand, rightHandSeenKey } from "@agenteschat/client/lib/right-hand";
-import { SERVER_PLACE_ICON } from "@agenteschat/client/lib/server";
-import { inSidebarList, sidebarItemOrder, sidebarPlace } from "@agenteschat/client/lib/sidebar-items";
-import { AGENT_SORTS, sortAgents, splitPinned } from "@agenteschat/client/lib/sidebar-view";
-import { badgeCount, looksUnread } from "@agenteschat/client/lib/unread";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/presence";
+import { recentDms } from "@vortoone/client/lib/recent";
+import { isRightHand, rightHandSeenKey } from "@vortoone/client/lib/right-hand";
+import { SERVER_PLACE_ICON } from "@vortoone/client/lib/server";
+import { inSidebarList, sidebarItemOrder, sidebarPlace } from "@vortoone/client/lib/sidebar-items";
+import { AGENT_SORTS, sortAgents, splitPinned } from "@vortoone/client/lib/sidebar-view";
+import { badgeCount, looksUnread } from "@vortoone/client/lib/unread";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentColor,
   Avatar,
@@ -101,7 +101,7 @@ import {
   Skeleton,
   SkeletonGroup,
   selectionSkyUrl,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {

@@ -50,7 +50,7 @@ fn same_site(url: &Url, site: &Url) -> bool {
         && url.port_or_known_default() == site.port_or_known_default()
 }
 
-/// This computer's system, as `window.__agentesDesktop.platform` names it for the site.
+/// This computer's system, as `window.__vortooneDesktop.platform` names it for the site.
 pub const PLATFORM: &str = if cfg!(target_os = "macos") {
     "mac"
 } else if cfg!(target_os = "windows") {
@@ -235,7 +235,7 @@ pub fn open(app: &AppHandle, url: Option<Url>) -> Result<(), String> {
         // ADR 0154), that it takes the person's app icon (`appIcon`, ADR 0179) and how this computer draws
         // (`renderer`, and Linux's `system` facts: graphics.rs); nothing else.
         .initialization_script(format!(
-            "window.__agentesDesktop = Object.freeze({{ version: {version:?}, platform: {PLATFORM:?}, servers: true, files: true, connectorReturn: true, workspaces: true, appIcon: true, renderer: {renderer:?}, system: {system} }});",
+            "window.__vortooneDesktop = Object.freeze({{ version: {version:?}, platform: {PLATFORM:?}, servers: true, files: true, connectorReturn: true, workspaces: true, appIcon: true, renderer: {renderer:?}, system: {system} }});",
             renderer = crate::graphics::renderer(),
             system = serde_json::to_string(&crate::graphics::system()).unwrap_or_else(|_| "null".into()),
         ))

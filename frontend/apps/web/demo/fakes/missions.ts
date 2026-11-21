@@ -20,8 +20,8 @@ import type {
   MissionPlanVersion,
   MissionReview,
   MissionSettings,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
 import { clone, type MockContext, mockId, perOrg } from "./context";
 
 interface Store {

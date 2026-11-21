@@ -1,6 +1,6 @@
-import type { ControlAgent, ControlStatus } from "@agenteschat/adapters/runner-control";
-import { helpUrl } from "@agenteschat/client/lib/server";
-import type { HelpSlug } from "@agenteschat/i18n/help";
+import type { ControlAgent, ControlStatus } from "@vortoone/adapters/runner-control";
+import { helpUrl } from "@vortoone/client/lib/server";
+import type { HelpSlug } from "@vortoone/i18n/help";
 import {
   type AgentState,
   Avatar,
@@ -14,7 +14,7 @@ import {
   type IconName,
   LogoMark,
   normalizeAppearance,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost } from "../app";

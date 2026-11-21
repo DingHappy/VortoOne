@@ -1,9 +1,9 @@
-import type { Artifact, ArtifactKind } from "@agenteschat/client";
-import { useArtifacts, useChannels } from "@agenteschat/client";
-import { mayAsk } from "@agenteschat/client/lib/audience";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { Button, Card, EmptyState, Icon, SearchField, Segmented, Toolbar } from "@agenteschat/ui";
+import type { Artifact, ArtifactKind } from "@vortoone/client";
+import { useArtifacts, useChannels } from "@vortoone/client";
+import { mayAsk } from "@vortoone/client/lib/audience";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { Button, Card, EmptyState, Icon, SearchField, Segmented, Toolbar } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { useDeferredValue, useState } from "react";
 import { useTranslation } from "react-i18next";

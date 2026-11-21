@@ -1,4 +1,4 @@
-import type { BrowserHandoff, Machine, ScopeGrant } from "@agenteschat/client";
+import type { BrowserHandoff, Machine, ScopeGrant } from "@vortoone/client";
 import {
   agentStateOfRun,
   BROWSER_TOOL_SCOPE,
@@ -7,10 +7,10 @@ import {
   useApi,
   useBrowserHandoffMutations,
   usesBrowser,
-} from "@agenteschat/client";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { canReduceAccess, commandInReason, machineReasonText } from "@agenteschat/client/lib/machines";
-import { Button, Card, CardHeader, Chip, Icon } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { canReduceAccess, commandInReason, machineReasonText } from "@vortoone/client/lib/machines";
+import { Button, Card, CardHeader, Chip, Icon } from "@vortoone/ui";
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

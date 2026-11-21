@@ -1,4 +1,4 @@
-import type { CommandApproval, Mission, MissionExecutor } from "@agenteschat/client";
+import type { CommandApproval, Mission, MissionExecutor } from "@vortoone/client";
 import {
   keys,
   useMissionBrain,
@@ -9,11 +9,11 @@ import {
   useSetMissionBrain,
   useSetMissionExecutor,
   useSetResumeTasks,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { whenAt } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { isAuto } from "@agenteschat/client/lib/providers";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { whenAt } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { isAuto } from "@vortoone/client/lib/providers";
 import {
   AutonomyPixels,
   Button,
@@ -28,7 +28,7 @@ import {
   SettingsMore,
   SettingsSection,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";

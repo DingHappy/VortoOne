@@ -9,7 +9,7 @@ import type {
   RoutineRun,
   RoutineTarget,
   RoutineTargetInput,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   ROUTINE_HOOK_METHODS,
   useCalendar,
@@ -24,12 +24,12 @@ import {
   useRoutines,
   useRuleDescribe,
   useRuleParse,
-} from "@agenteschat/client";
-import { approvalTitle, ownActionName, routineVaultKey, splitOwnActions } from "@agenteschat/client/lib/approval-words";
-import type { RunStatus } from "@agenteschat/client/lib/calendar";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
-import { formatBytes } from "@agenteschat/client/lib/files";
+} from "@vortoone/client";
+import { approvalTitle, ownActionName, routineVaultKey, splitOwnActions } from "@vortoone/client/lib/approval-words";
+import type { RunStatus } from "@vortoone/client/lib/calendar";
+import { errorText } from "@vortoone/client/lib/errors";
+import { FIELD_LIMITS } from "@vortoone/client/lib/field-limits";
+import { formatBytes } from "@vortoone/client/lib/files";
 import {
   capitalize,
   clockHour,
@@ -41,15 +41,15 @@ import {
   relativeTime,
   toYmd,
   whenAt,
-} from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   blankLeft,
   ownWords,
   type RoutineTemplateOption,
   templateRule,
-} from "@agenteschat/client/lib/routine-templates";
+} from "@vortoone/client/lib/routine-templates";
 import {
   busyOnComputer,
   eventWebhook,
@@ -72,7 +72,7 @@ import {
   usageParts,
   type Words,
   whereItRuns,
-} from "@agenteschat/client/lib/routine-view";
+} from "@vortoone/client/lib/routine-view";
 import {
   browserTimezone,
   hookCurl,
@@ -80,7 +80,7 @@ import {
   onceParts,
   routineHookUrl,
   timezoneName,
-} from "@agenteschat/client/lib/routines";
+} from "@vortoone/client/lib/routines";
 import {
   Button,
   CheckboxPill,
@@ -125,7 +125,7 @@ import {
   Toolbar,
   useAutoGrow,
   zonedInstant,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { type CSSProperties, type ReactNode, useDeferredValue, useEffect, useMemo, useState } from "react";

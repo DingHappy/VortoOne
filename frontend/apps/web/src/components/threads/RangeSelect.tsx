@@ -1,7 +1,7 @@
-import type { Message, ThreadInfo } from "@agenteschat/client";
-import { useThreadMutation } from "@agenteschat/client";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { formatTime, joinNames } from "@agenteschat/client/lib/format";
+import type { Message, ThreadInfo } from "@vortoone/client";
+import { useThreadMutation } from "@vortoone/client";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { formatTime, joinNames } from "@vortoone/client/lib/format";
 import {
   excludedRuns,
   moveEdge,
@@ -12,8 +12,8 @@ import {
   stepEdge,
   threadTitle,
   timeSpan,
-} from "@agenteschat/client/lib/threads";
-import { Button, Checkbox, Chip, cx, Icon, Locked } from "@agenteschat/ui";
+} from "@vortoone/client/lib/threads";
+import { Button, Checkbox, Chip, cx, Icon, Locked } from "@vortoone/ui";
 import {
   type KeyboardEvent,
   type PointerEvent,

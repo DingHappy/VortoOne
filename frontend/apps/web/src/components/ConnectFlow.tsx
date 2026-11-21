@@ -1,4 +1,4 @@
-import type { ConnectOutcome, ConnectorDef, CustomConnectStart, CustomServer } from "@agenteschat/client";
+import type { ConnectOutcome, ConnectorDef, CustomConnectStart, CustomServer } from "@vortoone/client";
 import {
   keys,
   useAgents,
@@ -12,7 +12,7 @@ import {
   useInstallGitHubApp,
   useRenameConnection,
   useStartOAuth,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   catalogToolClass,
   LEVELS,
@@ -22,8 +22,8 @@ import {
   resourcesOf,
   saveLevels,
   sharedLevel,
-} from "@agenteschat/client/lib/access-levels";
-import { composioConnectText } from "@agenteschat/client/lib/composio";
+} from "@vortoone/client/lib/access-levels";
+import { composioConnectText } from "@vortoone/client/lib/composio";
 import {
   accountUnchecked,
   asksCount,
@@ -34,18 +34,18 @@ import {
   itemName,
   orgAccessChange,
   outcomeText,
-} from "@agenteschat/client/lib/connected";
-import { humanize, isHttpsUrl, sameServer } from "@agenteschat/client/lib/custom-tools";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
-import { connectorBrand, connectorDescription, connectorName } from "@agenteschat/client/lib/scopes";
+} from "@vortoone/client/lib/connected";
+import { humanize, isHttpsUrl, sameServer } from "@vortoone/client/lib/custom-tools";
+import { errorText } from "@vortoone/client/lib/errors";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
+import { connectorBrand, connectorDescription, connectorName } from "@vortoone/client/lib/scopes";
 import {
   partsOf,
   type ReviewTool,
   reviewDecisions,
   reviewToolsOf,
   toolName,
-} from "@agenteschat/client/lib/tool-review";
+} from "@vortoone/client/lib/tool-review";
 import {
   Alert,
   Button,
@@ -61,7 +61,7 @@ import {
   OptionList,
   Segmented,
   Skeleton,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { type ReactNode, useEffect, useState } from "react";

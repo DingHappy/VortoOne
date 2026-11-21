@@ -1,6 +1,6 @@
-import type { ThreadInfo } from "@agenteschat/client";
-import { joinNames, relativeTime } from "@agenteschat/client/lib/format";
-import { AvatarStack, Button, cx, Icon } from "@agenteschat/ui";
+import type { ThreadInfo } from "@vortoone/client";
+import { joinNames, relativeTime } from "@vortoone/client/lib/format";
+import { AvatarStack, Button, cx, Icon } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { useActors } from "@/components/actors";
 import { NavToggle } from "@/components/NavDrawer";

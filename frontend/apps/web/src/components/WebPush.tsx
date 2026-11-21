@@ -1,14 +1,14 @@
-import type { Message } from "@agenteschat/client";
-import { useApprovals, useWebPushKey } from "@agenteschat/client";
-import { billingHoldOf } from "@agenteschat/client/lib/billing";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+import type { Message } from "@vortoone/client";
+import { useApprovals, useWebPushKey } from "@vortoone/client";
+import { billingHoldOf } from "@vortoone/client/lib/billing";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   MAX_PUSH_OFFERS,
   type PushPermissionLike,
   pushAskAt,
   pushOffersFrom,
-} from "@agenteschat/client/lib/push-offer";
-import { Button, Icon } from "@agenteschat/ui";
+} from "@vortoone/client/lib/push-offer";
+import { Button, Icon } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";

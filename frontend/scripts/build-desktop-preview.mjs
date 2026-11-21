@@ -9,12 +9,12 @@ for (const args of [
     "run",
     "build",
     "--workspace",
-    "@agenteschat/web",
+    "@vortoone/web",
     "--",
     "--mode",
     "desktop-preview",
   ],
-  ["run", "build", "--workspace", "@agenteschat/desktop", "--", "--mode", "desktop-preview"],
+  ["run", "build", "--workspace", "@vortoone/desktop", "--", "--mode", "desktop-preview"],
 ])
   execFileSync(npm, args, { cwd: root, stdio: "inherit" });
 

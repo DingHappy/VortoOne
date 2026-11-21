@@ -1,4 +1,4 @@
-import type { DesktopMode, DesktopViewState, Edition, Machine } from "@agenteschat/client";
+import type { DesktopMode, DesktopViewState, Edition, Machine } from "@vortoone/client";
 import {
   ApiError,
   askControlWords,
@@ -12,11 +12,11 @@ import {
   handoffWantsWords,
   useBrowserHandoffMutations,
   useDesktopStatus,
-} from "@agenteschat/client";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { quoteExcerpt } from "@agenteschat/client/lib/reply";
-import { useSeat } from "@agenteschat/client/lib/seat-context";
-import { Button, cx, Icon, InfoHint } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { quoteExcerpt } from "@vortoone/client/lib/reply";
+import { useSeat } from "@vortoone/client/lib/seat-context";
+import { Button, cx, Icon, InfoHint } from "@vortoone/ui";
 import type RFB from "@novnc/novnc";
 import { type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

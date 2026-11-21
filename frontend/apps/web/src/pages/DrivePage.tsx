@@ -1,6 +1,6 @@
-import type { Artifact, ArtifactFilters, ArtifactKind } from "@agenteschat/client";
-import { useArtifacts, useChannels } from "@agenteschat/client";
-import { ARTIFACT_KINDS, KIND_ICON } from "@agenteschat/client/lib/artifacts";
+import type { Artifact, ArtifactFilters, ArtifactKind } from "@vortoone/client";
+import { useArtifacts, useChannels } from "@vortoone/client";
+import { ARTIFACT_KINDS, KIND_ICON } from "@vortoone/client/lib/artifacts";
 import {
   DRIVE_GROUPS,
   DRIVE_SORTS,
@@ -14,9 +14,9 @@ import {
   onlyItsConversation,
   PRIVATE_SECTION,
   rangeOf,
-} from "@agenteschat/client/lib/drive";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/drive";
+import { joinNames } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   Button,
   Checkbox,
@@ -36,7 +36,7 @@ import {
   Segmented,
   Toolbar,
   useMatchMedia,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type MouseEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActorAvatar } from "@/components/AgentAvatar";

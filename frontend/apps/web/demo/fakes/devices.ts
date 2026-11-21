@@ -23,8 +23,8 @@ import type {
   WifiIphone,
   WifiPairing,
   XcodeFixView,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
 import { clone } from "./context";
 
 export interface FakeDevices {

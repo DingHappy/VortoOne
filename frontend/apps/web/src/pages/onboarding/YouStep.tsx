@@ -1,7 +1,7 @@
-import { keys, type Me, useApi } from "@agenteschat/client";
-import { authErrorText, errorText } from "@agenteschat/client/lib/errors";
-import { WORK_AREAS, type WorkArea, type WorkAreaAnswer } from "@agenteschat/client/lib/work-area";
-import { Avatar, Button, Field, Icon, type IconName, Input, Locked, recipeOfUrl } from "@agenteschat/ui";
+import { keys, type Me, useApi } from "@vortoone/client";
+import { authErrorText, errorText } from "@vortoone/client/lib/errors";
+import { WORK_AREAS, type WorkArea, type WorkAreaAnswer } from "@vortoone/client/lib/work-area";
+import { Avatar, Button, Field, Icon, type IconName, Input, Locked, recipeOfUrl } from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

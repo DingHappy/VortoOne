@@ -1,5 +1,5 @@
-import { useChannels, useDms } from "@agenteschat/client";
-import { titledWithUnread, unreadTotal } from "@agenteschat/client/lib/unread";
+import { useChannels, useDms } from "@vortoone/client";
+import { titledWithUnread, unreadTotal } from "@vortoone/client/lib/unread";
 import { useEffect, useRef } from "react";
 
 /**

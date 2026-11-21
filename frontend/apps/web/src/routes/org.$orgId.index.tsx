@@ -1,7 +1,7 @@
-import { channelsQuery, keys } from "@agenteschat/client";
-import { noAnswer } from "@agenteschat/client/lib/errors";
-import { startPlace } from "@agenteschat/client/lib/home";
-import { rightHandOf } from "@agenteschat/client/lib/right-hand";
+import { channelsQuery, keys } from "@vortoone/client";
+import { noAnswer } from "@vortoone/client/lib/errors";
+import { startPlace } from "@vortoone/client/lib/home";
+import { rightHandOf } from "@vortoone/client/lib/right-hand";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { channelOfPath, isChatPath, lastPlace, opensWorkspace } from "@/lib/start";
 

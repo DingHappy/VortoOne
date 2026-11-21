@@ -1,4 +1,4 @@
-//! How this computer draws the app's windows: for the site (`renderer` and `system` in `window.__agentesDesktop`,
+//! How this computer draws the app's windows: for the site (`renderer` and `system` in `window.__vortooneDesktop`,
 //! which calm its styles on the CPU and tag its error reports) and for the person to copy (Preferências ›
 //! Atualizações, `app_info`). Anonymous facts only: never a host name, a user or a path.
 

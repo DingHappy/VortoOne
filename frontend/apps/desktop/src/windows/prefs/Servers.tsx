@@ -1,4 +1,4 @@
-import { heldWhole } from "@agenteschat/client/lib/format";
+import { heldWhole } from "@vortoone/client/lib/format";
 import {
   Alert,
   Button,
@@ -11,7 +11,7 @@ import {
   MenuItem,
   Select,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost, useSnapshot, useStore } from "../../app";

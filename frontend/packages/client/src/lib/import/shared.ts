@@ -4,8 +4,8 @@ import {
   AGENT_EYES,
   type AgentAppearance,
   type AgentColor,
-} from "@agenteschat/tokens/look";
-import { isSecretPath, setsCredential } from "@agenteschat/tokens/names";
+} from "@vortoone/tokens/look";
+import { isSecretPath, setsCredential } from "@vortoone/tokens/names";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
   ApiRule,

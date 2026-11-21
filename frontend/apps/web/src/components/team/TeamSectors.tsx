@@ -1,10 +1,10 @@
-import type { AgentGroup, Team, TeamAgent } from "@agenteschat/client";
-import { useAgentGroupAction, useRoutines } from "@agenteschat/client";
-import { setDraftFor } from "@agenteschat/client/lib/drafts";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
-import { sectorGap, sectorLineChanges, sectorReach, sectorSupervisor } from "@agenteschat/client/lib/team-views";
-import { AvatarStack, Button, Card, Icon, Select } from "@agenteschat/ui";
+import type { AgentGroup, Team, TeamAgent } from "@vortoone/client";
+import { useAgentGroupAction, useRoutines } from "@vortoone/client";
+import { setDraftFor } from "@vortoone/client/lib/drafts";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
+import { sectorGap, sectorLineChanges, sectorReach, sectorSupervisor } from "@vortoone/client/lib/team-views";
+import { AvatarStack, Button, Card, Icon, Select } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

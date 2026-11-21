@@ -1,4 +1,4 @@
-import type { ConnectorDef } from "@agenteschat/client";
+import type { ConnectorDef } from "@vortoone/client";
 import {
   keys,
   useAgents,
@@ -9,16 +9,16 @@ import {
   useMembers,
   useSkill,
   useSkills,
-} from "@agenteschat/client";
-import { type Level, saveLevels } from "@agenteschat/client/lib/access-levels";
-import { errorText as failureText } from "@agenteschat/client/lib/errors";
-import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
-import { addsAgentsTo, can } from "@agenteschat/client/lib/permissions";
-import { connectorName, scopeText } from "@agenteschat/client/lib/scopes";
-import { skillsToGive } from "@agenteschat/client/lib/skills";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { type Level, saveLevels } from "@vortoone/client/lib/access-levels";
+import { errorText as failureText } from "@vortoone/client/lib/errors";
+import { FIELD_LIMITS } from "@vortoone/client/lib/field-limits";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
+import { addsAgentsTo, can } from "@vortoone/client/lib/permissions";
+import { connectorName, scopeText } from "@vortoone/client/lib/scopes";
+import { skillsToGive } from "@vortoone/client/lib/skills";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentAppearance,
   type AgentColor,
@@ -40,7 +40,7 @@ import {
   randomAppearance,
   setGaze,
   spriteTone,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {

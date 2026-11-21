@@ -5,18 +5,18 @@ import {
   useAiAccounts,
   useSetAgentStyle,
   useSetShowActivity,
-} from "@agenteschat/client";
-import { formatTimeLeft } from "@agenteschat/client/lib/actions";
+} from "@vortoone/client";
+import { formatTimeLeft } from "@vortoone/client/lib/actions";
 import {
   authErrorText,
   emailChangeRefusal,
   errorCode,
   errorText,
   REAUTH_SIGN_IN,
-} from "@agenteschat/client/lib/errors";
-import { CODE_LENGTH, typedCode } from "@agenteschat/client/lib/join-requests";
-import { browserTimezone, isTimeZone, timezoneName, zoneDisplayName } from "@agenteschat/client/lib/routines";
-import { isEmail } from "@agenteschat/client/lib/text";
+} from "@vortoone/client/lib/errors";
+import { CODE_LENGTH, typedCode } from "@vortoone/client/lib/join-requests";
+import { browserTimezone, isTimeZone, timezoneName, zoneDisplayName } from "@vortoone/client/lib/routines";
+import { isEmail } from "@vortoone/client/lib/text";
 import {
   AffixInput,
   Alert,
@@ -37,7 +37,7 @@ import {
   Segmented,
   Switch,
   useNow,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useSyncExternalStore } from "react";

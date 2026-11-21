@@ -1,7 +1,7 @@
-import type { Channel, OrgRole, OrgRoles, Person } from "@agenteschat/client";
-import { channelMembersQuery, keys, useApi, useChannelCategories, useChannels } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { managesChannel } from "@agenteschat/client/lib/permissions";
+import type { Channel, OrgRole, OrgRoles, Person } from "@vortoone/client";
+import { channelMembersQuery, keys, useApi, useChannelCategories, useChannels } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { managesChannel } from "@vortoone/client/lib/permissions";
 import {
   channelLeavers,
   channelReach,
@@ -11,7 +11,7 @@ import {
   roleName,
   roleSees,
   sortRoles,
-} from "@agenteschat/client/lib/roles";
+} from "@vortoone/client/lib/roles";
 import {
   Button,
   Checkbox,
@@ -27,7 +27,7 @@ import {
   SearchField,
   Tip,
   Toolbar,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

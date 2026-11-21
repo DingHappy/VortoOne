@@ -1,20 +1,20 @@
-import type { AppNotification, NotificationActor } from "@agenteschat/client";
-import { appCreatedLine } from "@agenteschat/client/lib/apps";
-import { WORKSPACE_COMPUTER_KIND } from "@agenteschat/client/lib/computer";
-import { deviceNoticeOf } from "@agenteschat/client/lib/devices";
-import { formatUsd, namesText } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+import type { AppNotification, NotificationActor } from "@vortoone/client";
+import { appCreatedLine } from "@vortoone/client/lib/apps";
+import { WORKSPACE_COMPUTER_KIND } from "@vortoone/client/lib/computer";
+import { deviceNoticeOf } from "@vortoone/client/lib/devices";
+import { formatUsd, namesText } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   askersOf,
   channelOf,
   runFailedGroupOf,
   widgetNoticeOf,
   workspaceHeadline,
-} from "@agenteschat/client/lib/notifications";
-import type { Words } from "@agenteschat/client/lib/routine-view";
-import { teamWatchLine } from "@agenteschat/client/lib/team-watch";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
-import { Avatar, ComputerIcon, cx, Icon } from "@agenteschat/ui";
+} from "@vortoone/client/lib/notifications";
+import type { Words } from "@vortoone/client/lib/routine-view";
+import { teamWatchLine } from "@vortoone/client/lib/team-watch";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
+import { Avatar, ComputerIcon, cx, Icon } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
 import { ActorAvatar, AgentAvatar } from "@/components/AgentAvatar";

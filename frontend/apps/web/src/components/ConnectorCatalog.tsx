@@ -1,10 +1,10 @@
-import type { ConnectorCategory, ConnectorDef } from "@agenteschat/client";
-import { composioOffText, hiddenWithoutComposio } from "@agenteschat/client/lib/composio";
-import { CONNECTOR_MARK, OWN_MARK, SERVER_ICON } from "@agenteschat/client/lib/connected";
-import type { MailChoice } from "@agenteschat/client/lib/mail";
-import { can } from "@agenteschat/client/lib/permissions";
-import { connectorDescription, connectorName, scopeText } from "@agenteschat/client/lib/scopes";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+import type { ConnectorCategory, ConnectorDef } from "@vortoone/client";
+import { composioOffText, hiddenWithoutComposio } from "@vortoone/client/lib/composio";
+import { CONNECTOR_MARK, OWN_MARK, SERVER_ICON } from "@vortoone/client/lib/connected";
+import type { MailChoice } from "@vortoone/client/lib/mail";
+import { can } from "@vortoone/client/lib/permissions";
+import { connectorDescription, connectorName, scopeText } from "@vortoone/client/lib/scopes";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   AgentSearching,
   Button,
@@ -17,7 +17,7 @@ import {
   initialsOf,
   SearchField,
   Segmented,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

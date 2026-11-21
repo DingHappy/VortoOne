@@ -1,8 +1,8 @@
-import type { OrgRole, OrgRoles, Person } from "@agenteschat/client";
-import { useChangeRole, usePeople, useReorderRoles, useRoles } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { can, type RolePermission } from "@agenteschat/client/lib/permissions";
+import type { OrgRole, OrgRoles, Person } from "@vortoone/client";
+import { useChangeRole, usePeople, useReorderRoles, useRoles } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { joinNames } from "@vortoone/client/lib/format";
+import { can, type RolePermission } from "@vortoone/client/lib/permissions";
 import {
   everyoneOf,
   isEveryone,
@@ -18,7 +18,7 @@ import {
   roleName,
   roleTabs,
   sortRoles,
-} from "@agenteschat/client/lib/roles";
+} from "@vortoone/client/lib/roles";
 import {
   Alert,
   Avatar,
@@ -45,7 +45,7 @@ import {
   Tabs,
   Tip,
   Toolbar,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type KeyboardEvent, type DragEvent as ReactDragEvent, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useInviteDialog } from "@/components/invite/InviteDialog";

@@ -1,8 +1,8 @@
-import type { EndedTask, ManagedTask } from "@agenteschat/client";
-import { TASK_MANAGER_POLL_MS, useTaskSteps } from "@agenteschat/client";
-import { type Activity, activityVerb, toolActivity } from "@agenteschat/client/lib/activity";
-import { capitalize } from "@agenteschat/client/lib/format";
-import { stopLine, stopperOf } from "@agenteschat/client/lib/notices";
+import type { EndedTask, ManagedTask } from "@vortoone/client";
+import { TASK_MANAGER_POLL_MS, useTaskSteps } from "@vortoone/client";
+import { type Activity, activityVerb, toolActivity } from "@vortoone/client/lib/activity";
+import { capitalize } from "@vortoone/client/lib/format";
+import { stopLine, stopperOf } from "@vortoone/client/lib/notices";
 import {
   delegationText,
   endedState,
@@ -10,9 +10,9 @@ import {
   taskState,
   taskTime,
   taskTitle,
-} from "@agenteschat/client/lib/task-manager";
-import { formatDuration } from "@agenteschat/client/lib/work";
-import { Button, Chip, GroupHeading, PixelStop } from "@agenteschat/ui";
+} from "@vortoone/client/lib/task-manager";
+import { formatDuration } from "@vortoone/client/lib/work";
+import { Button, Chip, GroupHeading, PixelStop } from "@vortoone/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar, AgentSpinner } from "@/components/AgentAvatar";

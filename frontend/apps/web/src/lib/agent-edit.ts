@@ -1,5 +1,5 @@
-import type { AgentAudience } from "@agenteschat/client";
-import type { Level, LevelState } from "@agenteschat/client/lib/access-levels";
+import type { AgentAudience } from "@vortoone/client";
+import type { Level, LevelState } from "@vortoone/client/lib/access-levels";
 import {
   type AgentSection,
   type AgentTab,
@@ -8,12 +8,12 @@ import {
   sameAudience,
   sameBrain,
   sameList,
-} from "@agenteschat/client/lib/agent-edit";
-import { handleAfterRename } from "@agenteschat/client/lib/new-agent";
-import { type RepoChoice, sameRepoChoice } from "@agenteschat/client/lib/repos";
-import type { AgentAppearance } from "@agenteschat/ui";
+} from "@vortoone/client/lib/agent-edit";
+import { handleAfterRename } from "@vortoone/client/lib/new-agent";
+import { type RepoChoice, sameRepoChoice } from "@vortoone/client/lib/repos";
+import type { AgentAppearance } from "@vortoone/ui";
 
-export * from "@agenteschat/client/lib/agent-edit";
+export * from "@vortoone/client/lib/agent-edit";
 
 /*
  * The agent page: one draft over

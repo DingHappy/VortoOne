@@ -1,28 +1,28 @@
-import type { AppNotification, SignInProvider } from "@agenteschat/client";
-import { deviceNoticeOf } from "@agenteschat/client/lib/devices";
-import { firstName } from "@agenteschat/client/lib/format";
-import { noticeLine } from "@agenteschat/client/lib/island";
-import { mediaWord } from "@agenteschat/client/lib/media";
-import { openTarget, targetPath } from "@agenteschat/client/lib/notifications";
+import type { AppNotification, SignInProvider } from "@vortoone/client";
+import { deviceNoticeOf } from "@vortoone/client/lib/devices";
+import { firstName } from "@vortoone/client/lib/format";
+import { noticeLine } from "@vortoone/client/lib/island";
+import { mediaWord } from "@vortoone/client/lib/media";
+import { openTarget, targetPath } from "@vortoone/client/lib/notifications";
 import type { i18n as I18n, TFunction } from "i18next";
 import { useEffect } from "react";
 import type { DesktopServerWorkspaces } from "./workspaces";
 
 /**
  * The site inside the agentes.chat desktop app (ADR 0036, ADR 0066): the app's main window loads it and
- * sets `window.__agentesDesktop` before it starts. The site gets nothing of the computer but how it draws
+ * sets `window.__vortooneDesktop` before it starts. The site gets nothing of the computer but how it draws
  * (`renderer`, and on Linux `system`: distribution, session, WebKitGTK, graphics card). It draws its own
  * title bar and sends Google/Apple sign-in to the browser (`apps/desktop/src-tauri/src/main_window.rs`).
  */
 export const inDesktopApp = () =>
-  typeof window !== "undefined" && Boolean((window as { __agentesDesktop?: unknown }).__agentesDesktop);
+  typeof window !== "undefined" && Boolean((window as { __vortooneDesktop?: unknown }).__vortooneDesktop);
 
 export type DesktopPlatform = "mac" | "windows" | "linux";
 
 /** The system the app runs on; apps from before Windows and Linux say nothing, and were Macs. */
 export function desktopPlatform(): DesktopPlatform | null {
   if (!inDesktopApp()) return null;
-  const platform = (window as { __agentesDesktop?: { platform?: unknown } }).__agentesDesktop?.platform;
+  const platform = (window as { __vortooneDesktop?: { platform?: unknown } }).__vortooneDesktop?.platform;
   return platform === "windows" || platform === "linux" ? platform : "mac";
 }
 
@@ -33,7 +33,7 @@ export function desktopPlatform(): DesktopPlatform | null {
 export function desktopRenderer(): "gpu" | "cpu" | null {
   const platform = desktopPlatform();
   if (!platform) return null;
-  const renderer = (window as { __agentesDesktop?: { renderer?: unknown } }).__agentesDesktop?.renderer;
+  const renderer = (window as { __vortooneDesktop?: { renderer?: unknown } }).__vortooneDesktop?.renderer;
   if (renderer === "gpu" || renderer === "cpu") return renderer;
   return platform === "linux" ? "cpu" : "gpu";
 }
@@ -42,7 +42,7 @@ export function desktopRenderer(): "gpu" | "cpu" | null {
 export function desktopReportTags(): Record<string, string> {
   const renderer = desktopRenderer();
   if (!renderer) return {};
-  const system = (window as { __agentesDesktop?: { system?: unknown } }).__agentesDesktop?.system;
+  const system = (window as { __vortooneDesktop?: { system?: unknown } }).__vortooneDesktop?.system;
   const tags: Record<string, string> = { desktop_renderer: renderer };
   if (system && typeof system === "object")
     for (const [key, value] of Object.entries(system))
@@ -151,7 +151,7 @@ export function desktopNotice(
  * nothing and keep the web's return.
  */
 export const takesConnectorReturn = () =>
-  (window as { __agentesDesktop?: { connectorReturn?: unknown } }).__agentesDesktop?.connectorReturn === true;
+  (window as { __vortooneDesktop?: { connectorReturn?: unknown } }).__vortooneDesktop?.connectorReturn === true;
 
 export const oauthReturnPath = (path: string) => (takesConnectorReturn() ? `desktop:${path}` : path);
 
@@ -316,21 +316,21 @@ export const thisMac = {
   openServer: (server: string) => invoke<unknown>({ kind: "openServer", server }),
 };
 
-/** The app lists every server's workspaces (`workspaces` in `window.__agentesDesktop`, ADR 0154); older apps don't. */
+/** The app lists every server's workspaces (`workspaces` in `window.__vortooneDesktop`, ADR 0154); older apps don't. */
 export const desktopListsWorkspaces = () =>
-  inDesktopApp() && (window as { __agentesDesktop?: { workspaces?: unknown } }).__agentesDesktop?.workspaces === true;
+  inDesktopApp() && (window as { __vortooneDesktop?: { workspaces?: unknown } }).__vortooneDesktop?.workspaces === true;
 
-/** The app takes `otherServer` (`servers` in `window.__agentesDesktop`); older apps refuse it. */
+/** The app takes `otherServer` (`servers` in `window.__vortooneDesktop`); older apps refuse it. */
 export const desktopPicksServer = () =>
-  inDesktopApp() && (window as { __agentesDesktop?: { servers?: unknown } }).__agentesDesktop?.servers === true;
+  inDesktopApp() && (window as { __vortooneDesktop?: { servers?: unknown } }).__vortooneDesktop?.servers === true;
 
-/** The app keeps the person's app icon (`appIcon` in `window.__agentesDesktop`, ADR 0179); older apps refuse it. */
+/** The app keeps the person's app icon (`appIcon` in `window.__vortooneDesktop`, ADR 0179); older apps refuse it. */
 export const desktopPicksAppIcon = () =>
-  inDesktopApp() && (window as { __agentesDesktop?: { appIcon?: unknown } }).__agentesDesktop?.appIcon === true;
+  inDesktopApp() && (window as { __vortooneDesktop?: { appIcon?: unknown } }).__vortooneDesktop?.appIcon === true;
 
-/** The app takes `revealFiles` (`files` in `window.__agentesDesktop`); older apps refuse it. */
+/** The app takes `revealFiles` (`files` in `window.__vortooneDesktop`); older apps refuse it. */
 export const desktopRevealsFiles = () =>
-  inDesktopApp() && (window as { __agentesDesktop?: { files?: unknown } }).__agentesDesktop?.files === true;
+  inDesktopApp() && (window as { __vortooneDesktop?: { files?: unknown } }).__vortooneDesktop?.files === true;
 
 /**
  * The app's "Show QR code" (Preferences › Servers) opens the site with `?open=phone`: "Open on your phone"

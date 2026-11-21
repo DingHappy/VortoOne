@@ -12611,7 +12611,7 @@ export const ptBR = {
       },
       inUse: "{{provider}} · {{bucket}}",
       inUseAt: "{{bucket}} em {{host}}",
-      /** A failed test step by its code (`stepErrorText` in `@agenteschat/client/lib/storage`). */
+      /** A failed test step by its code (`stepErrorText` in `@vortoone/client/lib/storage`). */
       stepError: {
         auth: "A chave de acesso ou a secreta não foi aceita.",
         permission: "A chave não tem permissão para esta etapa.",

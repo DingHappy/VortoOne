@@ -1,4 +1,4 @@
-import type { BrainScope, Credential, Edition, MachineAccount, MachineAccountKind } from "@agenteschat/client";
+import type { BrainScope, Credential, Edition, MachineAccount, MachineAccountKind } from "@vortoone/client";
 import {
   keys,
   useAgentBrain,
@@ -8,7 +8,7 @@ import {
   useComputerSetup,
   useMachines,
   useModels,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   type AccountChoice,
   accountAbout,
@@ -18,9 +18,9 @@ import {
   ownSignInLower,
   planWordOf,
   signInPlan,
-} from "@agenteschat/client/lib/ai-accounts";
-import { answersOthers, audienceOf } from "@agenteschat/client/lib/audience";
-import type { BillingHold } from "@agenteschat/client/lib/billing";
+} from "@vortoone/client/lib/ai-accounts";
+import { answersOthers, audienceOf } from "@vortoone/client/lib/audience";
+import type { BillingHold } from "@vortoone/client/lib/billing";
 import {
   computerEdition,
   computerName,
@@ -28,12 +28,12 @@ import {
   managedNamed,
   setupView,
   statusRestatesChip,
-} from "@agenteschat/client/lib/computer";
-import { CUSTOM_PROVIDER } from "@agenteschat/client/lib/endpoints";
-import { errorText, holdText, keyRefusal } from "@agenteschat/client/lib/errors";
-import { NAMES_SHOWN, namesText } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { brainTool, installableCli } from "@agenteschat/client/lib/machines";
+} from "@vortoone/client/lib/computer";
+import { CUSTOM_PROVIDER } from "@vortoone/client/lib/endpoints";
+import { errorText, holdText, keyRefusal } from "@vortoone/client/lib/errors";
+import { NAMES_SHOWN, namesText } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { brainTool, installableCli } from "@vortoone/client/lib/machines";
 import {
   type AiChoice,
   ALL_AGENTS,
@@ -58,8 +58,8 @@ import {
   planPickText,
   planTitle,
   signsInOnce,
-} from "@agenteschat/client/lib/no-ai";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/no-ai";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   geminiPersonal,
   isPlanId,
@@ -67,7 +67,7 @@ import {
   planReplies,
   providerFitsChoice,
   signInProviderOf,
-} from "@agenteschat/client/lib/plans";
+} from "@vortoone/client/lib/plans";
 import {
   keyLine,
   keyLooksValid,
@@ -77,9 +77,9 @@ import {
   type ProviderId,
   providerLabel,
   providerOf,
-} from "@agenteschat/client/lib/providers";
-import { agentOnKey, rightHandOnKey, thinksWithLine } from "@agenteschat/client/lib/right-hand";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/providers";
+import { agentOnKey, rightHandOnKey, thinksWithLine } from "@vortoone/client/lib/right-hand";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentAppearance,
   AvatarStack,
@@ -96,8 +96,8 @@ import {
   Select,
   SettingNote,
   Spinner,
-} from "@agenteschat/ui";
-import { matchesWords } from "@agenteschat/ui/search";
+} from "@vortoone/ui";
+import { matchesWords } from "@vortoone/ui/search";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { Fragment, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";

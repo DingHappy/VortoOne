@@ -1,6 +1,6 @@
-import { authErrorText } from "@agenteschat/client/lib/errors";
-import { passwordState } from "@agenteschat/client/lib/text";
-import { Button, Icon, Input, Locked } from "@agenteschat/ui";
+import { authErrorText } from "@vortoone/client/lib/errors";
+import { passwordState } from "@vortoone/client/lib/text";
+import { Button, Icon, Input, Locked } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";

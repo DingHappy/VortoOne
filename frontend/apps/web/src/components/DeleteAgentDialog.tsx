@@ -1,8 +1,8 @@
-import { keys } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { matchesName } from "@agenteschat/client/lib/text";
-import { Button, Dialog, DialogBody, DialogFooter, Field, Icon, Input, Locked } from "@agenteschat/ui";
+import { keys } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { matchesName } from "@vortoone/client/lib/text";
+import { Button, Dialog, DialogBody, DialogFooter, Field, Icon, Input, Locked } from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

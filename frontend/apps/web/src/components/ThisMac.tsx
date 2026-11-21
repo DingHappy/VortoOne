@@ -1,5 +1,5 @@
-import { useConfirmDevice, useMe } from "@agenteschat/client";
-import { Button, SettingNote } from "@agenteschat/ui";
+import { useConfirmDevice, useMe } from "@vortoone/client";
+import { Button, SettingNote } from "@vortoone/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

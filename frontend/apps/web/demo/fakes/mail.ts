@@ -4,9 +4,9 @@
  * email): tests turn it on with `fake.providers = MAIL_PROVIDERS` and add
  * mailboxes through the API. An IMAP connect fails with the code in `fake.nextError`.
  */
-import type { AgentMailbox, ApiClient, MailAccount, MailConnectError, MailProviders } from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
-import { defaultPolicy } from "@agenteschat/client/lib/mail";
+import type { AgentMailbox, ApiClient, MailAccount, MailConnectError, MailProviders } from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
+import { defaultPolicy } from "@vortoone/client/lib/mail";
 import { clone, MockNotFoundError, mockId } from "./context";
 
 export interface FakeMail {

@@ -1,7 +1,7 @@
-import type { AccountLoginStart, AccountLoginStatus, MachineAccount, MachineAccountKind } from "@agenteschat/client";
-import { keys, useAccountLogin, useAiAccounts, useApi } from "@agenteschat/client";
-import { accountTitle, reusableAccount, signInOf } from "@agenteschat/client/lib/ai-accounts";
-import { knownErrorText } from "@agenteschat/client/lib/errors";
+import type { AccountLoginStart, AccountLoginStatus, MachineAccount, MachineAccountKind } from "@vortoone/client";
+import { keys, useAccountLogin, useAiAccounts, useApi } from "@vortoone/client";
+import { accountTitle, reusableAccount, signInOf } from "@vortoone/client/lib/ai-accounts";
+import { knownErrorText } from "@vortoone/client/lib/errors";
 import {
   beginLogin,
   freeDuplicate,
@@ -13,10 +13,10 @@ import {
   loginRead,
   loginReadPasses,
   otherThanHint,
-} from "@agenteschat/client/lib/machines";
-import { GEMINI_ENTERPRISE_PROVIDER, planKeyFits, signInKey } from "@agenteschat/client/lib/plans";
-import { accountCodeAad, sealSecret } from "@agenteschat/client/lib/secret-box";
-import { AffixInput, Button, cx, Icon, InfoHint, Locked, ProviderLogo, SettingNote, SwapLabel } from "@agenteschat/ui";
+} from "@vortoone/client/lib/machines";
+import { GEMINI_ENTERPRISE_PROVIDER, planKeyFits, signInKey } from "@vortoone/client/lib/plans";
+import { accountCodeAad, sealSecret } from "@vortoone/client/lib/secret-box";
+import { AffixInput, Button, cx, Icon, InfoHint, Locked, ProviderLogo, SettingNote, SwapLabel } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

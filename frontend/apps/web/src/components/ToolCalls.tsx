@@ -6,9 +6,9 @@ import {
   type ScreenKind,
   useCatalog,
   useRun,
-} from "@agenteschat/client";
-import type { Activity, ActivityKind } from "@agenteschat/client/lib/activity";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+} from "@vortoone/client";
+import type { Activity, ActivityKind } from "@vortoone/client/lib/activity";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   appKey,
   callLogo,
@@ -33,8 +33,8 @@ import {
   workFromSteps,
   workMeta,
   workSteps,
-} from "@agenteschat/client/lib/work";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/work";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentColor,
   Icon,
@@ -43,7 +43,7 @@ import {
   ToolBlock,
   type ToolBlockItem,
   type ToolBlockLine,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

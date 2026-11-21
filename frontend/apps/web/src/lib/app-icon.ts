@@ -1,5 +1,5 @@
-import { type AppIconId, DEFAULT_APP_ICON, isAppIcon } from "@agenteschat/client/lib/app-icons";
-import { normalizeAppearance } from "@agenteschat/ui";
+import { type AppIconId, DEFAULT_APP_ICON, isAppIcon } from "@vortoone/client/lib/app-icons";
+import { normalizeAppearance } from "@vortoone/ui";
 import { type AgentIcon, agentDesktopPictures, agentFavicon, sameAgent } from "./agent-app-icon";
 import { desktopPicksAppIcon, inDesktopApp, thisMac } from "./desktop";
 import { STORAGE_KEYS, storage } from "./storage";

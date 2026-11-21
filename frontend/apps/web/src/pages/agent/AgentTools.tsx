@@ -1,10 +1,10 @@
-import type { AccessTool } from "@agenteschat/client";
-import { type AccessResource, type LevelState, toolsAt } from "@agenteschat/client/lib/access-levels";
-import type { ConnectedItem } from "@agenteschat/client/lib/connected";
-import { humanize } from "@agenteschat/client/lib/custom-tools";
-import { labelIsName } from "@agenteschat/client/lib/tool-labels";
-import { partsOf, type ReviewTool, reviewTool, toolName } from "@agenteschat/client/lib/tool-review";
-import { Button, DetailsDialog, GroupHeading, Icon } from "@agenteschat/ui";
+import type { AccessTool } from "@vortoone/client";
+import { type AccessResource, type LevelState, toolsAt } from "@vortoone/client/lib/access-levels";
+import type { ConnectedItem } from "@vortoone/client/lib/connected";
+import { humanize } from "@vortoone/client/lib/custom-tools";
+import { labelIsName } from "@vortoone/client/lib/tool-labels";
+import { partsOf, type ReviewTool, reviewTool, toolName } from "@vortoone/client/lib/tool-review";
+import { Button, DetailsDialog, GroupHeading, Icon } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

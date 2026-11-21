@@ -6,7 +6,7 @@ import {
   useAddChannelMember,
   useChannels,
   useWidenAudience,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   audienceWith,
   audienceWithMe,
@@ -14,12 +14,12 @@ import {
   modeOf,
   opensOthersPlan,
   widenQuestion,
-} from "@agenteschat/client/lib/audience";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { can } from "@agenteschat/client/lib/permissions";
-import { type ReachEntry, reachKey, reachOf, reachOpens } from "@agenteschat/client/lib/reach";
-import { joinsChannels } from "@agenteschat/client/lib/right-hand";
-import { Button, Dialog, DialogFooter, Icon } from "@agenteschat/ui";
+} from "@vortoone/client/lib/audience";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { can } from "@vortoone/client/lib/permissions";
+import { type ReachEntry, reachKey, reachOf, reachOpens } from "@vortoone/client/lib/reach";
+import { joinsChannels } from "@vortoone/client/lib/right-hand";
+import { Button, Dialog, DialogFooter, Icon } from "@vortoone/ui";
 import { type SyntheticEvent, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { ConsultPairRow, useConsultById } from "@/components/ConsultGroup";

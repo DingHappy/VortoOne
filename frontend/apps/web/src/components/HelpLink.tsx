@@ -1,5 +1,5 @@
-import { helpUrl } from "@agenteschat/client/lib/server";
-import type { HelpSlug } from "@agenteschat/i18n/help";
+import { helpUrl } from "@vortoone/client/lib/server";
+import type { HelpSlug } from "@vortoone/i18n/help";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 

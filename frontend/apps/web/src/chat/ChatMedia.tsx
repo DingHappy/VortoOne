@@ -1,6 +1,6 @@
-import type { MessageMedia } from "@agenteschat/client";
-import { gifLabel, gifMediaUrl, stickerLabel } from "@agenteschat/client/lib/media";
-import { AgentSticker, ChatGif } from "@agenteschat/ui";
+import type { MessageMedia } from "@vortoone/client";
+import { gifLabel, gifMediaUrl, stickerLabel } from "@vortoone/client/lib/media";
+import { AgentSticker, ChatGif } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";
 import { useDirectory } from "@/hooks/useDirectory";

@@ -5,7 +5,7 @@ import {
   type RunConsultation,
   useConsultationConversation,
   useConsultations,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   asExchanges,
   type ConsultLineState,
@@ -21,11 +21,11 @@ import {
   groupsByRun,
   openableConsultation,
   pairItemOf,
-} from "@agenteschat/client/lib/consult-group";
-import { consultSubject, consultTimeText, previewOf, withoutRelayLine } from "@agenteschat/client/lib/consultations";
-import { joinNames, namesText } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { cx, Icon, Tip } from "@agenteschat/ui";
+} from "@vortoone/client/lib/consult-group";
+import { consultSubject, consultTimeText, previewOf, withoutRelayLine } from "@vortoone/client/lib/consultations";
+import { joinNames, namesText } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { cx, Icon, Tip } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { createContext, useContext, useMemo, useState } from "react";

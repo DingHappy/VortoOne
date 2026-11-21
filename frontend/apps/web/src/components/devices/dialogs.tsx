@@ -1,8 +1,8 @@
-import type { DeviceAudience, DeviceJoinRequest } from "@agenteschat/client";
-import { defaultLinkAudience, joinFacts } from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { computerKind } from "@agenteschat/client/lib/machines";
-import { Button, ComputerPortrait, Dialog, DialogBody, DialogFooter, Field, Input, Locked } from "@agenteschat/ui";
+import type { DeviceAudience, DeviceJoinRequest } from "@vortoone/client";
+import { defaultLinkAudience, joinFacts } from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
+import { computerKind } from "@vortoone/client/lib/machines";
+import { Button, ComputerPortrait, Dialog, DialogBody, DialogFooter, Field, Input, Locked } from "@vortoone/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

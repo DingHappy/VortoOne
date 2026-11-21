@@ -1,5 +1,5 @@
-import type { AgentAppearance } from "@agenteschat/ui";
-import { drawAccessory, drawAgent } from "@agenteschat/ui/agent/engine";
+import type { AgentAppearance } from "@vortoone/ui";
+import { drawAccessory, drawAgent } from "@vortoone/ui/agent/engine";
 
 /**
  * A workspace's agent as the app icon (ADR 0179): the Night icon's sky (`/app-icons/night-sky.png`, written by

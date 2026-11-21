@@ -1,5 +1,5 @@
-import type { AppLocale } from "@agenteschat/i18n/locale";
-import { Button, Dialog, DialogFooter, Input, Select, Switch } from "@agenteschat/ui";
+import type { AppLocale } from "@vortoone/i18n/locale";
+import { Button, Dialog, DialogFooter, Input, Select, Switch } from "@vortoone/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost, useSnapshot, useStore } from "../../app";

@@ -1,15 +1,15 @@
-import { keys, useAuthConfig, useWorkspaceLimits } from "@agenteschat/client";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { formatBytes } from "@agenteschat/client/lib/files";
+import { keys, useAuthConfig, useWorkspaceLimits } from "@vortoone/client";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { formatBytes } from "@vortoone/client/lib/files";
 import {
   membersFull,
   membersFullText,
   membersFullWho,
   STORAGE_NEAR,
   storageLevel,
-} from "@agenteschat/client/lib/limits";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Meter, SettingNote, SettingRow } from "@agenteschat/ui";
+} from "@vortoone/client/lib/limits";
+import { can } from "@vortoone/client/lib/permissions";
+import { Meter, SettingNote, SettingRow } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";

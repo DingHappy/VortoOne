@@ -321,7 +321,7 @@ export function pausedByText(
 /** The download link as given, or on `origin` when the server sends a path. */
 export const downloadHref = (url: string, origin = "") => (/^https?:\/\//.test(url) ? url : `${origin}${url}`);
 
-/** The systems the desktop app runs on (`window.__agentesDesktop.platform` on the site, `{{device}}` in the copy). */
+/** The systems the desktop app runs on (`window.__vortooneDesktop.platform` on the site, `{{device}}` in the copy). */
 export type Platform = "mac" | "windows" | "linux";
 
 /** From a user agent: WKWebView or a Mac's browser, WebView2 or a Windows browser, and everything else as Linux. */
@@ -373,7 +373,7 @@ export async function desktopCpu(): Promise<string | null> {
   }
 }
 
-/** Which portrait a computer gets; same names as `ComputerKind` in @agenteschat/ui. */
+/** Which portrait a computer gets; same names as `ComputerKind` in @vortoone/ui. */
 export type ComputerKind = "mac" | "windows" | "linux";
 export type ComputerState = "online" | "paused" | "offline";
 

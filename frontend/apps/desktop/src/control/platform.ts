@@ -1,1 +1,1 @@
-export { type Platform, platformOf } from "@agenteschat/client/lib/machines";
+export { type Platform, platformOf } from "@vortoone/client/lib/machines";

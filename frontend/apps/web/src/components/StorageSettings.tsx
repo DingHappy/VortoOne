@@ -1,4 +1,4 @@
-import type { StorageConfig, StoragePlatform, StorageProvider, StorageTestResult } from "@agenteschat/client";
+import type { StorageConfig, StoragePlatform, StorageProvider, StorageTestResult } from "@vortoone/client";
 import {
   useSaveStorage,
   useStartMigration,
@@ -6,8 +6,8 @@ import {
   useStorageMigration,
   useTestStorage,
   useWorkspaceLimits,
-} from "@agenteschat/client";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   AWS_REGIONS,
   awsBucketPolicy,
@@ -20,7 +20,7 @@ import {
   storageFormOf,
   storageUsageLine,
   toS3Input,
-} from "@agenteschat/client/lib/storage";
+} from "@vortoone/client/lib/storage";
 import {
   Alert,
   Button,
@@ -42,7 +42,7 @@ import {
   RadioGroup,
   Select,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { StorageMeter } from "@/components/Limits";

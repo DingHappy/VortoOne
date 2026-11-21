@@ -3676,7 +3676,7 @@ export type ArtifactContent =
   | { kind: "diagram"; mermaid: string }
   | { kind: "html"; html: string }
   /**
-   * Parts the apps draw (`spec`, checked and drawn by `@agenteschat/ui/blocks/spec`), or the agent's own page (`html`),
+   * Parts the apps draw (`spec`, checked and drawn by `@vortoone/ui/blocks/spec`), or the agent's own page (`html`),
    * which runs only when a person asks (ADR 0113). Exactly one of the two.
    */
   | { kind: "block"; spec?: Record<string, unknown>; html?: string; subtitle?: string }
@@ -6315,7 +6315,7 @@ export interface AccountLoginStart {
   expiresAt: string;
 }
 
-/** Why a sign-in ended on the computer (mirror of `ACCOUNT_LOGIN_FAILURES` in `@agenteschat/adapters`). */
+/** Why a sign-in ended on the computer (mirror of `ACCOUNT_LOGIN_FAILURES` in `@vortoone/adapters`). */
 export type AccountLoginFailure =
   | "not_installed"
   | "no_tty"

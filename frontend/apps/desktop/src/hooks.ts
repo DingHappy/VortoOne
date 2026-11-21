@@ -1,6 +1,6 @@
-import type { ControlAgent } from "@agenteschat/adapters/runner-control";
-import type { WifiIphone } from "@agenteschat/client";
-import { WIFI_IPHONES_POLL_MS } from "@agenteschat/client/lib/devices";
+import type { ControlAgent } from "@vortoone/adapters/runner-control";
+import type { WifiIphone } from "@vortoone/client";
+import { WIFI_IPHONES_POLL_MS } from "@vortoone/client/lib/devices";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHost } from "./app";
 import { siteApi } from "./control/devices";

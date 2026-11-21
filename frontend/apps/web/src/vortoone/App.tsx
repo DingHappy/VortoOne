@@ -8,8 +8,8 @@ import {
   Message,
   MessageText,
   PageHeader,
-} from "@agenteschat/ui";
-import type { AgentAppearance } from "@agenteschat/ui";
+} from "@vortoone/ui";
+import type { AgentAppearance } from "@vortoone/ui";
 import {
   useEffect,
   useRef,

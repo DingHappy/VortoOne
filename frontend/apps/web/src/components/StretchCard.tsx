@@ -1,10 +1,10 @@
-import type { Message } from "@agenteschat/client";
-import { useApi, useSettings } from "@agenteschat/client";
-import { mayContinueStretch, type StretchCard, stretchCardText } from "@agenteschat/client/lib/action-cards";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
-import { EventPillAction } from "@agenteschat/ui";
+import type { Message } from "@vortoone/client";
+import { useApi, useSettings } from "@vortoone/client";
+import { mayContinueStretch, type StretchCard, stretchCardText } from "@vortoone/client/lib/action-cards";
+import { errorText } from "@vortoone/client/lib/errors";
+import { clockAt } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
+import { EventPillAction } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usd } from "@/components/AgentFields";

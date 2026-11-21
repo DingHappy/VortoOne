@@ -1,5 +1,5 @@
-import type { SeriesScope } from "@agenteschat/client";
-import { Button, Dialog, DialogBody, DialogFooter } from "@agenteschat/ui";
+import type { SeriesScope } from "@vortoone/client";
+import { Button, Dialog, DialogBody, DialogFooter } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 
 /** "Só este / Este e os próximos / Todos" for an edit (or delete) of a recurring event. */

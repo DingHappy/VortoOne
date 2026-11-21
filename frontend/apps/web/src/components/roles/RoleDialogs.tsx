@@ -1,4 +1,4 @@
-import type { OrgRole, OrgRoles, Person } from "@agenteschat/client";
+import type { OrgRole, OrgRoles, Person } from "@vortoone/client";
 import {
   channelMembersQuery,
   useApi,
@@ -6,8 +6,8 @@ import {
   useCreateRole,
   useDeleteRole,
   useUpdateRole,
-} from "@agenteschat/client";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
+} from "@vortoone/client";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
 import {
   deleteLeavers,
   holdsAll,
@@ -17,7 +17,7 @@ import {
   ROLES_MAX,
   roleName,
   sortRoles,
-} from "@agenteschat/client/lib/roles";
+} from "@vortoone/client/lib/roles";
 import {
   type AgentColor,
   Alert,
@@ -36,7 +36,7 @@ import {
   Select,
   SettingRow,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueries } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

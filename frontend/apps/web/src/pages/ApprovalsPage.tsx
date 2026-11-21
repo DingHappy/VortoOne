@@ -1,4 +1,4 @@
-import type { Agent, Approval, ConnectorDef } from "@agenteschat/client";
+import type { Agent, Approval, ConnectorDef } from "@vortoone/client";
 import {
   sendHelpers,
   useApprovals,
@@ -10,7 +10,7 @@ import {
   useDecideApprovals,
   usePostMessage,
   useRun,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   APPROVAL_REASON_MAX,
   approvalCards,
@@ -24,9 +24,9 @@ import {
   type LinePlace,
   RUNNING_FOR_MS,
   runKeys,
-} from "@agenteschat/client/lib/approval-card";
-import { aheadPhase, approveAlwaysOffered } from "@agenteschat/client/lib/approval-kind";
-import { approvalOriginShort, approvalWords } from "@agenteschat/client/lib/approval-origin";
+} from "@vortoone/client/lib/approval-card";
+import { aheadPhase, approveAlwaysOffered } from "@vortoone/client/lib/approval-kind";
+import { approvalOriginShort, approvalWords } from "@vortoone/client/lib/approval-origin";
 import {
   type ApprovalEffect,
   type ApprovalUndo,
@@ -34,19 +34,19 @@ import {
   approvalTarget,
   approvalText,
   stepsAround,
-} from "@agenteschat/client/lib/approval-review";
+} from "@vortoone/client/lib/approval-review";
 import {
   aheadEndLine,
   approvalDoing,
   approvalGroupWaitsFor,
   approvalWaitsFor,
   requesterDecidesLine,
-} from "@agenteschat/client/lib/approval-words";
-import { fromServer, itemName } from "@agenteschat/client/lib/connected";
-import { daysBetween, formatTime, joinNames, nextLabel, relativeTime, timeLeft } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { connectorName } from "@agenteschat/client/lib/scopes";
-import { formatDuration, type ToolItem, toolItemsSaved, toolPhrase, workFromSteps } from "@agenteschat/client/lib/work";
+} from "@vortoone/client/lib/approval-words";
+import { fromServer, itemName } from "@vortoone/client/lib/connected";
+import { daysBetween, formatTime, joinNames, nextLabel, relativeTime, timeLeft } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { connectorName } from "@vortoone/client/lib/scopes";
+import { formatDuration, type ToolItem, toolItemsSaved, toolPhrase, workFromSteps } from "@vortoone/client/lib/work";
 import {
   Button,
   Card,
@@ -74,7 +74,7 @@ import {
   Tip,
   Toolbar,
   WorkSweep,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {

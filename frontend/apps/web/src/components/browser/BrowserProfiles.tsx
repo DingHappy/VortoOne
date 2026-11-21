@@ -1,7 +1,7 @@
-import type { BrowserProfile, Machine } from "@agenteschat/client";
-import { profileUser, useBrowserProfileMutations, useBrowserProfiles } from "@agenteschat/client";
-import { profileRefusalLine, profileToolOff, profileUnavailable } from "@agenteschat/client/lib/machines";
-import { can as canDo } from "@agenteschat/client/lib/permissions";
+import type { BrowserProfile, Machine } from "@vortoone/client";
+import { profileUser, useBrowserProfileMutations, useBrowserProfiles } from "@vortoone/client";
+import { profileRefusalLine, profileToolOff, profileUnavailable } from "@vortoone/client/lib/machines";
+import { can as canDo } from "@vortoone/client/lib/permissions";
 import {
   AvatarStack,
   Button,
@@ -19,7 +19,7 @@ import {
   Menu,
   MenuItem,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useDirectory } from "@/hooks/useDirectory";

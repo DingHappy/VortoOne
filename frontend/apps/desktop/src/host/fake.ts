@@ -22,7 +22,7 @@
  * (setting up stops there). Cancel ends a setup at once, held or not (it rejects with "cancelled", as the app's
  * does). An update downloads in about 1.5 s with its progress, and Cancel drops it.
  */
-import { CLOUD_SERVER, isLoopback, readInstance, type ServerCheck } from "@agenteschat/client/lib/server";
+import { CLOUD_SERVER, isLoopback, readInstance, type ServerCheck } from "@vortoone/client/lib/server";
 import type { Candidate } from "../control/first-run";
 import {
   type LocalPhase,

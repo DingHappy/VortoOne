@@ -1,7 +1,7 @@
-import type { Issue } from "@agenteschat/client";
-import { useIssue, useIssueAction } from "@agenteschat/client";
-import { canDeleteIssue, deleteIssueText } from "@agenteschat/client/lib/issues";
-import { Button, Dialog, DialogFooter } from "@agenteschat/ui";
+import type { Issue } from "@vortoone/client";
+import { useIssue, useIssueAction } from "@vortoone/client";
+import { canDeleteIssue, deleteIssueText } from "@vortoone/client/lib/issues";
+import { Button, Dialog, DialogFooter } from "@vortoone/ui";
 import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActors } from "@/components/actors";

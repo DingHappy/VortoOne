@@ -5,8 +5,8 @@ import {
   SCENE_H,
   SCENE_LINES,
   SCENE_W,
-} from "@agenteschat/client/lib/purpose-scene";
-import { type AgentAppearance, Avatar, cx, horizonCrest, horizonTones, mix, PixelSky } from "@agenteschat/ui";
+} from "@vortoone/client/lib/purpose-scene";
+import { type AgentAppearance, Avatar, cx, horizonCrest, horizonTones, mix, PixelSky } from "@vortoone/ui";
 import type { CSSProperties } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { type PurposeLife, sceneAgentKey, WAKE_STEP_MS } from "@/components/purpose-life";

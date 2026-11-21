@@ -1,5 +1,5 @@
-import type { Agent, ComputerTarget, Machine } from "@agenteschat/client";
-import { useAgents, useComputer, useComputerSetup, useMachines, useSetComputerTarget } from "@agenteschat/client";
+import type { Agent, ComputerTarget, Machine } from "@vortoone/client";
+import { useAgents, useComputer, useComputerSetup, useMachines, useSetComputerTarget } from "@vortoone/client";
 import {
   type NoComputer,
   noComputerChoice,
@@ -8,18 +8,18 @@ import {
   setupPortrait,
   setupView,
   WORKSPACE_COMPUTER_KIND,
-} from "@agenteschat/client/lib/computer";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+} from "@vortoone/client/lib/computer";
+import { errorText } from "@vortoone/client/lib/errors";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   computerKind,
   computerState,
   folderName,
   foldersOfAgent,
   machineTitle,
-} from "@agenteschat/client/lib/machines";
-import { can } from "@agenteschat/client/lib/permissions";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/machines";
+import { can } from "@vortoone/client/lib/permissions";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Card,
   CardHeader,
@@ -30,7 +30,7 @@ import {
   List,
   Select,
   type SelectOption,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";
