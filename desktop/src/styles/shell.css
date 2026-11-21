@@ -2372,13 +2372,6 @@ dialog.settings-modal.settings-redesign.settings-layout .llm-routing-fields > p 
 .vc-mode-assistant .message-author .message-source { color: var(--vc-muted); font-size: var(--vc-size-caption); }
 .vc-mode-assistant .message-body { grid-column: 2; min-width: 0; overflow-wrap: anywhere; }
 .vc-mode-assistant .message-body > :first-child { margin-top: 0; }
-.vc-mode-assistant .message.user { grid-template-columns: minmax(0, 1fr); margin-left: 0; width: 100%; max-width: 100%; padding: 0; border-radius: 0; background: transparent; }
-/* The visible sides identify the owner; keep the author accessible without repeating a face. */
-.vc-mode-assistant .message.user .message-avatar,
-.vc-mode-assistant .message.user .message-author { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.vc-mode-assistant .message.user .message-body { grid-column: 1; justify-self: end; max-width: 76%; }
-.vc-mode-assistant .message.user .message-text { width: fit-content; margin-left: auto; padding: var(--vc-space-2) var(--vc-space-4); border-radius: var(--vc-radius-bubble) var(--vc-radius-bubble) var(--vc-radius-inner) var(--vc-radius-bubble); background: var(--vc-fill); white-space: pre-wrap; }
-.vc-mode-assistant .message.user .message-source { margin-bottom: var(--vc-space-1); text-align: right; }
 .vc-mode-assistant .message-images { max-width: 100%; }
 .message-actions { grid-column: 2; display: flex; align-items: center; flex-wrap: wrap; gap: var(--vc-space-2); min-height: var(--vc-control-h); color: var(--vc-muted); font-size: var(--vc-size-caption); opacity: 0; }
 .message:hover .message-actions, .message:focus-within .message-actions, .message-actions.has-error { opacity: 1; }
@@ -2386,7 +2379,6 @@ dialog.settings-modal.settings-redesign.settings-layout .llm-routing-fields > p 
 .message-copy:hover { background: var(--vc-hover); color: var(--vc-text); }
 .message-copy:focus-visible { outline: 2px solid var(--vc-focus-ring); outline-offset: var(--vc-space-1); }
 .message-copy svg { width: var(--vc-icon); height: var(--vc-icon); }
-.message.user .message-actions { grid-column: 1; justify-content: flex-end; }
 @media (hover: none) { .message-actions { opacity: 1; } }
 .vc-mode-assistant .turn-timeline { margin-left: calc(var(--vc-avatar-message) + var(--vc-space-3)); }
 .vc-mode-assistant .home-greeting .vc-greeting { font-family: var(--vc-font-sans); font-size: var(--vc-size-title); font-weight: var(--vc-weight-medium); margin-top: var(--vc-space-4); }

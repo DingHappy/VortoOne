@@ -19,6 +19,7 @@ import { useState, type ReactNode } from "react";
 import { formatActivityDuration } from "../lib/labels";
 import { recapPhrases, turnRecap } from "../lib/turnRecap";
 import type { TurnActivity } from "../types";
+import { ProcessBlock } from "../features/messages/ProcessBlock";
 
 const unknownStatus = (status: string) => !["running", "completed", "succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(status);
 
@@ -72,20 +73,23 @@ export function TurnTimeline({ items, active, hasOutput = false }: { items: Turn
   const specificRecap = recap.filesChanged.length > 0 || recap.tests.runs > 0 || recap.commands > 0 || recap.devRuns > 0;
   const attention = items.filter(item => unknownStatus(item.status) || (!active && item.status === "running")
     || ["failed", "blocked", "cancelled", "timed_out"].includes(item.status));
+  const label = singleTool ? singleTool.label || singleTool.name || "工具调用"
+    : active ? "正在工作" : tools.length > 0 ? `用了 ${tools.length} 个工具` : "执行过程";
+  const summary = [
+    ...(summaryDuration > 0 ? [formatActivityDuration(summaryDuration)] : []),
+    // 结束后折叠的标题就是这一轮的回顾（改了几个文件、测试过没过…），不用展开也知道做了什么
+    ...(tools.length > 0 || hooks.length > 0 ? [
+      ...(singleTool ? [activityStatus(singleTool, active), ...(!active && specificRecap ? recapPhrases(recap) : [])]
+        : active ? (tools.length > 0 ? [`${tools.length} 个工具`] : []) : recapPhrases(recap)),
+      ...(hooks.length > 0 ? [`${hooks.length} 个 Hook`] : []),
+    ] : []),
+  ].join(" · ");
   return (
-    <section className={`turn-timeline ${active ? "active" : ""}`} aria-label="Agent 执行过程" aria-live={active ? "polite" : "off"}>
-      <button type="button" className="timeline-heading" aria-expanded={open} onClick={() => setOpenOverride(!open)}>
-        <ChevronDown size={14} className={open ? "" : "timeline-collapsed"} />
-        <span>{singleTool ? singleTool.label || singleTool.name || "工具调用" : active ? "正在工作" : "执行过程"}{summaryDuration > 0 ? ` · ${formatActivityDuration(summaryDuration)}` : ""}</span>
-        {attention.length > 0 && <strong className="timeline-attention">{attention.length} 项需要关注</strong>}
-        {(tools.length > 0 || hooks.length > 0) && <small>{[
-          // 结束后折叠的标题就是这一轮的回顾（改了几个文件、测试过没过…），不用展开也知道做了什么
-          ...(singleTool ? [activityStatus(singleTool, active), ...(!active && specificRecap ? recapPhrases(recap) : [])]
-            : active ? (tools.length > 0 ? [`${tools.length} 个工具`] : []) : recapPhrases(recap)),
-          ...(hooks.length > 0 ? [`${hooks.length} 个 Hook`] : []),
-        ].join(" · ")}</small>}
-      </button>
-      {open && <div className="timeline-list">
+    <ProcessBlock className="turn-timeline" ariaLabel="Agent 执行过程" active={active} open={open} onToggle={setOpenOverride}
+      icon={active ? <LoaderCircle className="activity-spinner" size={15} /> : <Wrench size={15} />}
+      label={label} summary={summary || undefined}
+      attention={attention.length > 0 ? `${attention.length} 项需要关注` : undefined}>
+      <div className="timeline-list">
         {items.map((activity) => {
           const details = activityDetails(activity);
           const row = (
@@ -110,7 +114,7 @@ export function TurnTimeline({ items, active, hasOutput = false }: { items: Turn
             <div className={`timeline-row ${activity.kind} ${activity.status}`} key={activity.id}>{row}</div>
           );
         })}
-      </div>}
-    </section>
+      </div>
+    </ProcessBlock>
   );
 }

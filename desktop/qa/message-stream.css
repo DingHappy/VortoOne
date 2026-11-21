@@ -1,0 +1,9 @@
+/* 隔离验收壳，不进入正式应用。 */
+html, body, #root { min-width: 0; height: auto; }
+body { overflow: auto; background: var(--vc-bg); color: var(--vc-text); }
+.qa-stream-controls { display: flex; gap: 8px; align-items: center; padding: 12px 20px; font: 12px/1.5 var(--vc-font-sans); border-bottom: 1px solid var(--vc-border); }
+.qa-stream-controls span { margin-right: auto; color: var(--vc-muted); }
+.qa-stream-controls button { border: 1px solid var(--vc-border); border-radius: 8px; padding: 6px 10px; background: var(--vc-fill); color: var(--vc-text); cursor: pointer; }
+.qa-stream .workbench { display: block; height: auto; min-height: 0; }
+.qa-stream .conversation { display: block; height: auto; }
+.qa-stream .conversation-scroll { height: auto; overflow: visible; max-width: var(--vc-workspace-chat-w); margin: 0 auto; padding: 24px 20px 60px; }

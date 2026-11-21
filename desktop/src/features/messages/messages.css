@@ -1,0 +1,79 @@
+/* 共用消息流：主要聊天、频道、角色会话同一套排版。只用 --vc-* 变量。 */
+
+.vc-msg { display: grid; grid-template-columns: var(--vc-avatar-message) minmax(0, 1fr); column-gap: var(--vc-space-3);
+  margin: var(--vc-space-6) 0 0; padding: 0; color: var(--vc-text); font-family: var(--vc-font-sans); text-align: left; }
+.vc-msg:first-child { margin-top: 0; }
+.vc-msg-grouped { margin-top: var(--vc-space-2); }
+.vc-msg-avatar { grid-column: 1; width: var(--vc-avatar-message); }
+.vc-msg-main { grid-column: 2; min-width: 0; }
+.vc-msg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--vc-space-2); min-height: var(--vc-space-6);
+  font-size: var(--vc-size-body); line-height: 1.4; }
+.vc-msg-head strong { font-weight: var(--vc-weight-strong); }
+.vc-msg-meta, .vc-msg-head time { color: var(--vc-muted); font-size: var(--vc-size-caption); }
+.vc-msg-meta[data-state="running"] { color: var(--vc-accent); }
+.vc-msg-meta[data-state="failed"] { color: var(--vc-danger-text); }
+.vc-msg-meta[data-state="accepted"] { color: var(--vc-done-text); }
+.vc-msg-body { min-width: 0; font-size: var(--vc-size-chat); line-height: 1.7; overflow-wrap: anywhere; }
+.vc-msg-body > :first-child { margin-top: 0; }
+.vc-msg-body > :last-child { margin-bottom: 0; }
+.vc-msg-head + .vc-msg-body, .vc-msg-head + .vc-process { margin-top: var(--vc-space-1); }
+.vc-msg-pending { margin: 0; color: var(--vc-muted); }
+.vc-msg-error { margin: var(--vc-space-2) 0 0; color: var(--vc-danger-text); }
+.vc-msg-images { display: flex; flex-wrap: wrap; gap: var(--vc-space-2); margin-bottom: var(--vc-space-2); }
+.vc-msg-images img { display: block; max-width: 220px; max-height: 160px; border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-control); object-fit: cover; }
+
+/* 主人的话：靠右，中性气泡。 */
+.vc-msg-own { display: flex; flex-direction: column; align-items: flex-end; }
+.vc-msg-own .vc-msg-main { display: flex; flex-direction: column; align-items: flex-end; max-width: min(100%, 640px); }
+.vc-msg-own .vc-msg-body { padding: var(--vc-space-2) var(--vc-space-4); border-radius: var(--vc-radius-bubble);
+  background: var(--vc-fill); white-space: pre-wrap; }
+.vc-msg-own + .vc-msg-own { margin-top: var(--vc-space-2); }
+.vc-msg-origin { margin-bottom: var(--vc-space-1); color: var(--vc-muted); font-size: var(--vc-size-caption); }
+
+.vc-msg-system .vc-msg-body { color: var(--vc-muted); font-size: var(--vc-size-small); }
+.vc-msg.located-turn .vc-msg-body { outline: 2px solid var(--vc-focus-ring); outline-offset: var(--vc-space-1);
+  border-radius: var(--vc-radius-control); }
+.vc-msg-streaming .cursor { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: text-bottom;
+  background: var(--vc-text); animation: vc-msg-caret 1s steps(2) infinite; }
+@keyframes vc-msg-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .vc-msg-streaming .cursor { animation: none; } }
+
+/* 过程块：一行摘要，按需展开。 */
+.vc-process { margin: var(--vc-space-2) 0; border: 1px solid var(--vc-border); border-radius: var(--vc-radius-card);
+  background: var(--vc-surface); max-width: 100%; }
+.vc-process-head { display: flex; align-items: center; gap: var(--vc-space-2); width: 100%; min-height: var(--vc-control-h);
+  padding: var(--vc-space-2) var(--vc-space-3); border: 0; border-radius: inherit; background: transparent;
+  color: var(--vc-text-secondary); font: inherit; font-size: var(--vc-size-small); text-align: left; cursor: pointer; }
+.vc-process-head:hover { background: var(--vc-hover); }
+.vc-process-head:focus-visible { outline: 2px solid var(--vc-focus-ring); outline-offset: -2px; }
+.vc-process-icon { display: inline-flex; flex: none; color: var(--vc-muted); }
+.vc-process-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: var(--vc-weight-medium); color: var(--vc-text); }
+.vc-process-active .vc-process-label { color: var(--vc-accent); }
+.vc-process-attention { flex: none; color: var(--vc-wait-text); font-size: var(--vc-size-caption); font-weight: var(--vc-weight-strong); }
+.vc-process-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--vc-muted); font-size: var(--vc-size-caption); text-align: right; }
+.vc-process-chevron { flex: none; margin-left: auto; color: var(--vc-muted); transition: transform 120ms ease; }
+.vc-process-summary + .vc-process-chevron { margin-left: 0; }
+.vc-process-open .vc-process-chevron { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .vc-process-chevron { transition: none; } }
+.vc-process-body { padding: var(--vc-space-1) var(--vc-space-3) var(--vc-space-3); border-top: 1px solid var(--vc-divider);
+  color: var(--vc-text-secondary); font-size: var(--vc-size-small); }
+.vc-process-body .timeline-list { margin: var(--vc-space-2) 0 0; padding-left: 0; }
+.vc-process-body .timeline-list::before { display: none; }
+
+@media (max-width: 720px) {
+  .vc-msg { column-gap: var(--vc-space-2); }
+  .vc-process-summary { display: none; }
+  .vc-process-summary + .vc-process-chevron, .vc-process-chevron { margin-left: auto; }
+}
+
+/* 回合过程进了消息里：盖掉旧样式给独立时间线留的缩进和透明底。 */
+.vc-msg .vc-process.turn-timeline { margin: var(--vc-space-2) 0; padding: 0; border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-card); background: var(--vc-surface); box-shadow: none; width: auto; max-width: 100%; }
+.vc-msg .vc-process + .vc-msg-body { margin-top: var(--vc-space-3); }
+
+/* 消息操作（复制）：悬停或聚焦到这一条时出现，主人的话靠右。 */
+.vc-msg:hover .message-actions, .vc-msg:focus-within .message-actions { opacity: 1; }
+.vc-msg-own .message-actions { justify-content: flex-end; }
