@@ -911,11 +911,13 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     from src.gateway.computer_file_intents import HomeFileIntents
     from src.gateway.computer_file_store import ComputerFiles
     from src.gateway.computer_home_delivery import OUTBOX
+    from src.gateway.computer_protocol import TRANSFER_PATH
+    from src.gateway.computer_transfers import ComputerTransfers
     from src.utils.state_dir import state_dir
     from src.web import app_views
     from src.web.app_bridge import MainChatBridge, existing_bridge
     from src.web.auth import SESSION_COOKIE
-    from src.web.routers import realtime
+    from src.web.routers import computers, realtime
     from src.web.server import app
 
     root = str(tmp_path.resolve())
@@ -959,12 +961,47 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     monkeypatch.setattr(computer_file_capacity, "available_memory", lambda: memory[0])
     monkeypatch.setattr(computer_file_tools, "FILE_QUEUE_POLL_SECONDS", 0.08)
     attempts = []
+    tickets = []
+    issue = ComputerTransfers.issue
+
+    async def observe_ticket(self, connection, file, **kwargs):
+        issued = await issue(self, connection, file, **kwargs)
+        tickets.append((connection.generation, file, issued["ticket"]))
+        return issued
+
+    monkeypatch.setattr(ComputerTransfers, "issue", observe_ticket)
+    disconnect_upload = False
+    interrupt_download = None
     request = Connection.file_request
 
+    async def disconnect(connection):
+        await connection.socket.close(code=1012)
+        await until(lambda: connection.finished)
+
+    download_chunks = computers._DeliveryResponse._chunks
+
+    async def interrupt_download_once(self):
+        nonlocal interrupt_download
+        async for data in download_chunks(self):
+            yield data
+            if interrupt_download:
+                scenario, interrupt_download = interrupt_download, None
+                if scenario == "changed":
+                    source.write_bytes(binary_bytes[::-1])
+                await disconnect(self.transfer.connection)
+                return
+
+    monkeypatch.setattr(computers._DeliveryResponse, "_chunks", interrupt_download_once)
+
     async def observe_request(self, method, payload, **kwargs):
+        nonlocal disconnect_upload
         if method == "perform":
             attempts.append(payload.copy())
-        return await request(self, method, payload, **kwargs)
+        result = await request(self, method, payload, **kwargs)
+        if method == "transfer_upload" and disconnect_upload:
+            disconnect_upload = False
+            await disconnect(self)
+        return result
 
     monkeypatch.setattr(Connection, "file_request", observe_request)
     queued = asyncio.Event()
@@ -1125,6 +1162,55 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
             await decide(card)
             assert (await asyncio.wait_for(outcomes.get(), 3)).status == "blocked"
             assert not (folder / "changed.bin").exists()
+
+            def assert_reissued(start):
+                old, new = tickets[start:]
+                assert old[0] != new[0] and old[2] != new[2]
+                assert old[1] == new[1], "the second ticket must preserve the exact approved action"
+                return old[2]
+
+            ticket_count = len(tickets)
+            disconnect_upload = True
+            binary.write_bytes(binary_bytes)
+            await send("发送文件")
+            await decide(await card_for("发送文件到家"))
+            resumed = await asyncio.wait_for(outcomes.get(), 8)
+            assert resumed.status == "succeeded", resumed.text
+            old_ticket = assert_reissued(ticket_count)
+            connector_headers = {"Authorization": "Bearer " + grant["token"],
+                                 "X-VortoOne-Transfer-Ticket": old_ticket,
+                                 "Content-Type": "application/octet-stream"}
+            async with aiohttp.ClientSession() as other:
+                async with other.put(origin + TRANSFER_PATH, headers=connector_headers, data=binary_bytes) as denied:
+                    assert denied.status == 403
+            resumed_path = re.search(r"/api/computers/downloads/[a-f0-9]{32}", resumed.text).group()
+            async with owner.get(origin + resumed_path) as response:
+                assert response.status == 200 and await response.read() == binary_bytes
+
+            for scenario in ("resume", "changed"):
+                ticket_count = len(tickets)
+                source.write_bytes(binary_bytes)
+                filename = "restored.bin" if scenario == "resume" else "changed-midway.bin"
+                operations["接收断线"] = ("connected_computer_deliver", {
+                    **args, "path": filename, "source_path": source.name,
+                })
+                interrupt_download = scenario
+                await send("接收断线")
+                await decide(await card_for("授权执行本回合"))
+                await decide(await card_for("接收文件并新建"))
+                result = await asyncio.wait_for(outcomes.get(), 8)
+                if scenario == "changed":
+                    assert result.status == "blocked" and len(tickets) == ticket_count + 1
+                    assert not (folder / filename).exists()
+                    continue
+                assert result.status == "succeeded", result.text
+                assert (folder / filename).read_bytes() == binary_bytes
+                old_ticket = assert_reissued(ticket_count)
+                async with aiohttp.ClientSession() as other:
+                    async with other.get(origin + TRANSFER_PATH, headers={
+                        **connector_headers, "X-VortoOne-Transfer-Ticket": old_ticket,
+                    }) as denied:
+                        assert denied.status == 403
 
             await send("撤权后写入")
             await decide(await card_for("授权执行本回合"))

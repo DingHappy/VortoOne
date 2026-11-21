@@ -21,7 +21,8 @@ from src.gateway.computer_file_store import FileAction
 from src.gateway.computer_home_delivery import OUTBOX, deliver_file, outgoing_source
 from src.gateway.computer_file_wire import object_fields, policy_value, result_value, staged_transfer, transfer_manifest, version_value
 from src.gateway.computer_protocol import DELIVERY_PROTOCOL, DOWNLOAD_PREFIX, MAX_TRANSFER_BYTES, TRANSFER_PROTOCOL, identifier
-from src.gateway.computer_transfers import TransferFile, TransferUnavailable, computer_transfers
+from src.gateway.computer_transfer_retry import reconnect_transfer
+from src.gateway.computer_transfers import TransferDenied, TransferFile, TransferUnavailable, computer_transfers
 from src.gateway.connected_computers import ComputerUnavailable, ConnectedComputers
 from src.utils.home_maintenance import HomeMaintenanceError
 
@@ -42,30 +43,47 @@ def _blocked(message: str) -> ToolResult:
 async def _receive_file(connection, target, info, still_current):
     deadline = int(time.time()) + FILE_TRANSFER_SECONDS
     request = {**target, **info, "deadline": deadline}
-    issued = None
-    try:
-        hashed = transfer_manifest(await connection.file_request(
-            "transfer_hash", request, timeout=max(0.001, deadline - time.time())), hashed=True)
-        if any(hashed[key] != value for key, value in info.items()) or not await still_current():
-            return _blocked("文件版本或电脑授权已变化，请重新发起。")
-        check_tool_execution()
-        file = TransferFile(uuid.uuid4().hex, target["folder_id"], target["policy_revision"],
-                            info["version"], info["size"], hashed["sha256"])
-        issued = await computer_transfers.issue(connection, file, action_deadline=deadline)
-        reply = await connection.file_request("transfer_upload", {**request, **issued, "sha256": file.sha256},
-                                              timeout=max(0.001, deadline - time.time()))
-        transfer_id = issued["transfer_id"]
-        staged_transfer(reply, transfer_id=transfer_id, size=file.size, sha256=file.sha256)
-        check_tool_execution()
-        if not await still_current():
-            return _blocked("电脑连接或所有者授权已变化。")
-        await computer_transfers.publish(connection, transfer_id, file.action_id, Path(target["path"]).name)
-        return ToolResult(f"文件已收到，共 {file.size} 字节。请在 10 分钟内[下载这个文件]({DOWNLOAD_PREFIX}{transfer_id})。")
-    except (ComputerUnavailable, FileConnectionUnavailable, TransferUnavailable, OSError, ValueError):
-        return _blocked("传输未完成，请核对电脑连接、授权目录或文件版本后重新发起。")
-    finally:
+    action_id = uuid.uuid4().hex
+    file = None
+    current = connection
+    for attempt in range(2):
+        issued = None
+        try:
+            hashed = transfer_manifest(await current.file_request(
+                "transfer_hash", request, timeout=max(0.001, deadline - time.time())), hashed=True)
+            if any(hashed[key] != value for key, value in info.items()) or (file and hashed["sha256"] != file.sha256):
+                return _blocked("文件版本已变化，请重新发起。")
+            if not await still_current(current):
+                raise FileConnectionUnavailable("电脑连接或所有者授权已变化")
+            check_tool_execution()
+            file = TransferFile(action_id, target["folder_id"], target["policy_revision"],
+                                info["version"], info["size"], hashed["sha256"])
+            issued = await computer_transfers.issue(current, file, action_deadline=deadline)
+            reply = await current.file_request("transfer_upload", {**request, **issued, "sha256": file.sha256},
+                                               timeout=max(0.001, deadline - time.time()))
+            transfer_id = issued["transfer_id"]
+            staged_transfer(reply, transfer_id=transfer_id, size=file.size, sha256=file.sha256)
+            check_tool_execution()
+            if not await still_current(current):
+                raise FileConnectionUnavailable("电脑连接或所有者授权已变化")
+            await computer_transfers.publish(current, transfer_id, file.action_id, Path(target["path"]).name)
+            return ToolResult(f"文件已收到，共 {file.size} 字节。请在 10 分钟内[下载这个文件]({DOWNLOAD_PREFIX}{transfer_id})。")
+        except (FileConnectionUnavailable, TransferDenied):
+            if attempt:
+                break
+        except (ComputerUnavailable, TransferUnavailable, OSError, ValueError):
+            break
+        finally:
+            if issued is not None:
+                computer_transfers.abort(current, issued["transfer_id"])
+
+        replacement = await reconnect_transfer(current, deadline, TRANSFER_PROTOCOL, still_current)
+        if replacement is None:
+            break
         if issued is not None:
-            computer_transfers.abort(connection, issued["transfer_id"])
+            await computer_transfers.wait_retired(current, file, deadline)
+        current = replacement
+    return _blocked("传输未完成，请核对电脑连接、授权目录或文件版本后重新发起。")
 
 
 async def _perform(connection, action: FileAction, intents: HomeFileIntents, still_current, on_wait):
@@ -209,12 +227,12 @@ def computer_file_tools(root: str, *, on_wait=None) -> list[Tool]:
             message += (f"\n来自家的发件目录 {OUTBOX}/{args['source_path']}，文件 {info['size']} 字节"
                         f"\n源版本 {info['version']}\n目标只允许新建。")
 
-        async def still_current():
+        async def still_current(candidate=connection):
             try:
                 active_owner, active_account = await identity()
-                return (active_owner == owner
-                        and connections.file_connection(root, computer_id, active_account) is connection
-                        and await connection.valid())
+                return (active_owner == owner and candidate.binding == connection.binding
+                        and connections.file_connection(root, computer_id, active_account) is candidate
+                        and await candidate.valid())
             except (ComputerUnavailable, FileConnectionUnavailable, OSError):
                 return False
 

@@ -164,9 +164,16 @@ class _FileWork:
         self.binding = binding_fields(config)
         self.revoked = asyncio.Event()
         self.task: asyncio.Task | None = None
+        self.transfer = False
+
+    async def finish_transfer(self):
+        if self.transfer and self.task is not None and not self.task.done():
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
 
     async def close(self):
         self.revoked.set()
+        await self.finish_transfer()
         if self.task is not None:
             await asyncio.gather(self.task, return_exceptions=True)
 
@@ -177,6 +184,7 @@ class _FileWork:
                     if isinstance(body, FileAction) else None)
             await ws.send_json(file_reply(request_id, generation, busy))
             return
+        self.transfer = request[1] in ("transfer_hash", "transfer_upload", "transfer_download")
         self.task = asyncio.create_task(self._run(ws, store, request, generation, disconnected))
 
     async def _run(self, ws, store, request, generation, disconnected):
@@ -199,7 +207,7 @@ class _FileWork:
                 reply = file_reply(request_id, generation, data)
             elif method in ("transfer_preview", "transfer_hash", "transfer_upload"):
                 def active():
-                    return not (ws.closed or self.stop.is_set() or self.revoked.is_set())
+                    return not (ws.closed or disconnected.is_set() or self.stop.is_set() or self.revoked.is_set())
                 try:
                     data = await native_transfer(self.session, self.config, store, method, body, active)
                 except (FileDenied, ValueError, FileStateUnavailable, HomeMaintenanceError,
@@ -351,8 +359,8 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                         delay = 1.0
                     finally:
                         disconnected.set()
-                        if previews:
-                            await asyncio.gather(*(preview.disconnect() for preview in previews))
+                        await asyncio.gather(file_work.finish_transfer(),
+                                             *(preview.disconnect() for preview in previews))
             except aiohttp.WSServerHandshakeError as error:
                 if error.status in {401, 403}:
                     file_work.revoked.set()

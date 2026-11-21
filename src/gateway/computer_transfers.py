@@ -251,6 +251,22 @@ class ComputerTransfers:
                 if not transfer.downloading and (not transfer.claimed or transfer.staged is not None):
                     self._drop(transfer)
 
+    async def wait_retired(self, connection: Connection, file: TransferFile, deadline: float) -> None:
+        """Wait briefly for the old stream to release only its own staging slot."""
+        clock = asyncio.get_running_loop().time
+        stop = clock() + min(READ_TIMEOUT, max(0, deadline - time.time()))
+        while True:
+            with self._lock:
+                current = self._by_home.get(connection.root)
+                if current is None or current.connection is not connection or current.file != file:
+                    return
+                if not current.aborted:
+                    raise TransferDenied("previous ticket is still active")
+            remaining = min(stop - clock(), deadline - time.time())
+            if remaining <= 0:
+                raise TransferUnavailable("previous transfer is still closing")
+            await asyncio.sleep(min(0.05, remaining))
+
     async def _verified_stage(self, connection: Connection, transfer_id: str, action_id: str) -> _Transfer:
         if not await connection.valid():
             raise TransferDenied("transfer authorization changed")
