@@ -4,9 +4,9 @@ import type {
   DatabaseConnection,
   DatabasePolicy,
   DatabaseProvider,
-} from "@agenteschat/client";
-import { keys, useAgentDatabases, useAgents, useDatabaseAction, useServerDatabases } from "@agenteschat/client";
-import type { Level } from "@agenteschat/client/lib/access-levels";
+} from "@vortoone/client";
+import { keys, useAgentDatabases, useAgents, useDatabaseAction, useServerDatabases } from "@vortoone/client";
+import type { Level } from "@vortoone/client/lib/access-levels";
 import {
   activeGrantCount,
   DATABASE_PROVIDER_URLS,
@@ -20,8 +20,8 @@ import {
   POSTGRES_MARK,
   readOnlyRoleSql,
   widensDatabaseScope,
-} from "@agenteschat/client/lib/databases";
-import { relativeTime } from "@agenteschat/client/lib/format";
+} from "@vortoone/client/lib/databases";
+import { relativeTime } from "@vortoone/client/lib/format";
 import {
   Alert,
   Button,
@@ -37,7 +37,7 @@ import {
   Segmented,
   Select,
   useUnsavedInDialog,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

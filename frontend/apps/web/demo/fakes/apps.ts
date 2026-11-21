@@ -2,10 +2,10 @@
  * Test fake — AI apps (ADR 0119), same shapes as the server's `/api/app/authorize/{req}` and `…/apps`, `…/tokens`
  * routes. Tests add consents, connect apps (as an app's sign-in would) and make the next call fail.
  */
-import type { ApiClient, AppConsent, ConnectedApp, PersonalToken } from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+import type { ApiClient, AppConsent, ConnectedApp, PersonalToken } from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
 
-export const SERVER_URL = "https://agentes.example/mcp";
+export const SERVER_URL = "https://vortoone.example/mcp";
 
 export interface FakeApps {
   client: ApiClient["apps"];
@@ -104,7 +104,7 @@ export function createFakeApps(log: (method: string, ...args: unknown[]) => void
         back.searchParams.set("code", "c0de");
       }
       back.searchParams.set("state", c.state);
-      back.searchParams.set("iss", "https://agentes.example");
+      back.searchParams.set("iss", "https://vortoone.example");
       c.decided = true;
       return { redirectTo: back.toString() };
     },

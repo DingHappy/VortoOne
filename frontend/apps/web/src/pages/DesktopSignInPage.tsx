@@ -1,6 +1,6 @@
-import { type SignInProvider, useAuthConfig } from "@agenteschat/client";
-import { signInRefusalText } from "@agenteschat/client/lib/errors";
-import { Button } from "@agenteschat/ui";
+import { type SignInProvider, useAuthConfig } from "@vortoone/client";
+import { signInRefusalText } from "@vortoone/client/lib/errors";
+import { Button } from "@vortoone/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/context";

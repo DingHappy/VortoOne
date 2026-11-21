@@ -1,9 +1,9 @@
-import { type Message, usePinMessage } from "@agenteschat/client";
-import { messagePath } from "@agenteschat/client/lib/message-links";
-import { can } from "@agenteschat/client/lib/permissions";
-import { voiceOf } from "@agenteschat/client/lib/voice";
-import { Button, EmojiPickerPopover, Menu } from "@agenteschat/ui";
-import { chartBlocksOf, chartBlockToWidgetSpec } from "@agenteschat/ui/widgets/spec";
+import { type Message, usePinMessage } from "@vortoone/client";
+import { messagePath } from "@vortoone/client/lib/message-links";
+import { can } from "@vortoone/client/lib/permissions";
+import { voiceOf } from "@vortoone/client/lib/voice";
+import { Button, EmojiPickerPopover, Menu } from "@vortoone/ui";
+import { chartBlocksOf, chartBlockToWidgetSpec } from "@vortoone/ui/widgets/spec";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useChannelActions } from "@/components/channel-actions";

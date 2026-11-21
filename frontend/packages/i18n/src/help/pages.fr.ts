@@ -92,7 +92,7 @@ export const helpFr: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Dossiers",
         blocks: [
-          "Chaque agent a toujours son propre dossier, dans `~/agentes/<workspace>`. D’autres dossiers peuvent être autorisés sur l’ordinateur lui-même, jamais depuis le site : dans l’app, via **Préférences › Dossiers**, ou avec `agentes-runner folders allow` sur un serveur. Chaque espace de travail autorise ses propres dossiers : ce que vous autorisez pour l’un ne vaut que pour ses agents. Retirer un dossier ne supprime rien. Cela retire seulement l’accès.",
+          "Chaque agent a toujours son propre dossier, dans `~/vortoone/<workspace>`. D’autres dossiers peuvent être autorisés sur l’ordinateur lui-même, jamais depuis le site : dans l’app, via **Préférences › Dossiers**, ou avec `vortoone-runner folders allow` sur un serveur. Chaque espace de travail autorise ses propres dossiers : ce que vous autorisez pour l’un ne vaut que pour ses agents. Retirer un dossier ne supprime rien. Cela retire seulement l’accès.",
         ],
       },
       {
@@ -105,11 +105,11 @@ export const helpFr: Partial<Record<HelpSlug, HelpDocument>> = {
               "vos fichiers et vos connexions",
               "les dossiers des autres agents, y compris ceux des autres espaces de travail, et les connexions que gardent leurs navigateurs",
               "le jeton qui connecte cet ordinateur",
-              "sur un ordinateur qui fait aussi tourner VortoOne, sa base de données et ses clés dans `.agentes`",
+              "sur un ordinateur qui fait aussi tourner VortoOne, sa base de données et ses clés dans `.vortoone`",
             ],
           },
           "VortoOne refuse les commandes qui citent ses clés, ses jetons et les connexions enregistrées, mais c’est une règle, pas un mur. Les **Commandes** sont activées par défaut. Désactivez-les dans la question de l’app avant d’appuyer sur **Autoriser**, ou plus tard dans **Préférences\u00a0›\u00a0Outils**, où chaque espace de travail a son propre interrupteur (app 0.8.1 et plus récente) et où l’app demande confirmation avant d’en réactiver un. Claude Code et Codex lancent leurs propres commandes dans le dossier de l’agent, selon leurs propres règles, même avec les commandes désactivées.",
-          "Pour un vrai mur, utilisez un serveur Linux. Sous Debian 13, installé avec `--system`, chaque agent est un utilisateur à part. Sous Ubuntu, les agents partagent un utilisateur, `agentes`\u00a0: ils voient les dossiers les uns des autres, pas les vôtres ni ceux du serveur. Ou donnez aux agents un ordinateur rien qu’à eux.",
+          "Pour un vrai mur, utilisez un serveur Linux. Sous Debian 13, installé avec `--system`, chaque agent est un utilisateur à part. Sous Ubuntu, les agents partagent un utilisateur, `vortoone`\u00a0: ils voient les dossiers les uns des autres, pas les vôtres ni ceux du serveur. Ou donnez aux agents un ordinateur rien qu’à eux.",
         ],
       },
     ],
@@ -464,7 +464,7 @@ export const helpFr: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop et mobile) : dans **Personnaliser › Connecteurs** (Customize › Connectors), cliquez sur **+ Ajouter**, puis sur **Ajouter un connecteur personnalisé** (Add custom connector), nommez-le VortoOne, collez l’adresse et cliquez sur **Continuer**. Choisissez **Se connecter maintenant** (Sign in now), cliquez sur **Ajouter** et autorisez. Avec les abonnements Team et Enterprise, le propriétaire de l’organisation Claude ajoute le connecteur dans Paramètres de l’organisation › Connecteurs, puis chaque personne clique sur **Connecter** dans Personnaliser › Connecteurs. L’abonnement gratuit de Claude permet un connecteur personnalisé.",
-              "**Claude Code :** exécutez `claude mcp add --transport http --scope user agentes <adresse>`, puis tapez `/mcp`, choisissez agentes et **Authenticate**. Pour le dossier courant uniquement, retirez `--scope user`.",
+              "**Claude Code :** exécutez `claude mcp add --transport http --scope user VortoOne <adresse>`, puis tapez `/mcp`, choisissez VortoOne et **Authenticate**. Pour le dossier courant uniquement, retirez `--scope user`.",
               "**Cursor :** **Ajouter à Cursor** dans **Paramètres › Applications d’IA**, ou l’adresse dans `~/.cursor/mcp.json`. Cursor vous demande de vous connecter à la première utilisation.",
               '**VS Code :** **Ajouter à VS Code**, ou l’adresse dans `.vscode/mcp.json` avec `"type": "http"`.',
               "**Autres apps :** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains et d’autres ont chacune leurs étapes dans **Connecter une app**, avec votre adresse déjà remplie.",

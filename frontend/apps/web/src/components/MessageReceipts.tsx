@@ -1,4 +1,4 @@
-import type { DecidedBy, Message, SteerState } from "@agenteschat/client";
+import type { DecidedBy, Message, SteerState } from "@vortoone/client";
 import {
   type MessageReceipt,
   type ReceiptPhase,
@@ -10,14 +10,14 @@ import {
   useApi,
   useReactions,
   useSteerState,
-} from "@agenteschat/client";
-import { errorText, runFailureLine } from "@agenteschat/client/lib/errors";
-import { joinNames, sentAtLine } from "@agenteschat/client/lib/format";
-import { mayConnectAi, plansNotYoursOf } from "@agenteschat/client/lib/no-ai";
-import { can } from "@agenteschat/client/lib/permissions";
-import { retryAnswer } from "@agenteschat/client/lib/retry-answer";
-import { deciderOf, everyoneLineOf } from "@agenteschat/client/lib/routing";
-import { AvatarStack, HintLine, Icon, type IconName, PixelSpinner, Popover } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { errorText, runFailureLine } from "@vortoone/client/lib/errors";
+import { joinNames, sentAtLine } from "@vortoone/client/lib/format";
+import { mayConnectAi, plansNotYoursOf } from "@vortoone/client/lib/no-ai";
+import { can } from "@vortoone/client/lib/permissions";
+import { retryAnswer } from "@vortoone/client/lib/retry-answer";
+import { deciderOf, everyoneLineOf } from "@vortoone/client/lib/routing";
+import { AvatarStack, HintLine, Icon, type IconName, PixelSpinner, Popover } from "@vortoone/ui";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActorAvatar, AgentAvatar } from "@/components/AgentAvatar";

@@ -1,6 +1,6 @@
-import type { MachineTask, Mission } from "@agenteschat/client";
-import { useTaskOutput } from "@agenteschat/client";
-import { formatTime } from "@agenteschat/client/lib/format";
+import type { MachineTask, Mission } from "@vortoone/client";
+import { useTaskOutput } from "@vortoone/client";
+import { formatTime } from "@vortoone/client/lib/format";
 import {
   appendOutputLine,
   formatSpan,
@@ -9,8 +9,8 @@ import {
   taskPr,
   taskRange,
   taskSeconds,
-} from "@agenteschat/client/lib/missions";
-import { Button, DetailsDialog, Icon, type IconName, Segmented } from "@agenteschat/ui";
+} from "@vortoone/client/lib/missions";
+import { Button, DetailsDialog, Icon, type IconName, Segmented } from "@vortoone/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentSpinner } from "@/components/AgentAvatar";

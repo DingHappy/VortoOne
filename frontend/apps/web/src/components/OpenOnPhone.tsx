@@ -1,7 +1,7 @@
-import { ApiError, keys } from "@agenteschat/client";
-import { formatTimeLeft } from "@agenteschat/client/lib/actions";
-import { connectLink, isLoopback, isTailnet } from "@agenteschat/client/lib/server";
-import { Alert, Button, Chip, Dialog, DialogBody, PixelSpinner, QrCode } from "@agenteschat/ui";
+import { ApiError, keys } from "@vortoone/client";
+import { formatTimeLeft } from "@vortoone/client/lib/actions";
+import { connectLink, isLoopback, isTailnet } from "@vortoone/client/lib/server";
+import { Alert, Button, Chip, Dialog, DialogBody, PixelSpinner, QrCode } from "@vortoone/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";

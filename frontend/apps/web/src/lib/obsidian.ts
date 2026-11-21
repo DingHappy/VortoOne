@@ -4,8 +4,8 @@ import type {
   WikiImportResult,
   WikiImportSource,
   WikiPageSummary,
-} from "@agenteschat/client";
-import { readZip } from "@agenteschat/client/lib/zip";
+} from "@vortoone/client";
+import { readZip } from "@vortoone/client/lib/zip";
 
 /*
  * Notes to import in the browser: an Obsidian vault or plain Markdown as a

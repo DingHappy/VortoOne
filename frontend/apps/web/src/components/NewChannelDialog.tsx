@@ -1,16 +1,16 @@
-import { keys, type OrgRole, useChannels, useRoles } from "@agenteschat/client";
+import { keys, type OrgRole, useChannels, useRoles } from "@vortoone/client";
 import {
   accessInput,
   accessValid,
   type ChannelAccess,
   type ChannelAccessMode,
-} from "@agenteschat/client/lib/channel-access";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
-import { can } from "@agenteschat/client/lib/permissions";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { rolePicksInSight } from "@agenteschat/client/lib/personal-view";
-import { isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/channel-access";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
+import { can } from "@vortoone/client/lib/permissions";
+import { errorText } from "@vortoone/client/lib/errors";
+import { rolePicksInSight } from "@vortoone/client/lib/personal-view";
+import { isEveryone, sortRoles } from "@vortoone/client/lib/roles";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Dialog,
@@ -23,7 +23,7 @@ import {
   Select,
   Token,
   TokenList,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";

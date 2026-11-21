@@ -9,9 +9,9 @@ import type {
   DatabaseConnectError,
   DatabaseConnection,
   DatabaseTable,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
-import { defaultDatabasePolicy } from "@agenteschat/client/lib/databases";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
+import { defaultDatabasePolicy } from "@vortoone/client/lib/databases";
 import { clone, MockNotFoundError } from "./context";
 
 export interface FakeDatabases {

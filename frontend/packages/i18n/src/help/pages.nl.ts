@@ -92,7 +92,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Mappen",
         blocks: [
-          "Elke agent heeft altijd een eigen map, in `~/agentes/<workspace>`. Meer mappen geef je vrij op de computer zelf, nooit via de website: in de app via **Voorkeuren › Mappen**, of met `agentes-runner folders allow` op een server. Elke werkruimte geeft zijn eigen mappen vrij: wat je voor de ene vrijgeeft, geldt alleen voor de agents daarvan. Een map weghalen verwijdert niets. Het neemt alleen de toegang weg.",
+          "Elke agent heeft altijd een eigen map, in `~/vortoone/<workspace>`. Meer mappen geef je vrij op de computer zelf, nooit via de website: in de app via **Voorkeuren › Mappen**, of met `vortoone-runner folders allow` op een server. Elke werkruimte geeft zijn eigen mappen vrij: wat je voor de ene vrijgeeft, geldt alleen voor de agents daarvan. Een map weghalen verwijdert niets. Het neemt alleen de toegang weg.",
         ],
       },
       {
@@ -105,11 +105,11 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
               "je bestanden en logins",
               "de mappen van andere agents, ook die van andere werkruimtes, en de logins die hun browsers bewaren",
               "het token dat deze computer koppelt",
-              "op een computer die ook VortoOne draait, de database en sleutels ervan in `.agentes`",
+              "op een computer die ook VortoOne draait, de database en sleutels ervan in `.vortoone`",
             ],
           },
           "VortoOne weigert opdrachten die zijn sleutels, tokens en aanmeldingen noemen, maar dat is een regel, geen muur. **Opdrachten** staan standaard aan. Zet ze uit in de vraag van de app voordat je op **Toestaan** drukt, of later in **Voorkeuren\u00a0›\u00a0Tools**, waar elke werkruimte een eigen schakelaar heeft (app 0.8.1 en nieuwer) en de app het eerst vraagt voordat er een weer aangaat. Claude Code en Codex voeren hun eigen opdrachten uit in de map van de agent, volgens hun eigen regels, ook als Opdrachten uit staan.",
-          "Voor een echte muur gebruik je een Linux-server. Op Debian 13, geïnstalleerd met `--system`, is elke agent een eigen gebruiker. Op Ubuntu delen agents één gebruiker, `agentes`: ze zien elkaars mappen, niet die van jou of van de server. Of geef de agents een eigen computer.",
+          "Voor een echte muur gebruik je een Linux-server. Op Debian 13, geïnstalleerd met `--system`, is elke agent een eigen gebruiker. Op Ubuntu delen agents één gebruiker, `vortoone`: ze zien elkaars mappen, niet die van jou of van de server. Of geef de agents een eigen computer.",
         ],
       },
     ],
@@ -460,7 +460,7 @@ export const helpNl: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop en telefoon): klik in **Customize › Connectors** op **+ Add** en dan op **Add custom connector**, noem hem VortoOne, plak het adres en klik op **Continue**. Kies **Sign in now**, klik op **Add** en geef toestemming. In de abonnementen Team en Enterprise voegt de Owner van de Claude-organisatie de connector toe in Organization settings › Connectors, en klikt elke persoon op **Connect** in Customize › Connectors. Het gratis abonnement van Claude heeft ruimte voor één eigen connector.",
-              "**Claude Code:** voer `claude mcp add --transport http --scope user agentes <address>` uit, typ dan `/mcp`, kies agentes en **Authenticate**. Alleen voor de huidige map laat je `--scope user` weg.",
+              "**Claude Code:** voer `claude mcp add --transport http --scope user VortoOne <address>` uit, typ dan `/mcp`, kies VortoOne en **Authenticate**. Alleen voor de huidige map laat je `--scope user` weg.",
               "**Cursor:** **Toevoegen aan Cursor** in **Instellingen › AI-apps**, of het adres in `~/.cursor/mcp.json`. Cursor vraagt je in te loggen als je hem voor het eerst gebruikt.",
               '**VS Code:** **Toevoegen aan VS Code**, of het adres in `.vscode/mcp.json` met `"type": "http"`.',
               "**Andere apps:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains en meer hebben elk hun eigen stappen in **App koppelen**, met je adres al ingevuld.",

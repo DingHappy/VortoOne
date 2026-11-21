@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { installTitleTips, switchTheme } from "@agenteschat/ui";
+import { installTitleTips, switchTheme } from "@vortoone/ui";
 import { createFakeApi, ORG_ID, seedState } from "../demo/fake-api";
 import { createFakeAuth } from "../demo/fake-auth";
 import { FakeSocket } from "../demo/fake-socket";
@@ -14,14 +14,12 @@ import { AppProviders, type AppServices } from "./app/providers";
 import { createQueryClient } from "./app/query-client";
 import { loadI18n, rememberLocale } from "./i18n";
 import { applyDesktopDevice } from "./lib/desktop";
+import { markDesktopPreview } from "./lib/desktop-metadata";
 import { createToastStore } from "./lib/toast";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
-(window as { __agentesDesktop?: unknown }).__agentesDesktop = {
-  platform: "mac",
-  renderer: "gpu",
-};
+markDesktopPreview();
 document.documentElement.dataset.desktop = "mac";
 document.documentElement.dataset.preview = "isolated-desktop-ui";
 const params = new URLSearchParams(window.location.search);

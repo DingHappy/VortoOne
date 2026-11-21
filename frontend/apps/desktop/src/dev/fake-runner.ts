@@ -1,10 +1,10 @@
 /**
  * An in-browser runner for design work (`bun run dev`, ADR 0036 §10): it speaks the same control
- * protocol as `agentes-runner app` (packages/adapters/src/runner-control.ts) with realistic data
+ * protocol as `vortoone-runner app` (packages/adapters/src/runner-control.ts) with realistic data
  * (two organizations, one with a logo, agents at work, a folder request), so every screen can be seen
  * without the Tauri shell. Never part of the real app's behaviour: the host picks it only outside Tauri.
  */
-import type { RunnerAccess, RunnerAccountInfo, RunnerPause, RunnerPhone } from "@agenteschat/adapters/machine-protocol";
+import type { RunnerAccess, RunnerAccountInfo, RunnerPause, RunnerPhone } from "@vortoone/adapters/machine-protocol";
 import {
   type ActivityEntry,
   CONTROL_PROTOCOL_VERSION,
@@ -17,10 +17,10 @@ import {
   type ControlOut,
   type ControlStatus,
   parseControlIn,
-} from "@agenteschat/adapters/runner-control";
+} from "@vortoone/adapters/runner-control";
 
 /** The fake runners' server: one of the person's own, on a Tailscale network. */
-export const FAKE_SERVER = "https://agentes.tail1234.ts.net";
+export const FAKE_SERVER = "https://vortoone.tail1234.ts.net";
 const VERSION = "0.1.0";
 const MACHINE_PROTOCOL = 10;
 
@@ -298,7 +298,7 @@ export class FakeRunner {
     this.config = {
       ...DEFAULT_CONFIG,
       name: this.machineName,
-      workspace: `/Users/voce/agentes/${seed?.slug ?? "nova"}`,
+      workspace: `/Users/voce/vortoone/${seed?.slug ?? "nova"}`,
       managedBy: "desktop",
     };
   }
@@ -309,7 +309,7 @@ export class FakeRunner {
       control: CONTROL_PROTOCOL_VERSION,
       version: VERSION,
       protocol: MACHINE_PROTOCOL,
-      home: `/Users/voce/.agentes-runner/orgs/${this.homeId}`,
+      home: `/Users/voce/.vortoone-runner/orgs/${this.homeId}`,
     });
     this.tick = setInterval(() => this.simulate(), 7000);
   }
@@ -434,7 +434,7 @@ export class FakeRunner {
         return reply({ logo: s?.logo ?? null });
       case "diagnostics":
         return reply({
-          text: `agentes ${VERSION}\nmacOS 15.1 arm64\nhome ${this.homeId}\nconnection ${this.connection}\n(no secrets)`,
+          text: `VortoOne ${VERSION}\nmacOS 15.1 arm64\nhome ${this.homeId}\nconnection ${this.connection}\n(no secrets)`,
         });
       case "access.get":
         return s ? reply(s.access) : fail("not_paired", "not paired");
@@ -560,7 +560,7 @@ export class FakeRunner {
     this.pendingCode = null;
     this.seed = seed;
     this.connection = "online";
-    this.config.workspace = `/Users/voce/agentes/${seed.slug}`;
+    this.config.workspace = `/Users/voce/vortoone/${seed.slug}`;
     this.emit({ kind: "pair.done", org: seed.org, machine: { id: `m_${this.homeId}`, name: this.machineName } });
     this.emit({ kind: "status", status: this.status() });
   }

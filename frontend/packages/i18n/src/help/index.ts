@@ -3,7 +3,6 @@
  * background reading that a screen of the app links to once, where it helps.
  */
 import { docsUrl } from "../docs";
-import { type LegalInline, legalInline } from "../legal";
 import { type AppLocale, appLocale } from "../locale";
 import { helpDe } from "./pages.de";
 import { helpEn } from "./pages.en";
@@ -83,9 +82,36 @@ export function helpDocsUrl(slug: string | undefined, locale: AppLocale): string
 }
 
 /** A piece of inline help text: plain, `**bold**`, `` `code` `` or a link. */
-export type HelpInline = LegalInline | { kind: "code"; text: string };
+/** A piece of inline text: plain, `**bold**`, or a link (email or https). */
+type InlineMark = { kind: "text" | "bold"; text: string } | { kind: "link"; text: string; href: string };
 
-/** Code spans, then `[text](href)` links; what's between them goes to `legalInline` (bold and bare links). */
+const LINKS = /([\w.+-]+@[\w-]+(?:\.[\w-]+)+|https:\/\/[^\s)]+[^\s).,;])/g;
+
+/** Splits a line into text, bold and links. */
+function inlineMarks(line: string): InlineMark[] {
+  const out: InlineMark[] = [];
+  line.split("**").forEach((part, i) => {
+    if (!part) return;
+    if (i % 2 === 1) {
+      out.push({ kind: "bold", text: part });
+      return;
+    }
+    let last = 0;
+    for (const m of part.matchAll(LINKS)) {
+      const at = m.index ?? 0;
+      if (at > last) out.push({ kind: "text", text: part.slice(last, at) });
+      const text = m[0];
+      out.push({ kind: "link", text, href: text.startsWith("https://") ? text : `mailto:${text}` });
+      last = at + text.length;
+    }
+    if (last < part.length) out.push({ kind: "text", text: part.slice(last) });
+  });
+  return out;
+}
+
+export type HelpInline = InlineMark | { kind: "code"; text: string };
+
+/** Code spans, then `[text](href)` links; what's between them goes to `inlineMarks` (bold and bare links). */
 const CODE_OR_LINK = /`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
 
 /**
@@ -97,11 +123,11 @@ export function helpInline(line: string): HelpInline[] {
   let last = 0;
   for (const m of line.matchAll(CODE_OR_LINK)) {
     const at = m.index ?? 0;
-    if (at > last) out.push(...legalInline(line.slice(last, at)));
+    if (at > last) out.push(...inlineMarks(line.slice(last, at)));
     if (m[1] !== undefined) out.push({ kind: "code", text: m[1] });
     else out.push({ kind: "link", text: m[2] ?? "", href: m[3] ?? "" });
     last = at + m[0].length;
   }
-  if (last < line.length) out.push(...legalInline(line.slice(last)));
+  if (last < line.length) out.push(...inlineMarks(line.slice(last)));
   return out;
 }

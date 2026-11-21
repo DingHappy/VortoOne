@@ -14,6 +14,6 @@ declare global {
   const __VORTO_DESKTOP_PREVIEW__: boolean;
   interface Window {
     /** index.html's boot fallback: one reload, then a box over the boot sky. Nothing once React replaced the sky. */
-    __agentesBootFailed?: () => void;
+    __vortooneBootFailed?: () => void;
   }
 }

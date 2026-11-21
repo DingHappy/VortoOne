@@ -105,19 +105,19 @@ import type {
   UnreadTask,
   UsageQueue,
   WorkspaceLimits,
-} from "@agenteschat/client";
-import { ApiError, ORG_ROLE_ACT_LEVELS } from "@agenteschat/client";
-import { moveInGroups } from "@agenteschat/client/lib/agent-groups";
-import { answersOthers, audienceOf, listsAllAgents } from "@agenteschat/client/lib/audience";
-import type { ChatPrefs } from "@agenteschat/client/lib/chat-look";
-import { ISSUES_VIEW_DEFAULT } from "@agenteschat/client/lib/issues-view";
-import { freeHandle, takenHandles } from "@agenteschat/client/lib/new-agent";
-import { stepIndex } from "@agenteschat/client/lib/onboarding";
-import type { PlanModel } from "@agenteschat/client/lib/plans";
-import { type LodiPrefs, lodiPrefsOf } from "@agenteschat/client/lib/right-hand-prefs";
-import { grants, rowMax, SUMMARY_ORDER, withRowHolders } from "@agenteschat/client/lib/roles";
-import { sidebarItemOrder, sidebarSections } from "@agenteschat/client/lib/sidebar-items";
-import { driveFolder, isSecretFile } from "@agenteschat/ui/names";
+} from "@vortoone/client";
+import { ApiError, ORG_ROLE_ACT_LEVELS } from "@vortoone/client";
+import { moveInGroups } from "@vortoone/client/lib/agent-groups";
+import { answersOthers, audienceOf, listsAllAgents } from "@vortoone/client/lib/audience";
+import type { ChatPrefs } from "@vortoone/client/lib/chat-look";
+import { ISSUES_VIEW_DEFAULT } from "@vortoone/client/lib/issues-view";
+import { freeHandle, takenHandles } from "@vortoone/client/lib/new-agent";
+import { stepIndex } from "@vortoone/client/lib/onboarding";
+import type { PlanModel } from "@vortoone/client/lib/plans";
+import { type LodiPrefs, lodiPrefsOf } from "@vortoone/client/lib/right-hand-prefs";
+import { grants, rowMax, SUMMARY_ORDER, withRowHolders } from "@vortoone/client/lib/roles";
+import { sidebarItemOrder, sidebarSections } from "@vortoone/client/lib/sidebar-items";
+import { driveFolder, isSecretFile } from "@vortoone/ui/names";
 import { createFakeAccess } from "./fakes/access";
 import { createFakeApps, type FakeApps } from "./fakes/apps";
 import { createMockArtifacts } from "./fakes/artifacts";
@@ -364,7 +364,7 @@ export interface FakeState {
   holdPosts?: Promise<void>;
   /** What `orgs.billingLink` throws (default: a link on billing.example.com). */
   billingLinkError?: ApiError;
-  /** A new workspace's standing (`orgs.create`): agentes.chat Cloud starts it waiting for its first plan. */
+  /** A new workspace's standing (`orgs.create`): VortoOne Cloud starts it waiting for its first plan. */
   newWorkspaceStanding?: OrgStanding;
   /** `orgs.limits` (ADR 0079); unset = no limits, the members counted from `members`. */
   limits?: WorkspaceLimits;
@@ -376,7 +376,7 @@ export interface FakeState {
   answerNowRuns?: { agentId: string; runId: string }[];
   /** `system.health`'s edition; unset = the Cloud. */
   edition?: Edition;
-  /** Overrides `system.instance` (default: agentes.chat Cloud). */
+  /** Overrides `system.instance` (default: VortoOne Cloud). */
   instance?: Partial<Instance>;
   /** `agents.brainMachines`: the computers a new agent could think on ("Criar agente"); unset = none. */
   brainMachines?: BrainMachine[];
@@ -1950,7 +1950,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       passwordLink: async (orgId, userId) => {
         log("orgs.passwordLink", orgId, userId);
         return {
-          url: `https://agentes.example.com/reset-password?token=link-for-${userId}`,
+          url: `https://vortoone.example.com/reset-password?token=link-for-${userId}`,
           expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         };
       },

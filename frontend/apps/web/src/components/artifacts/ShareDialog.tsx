@@ -1,16 +1,16 @@
-import type { Artifact, ArtifactSharing } from "@agenteschat/client";
-import { keys, useRoles, useSetArtifactSharing } from "@agenteschat/client";
+import type { Artifact, ArtifactSharing } from "@vortoone/client";
+import { keys, useRoles, useSetArtifactSharing } from "@vortoone/client";
 import {
   CONVERSATION_ONLY,
   isPrivateArtifact,
   onlyItsConversation,
   toggledSharing,
-} from "@agenteschat/client/lib/drive";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { rolePicksInSight } from "@agenteschat/client/lib/personal-view";
-import { isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/drive";
+import { errorText } from "@vortoone/client/lib/errors";
+import { joinNames } from "@vortoone/client/lib/format";
+import { rolePicksInSight } from "@vortoone/client/lib/personal-view";
+import { isEveryone, sortRoles } from "@vortoone/client/lib/roles";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Avatar,
   Button,
@@ -23,7 +23,7 @@ import {
   OptionCard,
   RoleMark,
   SearchSelect,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

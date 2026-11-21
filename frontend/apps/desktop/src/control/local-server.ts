@@ -1,10 +1,10 @@
 /**
- * The server here ("Run agentes.chat on this computer") as the windows see it: `local_server.rs` keeps it and
+ * The server here ("Run VortoOne on this computer") as the windows see it: `local_server.rs` keeps it and
  * says how it is; this decides what each window shows (the first run's steps and screens, the popover's
  * banners, the cover's line, Preferences' words). Pure, so it is tested without the app.
  */
 
-import { CLOUD_SERVER } from "@agenteschat/client/lib/server";
+import { CLOUD_SERVER } from "@vortoone/client/lib/server";
 import type { Platform } from "./platform";
 
 /** `restarting`: it stopped by itself and starts again in a moment (nobody has to start it). */
@@ -13,7 +13,7 @@ export type LocalPhase = "off" | "starting" | "updating" | "running" | "stopped"
 export interface LocalServerStatus {
   /** This build carries the server (Mac and Linux builds do). */
   bundled: boolean;
-  /** What `~/.agentes` holds: the app's own server, or one installed from the terminal. */
+  /** What `~/.vortoone` holds: the app's own server, or one installed from the terminal. */
   installed: "none" | "app" | "terminal";
   /** The app runs it (it starts with the app). */
   run: boolean;
@@ -133,7 +133,7 @@ export const NO_SERVER: LocalServerStatus = {
   reach: false,
   usage: true,
   version: null,
-  dir: "~/.agentes",
+  dir: "~/.vortoone",
   systemName: null,
   serving: false,
   claim: null,
@@ -194,7 +194,7 @@ export const FAIL_TEXT: Record<SetupStep, string> = {
   reach: "desktop.common.error",
 };
 
-/** What "Run agentes.chat on this computer" shows. */
+/** What "Run VortoOne on this computer" shows. */
 export type HereView =
   /** The form; `ask`: the owner's name and email (no owner yet). */
   | { kind: "form"; ask: boolean }
@@ -212,7 +212,7 @@ export type HereView =
 export const ownerless = (status: LocalServerStatus) => status.installed === "app" && status.run && !status.owner;
 
 /**
- * `answering`: an agentes.chat server that answered on this computer's loopback (Connect's discovery), when the
+ * `answering`: an VortoOne server that answered on this computer's loopback (Connect's discovery), when the
  * app doesn't run one itself.
  */
 export function hereView(status: LocalServerStatus, answering: string | null): HereView {
@@ -266,7 +266,7 @@ export function hereBanner(status: LocalServerStatus): "stopped" | "failing" | "
 
 /**
  * Where the server here keeps uploaded files: `files` in its folder (`FILES_DIR`, apps/server native.ts), written
- * with the folder's own separator (`C:\Users\ana\.agentes` on Windows).
+ * with the folder's own separator (`C:\Users\ana\.vortoone` on Windows).
  */
 export const filesFolder = (dir: string) => `${dir}${dir.includes("\\") ? "\\" : "/"}files`;
 
@@ -274,7 +274,7 @@ export const filesFolder = (dir: string) => `${dir}${dir.includes("\\") ? "\\" :
 export const isHereServer = (status: LocalServerStatus, server: string | null) =>
   status.run && !!server && (server === status.url || server === status.publicUrl);
 
-/** Where a workspace's server runs: on this computer, on agentes.chat's Cloud, or elsewhere. */
+/** Where a workspace's server runs: on this computer, on VortoOne's Cloud, or elsewhere. */
 export const serverPlace = (status: LocalServerStatus, server: string | null): "here" | "cloud" | "other" =>
   isHereServer(status, server) ? "here" : server === CLOUD_SERVER ? "cloud" : "other";
 

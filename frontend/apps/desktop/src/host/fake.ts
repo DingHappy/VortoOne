@@ -7,11 +7,11 @@
  * `cloud` (VortoOne, nothing on this computer), `selfhost` (the default: a server on Tailscale with two
  * organizations whose agents work here), `link` (a claim link waiting) and `here` (VortoOne runs on this
  * computer, its organization's agents too); `?link=` makes any scenario start with that link waiting. A pair link
- * (`agenteschat://pair?server=…&link=ABCDEFGH`) joins Estúdio Norte once its maker lets it in, `HGFEDCBA`'s maker
+ * (`vortoone://pair?server=…&link=ABCDEFGH`) joins Estúdio Norte once its maker lets it in, `HGFEDCBA`'s maker
  * says no, and any other code expired.
  * `?mac=ready`: Screen Recording and Full Disk Access allowed already (with Local Network asked, Prepare this Mac
  * is skipped).
- * Servers answer by host: agentes.tail1234.ts.net, VortoOne and http://127.0.0.1:4310 are servers;
+ * Servers answer by host: vortoone.tail1234.ts.net, VortoOne and http://127.0.0.1:4310 are servers;
  * noowner.tail1234.ts.net waits for its owner; old.example.com is too old; chat.example.com doesn't answer;
  * anything else isn't VortoOne. `?found=0` makes discovery find nothing.
  * The server here: `?phase=` (starting, updating, stopped, failing), `?reach=1`, `?back=<version>` (an update
@@ -22,7 +22,7 @@
  * (setting up stops there). Cancel ends a setup at once, held or not (it rejects with "cancelled", as the app's
  * does). An update downloads in about 1.5 s with its progress, and Cancel drops it.
  */
-import { CLOUD_SERVER, isLoopback, readInstance, type ServerCheck } from "@agenteschat/client/lib/server";
+import { CLOUD_SERVER, isLoopback, readInstance, type ServerCheck } from "@vortoone/client/lib/server";
 import type { Candidate } from "../control/first-run";
 import {
   type LocalPhase,
@@ -109,7 +109,7 @@ const FIRST_ORGS: ServerWorkspace[] = [
 /** A 14" MacBook Pro's notch. */
 const FAKE_NOTCH = { width: 186, height: 32 };
 /** A claim link as the setup prints it, for the `link` scenario. */
-const CLAIM_LINK = `agenteschat://connect?server=${encodeURIComponent(FAKE_SERVER)}&claim=b3duZXItY2xhaW0tYWJjZGVmZ2hpamtsbW5vcHFy`;
+const CLAIM_LINK = `vortoone://connect?server=${encodeURIComponent(FAKE_SERVER)}&claim=b3duZXItY2xhaW0tYWJjZGVmZ2hpamtsbW5vcHFy`;
 
 const instance = (url: string, over: Record<string, unknown> = {}) => ({
   name: "VortoOne",
@@ -174,7 +174,7 @@ export function createFakeHost(
   let local: LocalServerStatus = {
     ...NO_SERVER,
     bundled: true,
-    dir: "/Users/voce/.agentes",
+    dir: "/Users/voce/.vortoone",
     usage: here.usage !== false,
     ...(scenario === "here"
       ? {
@@ -193,7 +193,7 @@ export function createFakeHost(
             nightly: true,
             copyTo: null,
             files: [
-              { path: "/Users/voce/.agentes/backups/agentes-2026-10-25-030000.tar.gz", at: Date.UTC(2026, 9, 25, 6) },
+              { path: "/Users/voce/.vortoone/backups/vortoone-2026-10-25-030000.tar.gz", at: Date.UTC(2026, 9, 25, 6) },
             ],
             problem: null,
           },
@@ -295,14 +295,14 @@ export function createFakeHost(
     listRunners: async (): Promise<RunnerInfo[]> =>
       [...runners.keys()].map((homeId) => ({
         homeId,
-        dir: `/Users/voce/.agentes-runner/orgs/${homeId}`,
+        dir: `/Users/voce/.vortoone-runner/orgs/${homeId}`,
         running: true,
         hello: {
           type: "hello",
           control: 1,
           version: "0.1.0",
           protocol: 10,
-          home: `/Users/voce/.agentes-runner/orgs/${homeId}`,
+          home: `/Users/voce/.vortoone-runner/orgs/${homeId}`,
         },
       })),
     send: async (homeId, line) => {
@@ -601,7 +601,7 @@ export function createFakeHost(
     },
     backupLocalServer: async () => {
       await wait(1100);
-      const path = "/Users/voce/.agentes/backups/agentes-2026-10-25-101500.tar.gz";
+      const path = "/Users/voce/.vortoone/backups/vortoone-2026-10-25-101500.tar.gz";
       setLocal({
         backups: { ...local.backups, files: [{ path, at: Date.now() }, ...local.backups.files].slice(0, 2) },
       });

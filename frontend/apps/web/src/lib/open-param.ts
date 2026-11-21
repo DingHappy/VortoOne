@@ -1,5 +1,5 @@
-import { type AgentTab, isAgentTab } from "@agenteschat/client/lib/agent-edit";
-import { projectFilterOf } from "@agenteschat/client/lib/issue-projects";
+import { type AgentTab, isAgentTab } from "@vortoone/client/lib/agent-edit";
+import { projectFilterOf } from "@vortoone/client/lib/issue-projects";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 

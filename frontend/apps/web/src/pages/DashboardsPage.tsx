@@ -1,7 +1,7 @@
-import type { DashboardSummary } from "@agenteschat/client";
-import { dashboardGroups, useDashboards, useMembers } from "@agenteschat/client";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { Button, EmptyState, GroupHeading, Icon, PageHeader } from "@agenteschat/ui";
+import type { DashboardSummary } from "@vortoone/client";
+import { dashboardGroups, useDashboards, useMembers } from "@vortoone/client";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { Button, EmptyState, GroupHeading, Icon, PageHeader } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

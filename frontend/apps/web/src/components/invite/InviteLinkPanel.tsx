@@ -1,6 +1,6 @@
-import { useInviteLinks, useMakeInviteLink } from "@agenteschat/client";
-import { formatShortDate } from "@agenteschat/client/lib/format";
-import { Button, Icon, Input, SwapLabel } from "@agenteschat/ui";
+import { useInviteLinks, useMakeInviteLink } from "@vortoone/client";
+import { formatShortDate } from "@vortoone/client/lib/format";
+import { Button, Icon, Input, SwapLabel } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { LoadingLine } from "@/components/Loading";
 import { useOrg } from "@/components/org-context";

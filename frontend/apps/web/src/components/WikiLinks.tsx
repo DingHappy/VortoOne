@@ -1,8 +1,8 @@
-import type { WikiPageSummary } from "@agenteschat/client";
-import { useWikiPage, useWikiTree } from "@agenteschat/client";
-import { readsAsPageTitle } from "@agenteschat/client/lib/markdown";
-import { resolveWikiLink, splitSection } from "@agenteschat/client/lib/wiki";
-import { movesByKeys, Popover, useHoverCard } from "@agenteschat/ui";
+import type { WikiPageSummary } from "@vortoone/client";
+import { useWikiPage, useWikiTree } from "@vortoone/client";
+import { readsAsPageTitle } from "@vortoone/client/lib/markdown";
+import { resolveWikiLink, splitSection } from "@vortoone/client/lib/wiki";
+import { movesByKeys, Popover, useHoverCard } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";

@@ -1,8 +1,8 @@
-import type { Artifact, ArtifactContent, ArtifactFileContent, ArtifactRef } from "@agenteschat/client";
-import { useArtifact } from "@agenteschat/client";
-import { documentStart, KIND_ICON, parseDelimited, patchCounts } from "@agenteschat/client/lib/artifacts";
-import { fileIcon, formatBytes, pictureRatio, previewKind, previewKindOfName } from "@agenteschat/client/lib/files";
-import { Button, Icon, type IconName, Menu, Tip } from "@agenteschat/ui";
+import type { Artifact, ArtifactContent, ArtifactFileContent, ArtifactRef } from "@vortoone/client";
+import { useArtifact } from "@vortoone/client";
+import { documentStart, KIND_ICON, parseDelimited, patchCounts } from "@vortoone/client/lib/artifacts";
+import { fileIcon, formatBytes, pictureRatio, previewKind, previewKindOfName } from "@vortoone/client/lib/files";
+import { Button, Icon, type IconName, Menu, Tip } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

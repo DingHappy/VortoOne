@@ -1,4 +1,4 @@
-import type { Agent, AgentBrain, AgentBrainInput } from "@agenteschat/client";
+import type { Agent, AgentBrain, AgentBrainInput } from "@vortoone/client";
 import {
   keys,
   useAgentBrain,
@@ -12,24 +12,24 @@ import {
   useUpdateAgent,
   useUpdateSettings,
   useWorkspaceUsesApi,
-} from "@agenteschat/client";
-import { accountAbout, accountChoices, accountTitle } from "@agenteschat/client/lib/ai-accounts";
-import { audienceOf, audiencePatch } from "@agenteschat/client/lib/audience";
-import { modelInput, modelRows } from "@agenteschat/client/lib/brain-picker";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { handleAfterRename } from "@agenteschat/client/lib/new-agent";
-import { can } from "@agenteschat/client/lib/permissions";
-import { brainPlan } from "@agenteschat/client/lib/plans";
-import { AUTO, modelChoices } from "@agenteschat/client/lib/providers";
-import { mineStatus, RIGHT_HAND_POWERS, rightHandNoComputer } from "@agenteschat/client/lib/right-hand";
+} from "@vortoone/client";
+import { accountAbout, accountChoices, accountTitle } from "@vortoone/client/lib/ai-accounts";
+import { audienceOf, audiencePatch } from "@vortoone/client/lib/audience";
+import { modelInput, modelRows } from "@vortoone/client/lib/brain-picker";
+import { errorText } from "@vortoone/client/lib/errors";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { handleAfterRename } from "@vortoone/client/lib/new-agent";
+import { can } from "@vortoone/client/lib/permissions";
+import { brainPlan } from "@vortoone/client/lib/plans";
+import { AUTO, modelChoices } from "@vortoone/client/lib/providers";
+import { mineStatus, RIGHT_HAND_POWERS, rightHandNoComputer } from "@vortoone/client/lib/right-hand";
 import {
   type LodiPrefs,
   type LodiPrefsPatch,
   type LodiSwitch,
   type TeamWeekPeriod,
   teamWeekOn,
-} from "@agenteschat/client/lib/right-hand-prefs";
+} from "@vortoone/client/lib/right-hand-prefs";
 import {
   AffixInput,
   BrainLogo,
@@ -45,7 +45,7 @@ import {
   Input,
   ProviderLogo,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";

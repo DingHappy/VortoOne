@@ -8,12 +8,12 @@ import type {
   VaultOverview,
   VaultScope,
   VaultUse,
-} from "@agenteschat/client";
-import { useVaultItem } from "@agenteschat/client";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { MAX_SECRET_BYTES } from "@agenteschat/client/lib/secret-box";
-import { canMoveVaultItem } from "@agenteschat/client/lib/vault";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { useVaultItem } from "@vortoone/client";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { MAX_SECRET_BYTES } from "@vortoone/client/lib/secret-box";
+import { canMoveVaultItem } from "@vortoone/client/lib/vault";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Chip,
@@ -29,7 +29,7 @@ import {
   Segmented,
   SettingNote,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

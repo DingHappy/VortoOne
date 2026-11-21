@@ -1,4 +1,4 @@
-import { type Agent, type Approval, type Member, useApprovalsDeciding, useDecideApproval } from "@agenteschat/client";
+import { type Agent, type Approval, type Member, useApprovalsDeciding, useDecideApproval } from "@vortoone/client";
 import {
   approvalLine,
   approvalRuns,
@@ -9,9 +9,9 @@ import {
   itemOwnWords,
   type LinePlace,
   runKeys,
-} from "@agenteschat/client/lib/approval-card";
-import { aheadPhase } from "@agenteschat/client/lib/approval-kind";
-import { approvalOriginShort, approvalWords } from "@agenteschat/client/lib/approval-origin";
+} from "@vortoone/client/lib/approval-card";
+import { aheadPhase } from "@vortoone/client/lib/approval-kind";
+import { approvalOriginShort, approvalWords } from "@vortoone/client/lib/approval-origin";
 import {
   aheadEndLine,
   approvalAskLine,
@@ -23,9 +23,9 @@ import {
   approvalWaitsFor,
   decisionOutcome,
   requesterDecidesLine,
-} from "@agenteschat/client/lib/approval-words";
-import { formatTime, nextLabel, whenAt } from "@agenteschat/client/lib/format";
-import { Button } from "@agenteschat/ui";
+} from "@vortoone/client/lib/approval-words";
+import { formatTime, nextLabel, whenAt } from "@vortoone/client/lib/format";
+import { Button } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

@@ -1,4 +1,4 @@
-import type { MySuggestion, OrgRole, Person, RoleMailLoss } from "@agenteschat/client";
+import type { MySuggestion, OrgRole, Person, RoleMailLoss } from "@vortoone/client";
 import {
   useAuthConfig,
   useCancelSuggestion,
@@ -7,15 +7,15 @@ import {
   useRoles,
   useSetMemberRoles,
   useSuggestPerson,
-} from "@agenteschat/client";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { formatMonth, formatPercent, formatShortDate, namesText, relativeTime } from "@agenteschat/client/lib/format";
-import { JOIN_NOTE_MAX, sendsEmail } from "@agenteschat/client/lib/join-requests";
-import { can, makesAgents } from "@agenteschat/client/lib/permissions";
-import { settingsSectionNameKey } from "@agenteschat/client/lib/personal-view";
-import { grants, rolesOf } from "@agenteschat/client/lib/roles";
-import { isEmail } from "@agenteschat/client/lib/text";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { formatMonth, formatPercent, formatShortDate, namesText, relativeTime } from "@vortoone/client/lib/format";
+import { JOIN_NOTE_MAX, sendsEmail } from "@vortoone/client/lib/join-requests";
+import { can, makesAgents } from "@vortoone/client/lib/permissions";
+import { settingsSectionNameKey } from "@vortoone/client/lib/personal-view";
+import { grants, rolesOf } from "@vortoone/client/lib/roles";
+import { isEmail } from "@vortoone/client/lib/text";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Alert,
   Avatar,
@@ -44,7 +44,7 @@ import {
   planAttention,
   SwapLabel,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";

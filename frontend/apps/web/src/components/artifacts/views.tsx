@@ -1,6 +1,6 @@
-import type { ArtifactContent, ArtifactDiffFile } from "@agenteschat/client";
-import { parsePatch, patchCounts, sideBySide, sortRows } from "@agenteschat/client/lib/artifacts";
-import { Button, Icon, Input, Segmented } from "@agenteschat/ui";
+import type { ArtifactContent, ArtifactDiffFile } from "@vortoone/client";
+import { parsePatch, patchCounts, sideBySide, sortRows } from "@vortoone/client/lib/artifacts";
+import { Button, Icon, Input, Segmented } from "@vortoone/ui";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChoicesCard } from "@/components/blocks/ChoicesCard";

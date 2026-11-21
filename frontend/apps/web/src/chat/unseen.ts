@@ -1,8 +1,8 @@
-import type { Message } from "@agenteschat/client";
-import { mentionsReader } from "@agenteschat/client/lib/everyone";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { isMediaAfterReply } from "@agenteschat/client/lib/media";
-import type { TimelineItem } from "@agenteschat/client/lib/timeline";
+import type { Message } from "@vortoone/client";
+import { mentionsReader } from "@vortoone/client/lib/everyone";
+import { joinNames } from "@vortoone/client/lib/format";
+import { isMediaAfterReply } from "@vortoone/client/lib/media";
+import type { TimelineItem } from "@vortoone/client/lib/timeline";
 import type { TFunction } from "i18next";
 
 /**

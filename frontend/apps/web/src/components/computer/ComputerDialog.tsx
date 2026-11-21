@@ -1,4 +1,4 @@
-import type { Agent } from "@agenteschat/client";
+import type { Agent } from "@vortoone/client";
 import {
   browserOnlyWhy,
   controlledBy,
@@ -6,7 +6,7 @@ import {
   isWaitingHandoff,
   useBrowserHandoffMutations,
   useMachineOutages,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   asksMe,
   type ComputerSurface,
@@ -15,16 +15,16 @@ import {
   entryState,
   liveSubLine,
   surfaceOf,
-} from "@agenteschat/client/lib/agent-computer";
-import { computerName, READY_FLASH_MS, WORKSPACE_COMPUTER_KIND } from "@agenteschat/client/lib/computer";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { computerKind, isPaused } from "@agenteschat/client/lib/machines";
-import { can } from "@agenteschat/client/lib/permissions";
-import { type Seat, screenId } from "@agenteschat/client/lib/seat";
-import { SeatContext, useSeat } from "@agenteschat/client/lib/seat-context";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
-import { Button, ComputerPortrait, cx, Dialog, gradientOf, Icon, SkyStrip } from "@agenteschat/ui";
+} from "@vortoone/client/lib/agent-computer";
+import { computerName, READY_FLASH_MS, WORKSPACE_COMPUTER_KIND } from "@vortoone/client/lib/computer";
+import { clockAt } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { computerKind, isPaused } from "@vortoone/client/lib/machines";
+import { can } from "@vortoone/client/lib/permissions";
+import { type Seat, screenId } from "@vortoone/client/lib/seat";
+import { SeatContext, useSeat } from "@vortoone/client/lib/seat-context";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
+import { Button, ComputerPortrait, cx, Dialog, gradientOf, Icon, SkyStrip } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import {
   type CSSProperties,

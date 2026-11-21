@@ -1,8 +1,8 @@
-import type { SearchHit } from "@agenteschat/client";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { hitText } from "@agenteschat/client/lib/media";
-import { formatSearch, groupByChannel, SEARCH_SORTS } from "@agenteschat/client/lib/search-filters";
-import { Button, EmptyState, List, PageHeader, Select, TabPanel, Tabs } from "@agenteschat/ui";
+import type { SearchHit } from "@vortoone/client";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { hitText } from "@vortoone/client/lib/media";
+import { formatSearch, groupByChannel, SEARCH_SORTS } from "@vortoone/client/lib/search-filters";
+import { Button, EmptyState, List, PageHeader, Select, TabPanel, Tabs } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";

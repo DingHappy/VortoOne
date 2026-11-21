@@ -1,9 +1,9 @@
-import type { AppNotification } from "@agenteschat/client";
-import { type DeviceNotice, deviceNoticeOf, joinFacts } from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { firstName } from "@agenteschat/client/lib/format";
-import { installableCli, toolWords } from "@agenteschat/client/lib/machines";
-import { Button, cx, ProviderLogo } from "@agenteschat/ui";
+import type { AppNotification } from "@vortoone/client";
+import { type DeviceNotice, deviceNoticeOf, joinFacts } from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
+import { firstName } from "@vortoone/client/lib/format";
+import { installableCli, toolWords } from "@vortoone/client/lib/machines";
+import { Button, cx, ProviderLogo } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { type ReactNode, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";

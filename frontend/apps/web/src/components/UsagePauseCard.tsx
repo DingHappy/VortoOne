@@ -1,8 +1,8 @@
-import type { CatchUpClosed, Message } from "@agenteschat/client";
-import { keys, useApi, useUsageQueue } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
+import type { CatchUpClosed, Message } from "@vortoone/client";
+import { keys, useApi, useUsageQueue } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { clockAt } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   answerAnywayOpen,
   mayAnswerAnyway,
@@ -13,8 +13,8 @@ import {
   usageCheckedText,
   usagePauseText,
   usageWaitFix,
-} from "@agenteschat/client/lib/usage-pause";
-import { EventPillAction, Icon, Locked, useNow } from "@agenteschat/ui";
+} from "@vortoone/client/lib/usage-pause";
+import { EventPillAction, Icon, Locked, useNow } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { type ButtonHTMLAttributes, useState } from "react";

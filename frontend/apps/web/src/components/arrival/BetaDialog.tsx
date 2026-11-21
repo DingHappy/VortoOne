@@ -1,6 +1,6 @@
-import { useAuthConfig } from "@agenteschat/client";
-import { rightHandOf, sceneTeam } from "@agenteschat/client/lib/right-hand";
-import { Button, Dialog, DialogBody, DialogFooter, Icon, type IconName } from "@agenteschat/ui";
+import { useAuthConfig } from "@vortoone/client";
+import { rightHandOf, sceneTeam } from "@vortoone/client/lib/right-hand";
+import { Button, Dialog, DialogBody, DialogFooter, Icon, type IconName } from "@vortoone/ui";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

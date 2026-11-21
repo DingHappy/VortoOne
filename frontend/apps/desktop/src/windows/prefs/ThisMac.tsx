@@ -1,4 +1,4 @@
-import type { ComputerDevice, DeviceAudience, DevicesList, Member, OrgRole, PhoneDevice } from "@agenteschat/client";
+import type { ComputerDevice, DeviceAudience, DevicesList, Member, OrgRole, PhoneDevice } from "@vortoone/client";
 import {
   audienceWords,
   iosOf,
@@ -9,8 +9,8 @@ import {
   statusDetail,
   statusLook,
   statusPill,
-} from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
+} from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
 import {
   Avatar,
   Button,
@@ -28,7 +28,7 @@ import {
   PixelSpinner,
   Select,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost, useStore } from "../../app";

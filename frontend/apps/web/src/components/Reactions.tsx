@@ -1,6 +1,6 @@
-import type { ReactionCount } from "@agenteschat/client";
-import { useReactions, useToggleReaction } from "@agenteschat/client";
-import { formatInt, joinNames, keepWhole } from "@agenteschat/client/lib/format";
+import type { ReactionCount } from "@vortoone/client";
+import { useReactions, useToggleReaction } from "@vortoone/client";
+import { formatInt, joinNames, keepWhole } from "@vortoone/client/lib/format";
 import {
   Button,
   EMOJI_CATEGORIES,
@@ -10,7 +10,7 @@ import {
   Icon,
   Reaction,
   Reactions,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useDirectory } from "@/hooks/useDirectory";

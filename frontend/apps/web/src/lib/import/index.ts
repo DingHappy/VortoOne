@@ -1,2 +1,2 @@
-export * from "@agenteschat/client/lib/import/index";
+export * from "@vortoone/client/lib/import/index";
 export { type PickedFile, readImportFiles } from "./archive";

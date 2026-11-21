@@ -4,11 +4,11 @@ import type {
   VaultOverview,
   VaultScope,
   VaultSourceInfo,
-} from "@agenteschat/client";
-import { vaultConnectRefusal } from "@agenteschat/client/lib/errors";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { vaultNoAgents } from "@agenteschat/client/lib/vault";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { vaultConnectRefusal } from "@vortoone/client/lib/errors";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { vaultNoAgents } from "@vortoone/client/lib/vault";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Alert,
   Button,
@@ -29,7 +29,7 @@ import {
   Segmented,
   Select,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

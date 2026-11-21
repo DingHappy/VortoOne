@@ -46,7 +46,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
-          npm run build --workspace @agenteschat/web
+          npm run build --workspace @vortoone/web
       - name: Build release files
         run: scripts/build-server-release.sh dist/release
       - id: version

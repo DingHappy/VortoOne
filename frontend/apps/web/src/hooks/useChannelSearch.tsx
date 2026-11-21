@@ -1,6 +1,6 @@
-import { useChannels } from "@agenteschat/client";
-import { channelOptions } from "@agenteschat/client/lib/channel-refs";
-import { type ComposerSuggestion, Icon } from "@agenteschat/ui";
+import { useChannels } from "@vortoone/client";
+import { channelOptions } from "@vortoone/client/lib/channel-refs";
+import { type ComposerSuggestion, Icon } from "@vortoone/ui";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

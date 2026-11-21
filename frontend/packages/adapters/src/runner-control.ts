@@ -1,6 +1,6 @@
 /**
  * The control protocol between the desktop app and the runner it spawns
- * (ADR 0036). The app starts `agentes-runner app --home <dir>` as a child
+ * (ADR 0036). The app starts `vortoone-runner app --home <dir>` as a child
  * process; stdin carries one `ControlIn` JSON object per line, stdout one
  * `ControlOut` per line. Nothing else is ever written to stdout in this mode
  * (logs go to `<home>/logs/`). Only the parent can talk to the runner: no
@@ -80,7 +80,7 @@ export type ControlBrowserDoing =
 /** Where the runner stands. */
 export interface ControlStatus {
   paired: boolean;
-  /** Our server, e.g. `https://app.agentes.chat`. */
+  /** Our server, e.g. `https://vortoone.example.com`. */
   server?: string;
   /**
    * `logoEtag`: the organization's logo cached on this computer (absent: none);
@@ -236,8 +236,8 @@ export type ControlRequest =
        */
       tools?: { claude?: boolean; codex?: boolean };
       /**
-       * A connect link's code (`agenteschat://pair`): the server asks the link's maker to let this computer in, as
-       * `agentes-runner pair --link` does, and nobody confirms the device code. `pair.code` still comes first.
+       * A connect link's code (`vortoone://pair`): the server asks the link's maker to let this computer in, as
+       * `vortoone-runner pair --link` does, and nobody confirms the device code. `pair.code` still comes first.
        */
       link?: string;
     }

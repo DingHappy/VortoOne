@@ -1,11 +1,11 @@
 /**
  * Pairing this computer from the app itself, the Cloud included. A workspace the person is signed in to: the card the
  * app shows once after sign-in and Preferences › This Mac pair it with the main window's session, which confirms the
- * runner's code. A pair link from the web (`agenteschat://pair`, checked in `deep_link.rs`): the runner asks with the
+ * runner's code. A pair link from the web (`vortoone://pair`, checked in `deep_link.rs`): the runner asks with the
  * link, and the link's maker lets it in on the web. Either way the person confirmed in the app first.
  */
-import type { DeviceAudience } from "@agenteschat/client";
-import { normalizeUserCode } from "@agenteschat/client/lib/machines";
+import type { DeviceAudience } from "@vortoone/client";
+import { normalizeUserCode } from "@vortoone/client/lib/machines";
 import type { Host } from "../host/types";
 import { siteApi } from "./devices";
 import { appServer, homeServer, type ServerWorkspaces } from "./server";
@@ -35,9 +35,9 @@ export const PAIR_OFFERED_PREF = "pairOffered";
 
 export const targetKey = (t: Pick<PairTarget, "server" | "orgId">) => `${t.server} ${t.orgId}`;
 
-const PAIR_LINK = /^agenteschat:\/\/pair\/?\?(.*)$/i;
+const PAIR_LINK = /^vortoone:\/\/pair\/?\?(.*)$/i;
 
-/** `agenteschat://pair?server=&link=` as Rust hands it over: the server and the code as stored (`ABCDEFGH`). */
+/** `vortoone://pair?server=&link=` as Rust hands it over: the server and the code as stored (`ABCDEFGH`). */
 export function parsePairLink(raw: string): { server: string; code: string } | null {
   const query = PAIR_LINK.exec(raw.trim())?.[1];
   if (query === undefined) return null;

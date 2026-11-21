@@ -5,7 +5,7 @@ import type {
   DashboardSummary,
   Member,
   OrgRole,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   editorsSummary,
   editorsText,
@@ -14,9 +14,9 @@ import {
   toggleEditRole,
   useMembers,
   useRoles,
-} from "@agenteschat/client";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
+} from "@vortoone/client";
+import { can } from "@vortoone/client/lib/permissions";
+import { isEveryone, sortRoles } from "@vortoone/client/lib/roles";
 import {
   HintLine,
   Icon,
@@ -28,7 +28,7 @@ import {
   Radio,
   RadioGroup,
   RoleMark,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar, PersonAvatar } from "@/components/AgentAvatar";

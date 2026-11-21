@@ -1,4 +1,4 @@
-import type { Actor, Issue, IssueColumn, IssuePriority, IssueStatus, IssuesView } from "@agenteschat/client";
+import type { Actor, Issue, IssueColumn, IssuePriority, IssueStatus, IssuesView } from "@vortoone/client";
 import {
   keys,
   useIssue,
@@ -9,13 +9,13 @@ import {
   useIssuesView,
   useSetIssuesView,
   useTaskUnread,
-} from "@agenteschat/client";
-import { dueLabel, dueTone, namesText, stoppedLine } from "@agenteschat/client/lib/format";
-import { githubLinkLabel } from "@agenteschat/client/lib/github-link";
-import { NO_PROJECT, projectOfFilter } from "@agenteschat/client/lib/issue-projects";
-import { ISSUES_VIEW_DEFAULT, PRIORITY_ORDER, sortIssues } from "@agenteschat/client/lib/issues-view";
-import { can } from "@agenteschat/client/lib/permissions";
-import { shownSteps } from "@agenteschat/client/lib/work";
+} from "@vortoone/client";
+import { dueLabel, dueTone, namesText, stoppedLine } from "@vortoone/client/lib/format";
+import { githubLinkLabel } from "@vortoone/client/lib/github-link";
+import { NO_PROJECT, projectOfFilter } from "@vortoone/client/lib/issue-projects";
+import { ISSUES_VIEW_DEFAULT, PRIORITY_ORDER, sortIssues } from "@vortoone/client/lib/issues-view";
+import { can } from "@vortoone/client/lib/permissions";
+import { shownSteps } from "@vortoone/client/lib/work";
 import {
   AvatarStack,
   Button,
@@ -38,7 +38,7 @@ import {
   SearchField,
   Toolbar,
   WorkSweep,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { type CSSProperties, type ReactNode, useDeferredValue, useEffect, useId, useRef, useState } from "react";

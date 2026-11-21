@@ -87,7 +87,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Folder",
         blocks: [
-          "Tiap agen selalu punya foldernya sendiri, di `~/agentes/<workspace>`. Folder lain hanya bisa diizinkan dari komputer itu sendiri, tidak pernah dari situs: di aplikasi, **Preferensi › Folder**, atau dengan `agentes-runner folders allow` di server. Tiap ruang kerja mengizinkan foldernya sendiri: yang kamu izinkan untuk satu ruang kerja hanya berlaku untuk agen-agennya. Menghapus folder dari daftar tidak menghapus apa pun. Itu hanya mencabut aksesnya.",
+          "Tiap agen selalu punya foldernya sendiri, di `~/vortoone/<workspace>`. Folder lain hanya bisa diizinkan dari komputer itu sendiri, tidak pernah dari situs: di aplikasi, **Preferensi › Folder**, atau dengan `vortoone-runner folders allow` di server. Tiap ruang kerja mengizinkan foldernya sendiri: yang kamu izinkan untuk satu ruang kerja hanya berlaku untuk agen-agennya. Menghapus folder dari daftar tidak menghapus apa pun. Itu hanya mencabut aksesnya.",
         ],
       },
       {
@@ -100,11 +100,11 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
               "file dan akun-akun yang kamu masuki",
               "folder agen lain, termasuk milik ruang kerja lain, dan login yang disimpan browser mereka",
               "token yang menghubungkan komputer ini",
-              "di komputer yang juga menjalankan VortoOne, database dan kuncinya di `.agentes`",
+              "di komputer yang juga menjalankan VortoOne, database dan kuncinya di `.vortoone`",
             ],
           },
           "VortoOne menolak perintah yang menyebut kunci, token, dan data login, tapi itu aturan, bukan tembok. **Perintah** menyala sejak awal. Matikan di pertanyaan aplikasi sebelum menekan **Izinkan**, atau nanti di **Preferensi\u00a0›\u00a0Alat**, tempat tiap ruang kerja punya sakelarnya sendiri (aplikasi 0.8.1 ke atas) dan aplikasi bertanya dulu sebelum menyalakannya lagi. Claude Code dan Codex menjalankan perintahnya sendiri di folder agen, dengan aturannya sendiri, bahkan saat Perintah mati.",
-          "Untuk tembok sungguhan, pakai server Linux. Di Debian 13, kalau dipasang dengan `--system`, tiap agen jadi pengguna tersendiri. Di Ubuntu, agen berbagi satu pengguna, `agentes`: mereka bisa melihat folder satu sama lain, tapi bukan foldermu atau folder server. Atau beri agen komputer milik mereka sendiri.",
+          "Untuk tembok sungguhan, pakai server Linux. Di Debian 13, kalau dipasang dengan `--system`, tiap agen jadi pengguna tersendiri. Di Ubuntu, agen berbagi satu pengguna, `vortoone`: mereka bisa melihat folder satu sama lain, tapi bukan foldermu atau folder server. Atau beri agen komputer milik mereka sendiri.",
         ],
       },
     ],
@@ -460,7 +460,7 @@ export const helpId: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop, dan ponsel): di **Sesuaikan › Konektor**, klik **+ Tambah**, lalu **Tambahkan konektor kustom**, beri nama VortoOne, tempel alamatnya, lalu klik **Lanjutkan**. Pilih **Masuk sekarang**, klik **Tambah**, lalu beri izin. Di paket Team dan Enterprise, Pemilik organisasi Claude menambahkan konektornya di Pengaturan organisasi › Konektor, dan tiap orang mengklik **Hubungkan** di Sesuaikan › Konektor. Paket gratis Claude punya tempat untuk satu konektor kustom.",
-              "**Claude Code:** jalankan `claude mcp add --transport http --scope user agentes <address>`, lalu ketik `/mcp`, pilih agentes dan **Authenticate**. Untuk folder saat ini saja, hapus `--scope user`.",
+              "**Claude Code:** jalankan `claude mcp add --transport http --scope user VortoOne <address>`, lalu ketik `/mcp`, pilih VortoOne dan **Authenticate**. Untuk folder saat ini saja, hapus `--scope user`.",
               "**Cursor:** **Tambahkan ke Cursor** di **Pengaturan › Aplikasi AI**, atau tulis alamatnya di `~/.cursor/mcp.json`. Cursor memintamu masuk saat pertama kali dipakai.",
               '**VS Code:** **Tambahkan ke VS Code**, atau tulis alamatnya di `.vscode/mcp.json` dengan `"type": "http"`.',
               "**Aplikasi lain:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains, dan lainnya punya langkah masing-masing di **Hubungkan aplikasi**, dengan alamatmu sudah terisi.",

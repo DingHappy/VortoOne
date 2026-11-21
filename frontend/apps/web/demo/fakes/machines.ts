@@ -43,9 +43,9 @@ import type {
   MachineOutages,
   MoveAgentsResult,
   SecretBox,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
-import { isPlanId, planOf } from "@agenteschat/client/lib/plans";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
+import { isPlanId, planOf } from "@vortoone/client/lib/plans";
 import { clone, type MockContext, MockNotFoundError } from "./context";
 
 export interface FakeMachines {
@@ -146,7 +146,7 @@ export function createFakeMachines(ctx: MockContext, log: (method: string, ...ar
       execAllowed: true,
       pairedBy: { id: "u-walter", name: "Walter" },
       agents: [],
-      workspace: "/home/runner/agentes",
+      workspace: "/home/runner/vortoone",
       canManage: true,
       createdAt: ctx.now().toISOString(),
       ...input,

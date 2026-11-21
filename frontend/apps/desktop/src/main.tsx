@@ -1,5 +1,5 @@
-import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
-import { installTitleTips, switchTheme } from "@agenteschat/ui";
+import { ErrorBoundary } from "@vortoone/client/lib/error-boundary";
+import { installTitleTips, switchTheme } from "@vortoone/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";

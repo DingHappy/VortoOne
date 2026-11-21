@@ -1,5 +1,5 @@
-import type { DesktopMode, PhoneDevice, SocketLike } from "@agenteschat/client";
-import { desktopRetryMs } from "@agenteschat/client";
+import type { DesktopMode, PhoneDevice, SocketLike } from "@vortoone/client";
+import { desktopRetryMs } from "@vortoone/client";
 import {
   controlRefusalText,
   mayTakePhone,
@@ -11,9 +11,9 @@ import {
   phoneScreenCover,
   phoneScreenUrl,
   screenGesture,
-} from "@agenteschat/client/lib/devices";
-import { firstName } from "@agenteschat/client/lib/format";
-import { Button, Card, CardHeader, PixelSpinner } from "@agenteschat/ui";
+} from "@vortoone/client/lib/devices";
+import { firstName } from "@vortoone/client/lib/format";
+import { Button, Card, CardHeader, PixelSpinner } from "@vortoone/ui";
 import {
   type CSSProperties,
   type KeyboardEvent,

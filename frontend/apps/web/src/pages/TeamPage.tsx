@@ -1,4 +1,4 @@
-import type { FormerAgent } from "@agenteschat/client";
+import type { FormerAgent } from "@vortoone/client";
 import {
   useAgentGroups,
   useAiStatus,
@@ -6,12 +6,12 @@ import {
   useFormerAgents,
   useTeam,
   useUnarchiveAgent,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { can, makesAgents } from "@agenteschat/client/lib/permissions";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { Button, Card, EmptyState, Icon, PageHeader, Segmented } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { can, makesAgents } from "@vortoone/client/lib/permissions";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { Button, Card, EmptyState, Icon, PageHeader, Segmented } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

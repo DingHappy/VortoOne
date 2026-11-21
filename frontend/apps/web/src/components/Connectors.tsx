@@ -1,4 +1,4 @@
-import type { Agent, DatabaseConnection, MailAccount } from "@agenteschat/client";
+import type { Agent, DatabaseConnection, MailAccount } from "@vortoone/client";
 import {
   keys,
   useAgents,
@@ -14,9 +14,9 @@ import {
   useMailAction,
   useMailProviders,
   useRenameConnection,
-} from "@agenteschat/client";
-import { levelIn } from "@agenteschat/client/lib/access-levels";
-import { composioUsageText, nearComposioLimit } from "@agenteschat/client/lib/composio";
+} from "@vortoone/client";
+import { levelIn } from "@vortoone/client/lib/access-levels";
+import { composioUsageText, nearComposioLimit } from "@vortoone/client/lib/composio";
 import {
   type ConnectedItem,
   connectedIds,
@@ -25,15 +25,15 @@ import {
   itemName,
   outcomeText,
   reconnectAddsText,
-} from "@agenteschat/client/lib/connected";
-import { sameServer } from "@agenteschat/client/lib/custom-tools";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { appAccountsText, githubDisconnectNote } from "@agenteschat/client/lib/github-app";
-import { choiceOf, newestAccount } from "@agenteschat/client/lib/mail";
-import { can } from "@agenteschat/client/lib/permissions";
-import { connectorBrand } from "@agenteschat/client/lib/scopes";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/connected";
+import { sameServer } from "@vortoone/client/lib/custom-tools";
+import { errorText } from "@vortoone/client/lib/errors";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { appAccountsText, githubDisconnectNote } from "@vortoone/client/lib/github-app";
+import { choiceOf, newestAccount } from "@vortoone/client/lib/mail";
+import { can } from "@vortoone/client/lib/permissions";
+import { connectorBrand } from "@vortoone/client/lib/scopes";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Card,
@@ -50,7 +50,7 @@ import {
   Menu,
   MenuItem,
   MenuSeparator,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -335,7 +335,7 @@ export function ConnectorsSection({
           onPick={(def) => {
             setAdding(false);
             // Connected already: a server by address takes another account, a catalog connector a new sign-in. GitHub
-            // through the agentes.chat app alone has no sign-in: it offers the app on another account, or an account.
+            // through the VortoOne app alone has no sign-in: it offers the app on another account, or an account.
             const item = items.find((i) => i.def?.id === def.id);
             setFlow(
               item && !item.viaGithubApp
@@ -606,7 +606,7 @@ function DisconnectDialog({
   const { disconnect: customDisconnect } = useCustomServerAction(org.id);
   const pending = catalogDisconnect.isPending || customDisconnect.isPending;
   const name = item ? itemName(t, item) : "";
-  // GitHub and the agentes.chat app: the app alone is uninstalled with it, an account goes and the app stays.
+  // GitHub and the VortoOne app: the app alone is uninstalled with it, an account goes and the app stays.
   const installations = useGitHubApp(org.id, item?.def?.id === "github").data?.installations ?? [];
   const githubNote = item ? githubDisconnectNote(t, item, installations) : null;
   return (

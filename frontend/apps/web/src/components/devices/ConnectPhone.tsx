@@ -7,7 +7,7 @@ import {
   useWifiIphones,
   useXcodeFix,
   type XcodeFix,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   ANDROID_SLOW_MS,
   ANDROID_TICKABLE,
@@ -44,10 +44,10 @@ import {
   type XcodeFixStage,
   xcodeBlockedOf,
   xcodeFixStage,
-} from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { computerKind } from "@agenteschat/client/lib/machines";
-import { DOWNLOAD_URL } from "@agenteschat/i18n/docs";
+} from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
+import { computerKind } from "@vortoone/client/lib/machines";
+import { DOWNLOAD_URL } from "@vortoone/i18n/docs";
 import {
   Button,
   Card,
@@ -65,7 +65,7 @@ import {
   Select,
   SettingsPath,
   useNow,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CommandBlock } from "@/components/machine-bits";

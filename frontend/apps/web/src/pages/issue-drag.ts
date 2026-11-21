@@ -1,4 +1,4 @@
-import { bodyTones } from "@agenteschat/ui";
+import { bodyTones } from "@vortoone/ui";
 import {
   type CSSProperties,
   type DragEvent as ReactDragEvent,

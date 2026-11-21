@@ -1,5 +1,5 @@
-import type { AiAccounts as AiAccountsView } from "@agenteschat/client";
-import { keys, useAiAccounts, useAiStatus, useApi, useMachines } from "@agenteschat/client";
+import type { AiAccounts as AiAccountsView } from "@vortoone/client";
+import { keys, useAiAccounts, useAiStatus, useApi, useMachines } from "@vortoone/client";
 import {
   agentsToGive,
   endsOnClaude,
@@ -8,13 +8,13 @@ import {
   offersSignInAgain,
   type PlanAccount,
   unusedCopies,
-} from "@agenteschat/client/lib/ai-accounts";
-import { computerNameOf } from "@agenteschat/client/lib/computer";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { agentAi, aiStateOf } from "@agenteschat/client/lib/no-ai";
-import { isPlanId, planOf, signInProviderOf } from "@agenteschat/client/lib/plans";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/ai-accounts";
+import { computerNameOf } from "@vortoone/client/lib/computer";
+import { joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { agentAi, aiStateOf } from "@vortoone/client/lib/no-ai";
+import { isPlanId, planOf, signInProviderOf } from "@vortoone/client/lib/plans";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Dialog,
@@ -26,7 +26,7 @@ import {
   Menu,
   MenuItem,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

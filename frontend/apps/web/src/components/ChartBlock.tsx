@@ -1,4 +1,4 @@
-import { type ChartSpec, chartShares, chartTable, formatChartValue, parseChart } from "@agenteschat/client/lib/chart";
+import { type ChartSpec, chartShares, chartTable, formatChartValue, parseChart } from "@vortoone/client/lib/chart";
 import {
   type AgentColor,
   Button,
@@ -7,7 +7,7 @@ import {
   paintCells,
   paintLineArea,
   useElementWidth,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import {
   barCells,
   CHART_CELL,
@@ -17,8 +17,8 @@ import {
   linePoints,
   ringCells,
   smoothPath,
-} from "@agenteschat/ui/sky/chart";
-import { chartBlockToWidgetSpec } from "@agenteschat/ui/widgets/spec";
+} from "@vortoone/ui/sky/chart";
+import { chartBlockToWidgetSpec } from "@vortoone/ui/widgets/spec";
 import {
   createContext,
   type ReactNode,

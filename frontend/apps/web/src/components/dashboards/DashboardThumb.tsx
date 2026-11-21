@@ -1,6 +1,6 @@
-import type { DashboardSummary } from "@agenteschat/client";
-import { useDarkTheme, widgetTileVars } from "@agenteschat/ui";
-import { BOARD_COLUMNS } from "@agenteschat/ui/widgets/spec";
+import type { DashboardSummary } from "@vortoone/client";
+import { useDarkTheme, widgetTileVars } from "@vortoone/ui";
+import { BOARD_COLUMNS } from "@vortoone/ui/widgets/spec";
 import { useOrg } from "@/components/org-context";
 import { colorOf } from "@/components/Sky";
 import { useDirectory } from "@/hooks/useDirectory";

@@ -7,7 +7,7 @@ import type {
   SkillSkipped,
   SkillSourceUpdate,
   SkillVia,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   useAgents,
   useCatalog,
@@ -18,19 +18,19 @@ import {
   useSkillSettings,
   useSkills,
   useSkillUsage,
-} from "@agenteschat/client";
-import { cardInstallAgent, cardInstallOf } from "@agenteschat/client/lib/action-cards";
-import { fromConnection } from "@agenteschat/client/lib/connected";
-import { errorText } from "@agenteschat/client/lib/errors";
+} from "@vortoone/client";
+import { cardInstallAgent, cardInstallOf } from "@vortoone/client/lib/action-cards";
+import { fromConnection } from "@vortoone/client/lib/connected";
+import { errorText } from "@vortoone/client/lib/errors";
 import {
   formatBytes,
   SKILL_ASSET_MB,
   SKILL_TEXT_MB,
   SKILL_ZIP_BYTES,
   SKILL_ZIP_MB,
-} from "@agenteschat/client/lib/files";
-import { formatPercent, relativeTime } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/files";
+import { formatPercent, relativeTime } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   changedByText,
   changesSinceLink,
@@ -56,8 +56,8 @@ import {
   skillViaText,
   skillWaitingChip,
   skippedSkillText,
-} from "@agenteschat/client/lib/skills";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/skills";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Alert,
   Avatar,
@@ -93,7 +93,7 @@ import {
   Tabs,
   Textarea,
   useUnsavedInDialog,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ConnectFlow, type FlowState } from "@/components/ConnectFlow";

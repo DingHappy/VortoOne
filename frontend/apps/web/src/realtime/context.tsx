@@ -14,7 +14,7 @@ import type {
   SecretRequest,
   ThreadInfo,
   VoiceDroppedEvent,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   ApiError,
   applyBrowserHandoff,
@@ -93,16 +93,16 @@ import {
   unmarkStopping,
   useIssueLive,
   useSendWaiting,
-} from "@agenteschat/client";
-import { type AgentUnavailableEvent, isAgentUnavailable } from "@agenteschat/client/lib/audience";
-import { newerBlockState } from "@agenteschat/client/lib/blocks";
-import { deviceWaitEventOf } from "@agenteschat/client/lib/devices";
-import { knownErrorText } from "@agenteschat/client/lib/errors";
-import { formatPercent } from "@agenteschat/client/lib/format";
-import { isReturnLine } from "@agenteschat/client/lib/notices";
-import { nextMonthIso, usageWhen } from "@agenteschat/client/lib/plan-usage";
-import { playSound, soundForEvent } from "@agenteschat/client/lib/sounds";
-import { playAgentReaction } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { type AgentUnavailableEvent, isAgentUnavailable } from "@vortoone/client/lib/audience";
+import { newerBlockState } from "@vortoone/client/lib/blocks";
+import { deviceWaitEventOf } from "@vortoone/client/lib/devices";
+import { knownErrorText } from "@vortoone/client/lib/errors";
+import { formatPercent } from "@vortoone/client/lib/format";
+import { isReturnLine } from "@vortoone/client/lib/notices";
+import { nextMonthIso, usageWhen } from "@vortoone/client/lib/plan-usage";
+import { playSound, soundForEvent } from "@vortoone/client/lib/sounds";
+import { playAgentReaction } from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";

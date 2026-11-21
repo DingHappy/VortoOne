@@ -1,8 +1,8 @@
-import type { OrgRole } from "@agenteschat/client";
-import { personalHelperRole } from "@agenteschat/client/lib/personal-view";
-import { isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
-import { Button, Icon, Menu, MenuCheckboxItem, MenuHeading, MenuNote, MenuSeparator, RoleMark } from "@agenteschat/ui";
+import type { OrgRole } from "@vortoone/client";
+import { personalHelperRole } from "@vortoone/client/lib/personal-view";
+import { isEveryone, sortRoles } from "@vortoone/client/lib/roles";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
+import { Button, Icon, Menu, MenuCheckboxItem, MenuHeading, MenuNote, MenuSeparator, RoleMark } from "@vortoone/ui";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

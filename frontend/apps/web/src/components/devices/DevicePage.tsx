@@ -1,5 +1,5 @@
-import type { ComputerDevice, DeviceAudience, Machine, PhoneDevice } from "@agenteschat/client";
-import { useMachinePause, useMachines } from "@agenteschat/client";
+import type { ComputerDevice, DeviceAudience, Machine, PhoneDevice } from "@vortoone/client";
+import { useMachinePause, useMachines } from "@vortoone/client";
 import {
   deviceName,
   findPhone,
@@ -11,12 +11,12 @@ import {
   phoneSystem,
   statusLook,
   statusSentence,
-} from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { isPaused, PAUSE_CHOICES, pauseChoiceText, pausedByText, pauseUntil } from "@agenteschat/client/lib/machines";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
+import { clockAt } from "@vortoone/client/lib/format";
+import { isPaused, PAUSE_CHOICES, pauseChoiceText, pausedByText, pauseUntil } from "@vortoone/client/lib/machines";
+import { can } from "@vortoone/client/lib/permissions";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   Avatar,
   Button,
@@ -32,7 +32,7 @@ import {
   ProviderLogo,
   Select,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

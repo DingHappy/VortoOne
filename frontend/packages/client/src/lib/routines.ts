@@ -54,12 +54,12 @@ export const isRefusedHookCall = (outcome: RoutineHookOutcome) =>
 
 /**
  * A call to try a routine's address from a terminal. With `secret` (the signing secret, or a placeholder for it),
- * the body is signed the way a sending service signs it: its HMAC-SHA256 in `X-Agentes-Signature`.
+ * the body is signed the way a sending service signs it: its HMAC-SHA256 in `X-VortoOne-Signature`.
  */
 export function hookCurl(url: string, secret: string | null, methods: readonly string[] = ["POST"]) {
   const method = methods.includes("POST") ? "POST" : (methods.find((m) => m !== "GET") ?? "GET");
   const sign = (data: string) => `SIG=$(printf '%s' ${data} | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')`;
-  const signature = `  -H "X-Agentes-Signature: sha256=$SIG"`;
+  const signature = `  -H "X-VortoOne-Signature: sha256=$SIG"`;
   // A GET's data is its query string, and its signature covers that query string (without the `?`).
   if (method === "GET") {
     const get = `curl '${url}?text=hello'`;

@@ -7,9 +7,9 @@ import {
   useCreateChannelCategory,
   usePlaceChannel,
   useRenameChannelCategory,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
 import {
   Button,
   Checkbox,
@@ -23,7 +23,7 @@ import {
   Locked,
   OptionList,
   Select,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/lib/toast";

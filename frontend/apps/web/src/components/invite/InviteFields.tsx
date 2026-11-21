@@ -1,8 +1,8 @@
-import type { Agent, Channel, OrgRole } from "@agenteschat/client";
-import { channelMembersQuery, useApi, useChannelCategories, useChannels, useRoles } from "@agenteschat/client";
-import { EVERYONE_AUDIENCE, listsAgent } from "@agenteschat/client/lib/audience";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+import type { Agent, Channel, OrgRole } from "@vortoone/client";
+import { channelMembersQuery, useApi, useChannelCategories, useChannels, useRoles } from "@vortoone/client";
+import { EVERYONE_AUDIENCE, listsAgent } from "@vortoone/client/lib/audience";
+import { joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   changedLists,
   type InviteAgentCase,
@@ -15,12 +15,12 @@ import {
   inviteReach,
   inviteRefusalText,
   inviteStart,
-} from "@agenteschat/client/lib/invite-start";
-import { can } from "@agenteschat/client/lib/permissions";
-import { personalHelperRole } from "@agenteschat/client/lib/personal-view";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { everyoneOf, isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/invite-start";
+import { can } from "@vortoone/client/lib/permissions";
+import { personalHelperRole } from "@vortoone/client/lib/personal-view";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { everyoneOf, isEveryone, sortRoles } from "@vortoone/client/lib/roles";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   ChipField,
   type ChipFieldOption,
@@ -32,7 +32,7 @@ import {
   MenuHeading,
   RoleMark,
   Select,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueries } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

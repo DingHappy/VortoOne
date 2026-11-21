@@ -23,6 +23,7 @@ import {
   SOURCE_NAME,
 } from "./index";
 import { baseName } from "./shared";
+import { LEGACY_WORKSPACE_APP, WORKSPACE_EXPORT_REF_PREFIX } from "./vortoone";
 
 /**
  * The import screen around the server's plan (ADR 0055): where a bundle came
@@ -75,7 +76,7 @@ export const IMPORT_CARDS = [
   "hermes",
   "openclaw",
   "paperclip",
-  "agenteschat",
+  "vortoone",
   "other",
 ] as const satisfies readonly (PromptApp | ImportSource | "other")[];
 export type ImportCard = (typeof IMPORT_CARDS)[number];
@@ -116,20 +117,26 @@ const cardOf = (app: string): ImportCard => IMPORT_CARDS.find((c) => c === app) 
 
 /**
  * The card and app name of a bundle (or of what one brought, `imports.sources`). One in our format names its app in
- * `source.ref` ("agenteschat:<org>" for our own export, "grok-bot" for a
+ * `source.ref` (a workspace-prefixed ref for our own export, "grok-bot" for a
  * reply to `EXPORT_PROMPT`, "grok-bot:…" for one imported before); `app` is null for an app we don't know.
  */
 export function bundleOrigin(bundle: { source: Pick<MigrationBundle["source"], "app" | "ref"> }): {
   card: ImportCard;
   app: string | null;
 } {
-  const source = IMPORT_SOURCES.find((s) => s === bundle.source.app);
+  const app = bundle.source.app === LEGACY_WORKSPACE_APP ? "vortoone" : bundle.source.app;
+  const source = IMPORT_SOURCES.find((s) => s === app);
   if (!source) return { card: "other", app: null };
-  if (source !== "agenteschat" || bundle.source.ref.startsWith("agenteschat:")) {
+  if (source !== "vortoone" || WORKSPACE_EXPORT_REF_PREFIX.test(bundle.source.ref)) {
     return { card: cardOf(source), app: SOURCE_NAME[source] };
   }
   const declared = EXPORT_PROMPT_APPS.find((a) => a.app === bundle.source.ref.split(":")[0]);
   return { card: declared ? cardOf(declared.app) : "other", app: declared?.name ?? null };
+}
+
+/** A whole-workspace export of the workspace currently receiving it. */
+export function isSameWorkspaceExport(ref: string, workspaceId: string): boolean {
+  return WORKSPACE_EXPORT_REF_PREFIX.test(ref) && ref.replace(WORKSPACE_EXPORT_REF_PREFIX, "") === workspaceId;
 }
 
 /** A link the server reads (the route's rule): https on github.com or raw.githubusercontent.com. */
@@ -262,7 +269,7 @@ export async function applyInChunks(
 /** A card's name: the brand, or our own name and "Outro app" in the person's words. */
 export function cardName(t: TFunction, card: ImportCard): string {
   if (card === "other") return t("onboarding.import.otherName");
-  if (card === "agenteschat") return t("onboarding.import.agenteschatName");
+  if (card === "vortoone") return t("onboarding.import.vortooneName");
   if (card === "grok-bot" || card === "chatgpt-dots") {
     return EXPORT_PROMPT_APPS.find((a) => a.app === card)?.name ?? card;
   }

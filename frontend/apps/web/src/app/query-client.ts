@@ -1,6 +1,6 @@
-import { ApiError } from "@agenteschat/client";
-import { sessionEnded } from "@agenteschat/client/lib/errors";
-import { LiveQueryClient } from "@agenteschat/client/lib/live-query-client";
+import { ApiError } from "@vortoone/client";
+import { sessionEnded } from "@vortoone/client/lib/errors";
+import { LiveQueryClient } from "@vortoone/client/lib/live-query-client";
 import { MutationCache, QueryCache } from "@tanstack/react-query";
 
 /**

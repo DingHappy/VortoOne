@@ -1,4 +1,4 @@
-import type { Dashboard } from "@agenteschat/client";
+import type { Dashboard } from "@vortoone/client";
 import {
   frozenBoard,
   useDashboard,
@@ -6,9 +6,9 @@ import {
   useDeleteDashboard,
   useSetHomeDashboard,
   useUpdateDashboard,
-} from "@agenteschat/client";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { relativeTime } from "@agenteschat/client/lib/format";
+} from "@vortoone/client";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { relativeTime } from "@vortoone/client/lib/format";
 import {
   Button,
   Dialog,
@@ -24,7 +24,7 @@ import {
   MenuSeparator,
   PageHeader,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

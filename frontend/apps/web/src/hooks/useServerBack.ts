@@ -1,4 +1,4 @@
-import { HEALTH_PATH } from "@agenteschat/client";
+import { HEALTH_PATH } from "@vortoone/client";
 import { useEffect } from "react";
 
 /** How often a screen that couldn't reach the server asks whether it's back. */

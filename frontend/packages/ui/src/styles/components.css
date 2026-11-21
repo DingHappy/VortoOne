@@ -1,5 +1,5 @@
 /*
- * agentes component styles. Ported from docs/design/design-system/bundle.css
+ * VortoOne component styles. Ported from docs/design/design-system/bundle.css
  * (the reference): same classes and values, adapted to the markup Radix
  * renders (data-state, data-highlighted). Every value comes from tokens.css.
  * Additions beyond bundle.css follow the app's screens.
@@ -723,7 +723,7 @@ textarea.ac-input:not(:hover, :focus-visible) {
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
-/* Prefixed input, e.g. "agentes.chat/" + slug */
+/* Prefixed input, e.g. "VortoOne/" + slug */
 .ac-input-affix {
   display: flex;
   align-items: center;

@@ -542,7 +542,7 @@
       "continue": "내 서버로 계속",
       "address": "서버 주소",
       "connect": "연결",
-      "invalid": "주소가 아니에요. 브라우저에서처럼 입력해 주세요. 예: agentes.example.com",
+      "invalid": "주소가 아니에요. 브라우저에서처럼 입력해 주세요. 예: vortoone.example.com",
       "unreachable": "{{host}}에서 VortoOne을 찾지 못했어요. 주소와 서버가 켜져 있는지 확인해 주세요.",
       "none": "아직 없으신가요?",
       "noneLink": "무료로 내 서버 만드는 법 보기"
@@ -670,7 +670,7 @@
       "confirmYes": "네, 앱에 로그인할게요",
       "confirmNo": "제가 한 게 아니에요",
       "done": "모두 끝났어요.",
-      "doneLead": "agentes 앱에 로그인했어요. 이 탭은 닫아도 돼요.",
+      "doneLead": "VortoOne 앱에 로그인했어요. 이 탭은 닫아도 돼요.",
       "expired": "이 요청은 만료됐어요.",
       "expiredLead": "앱으로 돌아가 {{provider}}을(를) 다시 선택하세요.",
       "handover": "다른 기기의 계정으로 로그인하는 중…",
@@ -1171,14 +1171,14 @@
         "paused": "이 워크스페이스가 일시 중지된 동안에는 MCP로 연결이 꺼져 있어요. 지금은 이 방법으로 에이전트를 가져오세요."
       },
       "otherName": "다른 앱",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "openbot-import.json(OpenBot의 Migrator에서 만든 파일)이나 openbot-transfer.json(인스턴스 이전에서 만든 파일), 또는 이 파일이 담긴 .zip을 끌어다 놓으세요.",
         "openmausbot": "OpenMausBot에서 팀을 오른쪽 클릭 → 팀 공유… → 파일 저장.",
         "hermes": "터미널에서 프로필 이름과 함께 hermes profile export를 실행하고 .tar.gz를 여기에 끌어다 놓으세요. 또는 ~/.hermes 폴더를 끌어다 놓으면 모든 프로필을 가져와요.",
         "openclaw": "~/.openclaw 폴더 전체(모든 에이전트를 가져와요)나 워크스페이스 하나만 끌어다 놓으세요. Mac에서는 파일 선택 창에서 ⌘⇧.를 누르면 숨김 폴더가 보여요.",
         "paperclip": "패키지 폴더(COMPANY.md가 있는 폴더)를 끌어다 놓거나, 그 폴더의 .zip을 놓거나, GitHub 링크를 붙여넣으세요.",
-        "agenteschat": "다른 워크스페이스에서: 설정 → 가져오기 및 내보내기 → 파일 다운로드. 그다음 .json을 여기에 끌어다 놓으세요."
+        "vortoone": "다른 워크스페이스에서: 설정 → 가져오기 및 내보내기 → 파일 다운로드. 그다음 .json을 여기에 끌어다 놓으세요."
       },
       "whereOther": "다른 워크스페이스에서 파일을 내려받아 여기에 .json을 놓으세요.",
       "whereOtherLink": "{{org}}에서 내려받기",
@@ -2118,9 +2118,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "agentes 앱에 로그인하는 QR 코드",
+    "qr": "VortoOne 앱에 로그인하는 QR 코드",
     "making": "코드를 만드는 중…",
-    "stepApp": "휴대폰에 agentes 앱을 설치하세요.",
+    "stepApp": "휴대폰에 VortoOne 앱을 설치하세요.",
     "stepTailscale": "휴대폰에 Tailscale을 설치하고 이 서버와 같은 Tailscale 계정으로 로그인하세요.",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5181,7 +5181,7 @@
     "noInstructions": "{{name}}에게 아직 지침이 없어요. 어떻게 일할지 알려 주세요.",
     "noInstructions_female": "{{name}}에게 아직 지침이 없어요. 어떻게 일할지 알려 주세요.",
     "savedToast": "{{name}}의 변경 사항을 저장했어요.",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "기본 제공 권한",
     "connectHint": "서비스 연결",
     "subtitle": "{{role}} · 소유자 <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5528,7 +5528,7 @@
         "two": "환경설정",
         "three": "브라우저 켜기",
         "done": "끝났어요. 새로고침하지 않아도 이 페이지가 알아서 감지해요.",
-        "menuOpen": "agentes 열기",
+        "menuOpen": "VortoOne 열기",
         "menuPrefs": "환경설정…",
         "menuPause": "일시 중지",
         "menuQuit": "종료",
@@ -5703,7 +5703,7 @@
       "setAll": "모두 변경",
       "connectors": "{{org}}의 커넥터",
       "connectorsPersonal": "내 커넥터",
-      "builtin": "agentes 기본 제공",
+      "builtin": "VortoOne 기본 제공",
       "noMatch": "“{{q}}”와 일치하는 항목이 없어요",
       "noneHere": "이 필터에 해당하는 항목이 없어요",
       "library": "스킬 라이브러리",
@@ -7391,7 +7391,7 @@
     },
     "github_git_write": {
       "label": "브랜치 푸시(git push)",
-      "description": "agentes/{agent}/… 브랜치에 커밋을 푸시해요. 기본 브랜치에는 절대 푸시하지 않고, 강제 푸시와 태그도 없어요. 브랜치 삭제와 다른 사람의 브랜치에 푸시할 때는 먼저 승인을 요청해요."
+      "description": "vortoone/{agent}/… 브랜치에 커밋을 푸시해요. 기본 브랜치에는 절대 푸시하지 않고, 강제 푸시와 태그도 없어요. 브랜치 삭제와 다른 사람의 브랜치에 푸시할 때는 먼저 승인을 요청해요."
     },
     "custom_read": {
       "label": "읽기 도구",
@@ -7814,7 +7814,7 @@
       "signature": "서명",
       "signedOff": "꺼짐: 에이전트가 주소로 오는 모든 호출을 받아요.",
       "signedOn": "켜짐: 시크릿으로 서명된 호출만 통과해요.",
-      "signedHelp": "본문(GET 호출이면 ?를 뺀 쿼리 문자열)의 HMAC-SHA256을 X-Agentes-Signature(sha256=…)에 담아 보내세요. GitHub의 X-Hub-Signature-256도 쓸 수 있어요.",
+      "signedHelp": "본문(GET 호출이면 ?를 뺀 쿼리 문자열)의 HMAC-SHA256을 X-VortoOne-Signature(sha256=…)에 담아 보내세요. GitHub의 X-Hub-Signature-256도 쓸 수 있어요.",
       "addSecret": "서명 필수",
       "newSecret": "새 시크릿",
       "newSecretTitle": "새 시크릿을 만들까요?",
@@ -8212,7 +8212,7 @@
         "pr_opened": "GitHub에서 PR 열림"
       },
       "issue": {
-        "created": "agentes에서 작업 생성됨"
+        "created": "vortoone에서 작업 생성됨"
       },
       "deploy": {
         "succeeded": "배포 완료"
@@ -8533,7 +8533,7 @@
       "start": "시작",
       "change": "변경 요청",
       "started": "시작됨",
-      "startedToast": "계획이 시작됐어요. 스레드 맨 위와 .agentes/mission.md에 고정돼요.",
+      "startedToast": "계획이 시작됐어요. 스레드 맨 위와 .vortoone/mission.md에 고정돼요.",
       "ownerStarts": "{{name}} 님만 시작할 수 있어요",
       "see": "계획 보기",
       "after": {
@@ -9830,7 +9830,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "요금제 키를 사용하려면 컴퓨터에서 agentes를 업데이트하세요"
+        "keys": "요금제 키를 사용하려면 컴퓨터에서 vortoone를 업데이트하세요"
       },
       "noComputer": "계정은 연결된 컴퓨터에 남아요. 먼저 내 컴퓨터를 하나 연결하세요.",
       "addComputer": "컴퓨터 연결",
@@ -11587,8 +11587,8 @@
   "storage": {
     "title": "저장 공간",
     "options": "파일 보관 위치",
-    "agentes": "VortoOne 저장 공간",
-    "agentesText": "파일은 워크스페이스별로 분리된 저희 저장 공간에 보관돼요.",
+    "vortoone": "VortoOne 저장 공간",
+    "vortooneText": "파일은 워크스페이스별로 분리된 저희 저장 공간에 보관돼요.",
     "server": "이 서버",
     "serverText": {
       "disk": "파일은 서버 디스크에 보관돼요.",
@@ -11598,7 +11598,7 @@
     },
     "showFolder": "폴더 보기",
     "place": {
-      "agentes": "VortoOne 저장 공간",
+      "vortoone": "VortoOne 저장 공간",
       "server": "이 서버"
     },
     "s3": "내 저장 공간",
@@ -11614,7 +11614,7 @@
     "region": "리전",
     "bucket": "버킷",
     "prefix": "접두사(선택 사항)",
-    "prefixHelp": "버킷 안의 폴더예요. 예: agentes/",
+    "prefixHelp": "버킷 안의 폴더예요. 예: vortoone/",
     "pathStyle": "경로 방식 주소 지정",
     "pathStyleHelp": "호스트 이름에 버킷을 넣을 수 없는 MinIO 등에서 사용하세요.",
     "accessKey": "액세스 키",
@@ -13490,32 +13490,32 @@
       "supabase": {
         "1": "Supabase 프로젝트에서 SQL Editor를 열고 아래 명령을 실행하세요(비밀번호는 바꾸세요).",
         "2": "Project Settings → Database에서 URI 연결 문자열을 복사하세요.",
-        "3": "그 안의 사용자와 비밀번호를 agentes_leitura와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
+        "3": "그 안의 사용자와 비밀번호를 vortoone_reader와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
       },
       "neon": {
         "1": "Neon 프로젝트에서 SQL Editor를 열고 아래 명령을 실행하세요(비밀번호는 바꾸세요).",
         "2": "Connect에서 데이터베이스 주소를 복사하세요.",
-        "3": "그 안의 사용자와 비밀번호를 agentes_leitura와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
+        "3": "그 안의 사용자와 비밀번호를 vortoone_reader와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
       },
       "railway": {
         "1": "Postgres 서비스에서 Data → Query를 열고 아래 명령을 실행하세요(비밀번호는 바꾸세요).",
         "2": "Variables에서 DATABASE_PUBLIC_URL을 복사하세요(DATABASE_URL은 내부용이라 여기서는 작동하지 않아요).",
-        "3": "그 안의 사용자와 비밀번호를 agentes_leitura와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
+        "3": "그 안의 사용자와 비밀번호를 vortoone_reader와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
       },
       "rds": {
         "1": "평소 쓰는 도구로 데이터베이스에 연결해 아래 명령을 실행하세요(비밀번호는 바꾸세요).",
         "2": "Connectivity & security에서 엔드포인트를 복사하세요. 데이터베이스는 5432 포트로 공개 접근이 가능해야 해요.",
-        "3": "postgres://agentes_leitura:password@endpoint:5432/database 형식으로 주소를 만들어 여기에 붙여넣으세요."
+        "3": "postgres://vortoone_reader:password@endpoint:5432/database 형식으로 주소를 만들어 여기에 붙여넣으세요."
       },
       "render": {
         "1": "데이터베이스 페이지의 PSQL 명령으로 연결해 아래 명령을 실행하세요(비밀번호는 바꾸세요).",
         "2": "Connections에서 External Database URL을 복사하세요.",
-        "3": "그 안의 사용자와 비밀번호를 agentes_leitura와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
+        "3": "그 안의 사용자와 비밀번호를 vortoone_reader와 정한 비밀번호로 바꿔서 여기에 붙여넣으세요."
       },
       "other": {
         "1": "데이터베이스 관리자에게 아래 명령을 실행해 달라고 하세요(비밀번호는 직접 정하게 하세요).",
         "2": "서버의 공개 주소, 포트, 데이터베이스 이름도 알려 달라고 하세요.",
-        "3": "postgres://agentes_leitura:password@server:5432/database 형식으로 주소를 만들어 여기에 붙여넣으세요."
+        "3": "postgres://vortoone_reader:password@server:5432/database 형식으로 주소를 만들어 여기에 붙여넣으세요."
       }
     },
     "howAll": "모든 데이터베이스를 읽으려면 (Postgres 14 이상).",
@@ -13671,7 +13671,7 @@
     "whatIsText": "에이전트 전용 비밀번호예요. 이메일 사이트에서 만들 수 있고, 내 비밀번호를 바꾸지 않고도 언제든 삭제할 수 있어요.",
     "step": {
       "1": "계정의 보안 페이지를 여세요.",
-      "2": "“agentes”라는 이름으로 앱 비밀번호를 만드세요.",
+      "2": "“VortoOne”라는 이름으로 앱 비밀번호를 만드세요.",
       "3": "비밀번호를 복사해서 여기에 붙여넣으세요."
     },
     "openPage": "{{name}} 페이지 열기",
@@ -15034,7 +15034,7 @@
       "openLocalNetwork": "로컬 네트워크 열기",
       "qrLabel": "휴대폰 무선 디버깅용 QR 코드",
       "qrLine": "카메라로 스캔하지 마세요",
-      "qrCaption": "카메라에 agentes-…라는 Wi-Fi 네트워크가 보이지만 그런 네트워크는 없어요. 휴대폰은 컴퓨터와 같은 Wi-Fi에 두세요.",
+      "qrCaption": "카메라에 vortoone-…라는 Wi-Fi 네트워크가 보이지만 그런 네트워크는 없어요. 휴대폰은 컴퓨터와 같은 Wi-Fi에 두세요.",
       "fail": {
         "mdns_off": "{{computer}}에서 Wi-Fi의 휴대폰을 찾을 수 없어요. 그 컴퓨터의 Android platform-tools를 업데이트하거나 케이블을 쓰세요.",
         "mdns_offMac": "{{computer}}에서 Wi-Fi의 휴대폰을 찾을 수 없어요. 그 Mac의 시스템 설정 › 개인정보 보호 및 보안 › 로컬 네트워크에서 VortoOne을 켜고 다시 시도하세요.",
@@ -15325,7 +15325,7 @@
     "reconnectDoneText": "{{name}}이(가) {{org}}에 돌아왔어요.",
     "deniedTitle": "연결 안 됨",
     "denied": "컴퓨터를 연결하지 않았어요. 직접 연 게 아니라면 아무도 접근 권한을 얻지 못했어요.",
-    "home": "agentes로 가기"
+    "home": "vortoone로 가기"
   },
   "apps": {
     "connect": "앱 연결",
@@ -18214,7 +18214,7 @@
       "screensOff": "{{computer}}에서 화면이 꺼져 있어요. 그 컴퓨터에서 켜세요:",
       "screensOffOne": "{{computer}}에서 화면이 꺼져 있습니다.",
       "screensMissing": "{{computer}}에서 아직 화면을 표시할 수 없어요. 그 컴퓨터에서:",
-      "outdated": "{{name}}의 화면을 보려면 {{computer}}에서 agentes를 업데이트하세요.",
+      "outdated": "{{name}}의 화면을 보려면 {{computer}}에서 vortoone를 업데이트하세요.",
       "noScreen": "{{name}}은(는) 여기에 표시할 화면이 없어요",
       "noScreenHelp": "도구 및 접근 권한에서 화면이나 브라우저를 허용하세요.",
       "noComputer": "{{name}}의 컴퓨터를 선택하세요.",
@@ -18349,7 +18349,7 @@
       "browser": "브라우저",
       "screen": "컴퓨터 화면",
       "terminal": "터미널",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "생각 중",
       "inside": "{{program}} · {{detail}}"
     },

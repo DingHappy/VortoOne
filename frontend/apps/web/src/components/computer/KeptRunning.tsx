@@ -1,6 +1,6 @@
-import { type Hold, useAgentHolds, useStopHold } from "@agenteschat/client";
-import { holdLine } from "@agenteschat/client/lib/holds";
-import { Button, Icon, Menu, MenuHeading, MenuItem, MenuNote, MenuSeparator } from "@agenteschat/ui";
+import { type Hold, useAgentHolds, useStopHold } from "@vortoone/client";
+import { holdLine } from "@vortoone/client/lib/holds";
+import { Button, Icon, Menu, MenuHeading, MenuItem, MenuNote, MenuSeparator } from "@vortoone/ui";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

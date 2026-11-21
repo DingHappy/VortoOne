@@ -1,6 +1,6 @@
-import { ApiError } from "@agenteschat/client";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { Button, Icon, Locked } from "@agenteschat/ui";
+import { ApiError } from "@vortoone/client";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { Button, Icon, Locked } from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { FormEvent } from "react";

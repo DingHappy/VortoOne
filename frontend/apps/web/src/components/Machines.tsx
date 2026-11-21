@@ -1,4 +1,4 @@
-import type { Machine, MachineAccessReduce, MachinePause, MachineToolName } from "@agenteschat/client";
+import type { Machine, MachineAccessReduce, MachinePause, MachineToolName } from "@vortoone/client";
 import {
   profilesApply,
   useAgents,
@@ -9,10 +9,10 @@ import {
   useMachineAction,
   useMachines,
   useReduceMachineAccess,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { clockAt, joinNames, relativeTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { clockAt, joinNames, relativeTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   allowedFolders,
   allowsInApp,
@@ -26,10 +26,10 @@ import {
   machineTitle,
   sharedFolderFacts,
   sharedFolderOf,
-} from "@agenteschat/client/lib/machines";
-import { can } from "@agenteschat/client/lib/permissions";
-import { type Seat, SHARED_SEAT } from "@agenteschat/client/lib/seat";
-import { SeatContext, useSeat } from "@agenteschat/client/lib/seat-context";
+} from "@vortoone/client/lib/machines";
+import { can } from "@vortoone/client/lib/permissions";
+import { type Seat, SHARED_SEAT } from "@vortoone/client/lib/seat";
+import { SeatContext, useSeat } from "@vortoone/client/lib/seat-context";
 import {
   AvatarStack,
   Button,
@@ -51,7 +51,7 @@ import {
   MenuItem,
   MenuSeparator,
   ProviderLogo,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -345,7 +345,7 @@ function RemoveDialog({
 }
 
 /**
- * Configurações → Computadores, first: this server's computer (`HOST_COMPUTER_TOKEN`), the machine agentes.chat
+ * Configurações → Computadores, first: this server's computer (`HOST_COMPUTER_TOKEN`), the machine VortoOne
  * is installed on. An admin who stopped it here can use it again; with none, admins read how to make it one,
  * but only while sign-up is closed (with open sign-up the server refuses one).
  */
@@ -477,7 +477,7 @@ function FoldersCard({ machine: m, onReduce }: { machine: Machine; onReduce: (r:
   const access = m.access;
   const shared = sharedFolderOf(access);
   const folders = allowedFolders(access);
-  // This very Mac with an app too old to report: update it from here (agentes for Mac, ADR 0036).
+  // This very Mac with an app too old to report: update it from here (VortoOne for Mac, ADR 0036).
   const here = useIsThisMac(org.id, m.id);
   return (
     <Card aria-labelledby="sec-machine-folders">
@@ -662,7 +662,7 @@ function GrantCard({ machine: m }: { machine: Machine }) {
   const agent = t("machines.access.agentPlaceholder");
   // In system mode the runner's settings are root's (ADR 0057): allowing takes the computer's administrator.
   const system = m.mode === "system";
-  const allowExample = `${system ? "sudo " : ""}agentes-runner folders allow ${path} --agent ${agent}`;
+  const allowExample = `${system ? "sudo " : ""}vortoone-runner folders allow ${path} --agent ${agent}`;
   const app = allowsInApp(m.os);
   return (
     <Card aria-labelledby="sec-machine-grant">

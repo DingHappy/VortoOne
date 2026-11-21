@@ -5,7 +5,7 @@
  * (plugged in and trusted, Developer Mode, UI Automation, the test helper the Mac builds). Once our phone app is in the
  * App Store, a QR opens the same steps on the iPhone.
  */
-import type { ControlIphoneSetup } from "@agenteschat/adapters/runner-control";
+import type { ControlIphoneSetup } from "@vortoone/adapters/runner-control";
 import {
   DDIS_UPDATE,
   iosMajor,
@@ -18,9 +18,9 @@ import {
   XCODE_FIX_COMMAND,
   type XcodeFixStage,
   xcodeFixStage,
-} from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { Button, Icon, InfoHint, PixelSpinner, QrCode, SettingsPath } from "@agenteschat/ui";
+} from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
+import { Button, Icon, InfoHint, PixelSpinner, QrCode, SettingsPath } from "@vortoone/ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost, useSnapshot, useStore } from "../app";

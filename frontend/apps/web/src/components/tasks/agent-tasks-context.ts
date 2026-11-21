@@ -1,4 +1,4 @@
-import type { ManagedTask } from "@agenteschat/client";
+import type { ManagedTask } from "@vortoone/client";
 import { createContext, useContext } from "react";
 
 /**

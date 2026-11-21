@@ -1,4 +1,4 @@
-import { safeRedirect } from "@agenteschat/client/lib/guards";
+import { safeRedirect } from "@vortoone/client/lib/guards";
 import { STORAGE_KEYS, sessionStore } from "@/lib/storage";
 
 /**

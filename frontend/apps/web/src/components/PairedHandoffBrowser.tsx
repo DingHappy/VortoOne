@@ -1,5 +1,5 @@
-import { useMachines } from "@agenteschat/client";
-import { Button } from "@agenteschat/ui";
+import { useMachines } from "@vortoone/client";
+import { Button } from "@vortoone/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { HandoffBrowserPreview } from "./HandoffBrowserPreview";

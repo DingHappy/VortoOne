@@ -1,5 +1,5 @@
-import type { ActivityEntry } from "@agenteschat/adapters/runner-control";
-import { Avatar, Button, Icon, PixelSpinner, Segmented } from "@agenteschat/ui";
+import type { ActivityEntry } from "@vortoone/adapters/runner-control";
+import { Avatar, Button, Icon, PixelSpinner, Segmented } from "@vortoone/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot, useStore } from "../../app";

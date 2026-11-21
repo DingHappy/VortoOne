@@ -1,5 +1,5 @@
-import { addressesIn } from "@agenteschat/client/lib/text";
-import { Avatar, Button, Select, type SelectOption } from "@agenteschat/ui";
+import { addressesIn } from "@vortoone/client/lib/text";
+import { Avatar, Button, Select, type SelectOption } from "@vortoone/ui";
 import { type ReactNode, type RefObject, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./invite.css";

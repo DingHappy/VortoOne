@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { COMPUTER_DOWNLOAD, INLINE, parseMarkdown, SAFE_URL } from "@agenteschat/ui/markdown";
+import { COMPUTER_DOWNLOAD, INLINE, parseMarkdown, SAFE_URL } from "@vortoone/ui/markdown";
 import { CodeBlock } from "../components/CodeBlock";
 
 // Reuse the upstream Markdown parser and code viewer, without its organization-specific link resolvers.

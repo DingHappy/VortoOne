@@ -1,4 +1,4 @@
-import { Button } from "@agenteschat/ui";
+import { Button } from "@vortoone/ui";
 import { type FormEvent, type PointerEvent, useEffect, useRef, useState } from "react";
 import { type DesktopWatch, type PrivatePreviewKind, INPUT_TEXT_BYTES, watchControllableDesktop, watchPairedRunDisplay, watchPrivateScreen } from "../screen/private-browser-preview";
 

@@ -1,5 +1,5 @@
-import type { Agent, AgentAudience, AudienceMode } from "@agenteschat/client";
-import { useAgents, useAiStatus, useRoles } from "@agenteschat/client";
+import type { Agent, AgentAudience, AudienceMode } from "@vortoone/client";
+import { useAgents, useAiStatus, useRoles } from "@vortoone/client";
 import {
   agentsReach,
   audienceChip,
@@ -7,12 +7,12 @@ import {
   audienceModeTextKey,
   offersConsultable,
   reachShortKey,
-} from "@agenteschat/client/lib/audience";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { aiStateOf, onlyOwnerReplies } from "@agenteschat/client/lib/no-ai";
-import { rolePicksInSight } from "@agenteschat/client/lib/personal-view";
-import { isEveryone, sortRoles } from "@agenteschat/client/lib/roles";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/audience";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { aiStateOf, onlyOwnerReplies } from "@vortoone/client/lib/no-ai";
+import { rolePicksInSight } from "@vortoone/client/lib/personal-view";
+import { isEveryone, sortRoles } from "@vortoone/client/lib/roles";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   Avatar,
   Checkbox,
@@ -32,7 +32,7 @@ import {
   Switch,
   Token,
   TokenList,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

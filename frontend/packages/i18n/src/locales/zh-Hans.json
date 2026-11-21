@@ -558,7 +558,7 @@
       "continue": "继续使用我的服务器",
       "address": "服务器地址",
       "connect": "连接",
-      "invalid": "这不是一个地址。请像在浏览器中一样输入，例如 agentes.example.com。",
+      "invalid": "这不是一个地址。请像在浏览器中一样输入，例如 vortoone.example.com。",
       "unreachable": "在 {{host}} 没有找到 VortoOne。请检查地址以及服务器是否开机。",
       "none": "还没有服务器？",
       "noneLink": "看看如何免费拥有自己的服务器"
@@ -686,7 +686,7 @@
       "confirmYes": "是的，让应用登录",
       "confirmNo": "不是我",
       "done": "全部就绪。",
-      "doneLead": "你已登录 agentes 应用，可以关闭这个标签页了。",
+      "doneLead": "你已登录 VortoOne 应用，可以关闭这个标签页了。",
       "expired": "这个请求已过期。",
       "expiredLead": "请返回应用，重新选择 {{provider}}。",
       "handover": "正在用另一台设备上的账号登录…",
@@ -1187,14 +1187,14 @@
         "paused": "此工作区暂停期间，“通过 MCP 连接”不可用。现在请先用这种方式导入智能体。"
       },
       "otherName": "其他应用",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "拖入 openbot-import.json（来自 OpenBot 的 Migrator）或 openbot-transfer.json（来自实例迁移），或者包含它的 .zip。",
         "openmausbot": "在 OpenMausBot 中：右键点击团队 → 分享团队… → 保存文件。",
         "hermes": "在终端中运行 hermes profile export 加上配置文件名，然后把 .tar.gz 拖到这里。也可以拖入 ~/.hermes 文件夹，一次带上所有配置文件。",
         "openclaw": "拖入整个 ~/.openclaw 文件夹（会带上所有智能体），或者只拖一个工作区。在 Mac 上，在文件选择器中按 ⌘⇧. 可以显示隐藏文件夹。",
         "paperclip": "拖入包文件夹（包含 COMPANY.md 的那个），拖入它的 .zip，或者粘贴它的 GitHub 链接。",
-        "agenteschat": "在另一个工作区中：设置 → 导入和导出 → 下载文件。然后把 .json 拖到这里。"
+        "vortoone": "在另一个工作区中：设置 → 导入和导出 → 下载文件。然后把 .json 拖到这里。"
       },
       "whereOther": "从另一个工作区下载文件，然后把 .json 拖到这里。",
       "whereOtherLink": "从 {{org}} 下载",
@@ -2134,9 +2134,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "用于登录 agentes 应用的二维码",
+    "qr": "用于登录 VortoOne 应用的二维码",
     "making": "正在生成二维码…",
-    "stepApp": "在手机上安装 agentes 应用。",
+    "stepApp": "在手机上安装 VortoOne 应用。",
     "stepTailscale": "在手机上安装 Tailscale，并用与这台服务器相同的 Tailscale 账号登录。",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5207,7 +5207,7 @@
     "noInstructions_female": "{{name}} 还没有指令。说说她应该怎么工作。",
     "savedToast": "已保存 {{name}} 的更改。",
     "savedToast_female": "已保存 {{name}} 的更改。",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "内置权限",
     "connectHint": "连接服务",
     "subtitle": "{{role}} · 所有者 <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5593,7 +5593,7 @@
         "two": "偏好设置",
         "three": "开启“浏览器”",
         "done": "完成了。此页面会自动检测，无需刷新。",
-        "menuOpen": "打开 agentes",
+        "menuOpen": "打开 VortoOne",
         "menuPrefs": "偏好设置…",
         "menuPause": "暂停",
         "menuQuit": "退出",
@@ -5774,7 +5774,7 @@
       "setAll": "全部更改",
       "connectors": "{{org}} 的连接器",
       "connectorsPersonal": "你的连接器",
-      "builtin": "agentes 内置",
+      "builtin": "VortoOne 内置",
       "noMatch": "没有与“{{q}}”匹配的内容",
       "noneHere": "此筛选下没有内容",
       "library": "技能库",
@@ -7469,7 +7469,7 @@
     },
     "github_git_write": {
       "label": "推送分支（git push）",
-      "description": "将提交推送到 agentes/{agent}/… 分支：绝不推送到默认分支，不强制推送，不推送标签。删除分支和推送到他人的分支需要先审批。"
+      "description": "将提交推送到 vortoone/{agent}/… 分支：绝不推送到默认分支，不强制推送，不推送标签。删除分支和推送到他人的分支需要先审批。"
     },
     "custom_read": {
       "label": "读取类工具",
@@ -7967,7 +7967,7 @@
       "signature": "签名",
       "signedOff": "关闭：智能体会接收发到此地址的所有调用。",
       "signedOn": "开启：只有用密钥签名的调用才能通过。",
-      "signedHelp": "在 X-Agentes-Signature 中发送请求体（GET 调用则为其查询字符串，不含 ?）的 HMAC-SHA256（sha256=…）。GitHub 的 X-Hub-Signature-256 也可以。",
+      "signedHelp": "在 X-VortoOne-Signature 中发送请求体（GET 调用则为其查询字符串，不含 ?）的 HMAC-SHA256（sha256=…）。GitHub 的 X-Hub-Signature-256 也可以。",
       "addSecret": "要求签名",
       "newSecret": "新密钥",
       "newSecretTitle": "生成新密钥？",
@@ -8362,7 +8362,7 @@
         "pr_opened": "GitHub 上创建了 PR"
       },
       "issue": {
-        "created": "在 agentes 中创建了任务"
+        "created": "在 VortoOne 中创建了任务"
       },
       "deploy": {
         "succeeded": "部署完成"
@@ -8684,7 +8684,7 @@
       "start": "开始",
       "change": "修改一下",
       "started": "已开始",
-      "startedToast": "计划已开始：它会固定在话题顶部，并保存在 .agentes/mission.md 中。",
+      "startedToast": "计划已开始：它会固定在话题顶部，并保存在 .vortoone/mission.md 中。",
       "ownerStarts": "只有 {{name}} 可以开始",
       "see": "查看计划",
       "after": {
@@ -9991,7 +9991,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "在电脑上更新 agentes，即可使用套餐密钥"
+        "keys": "在电脑上更新 VortoOne，即可使用套餐密钥"
       },
       "noComputer": "账号保存在已连接的电脑上。请先连接一台你的电脑。",
       "addComputer": "连接电脑",
@@ -11763,8 +11763,8 @@
   "storage": {
     "title": "存储",
     "options": "文件存放位置",
-    "agentes": "VortoOne 存储",
-    "agentesText": "你的文件保存在我们的存储中，每个工作区彼此隔离。",
+    "vortoone": "VortoOne 存储",
+    "vortooneText": "你的文件保存在我们的存储中，每个工作区彼此隔离。",
     "server": "这台服务器",
     "serverText": {
       "disk": "文件保存在它的磁盘上。",
@@ -11774,7 +11774,7 @@
     },
     "showFolder": "显示文件夹",
     "place": {
-      "agentes": "VortoOne 存储",
+      "vortoone": "VortoOne 存储",
       "server": "这台服务器"
     },
     "s3": "你自己的存储",
@@ -11790,7 +11790,7 @@
     "region": "区域",
     "bucket": "存储桶",
     "prefix": "前缀（可选）",
-    "prefixHelp": "存储桶内的文件夹，例如 agentes/。",
+    "prefixHelp": "存储桶内的文件夹，例如 vortoone/。",
     "pathStyle": "路径式寻址",
     "pathStyleHelp": "适用于 MinIO 等不接受在主机名中包含存储桶的服务。",
     "accessKey": "访问密钥",
@@ -13662,32 +13662,32 @@
       "supabase": {
         "1": "在你的 Supabase 项目中打开 SQL Editor，运行下面的命令（请修改密码）。",
         "2": "在 Project Settings → Database 中，复制 URI 连接字符串。",
-        "3": "把其中的用户名和密码换成 agentes_leitura 和你设置的密码，然后粘贴到这里。"
+        "3": "把其中的用户名和密码换成 vortoone_reader 和你设置的密码，然后粘贴到这里。"
       },
       "neon": {
         "1": "在你的 Neon 项目中打开 SQL Editor，运行下面的命令（请修改密码）。",
         "2": "在 Connect 中，复制你的数据库地址。",
-        "3": "把其中的用户名和密码换成 agentes_leitura 和你设置的密码，然后粘贴到这里。"
+        "3": "把其中的用户名和密码换成 vortoone_reader 和你设置的密码，然后粘贴到这里。"
       },
       "railway": {
         "1": "在 Postgres 服务中，打开 Data → Query，运行下面的命令（请修改密码）。",
         "2": "在 Variables 中，复制 DATABASE_PUBLIC_URL（DATABASE_URL 是内部地址，从这里无法使用）。",
-        "3": "把其中的用户名和密码换成 agentes_leitura 和你设置的密码，然后粘贴到这里。"
+        "3": "把其中的用户名和密码换成 vortoone_reader 和你设置的密码，然后粘贴到这里。"
       },
       "rds": {
         "1": "用你常用的工具连接数据库，运行下面的命令（请修改密码）。",
         "2": "在 Connectivity & security 中，复制 endpoint。数据库需要在 5432 端口开放公网访问。",
-        "3": "拼出地址 postgres://agentes_leitura:password@endpoint:5432/database，然后粘贴到这里。"
+        "3": "拼出地址 postgres://vortoone_reader:password@endpoint:5432/database，然后粘贴到这里。"
       },
       "render": {
         "1": "使用数据库页面上的 PSQL 命令连接，运行下面的命令（请修改密码）。",
         "2": "在 Connections 中，复制 External Database URL。",
-        "3": "把其中的用户名和密码换成 agentes_leitura 和你设置的密码，然后粘贴到这里。"
+        "3": "把其中的用户名和密码换成 vortoone_reader 和你设置的密码，然后粘贴到这里。"
       },
       "other": {
         "1": "请负责维护数据库的人运行下面的命令（使用他们自己设置的密码）。",
         "2": "向他们要服务器的公网地址、端口和数据库名称。",
-        "3": "拼出地址 postgres://agentes_leitura:password@server:5432/database，然后粘贴到这里。"
+        "3": "拼出地址 postgres://vortoone_reader:password@server:5432/database，然后粘贴到这里。"
       }
     },
     "howAll": "用于读取所有数据库（Postgres 14 或更新版本）。",
@@ -13843,7 +13843,7 @@
     "whatIsText": "专供智能体使用的密码。你在邮箱服务商的网站上创建，随时可以删除，不会影响你自己的密码。",
     "step": {
       "1": "打开你账号的安全设置页面。",
-      "2": "创建一个名为“agentes”的应用专用密码。",
+      "2": "创建一个名为“VortoOne”的应用专用密码。",
       "3": "复制密码并粘贴到这里。"
     },
     "openPage": "打开 {{name}} 页面",
@@ -15208,7 +15208,7 @@
       "openLocalNetwork": "打开本地网络设置",
       "qrLabel": "用于手机无线调试的二维码",
       "qrLine": "不要用相机扫描",
-      "qrCaption": "相机会显示一个名为 agentes-… 的 Wi-Fi 网络，但它并不存在。让手机保持连接电脑所在的 Wi-Fi。",
+      "qrCaption": "相机会显示一个名为 vortoone-… 的 Wi-Fi 网络，但它并不存在。让手机保持连接电脑所在的 Wi-Fi。",
       "fail": {
         "mdns_off": "{{computer}} 无法在 Wi-Fi 中查找手机。请在那台电脑上更新 Android platform-tools，或改用数据线。",
         "mdns_offMac": "{{computer}} 无法在 Wi-Fi 中查找手机。请在那台 Mac 的 系统设置 › 隐私与安全性 › 本地网络 中打开 VortoOne，然后重试。",
@@ -15499,7 +15499,7 @@
     "reconnectDoneText": "{{name}} 已回到 {{org}}。",
     "deniedTitle": "未连接",
     "denied": "电脑没有连接。如果不是你打开的，也没有人获得访问权限。",
-    "home": "前往 agentes"
+    "home": "前往 VortoOne"
   },
   "apps": {
     "connect": "连接应用",
@@ -18502,8 +18502,8 @@
       "screensOff": "{{computer}} 上的屏幕已关闭。请在那台电脑上开启：",
       "screensOffOne": "{{computer}} 上的屏幕已关闭。",
       "screensMissing": "{{computer}} 暂时还不能显示屏幕。请在那台电脑上：",
-      "outdated": "在 {{computer}} 上更新 agentes，即可看到 {{name}} 的屏幕。",
-      "outdated_female": "在 {{computer}} 上更新 agentes，即可看到 {{name}} 的屏幕。",
+      "outdated": "在 {{computer}} 上更新 VortoOne，即可看到 {{name}} 的屏幕。",
+      "outdated_female": "在 {{computer}} 上更新 VortoOne，即可看到 {{name}} 的屏幕。",
       "noScreen": "{{name}} 在这里没有可显示的屏幕",
       "noScreen_female": "{{name}} 在这里没有可显示的屏幕",
       "noScreenHelp": "在“工具和权限”中允许屏幕或浏览器。",
@@ -18642,7 +18642,7 @@
       "browser": "浏览器",
       "screen": "电脑屏幕",
       "terminal": "终端",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "思考中",
       "inside": "{{program}} · {{detail}}"
     },

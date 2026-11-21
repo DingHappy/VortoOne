@@ -1,7 +1,7 @@
-import type { AgentGroup, Team, TeamAgent } from "@agenteschat/client";
-import { useRoles } from "@agenteschat/client";
-import { agentSections } from "@agenteschat/client/lib/agent-groups";
-import { can } from "@agenteschat/client/lib/permissions";
+import type { AgentGroup, Team, TeamAgent } from "@vortoone/client";
+import { useRoles } from "@vortoone/client";
+import { agentSections } from "@vortoone/client/lib/agent-groups";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   type ChartNode,
   chartByPerson,
@@ -10,9 +10,9 @@ import {
   reportsTo,
   sectorLineChanges,
   sectorSupervisor,
-} from "@agenteschat/client/lib/team-views";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
-import { CountChip, RoleMark, Segmented } from "@agenteschat/ui";
+} from "@vortoone/client/lib/team-views";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
+import { CountChip, RoleMark, Segmented } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type DragEvent, Fragment, type HTMLAttributes, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -25,8 +25,8 @@ import { useSetReportsTo } from "./ReportsTo";
 import { NoSectors, SectorMark, sectorStyle, useTeamLookups } from "./shared";
 
 /** Firefox starts a drag only with some data set; a line's drags carry these types. */
-const LINE_AGENT = "application/x-agentes-line-agent";
-const LINE_SECTOR = "application/x-agentes-line-sector";
+const LINE_AGENT = "application/x-vortoone-line-agent";
+const LINE_SECTOR = "application/x-vortoone-line-sector";
 
 /**
  * Equipe › Organograma (ADR 0148): the workspace on top with its right hand beside it (out of the line: it follows

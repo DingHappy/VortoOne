@@ -87,7 +87,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "文件夹",
         blocks: [
-          "每个智能体始终有自己的文件夹，位于 `~/agentes/<workspace>`。更多文件夹只能在电脑本机上授权，网页上不行：在应用的 **偏好设置 › 文件夹** 中，或在服务器上用 `agentes-runner folders allow`。每个工作区单独授权自己的文件夹：你为一个工作区授权的文件夹，只对它的智能体有效。移除文件夹不会删除任何内容，只是收回访问权限。",
+          "每个智能体始终有自己的文件夹，位于 `~/vortoone/<workspace>`。更多文件夹只能在电脑本机上授权，网页上不行：在应用的 **偏好设置 › 文件夹** 中，或在服务器上用 `vortoone-runner folders allow`。每个工作区单独授权自己的文件夹：你为一个工作区授权的文件夹，只对它的智能体有效。移除文件夹不会删除任何内容，只是收回访问权限。",
         ],
       },
       {
@@ -100,11 +100,11 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
               "你的文件和登录信息",
               "其他智能体的文件夹，包括其他工作区的，以及它们浏览器中保存的登录",
               "连接这台电脑的令牌",
-              "如果这台电脑也运行 VortoOne，还有 `.agentes` 中它的数据库和密钥",
+              "如果这台电脑也运行 VortoOne，还有 `.vortoone` 中它的数据库和密钥",
             ],
           },
           "VortoOne 会拒绝提到密钥、令牌和登录信息的命令，但这只是一条规则，不是一堵墙。**命令** 默认开启。你可以在应用询问时、按 **允许** 之前关闭，或之后在 **偏好设置\u00a0›\u00a0工具** 中关闭，那里每个工作区都有自己的开关（应用 0.8.1 及以上版本），重新开启前应用会先询问你。即使命令关闭，Claude Code 和 Codex 也会在智能体的文件夹中按自己的规则运行自己的命令。",
-          "如果需要一堵真正的墙，请使用 Linux 服务器。在 Debian 13 上用 `--system` 安装时，每个智能体都是一个独立的用户。在 Ubuntu 上，智能体共用一个用户 `agentes`：它们能看到彼此的文件夹，但看不到你的或服务器的。或者给智能体一台专用电脑。",
+          "如果需要一堵真正的墙，请使用 Linux 服务器。在 Debian 13 上用 `--system` 安装时，每个智能体都是一个独立的用户。在 Ubuntu 上，智能体共用一个用户 `vortoone`：它们能看到彼此的文件夹，但看不到你的或服务器的。或者给智能体一台专用电脑。",
         ],
       },
     ],
@@ -447,7 +447,7 @@ export const helpZhHans: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude**（claude.ai、Claude Desktop 和手机）：在 **Customize › Connectors** 中点 **+ Add**，再点 **Add custom connector**，命名为 VortoOne，粘贴地址后点 **Continue**。选择 **Sign in now**，点 **Add** 并授权。在 Team 和 Enterprise 套餐中，由 Claude 组织的 Owner 在 Organization settings › Connectors 中添加连接器，每个人再在 Customize › Connectors 中点 **Connect**。Claude 免费版可以添加一个自定义连接器。",
-              "**Claude Code：** 运行 `claude mcp add --transport http --scope user agentes <address>`，然后输入 `/mcp`，选择 agentes 并点 **Authenticate**。只用于当前文件夹时，去掉 `--scope user`。",
+              "**Claude Code：** 运行 `claude mcp add --transport http --scope user VortoOne <address>`，然后输入 `/mcp`，选择 VortoOne 并点 **Authenticate**。只用于当前文件夹时，去掉 `--scope user`。",
               "**Cursor：** 在 **设置 › AI 应用** 中点 **添加到 Cursor**，或把地址写进 `~/.cursor/mcp.json`。第一次使用时，Cursor 会请你登录。",
               '**VS Code：** 点 **添加到 VS Code**，或把地址写进 `.vscode/mcp.json`，并加上 `"type": "http"`。',
               "**其他应用：** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains 等在 **连接应用** 里都有各自的步骤，地址已经填好。",

@@ -1,4 +1,4 @@
-import type { StorageConfig, StoragePlatform, StorageProvider, StorageTestResult } from "@agenteschat/client";
+import type { StorageConfig, StoragePlatform, StorageProvider, StorageTestResult } from "@vortoone/client";
 import {
   useSaveStorage,
   useStartMigration,
@@ -6,8 +6,8 @@ import {
   useStorageMigration,
   useTestStorage,
   useWorkspaceLimits,
-} from "@agenteschat/client";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   AWS_REGIONS,
   awsBucketPolicy,
@@ -20,7 +20,7 @@ import {
   storageFormOf,
   storageUsageLine,
   toS3Input,
-} from "@agenteschat/client/lib/storage";
+} from "@vortoone/client/lib/storage";
 import {
   Alert,
   Button,
@@ -42,7 +42,7 @@ import {
   RadioGroup,
   Select,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { StorageMeter } from "@/components/Limits";
@@ -160,7 +160,7 @@ export function StorageSection() {
   if (!admin) return null;
   const config = edition ? storage.data : undefined;
   const cloud = edition === "cloud";
-  const place = t(cloud ? "storage.place.agentes" : "storage.place.server");
+  const place = t(cloud ? "storage.place.vortoone" : "storage.place.server");
   return (
     // The page's title names the card: a title of its own would say it twice.
     <Card aria-label={t("storage.title")}>
@@ -181,7 +181,7 @@ export function StorageSection() {
                 value={k}
                 id={`storage-${k}`}
                 checked={choice === k}
-                title={t(k === "s3" ? "storage.s3" : cloud ? "storage.agentes" : "storage.server")}
+                title={t(k === "s3" ? "storage.s3" : cloud ? "storage.vortoone" : "storage.server")}
                 description={
                   k === "s3" ? (
                     config.kind === "s3" ? (
@@ -190,7 +190,7 @@ export function StorageSection() {
                       t("storage.s3Text")
                     )
                   ) : cloud ? (
-                    t("storage.agentesText")
+                    t("storage.vortooneText")
                   ) : (
                     <PlatformLine platform={config.platform} />
                   )

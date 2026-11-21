@@ -9,7 +9,7 @@ import type {
   Machine,
   PageTarget,
   ScreenKind,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   browserFrameDataUrl,
   browserSiteUrl,
@@ -43,14 +43,14 @@ import {
   useBrowserStuck,
   useMachines,
   wheelEvent,
-} from "@agenteschat/client";
-import { formatTime, lowerFirst } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { browserNoAnswerMessage, browserOffMessage, profileRefusalLine } from "@agenteschat/client/lib/machines";
-import { MAX_MESSAGE_LENGTH } from "@agenteschat/client/lib/message-length";
-import { can as canDo } from "@agenteschat/client/lib/permissions";
-import { useSeat } from "@agenteschat/client/lib/seat-context";
-import { isBlankPage } from "@agenteschat/client/lib/sites";
+} from "@vortoone/client";
+import { formatTime, lowerFirst } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { browserNoAnswerMessage, browserOffMessage, profileRefusalLine } from "@vortoone/client/lib/machines";
+import { MAX_MESSAGE_LENGTH } from "@vortoone/client/lib/message-length";
+import { can as canDo } from "@vortoone/client/lib/permissions";
+import { useSeat } from "@vortoone/client/lib/seat-context";
+import { isBlankPage } from "@vortoone/client/lib/sites";
 import {
   agentGradient,
   Button,
@@ -67,7 +67,7 @@ import {
   SkyStrip,
   shortcut,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import {
   type CSSProperties,

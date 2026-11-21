@@ -15,9 +15,9 @@ import {
   shiftDays,
   uses12h,
   yToMinutes,
-} from "@agenteschat/client/lib/calendar";
-import { toYmd } from "@agenteschat/client/lib/format";
-import { Icon, Skeleton } from "@agenteschat/ui";
+} from "@vortoone/client/lib/calendar";
+import { toYmd } from "@vortoone/client/lib/format";
+import { Icon, Skeleton } from "@vortoone/ui";
 import {
   type CSSProperties,
   type ReactNode,

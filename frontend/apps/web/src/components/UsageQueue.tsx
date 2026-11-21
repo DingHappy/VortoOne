@@ -1,8 +1,8 @@
-import type { UsageQueue, UsageQueueClosedRow } from "@agenteschat/client";
-import { useCancelUsageQueue, useUsageQueue } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
+import type { UsageQueue, UsageQueueClosedRow } from "@vortoone/client";
+import { useCancelUsageQueue, useUsageQueue } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
   usageQueueMeta,
   usageQueueResuming,
@@ -14,8 +14,8 @@ import {
   usageQueueWhere,
   usageQueueWho,
   usageWaitingText,
-} from "@agenteschat/client/lib/usage-queue";
-import { Button, Chip, Dialog, DialogBody, DialogFooter, InfoHint, Segmented, useNow } from "@agenteschat/ui";
+} from "@vortoone/client/lib/usage-queue";
+import { Button, Chip, Dialog, DialogBody, DialogFooter, InfoHint, Segmented, useNow } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

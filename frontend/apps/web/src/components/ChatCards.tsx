@@ -1,17 +1,17 @@
-import type { AgentQuestion, MemoryUpdate, Proposal, SecretRequest, SecretToVaultInput } from "@agenteschat/client";
+import type { AgentQuestion, MemoryUpdate, Proposal, SecretRequest, SecretToVaultInput } from "@vortoone/client";
 import {
   useCardProposals,
   useDecideProposal,
   useDecideProposals,
   useModelLabel,
   useSaveSecretToVault,
-} from "@agenteschat/client";
-import { questionWaitsOn } from "@agenteschat/client/lib/agent-questions";
-import { formatTime, whenAt } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { MAX_MESSAGE_LENGTH } from "@agenteschat/client/lib/message-length";
-import { messagePath } from "@agenteschat/client/lib/message-links";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { questionWaitsOn } from "@vortoone/client/lib/agent-questions";
+import { formatTime, whenAt } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { MAX_MESSAGE_LENGTH } from "@vortoone/client/lib/message-length";
+import { messagePath } from "@vortoone/client/lib/message-links";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   appLabel,
   cardDecidedBy,
@@ -28,8 +28,8 @@ import {
   rowStatus,
   settingLineText,
   staleCount,
-} from "@agenteschat/client/lib/proposals";
-import { sealSecret, secretAad } from "@agenteschat/client/lib/secret-box";
+} from "@vortoone/client/lib/proposals";
+import { sealSecret, secretAad } from "@vortoone/client/lib/secret-box";
 import {
   latestSecret,
   secretClosedBy,
@@ -37,9 +37,9 @@ import {
   secretRefusalKey,
   secretValueProblem,
   secretWhere,
-} from "@agenteschat/client/lib/secret-requests";
-import { secretEndedAt, secretOutcome } from "@agenteschat/client/lib/secret-words";
-import { Button, Chip, CodeInput, diffLines, Field, Icon, Input, overLimit, Switch, Textarea } from "@agenteschat/ui";
+} from "@vortoone/client/lib/secret-requests";
+import { secretEndedAt, secretOutcome } from "@vortoone/client/lib/secret-words";
+import { Button, Chip, CodeInput, diffLines, Field, Icon, Input, overLimit, Switch, Textarea } from "@vortoone/ui";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";

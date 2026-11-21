@@ -1,8 +1,8 @@
-import { useApprovalRules, useRemoveApprovalRule } from "@agenteschat/client";
-import { approvalRuleServer, approvalRuleWords } from "@agenteschat/client/lib/approval-words";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Button, Card } from "@agenteschat/ui";
+import { useApprovalRules, useRemoveApprovalRule } from "@vortoone/client";
+import { approvalRuleServer, approvalRuleWords } from "@vortoone/client/lib/approval-words";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { can } from "@vortoone/client/lib/permissions";
+import { Button, Card } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { ResourceIcon, useConnectedById } from "@/components/AccessLevels";
 import { useOrg } from "@/components/org-context";

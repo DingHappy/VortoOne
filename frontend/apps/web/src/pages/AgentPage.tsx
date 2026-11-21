@@ -1,4 +1,4 @@
-import type { Agent, AgentAudience, AgentDetail, AgentInput, AgentSkill } from "@agenteschat/client";
+import type { Agent, AgentAudience, AgentDetail, AgentInput, AgentSkill } from "@vortoone/client";
 import {
   keys,
   useAgentAccess,
@@ -12,21 +12,21 @@ import {
   useRuns,
   useSettings,
   useUpdateAgent,
-} from "@agenteschat/client";
-import { type Level, levelsOf, resourcesOf } from "@agenteschat/client/lib/access-levels";
-import { groupOf, NO_GROUP } from "@agenteschat/client/lib/agent-groups";
-import { audienceOf, audiencePatch, seesDetails } from "@agenteschat/client/lib/audience";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { overLimitText, tooLongToSend } from "@agenteschat/client/lib/message-length";
-import { can } from "@agenteschat/client/lib/permissions";
-import { pendingOnAgent } from "@agenteschat/client/lib/proposals";
-import { isAuto } from "@agenteschat/client/lib/providers";
-import { type RepoChoice, repoChoiceOf, repoListOf, reposText } from "@agenteschat/client/lib/repos";
-import { isRightHand, tellsNameStory } from "@agenteschat/client/lib/right-hand";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { type Level, levelsOf, resourcesOf } from "@vortoone/client/lib/access-levels";
+import { groupOf, NO_GROUP } from "@vortoone/client/lib/agent-groups";
+import { audienceOf, audiencePatch, seesDetails } from "@vortoone/client/lib/audience";
+import { errorText } from "@vortoone/client/lib/errors";
+import { FIELD_LIMITS } from "@vortoone/client/lib/field-limits";
+import { joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { overLimitText, tooLongToSend } from "@vortoone/client/lib/message-length";
+import { can } from "@vortoone/client/lib/permissions";
+import { pendingOnAgent } from "@vortoone/client/lib/proposals";
+import { isAuto } from "@vortoone/client/lib/providers";
+import { type RepoChoice, repoChoiceOf, repoListOf, reposText } from "@vortoone/client/lib/repos";
+import { isRightHand, tellsNameStory } from "@vortoone/client/lib/right-hand";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   colorKey,
@@ -42,7 +42,7 @@ import {
   PageHeader,
   TabPanel,
   Tabs,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";

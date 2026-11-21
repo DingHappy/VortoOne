@@ -4,7 +4,7 @@
 #
 #   scripts/build-server-release.sh <输出目录>
 #
-# 界面要先构建好（frontend：npm ci && npm run build --workspace @agenteschat/web）。版本取 pyproject.toml。
+# 界面要先构建好（frontend：npm ci && npm run build --workspace @vortoone/web）。版本取 pyproject.toml。
 # 只在本地生成文件，不上传；发布由 .github/workflows/server-release.yml 在推送 server-v<版本> 标签时做。
 set -eu
 OUT=${1:?要给输出目录}

@@ -1,5 +1,5 @@
-import type { SignInProvider } from "@agenteschat/client";
-import { earlyAccessToken } from "@agenteschat/client/lib/guards";
+import type { SignInProvider } from "@vortoone/client";
+import { earlyAccessToken } from "@vortoone/client/lib/guards";
 import { createFileRoute } from "@tanstack/react-router";
 import { DesktopSignInPage } from "@/pages/DesktopSignInPage";
 

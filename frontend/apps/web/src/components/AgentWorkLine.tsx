@@ -1,5 +1,5 @@
-import type { WorkLine } from "@agenteschat/client/lib/agent-work";
-import { cx } from "@agenteschat/ui";
+import type { WorkLine } from "@vortoone/client/lib/agent-work";
+import { cx } from "@vortoone/ui";
 import { useRef } from "react";
 import { useFitStep } from "@/hooks/useFitStep";
 

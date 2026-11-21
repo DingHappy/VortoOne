@@ -24,6 +24,7 @@ def seal_login(form: LoginForm, fields: dict, *, site: str = SITE) -> dict:
     sender = ec.generate_private_key(ec.SECP256R1())
     epk = sender.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
     recipient = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), base64.b64decode(form.public_key))
+    # Use the shipped v1 sender's label independently of the receiver under test.
     key = HKDF(hashes.SHA256(), 32, epk, b"agentes.chat secret v1").derive(sender.exchange(ec.ECDH(), recipient))
     aad = f"vortoone-browser-login|v1|{form.offer}|{site}".encode()
     iv = b"\x13" * 12

@@ -319,13 +319,13 @@ const artifactQuery = (f: ArtifactFilters) => ({
 /**
  * The real backend: `/api/health` and `/api/app/*` (apps/server/src/routes/app).
  * The web app calls it with no options (same origin, its cookie). The phone app
- * passes `baseUrl` and `headers` (its session cookie and `X-Agentes-Client`),
+ * passes `baseUrl` and `headers` (its session cookie and `X-VortoOne-Client`),
  * merged into every request, JSON and files alike.
  */
 export function createHttpApi(options: TransportOptions = {}): HttpApi {
   const request = createRequester(options);
   const files = createFileRequester(options);
-  // agentes.chat itself, for its public answers (the desktop app's newest build): another origin, no cookie.
+  // VortoOne itself, for its public answers (the desktop app's newest build): another origin, no cookie.
   const cloud = createRequester({ baseUrl: CLOUD_SERVER, ...(options.fetch ? { fetch: options.fetch } : {}) });
   /** Prefix for URLs the platform opens itself (file links); "" on the web. */
   const base = (options.baseUrl ?? "").replace(/\/+$/, "");
@@ -1368,7 +1368,7 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
             { json: input === "resume" ? {} : input },
           )
         ).paused,
-      // A self-hosted server has no builds of its own (no `DESKTOP_RELEASES_TOKEN`): agentes.chat's, then.
+      // A self-hosted server has no builds of its own (no `DESKTOP_RELEASES_TOKEN`): VortoOne's, then.
       desktopLatest: async (target, arch) =>
         (await nullOn(404, () => request<DesktopRelease>("/api/desktop/latest", { query: { target, arch } }))) ??
         (await nullOn(404, () => cloud<DesktopRelease>("/api/desktop/latest", { query: { target, arch } }))),

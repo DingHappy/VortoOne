@@ -9,7 +9,7 @@ import type {
   Member,
   SidebarSection as SectionKey,
   SidebarItem,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   agentStateIn,
   agentWorkingIn,
@@ -37,9 +37,9 @@ import {
   useSkills,
   useTasksUnread,
   useUnreadThreads,
-} from "@agenteschat/client";
-import { agentSections, groupOf } from "@agenteschat/client/lib/agent-groups";
-import { WORK_TICK_MS, workLine } from "@agenteschat/client/lib/agent-work";
+} from "@vortoone/client";
+import { agentSections, groupOf } from "@vortoone/client/lib/agent-groups";
+import { WORK_TICK_MS, workLine } from "@vortoone/client/lib/agent-work";
 import {
   audienceChip,
   audienceNames,
@@ -47,27 +47,27 @@ import {
   canTalk,
   hiddenAgentIds,
   listsAllAgents,
-} from "@agenteschat/client/lib/audience";
-import { workspaceNotes } from "@agenteschat/client/lib/deletion";
-import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatTime, upperFirst } from "@agenteschat/client/lib/format";
-import { waitingAgents } from "@agenteschat/client/lib/outages";
-import { can, makesAgents, managesChannel } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/audience";
+import { workspaceNotes } from "@vortoone/client/lib/deletion";
+import { ErrorBoundary } from "@vortoone/client/lib/error-boundary";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatTime, upperFirst } from "@vortoone/client/lib/format";
+import { waitingAgents } from "@vortoone/client/lib/outages";
+import { can, makesAgents, managesChannel } from "@vortoone/client/lib/permissions";
 import {
   AVAILABILITIES,
   agentFaceWord,
   isOutOfOffice,
   presenceOfAvailability,
   statusEndNote,
-} from "@agenteschat/client/lib/presence";
-import { recentDms } from "@agenteschat/client/lib/recent";
-import { isRightHand, rightHandSeenKey } from "@agenteschat/client/lib/right-hand";
-import { SERVER_PLACE_ICON } from "@agenteschat/client/lib/server";
-import { inSidebarList, sidebarItemOrder, sidebarPlace } from "@agenteschat/client/lib/sidebar-items";
-import { AGENT_SORTS, sortAgents, splitPinned } from "@agenteschat/client/lib/sidebar-view";
-import { badgeCount, looksUnread } from "@agenteschat/client/lib/unread";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/presence";
+import { recentDms } from "@vortoone/client/lib/recent";
+import { isRightHand, rightHandSeenKey } from "@vortoone/client/lib/right-hand";
+import { SERVER_PLACE_ICON } from "@vortoone/client/lib/server";
+import { inSidebarList, sidebarItemOrder, sidebarPlace } from "@vortoone/client/lib/sidebar-items";
+import { AGENT_SORTS, sortAgents, splitPinned } from "@vortoone/client/lib/sidebar-view";
+import { badgeCount, looksUnread } from "@vortoone/client/lib/unread";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentColor,
   Avatar,
@@ -101,7 +101,7 @@ import {
   Skeleton,
   SkeletonGroup,
   selectionSkyUrl,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
@@ -217,7 +217,7 @@ export const TABLET_QUERY = "(min-width: 761px) and (max-width: 1199px)";
  * Tablet widths start as the rail every time: their toggle opens the whole sidebar over the page until a link, Esc,
  * a click outside or the toggle closes it, since the page's tablet layout has no room for it beside.
  */
-const SIDEBAR_EVENT = "agentes:sidebar";
+const SIDEBAR_EVENT = "vortoone:sidebar";
 let sidebarCollapsed = storage.get(STORAGE_KEYS.sidebarCollapsed) === "1";
 let tabletOpen = false;
 const onSidebarChange = (cb: () => void) => {
@@ -251,7 +251,7 @@ export function useSidebarCollapsed(): [boolean, () => void] {
 }
 
 /** File → Novo canal in the desktop app's menu bar (DesktopMenus.tsx): the sidebar opens its dialog. */
-export const NEW_CHANNEL_EVENT = "agentes:new-channel";
+export const NEW_CHANNEL_EVENT = "vortoone:new-channel";
 
 /**
  * On the icon rail every channel would be the same "#": its initials instead ("eng-backend" → "Eb",
@@ -379,7 +379,7 @@ export function Sidebar() {
     .flatMap((s) => (s.work ? [`${s.agentId}:${s.work.state}`] : []))
     .sort()
     .join();
-  // The tab's title: "(3) agentes.chat", what the sidebar's numbers add up to (agents it doesn't list left out).
+  // The tab's title: "(3) VortoOne", what the sidebar's numbers add up to (agents it doesn't list left out).
   const hiddenAgents = useMemo(() => hiddenAgentIds(org, dir.agents), [org, dir.agents]);
   useUnreadTitle(orgId, hiddenAgents);
   const dms = useDms(orgId);
@@ -388,7 +388,7 @@ export function Sidebar() {
   const prefetch = usePrefetchMessages(orgId);
   // …and the unread and latest ones as soon as the workspace opens.
   usePrefetchRecent(orgId);
-  // The right hand (ADR 0137): the first row of AGENTES; outside its audience, none.
+  // The right hand (ADR 0137): the first row of VORTOONE; outside its audience, none.
   const rightHand = dir.agents.find((a) => isRightHand(a) && a.canTalk !== false);
   const dmOf = new Map((dms.data ?? []).map((d) => [d.with.id, d]));
   const rightHandDm = rightHand ? dmOf.get(rightHand.id) : undefined;
@@ -399,7 +399,7 @@ export function Sidebar() {
   const sections = useSidebarSections(me.user.id, orgId);
   // "Fixar no topo": pinned rows sit on top of their own section, above a thin line.
   const { view, setView, pins } = useSidebarPins();
-  // "Mensagens diretas": the people I talked to or just opened a DM with, latest first (an agent's row in AGENTES is its DM), pinned ones on top.
+  // "Mensagens diretas": the people I talked to or just opened a DM with, latest first (an agent's row in VORTOONE is its DM), pinned ones on top.
   const pinnedPeople = pins.people.flatMap((id) => {
     const m = id === me.user.id ? undefined : dir.memberById.get(id);
     return m ? [m] : [];
@@ -438,7 +438,7 @@ export function Sidebar() {
   const rail = !compact && collapsed;
   const float = tablet && !collapsed;
 
-  // AGENTES (ADR 0083 and its addendum): the agents that talk to me (who manages agents may list the rest), the ones in
+  // VORTOONE (ADR 0083 and its addendum): the agents that talk to me (who manages agents may list the rest), the ones in
   // no group, then each group of agents, each with my pinned ones on top and the rest in my order.
   const manages = can(org, "manage_agents");
   const team = dir.agents.filter((a) => !isRightHand(a));
@@ -1297,7 +1297,7 @@ function SidebarChannels({
     drag.current = what;
     e.dataTransfer.effectAllowed = "move";
     // Firefox starts a drag only with some data set. Not text, or a text field it's dropped on types the id.
-    e.dataTransfer.setData(`application/x-agentes-${what.kind}`, what.id);
+    e.dataTransfer.setData(`application/x-vortoone-${what.kind}`, what.id);
   };
   const half = (e: DragEvent) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -1801,7 +1801,7 @@ function PinnedMark() {
 }
 
 /**
- * An agent in AGENTES (its row is its DM); while it works, a light sweep in its color runs behind the row (a pulse in
+ * An agent in VORTOONE (its row is its DM); while it works, a light sweep in its color runs behind the row (a pulse in
  * the rail) and the line under its name says for whom or where and how long, workspace-wide (its work for me, ADR 0084
  * addendum of 2026-11-13). For who manages agents it drags to another group (`drag`) and its right click has Mudar de
  * grupo (`menuExtra`). `live`: it works, waits or wrote to me, so a closed group still shows it.
@@ -1989,7 +1989,7 @@ function AgentRow({
  * The team's right hand (ADR 0137), always the first row of Agents, a plain row like any agent's: its face, its name
  * over its label as a tag ("your right hand"), a one-time "New" until its DM first opens (in this browser), and its
  * DM's unread count. It opens the
- * person's DM with it. Never sorted, pinned, dragged or hidden; a closed AGENTES still shows it.
+ * person's DM with it. Never sorted, pinned, dragged or hidden; a closed VORTOONE still shows it.
  */
 function RightHandRow({
   agent: a,
@@ -2337,7 +2337,7 @@ function useWorkspaceLook() {
 /**
  * Your workspaces in the account menu of a personal workspace (ADR 0159): the workspace menu's list, then New
  * workspace when the person may make one. In the desktop app (ADR 0154) by server, then Add workspace; New workspace
- * (it makes one here) sits under this server's workspaces only on a server of one's own, since on agentes.chat Add
+ * (it makes one here) sits under this server's workspaces only on a server of one's own, since on VortoOne Add
  * workspace makes one (`offersNewWorkspace`). Mounted only while the menu is open: the counts load then. No role beside
  * each: one person's own workspaces.
  */

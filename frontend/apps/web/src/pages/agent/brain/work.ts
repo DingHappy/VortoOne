@@ -1,4 +1,4 @@
-import type { BrainKind, BrainOption } from "@agenteschat/client";
+import type { BrainKind, BrainOption } from "@vortoone/client";
 import {
   BROWSER_TOOL_SCOPE,
   keys,
@@ -7,7 +7,7 @@ import {
   useAgentScopes,
   useComputer,
   useMachines,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { NO_COMPUTER } from "@/components/AgentComputer";
 import { useOrg } from "@/components/org-context";

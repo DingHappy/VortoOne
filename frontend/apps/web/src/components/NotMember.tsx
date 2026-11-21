@@ -1,6 +1,6 @@
-import type { Me } from "@agenteschat/client";
-import { otherWorkspaces } from "@agenteschat/client/lib/deletion";
-import { Button, LogoMark } from "@agenteschat/ui";
+import type { Me } from "@vortoone/client";
+import { otherWorkspaces } from "@vortoone/client/lib/deletion";
+import { Button, LogoMark } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";

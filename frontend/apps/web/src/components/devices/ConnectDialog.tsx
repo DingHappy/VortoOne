@@ -1,8 +1,8 @@
-import { type DeviceJoinRequest, useMe } from "@agenteschat/client";
-import { joinFacts, linkPhase, newComputerOf } from "@agenteschat/client/lib/devices";
-import { computerKind, isHandheld, platformOf } from "@agenteschat/client/lib/machines";
-import { can } from "@agenteschat/client/lib/permissions";
-import { appPairsWith, pairLink, plainHttpServer } from "@agenteschat/client/lib/server";
+import { type DeviceJoinRequest, useMe } from "@vortoone/client";
+import { joinFacts, linkPhase, newComputerOf } from "@vortoone/client/lib/devices";
+import { computerKind, isHandheld, platformOf } from "@vortoone/client/lib/machines";
+import { can } from "@vortoone/client/lib/permissions";
+import { appPairsWith, pairLink, plainHttpServer } from "@vortoone/client/lib/server";
 import {
   Button,
   ComputerPortrait,
@@ -16,7 +16,7 @@ import {
   ProviderLogo,
   Segmented,
   useNow,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -512,7 +512,7 @@ function LinkFlow({
 }
 
 /**
- * "Open the agentes.chat app": the link to the app on this computer (`href`; null while the link is made, or once it
+ * "Open the VortoOne app": the link to the app on this computer (`href`; null while the link is made, or once it
  * ended), offered for as long as the dialog waits, since the person may install the app first. The browser asks
  * before it opens an app, so the words say what to choose.
  */

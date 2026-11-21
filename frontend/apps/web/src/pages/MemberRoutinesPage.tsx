@@ -3,14 +3,14 @@ import {
   keys,
   type MemberRoutineProposalInput,
   useApi,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   browserTimezone,
   isTimeZone,
   timezoneName,
-} from "@agenteschat/client/lib/routines";
+} from "@vortoone/client/lib/routines";
 import {
   Button,
   Card,
@@ -25,7 +25,7 @@ import {
   Select,
   Textarea,
   TimeSelect,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

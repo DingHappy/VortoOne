@@ -542,7 +542,7 @@
       "continue": "Lanjut di server saya",
       "address": "Alamat server",
       "connect": "Hubungkan",
-      "invalid": "Itu bukan alamat. Tulis seperti di peramban, misalnya agentes.example.com.",
+      "invalid": "Itu bukan alamat. Tulis seperti di peramban, misalnya vortoone.example.com.",
       "unreachable": "Kami tidak menemukan VortoOne di {{host}}. Periksa alamatnya dan pastikan servernya menyala.",
       "none": "Belum punya?",
       "noneLink": "Lihat cara punya sendiri, gratis"
@@ -670,7 +670,7 @@
       "confirmYes": "Ya, masukkan aplikasinya",
       "confirmNo": "Ini bukan aku",
       "done": "Beres.",
-      "doneLead": "Kamu sudah masuk di aplikasi agentes. Kamu bisa menutup tab ini.",
+      "doneLead": "Kamu sudah masuk di aplikasi VortoOne. Kamu bisa menutup tab ini.",
       "expired": "Permintaan ini sudah kedaluwarsa.",
       "expiredLead": "Kembali ke aplikasi lalu pilih {{provider}} lagi.",
       "handover": "Masuk dengan akunmu dari perangkat lain…",
@@ -1171,14 +1171,14 @@
         "paused": "Hubungkan dengan MCP nonaktif selama ruang kerja ini dijeda. Untuk sekarang, bawa agen lewat cara ini."
       },
       "otherName": "Aplikasi lain",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "Letakkan openbot-import.json (dari Migrator milik OpenBot) atau openbot-transfer.json (dari transfer instans), atau .zip tempat file itu berada.",
         "openmausbot": "Di OpenMausBot: klik kanan tim → Share team… → Save file.",
         "hermes": "Di terminal, jalankan hermes profile export dengan nama profilnya lalu letakkan .tar.gz di sini. Atau seret folder ~/.hermes untuk membawa semua profil.",
         "openclaw": "Seret seluruh folder ~/.openclaw (membawa semua agen) atau satu ruang kerja saja. Di Mac, ⌘⇧. menampilkan folder tersembunyi di pemilih file.",
         "paperclip": "Seret folder paket (yang berisi COMPANY.md), letakkan .zip-nya, atau tempel tautan GitHub-nya.",
-        "agenteschat": "Di ruang kerja lain: Pengaturan → Impor dan ekspor → Unduh file. Lalu letakkan .json di sini."
+        "vortoone": "Di ruang kerja lain: Pengaturan → Impor dan ekspor → Unduh file. Lalu letakkan .json di sini."
       },
       "whereOther": "Unduh file dari workspace lain dan letakkan .json di sini.",
       "whereOtherLink": "Unduh dari {{org}}",
@@ -2118,9 +2118,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "Kode QR untuk masuk ke aplikasi agentes",
+    "qr": "Kode QR untuk masuk ke aplikasi VortoOne",
     "making": "Membuat kode…",
-    "stepApp": "Pasang aplikasi agentes di ponselmu.",
+    "stepApp": "Pasang aplikasi VortoOne di ponselmu.",
     "stepTailscale": "Pasang Tailscale di ponselmu dan masuk dengan akun Tailscale yang sama dengan server ini.",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5198,7 +5198,7 @@
     "noInstructions": "{{name}} belum punya instruksi. Jelaskan bagaimana dia harus bekerja.",
     "noInstructions_female": "{{name}} belum punya instruksi. Jelaskan bagaimana dia harus bekerja.",
     "savedToast": "Perubahan {{name}} tersimpan.",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "izin bawaan",
     "connectHint": "Hubungkan layanan",
     "subtitle": "{{role}} · milik <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5545,7 +5545,7 @@
         "two": "Preferensi",
         "three": "Nyalakan Browser",
         "done": "Selesai. Halaman ini mendeteksinya sendiri, tidak perlu dimuat ulang.",
-        "menuOpen": "Buka agentes",
+        "menuOpen": "Buka VortoOne",
         "menuPrefs": "Preferensi…",
         "menuPause": "Jeda",
         "menuQuit": "Keluar",
@@ -5720,7 +5720,7 @@
       "setAll": "Ubah semua",
       "connectors": "Konektor {{org}}",
       "connectorsPersonal": "Konektormu",
-      "builtin": "Bawaan agentes",
+      "builtin": "Bawaan VortoOne",
       "noMatch": "Tidak ada yang cocok dengan “{{q}}”",
       "noneHere": "Tidak ada apa pun di filter ini",
       "library": "Pustaka skill",
@@ -7422,7 +7422,7 @@
     },
     "github_git_write": {
       "label": "Push branch (git push)",
-      "description": "Push commit ke branch agentes/{agent}/…: tidak pernah ke branch default, tanpa force push, tanpa tag. Menghapus branch dan push ke branch orang lain minta persetujuan dulu."
+      "description": "Push commit ke branch vortoone/{agent}/…: tidak pernah ke branch default, tanpa force push, tanpa tag. Menghapus branch dan push ke branch orang lain minta persetujuan dulu."
     },
     "custom_read": {
       "label": "Alat baca",
@@ -7854,7 +7854,7 @@
       "signature": "Tanda tangan",
       "signedOff": "Mati: agen menerima semua panggilan ke alamat ini.",
       "signedOn": "Aktif: hanya panggilan yang ditandatangani dengan rahasia yang diterima.",
-      "signedHelp": "Kirim HMAC-SHA256 dari body (untuk panggilan GET: dari query string-nya, tanpa ?) di X-Agentes-Signature (sha256=…). X-Hub-Signature-256 dari GitHub juga bisa.",
+      "signedHelp": "Kirim HMAC-SHA256 dari body (untuk panggilan GET: dari query string-nya, tanpa ?) di X-VortoOne-Signature (sha256=…). X-Hub-Signature-256 dari GitHub juga bisa.",
       "addSecret": "Wajibkan tanda tangan",
       "newSecret": "Rahasia baru",
       "newSecretTitle": "Buat rahasia baru?",
@@ -8252,7 +8252,7 @@
         "pr_opened": "PR dibuka di GitHub"
       },
       "issue": {
-        "created": "Tugas dibuat di agentes"
+        "created": "Tugas dibuat di VortoOne"
       },
       "deploy": {
         "succeeded": "Deploy selesai"
@@ -8578,7 +8578,7 @@
       "start": "Mulai",
       "change": "Ubah sesuatu",
       "started": "Dimulai",
-      "startedToast": "Rencana dimulai: rencana tetap tersemat di atas utas dan di .agentes/mission.md.",
+      "startedToast": "Rencana dimulai: rencana tetap tersemat di atas utas dan di .vortoone/mission.md.",
       "ownerStarts": "Hanya {{name}} yang bisa memulainya",
       "see": "Lihat rencana",
       "after": {
@@ -9885,7 +9885,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "Perbarui agentes di komputer untuk memakai kunci paket"
+        "keys": "Perbarui VortoOne di komputer untuk memakai kunci paket"
       },
       "noComputer": "Akun disimpan di komputer yang terhubung. Hubungkan salah satu komputermu dulu.",
       "addComputer": "Hubungkan komputer",
@@ -11647,8 +11647,8 @@
   "storage": {
     "title": "Penyimpanan",
     "options": "Tempat menyimpan file",
-    "agentes": "Penyimpanan VortoOne",
-    "agentesText": "Filemu disimpan di penyimpanan kami, terpisah untuk tiap ruang kerja.",
+    "vortoone": "Penyimpanan VortoOne",
+    "vortooneText": "Filemu disimpan di penyimpanan kami, terpisah untuk tiap ruang kerja.",
     "server": "Server ini",
     "serverText": {
       "disk": "File disimpan di disknya.",
@@ -11658,7 +11658,7 @@
     },
     "showFolder": "Tampilkan folder",
     "place": {
-      "agentes": "penyimpanan VortoOne",
+      "vortoone": "penyimpanan VortoOne",
       "server": "server ini"
     },
     "s3": "Penyimpanan milikmu sendiri",
@@ -11674,7 +11674,7 @@
     "region": "Wilayah",
     "bucket": "Bucket",
     "prefix": "Prefiks (opsional)",
-    "prefixHelp": "Folder di dalam bucket, misalnya agentes/.",
+    "prefixHelp": "Folder di dalam bucket, misalnya vortoone/.",
     "pathStyle": "Alamat gaya path",
     "pathStyleHelp": "Pakai untuk MinIO dan lainnya yang tidak menerima bucket di nama host.",
     "accessKey": "Kunci akses",
@@ -13550,32 +13550,32 @@
       "supabase": {
         "1": "Buka SQL Editor di proyek Supabase-mu dan jalankan perintah di bawah (ganti kata sandinya).",
         "2": "Di Project Settings → Database, salin connection string URI.",
-        "3": "Ganti user dan kata sandi di dalamnya dengan agentes_leitura dan kata sandi pilihanmu, lalu tempel di sini."
+        "3": "Ganti user dan kata sandi di dalamnya dengan vortoone_reader dan kata sandi pilihanmu, lalu tempel di sini."
       },
       "neon": {
         "1": "Buka SQL Editor di proyek Neon-mu dan jalankan perintah di bawah (ganti kata sandinya).",
         "2": "Di Connect, salin alamat database-mu.",
-        "3": "Ganti user dan kata sandi di dalamnya dengan agentes_leitura dan kata sandi pilihanmu, lalu tempel di sini."
+        "3": "Ganti user dan kata sandi di dalamnya dengan vortoone_reader dan kata sandi pilihanmu, lalu tempel di sini."
       },
       "railway": {
         "1": "Di layanan Postgres, buka Data → Query dan jalankan perintah di bawah (ganti kata sandinya).",
         "2": "Di Variables, salin DATABASE_PUBLIC_URL (DATABASE_URL bersifat internal dan tidak bisa dipakai dari sini).",
-        "3": "Ganti user dan kata sandi di dalamnya dengan agentes_leitura dan kata sandi pilihanmu, lalu tempel di sini."
+        "3": "Ganti user dan kata sandi di dalamnya dengan vortoone_reader dan kata sandi pilihanmu, lalu tempel di sini."
       },
       "rds": {
         "1": "Hubungkan ke database dengan alat yang biasa kamu pakai dan jalankan perintah di bawah (ganti kata sandinya).",
         "2": "Di Connectivity & security, salin endpoint-nya. Database harus punya akses publik di port 5432.",
-        "3": "Susun alamat postgres://agentes_leitura:sandi@endpoint:5432/database lalu tempel di sini."
+        "3": "Susun alamat postgres://vortoone_reader:sandi@endpoint:5432/database lalu tempel di sini."
       },
       "render": {
         "1": "Hubungkan dengan perintah PSQL dari halaman database dan jalankan perintah di bawah (ganti kata sandinya).",
         "2": "Di Connections, salin External Database URL.",
-        "3": "Ganti user dan kata sandi di dalamnya dengan agentes_leitura dan kata sandi pilihanmu, lalu tempel di sini."
+        "3": "Ganti user dan kata sandi di dalamnya dengan vortoone_reader dan kata sandi pilihanmu, lalu tempel di sini."
       },
       "other": {
         "1": "Minta pengelola database menjalankan perintah di bawah (dengan kata sandi pilihannya sendiri).",
         "2": "Minta alamat publik server, port, dan nama database-nya.",
-        "3": "Susun alamat postgres://agentes_leitura:sandi@server:5432/database lalu tempel di sini."
+        "3": "Susun alamat postgres://vortoone_reader:sandi@server:5432/database lalu tempel di sini."
       }
     },
     "howAll": "Untuk membaca semua database (Postgres 14 atau lebih baru).",
@@ -13731,7 +13731,7 @@
     "whatIsText": "Kata sandi khusus untuk agen. Kamu membuatnya di situs email-mu dan bisa menghapusnya kapan saja, tanpa mengubah kata sandimu sendiri.",
     "step": {
       "1": "Buka halaman keamanan akunmu.",
-      "2": "Buat kata sandi aplikasi bernama “agentes”.",
+      "2": "Buat kata sandi aplikasi bernama “VortoOne”.",
       "3": "Salin kata sandinya lalu tempel di sini."
     },
     "openPage": "Buka halaman {{name}}",
@@ -15096,7 +15096,7 @@
       "openLocalNetwork": "Buka Jaringan Lokal",
       "qrLabel": "Kode QR untuk Proses debug nirkabel di ponsel",
       "qrLine": "Jangan dengan kamera",
-      "qrCaption": "Kamera menawarkan jaringan Wi-Fi bernama agentes-…, yang tidak ada. Biarkan ponsel tetap di Wi-Fi komputer.",
+      "qrCaption": "Kamera menawarkan jaringan Wi-Fi bernama vortoone-…, yang tidak ada. Biarkan ponsel tetap di Wi-Fi komputer.",
       "fail": {
         "mdns_off": "{{computer}} tidak bisa mencari ponsel di Wi-Fi. Perbarui Android platform-tools di sana, atau pakai kabel.",
         "mdns_offMac": "{{computer}} tidak bisa mencari ponsel di Wi-Fi. Di Mac itu, aktifkan VortoOne di Pengaturan Sistem › Privasi & Keamanan › Jaringan Lokal, lalu coba lagi.",
@@ -15387,7 +15387,7 @@
     "reconnectDoneText": "{{name}} kembali ke {{org}}.",
     "deniedTitle": "Tidak terhubung",
     "denied": "Komputer tidak dihubungkan. Kalau bukan kamu yang membukanya, tidak ada yang mendapat akses.",
-    "home": "Ke agentes"
+    "home": "Ke VortoOne"
   },
   "apps": {
     "connect": "Hubungkan aplikasi",
@@ -18324,7 +18324,7 @@
       "screensOff": "Layar dimatikan di {{computer}}. Nyalakan di sana:",
       "screensOffOne": "Layar mati di {{computer}}.",
       "screensMissing": "{{computer}} belum bisa menampilkan layar. Di komputer itu:",
-      "outdated": "Perbarui agentes di {{computer}} untuk melihat layar {{name}}.",
+      "outdated": "Perbarui VortoOne di {{computer}} untuk melihat layar {{name}}.",
       "noScreen": "{{name}} tidak punya layar untuk ditampilkan di sini",
       "noScreenHelp": "Izinkan layar atau browser di Alat dan akses.",
       "noComputer": "Pilih komputer untuk {{name}}.",
@@ -18459,7 +18459,7 @@
       "browser": "Browser",
       "screen": "Layar komputer",
       "terminal": "Terminal",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "Berpikir",
       "inside": "{{program}} · {{detail}}"
     },

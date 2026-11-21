@@ -1,6 +1,6 @@
-import { keys, type AgentMemberPolicyChange, type MemberAutoApproval, useApi } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { Button, Checkbox, Dialog, DialogBody, DialogFooter, Switch } from "@agenteschat/ui";
+import { keys, type AgentMemberPolicyChange, type MemberAutoApproval, useApi } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { Button, Checkbox, Dialog, DialogBody, DialogFooter, Switch } from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";

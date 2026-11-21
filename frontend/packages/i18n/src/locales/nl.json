@@ -555,7 +555,7 @@
       "continue": "Verder met mijn server",
       "address": "Serveradres",
       "connect": "Verbinden",
-      "invalid": "Dat is geen adres. Schrijf het zoals in de browser, bijvoorbeeld agentes.example.com.",
+      "invalid": "Dat is geen adres. Schrijf het zoals in de browser, bijvoorbeeld vortoone.example.com.",
       "unreachable": "We hebben VortoOne niet gevonden op {{host}}. Controleer het adres en of de server aan staat.",
       "none": "Heb je er nog geen?",
       "noneLink": "Zie hoe je er een krijgt, gratis"
@@ -684,7 +684,7 @@
       "confirmYes": "Ja, log de app in",
       "confirmNo": "Dit was ik niet",
       "done": "Helemaal klaar.",
-      "doneLead": "Je bent ingelogd in de agentes-app. Je kunt dit tabblad sluiten.",
+      "doneLead": "Je bent ingelogd in de vortoone-app. Je kunt dit tabblad sluiten.",
       "expired": "Dit verzoek is verlopen.",
       "expiredLead": "Ga terug naar de app en kies opnieuw {{provider}}.",
       "handover": "Inloggen met je account van het andere apparaat…",
@@ -1197,14 +1197,14 @@
         "paused": "Verbinden met MCP staat uit zolang deze werkruimte gepauzeerd is. Haal de agents voorlopig op deze manier op."
       },
       "otherName": "Een andere app",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "Sleep openbot-import.json (van Migrator by OpenBot) of openbot-transfer.json (van de instance-overdracht) hierheen, of de .zip waarin het kwam.",
         "openmausbot": "In OpenMausBot: klik met rechts op het team → Share team… → Save file.",
         "hermes": "Voer in een terminal hermes profile export uit met de naam van het profiel en sleep de .tar.gz hierheen. Of sleep de map ~/.hermes om alle profielen mee te nemen.",
         "openclaw": "Sleep de hele map ~/.openclaw (die neemt elke agent mee) of alleen één workspace. Op een Mac toont ⌘⇧. verborgen mappen in de bestandskiezer.",
         "paperclip": "Sleep de pakketmap (die met COMPANY.md), sleep er een .zip van hierheen of plak de GitHub-link.",
-        "agenteschat": "In de andere werkruimte: Instellingen → Importeren en exporteren → Het bestand downloaden. Sleep daarna de .json hierheen."
+        "vortoone": "In de andere werkruimte: Instellingen → Importeren en exporteren → Het bestand downloaden. Sleep daarna de .json hierheen."
       },
       "whereOther": "Download het bestand uit de andere workspace en zet de .json hier neer.",
       "whereOtherLink": "Downloaden uit {{org}}",
@@ -2180,9 +2180,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "QR-code om in te loggen in de agentes-app",
+    "qr": "QR-code om in te loggen in de vortoone-app",
     "making": "Code maken…",
-    "stepApp": "Installeer de agentes-app op je telefoon.",
+    "stepApp": "Installeer de vortoone-app op je telefoon.",
     "stepTailscale": "Installeer Tailscale op je telefoon en log in met hetzelfde Tailscale-account als deze server.",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5387,7 +5387,7 @@
     "noInstructions_female": "{{name}} heeft nog geen instructies. Vertel hoe zij moet werken.",
     "savedToast": "Wijzigingen van {{name}} opgeslagen.",
     "savedToast_female": "Wijzigingen van {{name}} opgeslagen.",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "ingebouwde rechten",
     "connectHint": "Diensten koppelen",
     "subtitle": "{{role}} · eigendom van <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5761,7 +5761,7 @@
         "two": "Voorkeuren",
         "three": "Zet Browser aan",
         "done": "Dat was het. Deze pagina merkt het vanzelf op, opnieuw laden is niet nodig.",
-        "menuOpen": "agentes openen",
+        "menuOpen": "VortoOne openen",
         "menuPrefs": "Voorkeuren…",
         "menuPause": "Pauzeren",
         "menuQuit": "Stoppen",
@@ -5953,7 +5953,7 @@
       "setAll": "Alles wijzigen",
       "connectors": "Connectors van {{org}}",
       "connectorsPersonal": "Je connectors",
-      "builtin": "Ingebouwd in agentes",
+      "builtin": "Ingebouwd in VortoOne",
       "noMatch": "Niets gevonden voor “{{q}}”",
       "noneHere": "Niets in dit filter",
       "library": "Skillbibliotheek",
@@ -7713,7 +7713,7 @@
     },
     "github_git_write": {
       "label": "Branches pushen (git push)",
-      "description": "Commits pushen naar agentes/{agent}/…-branches: nooit naar de standaardbranch, geen force push, geen tags. Branches verwijderen en naar de branch van iemand anders pushen vragen eerst om goedkeuring."
+      "description": "Commits pushen naar vortoone/{agent}/…-branches: nooit naar de standaardbranch, geen force push, geen tags. Branches verwijderen en naar de branch van iemand anders pushen vragen eerst om goedkeuring."
     },
     "custom_read": {
       "label": "Leestools",
@@ -8158,7 +8158,7 @@
       "signature": "Handtekening",
       "signedOff": "Uit: de agent krijgt elke aanroep naar het adres.",
       "signedOn": "Aan: alleen aanroepen die met het geheim zijn ondertekend, komen door.",
-      "signedHelp": "Stuur de HMAC-SHA256 van de body (bij een GET-aanroep: van de querystring, zonder het ?) in X-Agentes-Signature (sha256=…). X-Hub-Signature-256 van GitHub werkt ook.",
+      "signedHelp": "Stuur de HMAC-SHA256 van de body (bij een GET-aanroep: van de querystring, zonder het ?) in X-VortoOne-Signature (sha256=…). X-Hub-Signature-256 van GitHub werkt ook.",
       "addSecret": "Handtekening vereisen",
       "newSecret": "Nieuw geheim",
       "newSecretTitle": "Een nieuw geheim maken?",
@@ -8558,7 +8558,7 @@
         "pr_opened": "PR geopend op GitHub"
       },
       "issue": {
-        "created": "Taak gemaakt in agentes"
+        "created": "Taak gemaakt in VortoOne"
       },
       "deploy": {
         "succeeded": "Deploy voltooid"
@@ -8904,7 +8904,7 @@
       "start": "Starten",
       "change": "Iets wijzigen",
       "started": "Gestart",
-      "startedToast": "Het plan is gestart: het blijft bovenaan de thread vastgezet en in .agentes/mission.md.",
+      "startedToast": "Het plan is gestart: het blijft bovenaan de thread vastgezet en in .vortoone/mission.md.",
       "ownerStarts": "Alleen {{name}} kan het starten",
       "see": "Plan bekijken",
       "after": {
@@ -10295,7 +10295,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "Werk agentes bij op de computer om de sleutel van een abonnement te gebruiken"
+        "keys": "Werk VortoOne bij op de computer om de sleutel van een abonnement te gebruiken"
       },
       "noComputer": "Accounts blijven op een gekoppelde computer. Koppel eerst een van jouw computers.",
       "addComputer": "Computer koppelen",
@@ -12156,8 +12156,8 @@
   "storage": {
     "title": "Opslag",
     "options": "Waar bestanden te bewaren",
-    "agentes": "VortoOne-opslag",
-    "agentesText": "Je bestanden blijven in onze opslag, gescheiden per werkruimte.",
+    "vortoone": "VortoOne-opslag",
+    "vortooneText": "Je bestanden blijven in onze opslag, gescheiden per werkruimte.",
     "server": "Deze server",
     "serverText": {
       "disk": "Bestanden blijven op de schijf.",
@@ -12167,7 +12167,7 @@
     },
     "showFolder": "De map tonen",
     "place": {
-      "agentes": "VortoOne-opslag",
+      "vortoone": "VortoOne-opslag",
       "server": "deze server"
     },
     "s3": "Je eigen opslag",
@@ -12183,7 +12183,7 @@
     "region": "Regio",
     "bucket": "Bucket",
     "prefix": "Prefix (optioneel)",
-    "prefixHelp": "Map in de bucket, bijvoorbeeld agentes/.",
+    "prefixHelp": "Map in de bucket, bijvoorbeeld vortoone/.",
     "pathStyle": "Path-style adressering",
     "pathStyleHelp": "Gebruik dit voor MinIO en andere die de bucket niet in de hostnaam accepteren.",
     "accessKey": "Access key",
@@ -14083,32 +14083,32 @@
       "supabase": {
         "1": "Open de SQL Editor in je Supabase-project en voer de opdracht hieronder uit (verander het wachtwoord).",
         "2": "Kopieer bij Project Settings → Database de URI-verbindingsstring.",
-        "3": "Vervang daarin de gebruiker en het wachtwoord door agentes_leitura en het wachtwoord dat je koos, en plak hem hier."
+        "3": "Vervang daarin de gebruiker en het wachtwoord door vortoone_reader en het wachtwoord dat je koos, en plak hem hier."
       },
       "neon": {
         "1": "Open de SQL Editor in je Neon-project en voer de opdracht hieronder uit (verander het wachtwoord).",
         "2": "Kopieer bij Connect het adres van je database.",
-        "3": "Vervang daarin de gebruiker en het wachtwoord door agentes_leitura en het wachtwoord dat je koos, en plak hem hier."
+        "3": "Vervang daarin de gebruiker en het wachtwoord door vortoone_reader en het wachtwoord dat je koos, en plak hem hier."
       },
       "railway": {
         "1": "Open in de Postgres-service Data → Query en voer de opdracht hieronder uit (verander het wachtwoord).",
         "2": "Kopieer bij Variables DATABASE_PUBLIC_URL (DATABASE_URL is intern en werkt niet vanaf hier).",
-        "3": "Vervang daarin de gebruiker en het wachtwoord door agentes_leitura en het wachtwoord dat je koos, en plak hem hier."
+        "3": "Vervang daarin de gebruiker en het wachtwoord door vortoone_reader en het wachtwoord dat je koos, en plak hem hier."
       },
       "rds": {
         "1": "Maak verbinding met de database via je gebruikelijke tool en voer de opdracht hieronder uit (verander het wachtwoord).",
         "2": "Kopieer bij Connectivity & security het endpoint. De database moet publiek bereikbaar zijn op poort 5432.",
-        "3": "Stel het adres postgres://agentes_leitura:wachtwoord@endpoint:5432/database samen en plak het hier."
+        "3": "Stel het adres postgres://vortoone_reader:wachtwoord@endpoint:5432/database samen en plak het hier."
       },
       "render": {
         "1": "Maak verbinding met de PSQL-opdracht van de databasepagina en voer de opdracht hieronder uit (verander het wachtwoord).",
         "2": "Kopieer bij Connections de External Database URL.",
-        "3": "Vervang daarin de gebruiker en het wachtwoord door agentes_leitura en het wachtwoord dat je koos, en plak hem hier."
+        "3": "Vervang daarin de gebruiker en het wachtwoord door vortoone_reader en het wachtwoord dat je koos, en plak hem hier."
       },
       "other": {
         "1": "Vraag wie de database beheert om de opdracht hieronder uit te voeren (met een eigen wachtwoord).",
         "2": "Vraag om het publieke adres van de server, de poort en de naam van de database.",
-        "3": "Stel het adres postgres://agentes_leitura:wachtwoord@server:5432/database samen en plak het hier."
+        "3": "Stel het adres postgres://vortoone_reader:wachtwoord@server:5432/database samen en plak het hier."
       }
     },
     "howAll": "Om alle databases te lezen (Postgres 14 of nieuwer).",
@@ -14270,7 +14270,7 @@
     "whatIsText": "Een wachtwoord alleen voor de agents. Je maakt het aan op de site van je mail en kunt het altijd verwijderen, zonder je eigen wachtwoord te wijzigen.",
     "step": {
       "1": "Open de beveiligingspagina van je account.",
-      "2": "Maak een app-wachtwoord aan met de naam „agentes”.",
+      "2": "Maak een app-wachtwoord aan met de naam „VortoOne”.",
       "3": "Kopieer het wachtwoord en plak het hier."
     },
     "openPage": "De pagina van {{name}} openen",
@@ -15647,7 +15647,7 @@
       "openLocalNetwork": "Lokaal netwerk openen",
       "qrLabel": "QR-code voor Draadloze foutopsporing op de telefoon",
       "qrLine": "Niet met de camera",
-      "qrCaption": "Die biedt een wifinetwerk aan met de naam agentes-…, dat niet bestaat. Houd de telefoon op de wifi van de computer.",
+      "qrCaption": "Die biedt een wifinetwerk aan met de naam vortoone-…, dat niet bestaat. Houd de telefoon op de wifi van de computer.",
       "fail": {
         "mdns_off": "{{computer}} kan geen telefoons zoeken op de wifi. Werk daar Android platform-tools bij, of gebruik een kabel.",
         "mdns_offMac": "{{computer}} kan geen telefoons zoeken op de wifi. Zet op die Mac VortoOne aan in Systeeminstellingen › Privacy en beveiliging › Lokaal netwerk en probeer het opnieuw.",
@@ -15947,7 +15947,7 @@
     "reconnectDoneText": "{{name}} is terug in {{org}}.",
     "deniedTitle": "Niet gekoppeld",
     "denied": "De computer is niet gekoppeld. Als jij hem niet hebt geopend, heeft niemand toegang gekregen.",
-    "home": "Naar agentes"
+    "home": "Naar VortoOne"
   },
   "apps": {
     "connect": "App koppelen",
@@ -18984,8 +18984,8 @@
       "screensOff": "Schermen staan uit op {{computer}}. Zet ze daar aan:",
       "screensOffOne": "De schermen staan uit op {{computer}}.",
       "screensMissing": "{{computer}} kan nog geen schermen tonen. Doe daar dit:",
-      "outdated": "Werk agentes bij op {{computer}} om het scherm van {{name}} te zien.",
-      "outdated_female": "Werk agentes bij op {{computer}} om het scherm van {{name}} te zien.",
+      "outdated": "Werk VortoOne bij op {{computer}} om het scherm van {{name}} te zien.",
+      "outdated_female": "Werk VortoOne bij op {{computer}} om het scherm van {{name}} te zien.",
       "noScreen": "{{name}} heeft hier geen scherm om te tonen",
       "noScreen_female": "{{name}} heeft hier geen scherm om te tonen",
       "noScreenHelp": "Sta het scherm of de browser toe bij Tools en toegang.",
@@ -19135,7 +19135,7 @@
       "browser": "Browser",
       "screen": "Computerscherm",
       "terminal": "Terminal",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "Denkt na",
       "inside": "{{program}} · {{detail}}"
     },

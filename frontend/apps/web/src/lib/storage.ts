@@ -1,4 +1,4 @@
-import { seenList } from "@agenteschat/client/lib/seen-list";
+import { seenList } from "@vortoone/client/lib/seen-list";
 
 const safe = (area: () => Storage) => ({
   get(key: string): string | null {
@@ -39,6 +39,7 @@ export function storedStrings(key: string): string[] {
   }
 }
 
+/** Keep the stored keys stable so existing data survives both upgrades and rollbacks. */
 export const STORAGE_KEYS = {
   theme: "agentes.theme",
   lastOrg: "agentes.lastOrg",
@@ -133,7 +134,7 @@ export const STORAGE_KEYS = {
   searchRecent: "agentes.search.recent",
   /**
    * Prefix (`.<user id>`): what that person typed in each conversation and didn't send (JSON by conversation,
-   * `@agenteschat/client/lib/composer-drafts`), forgotten on sign-out.
+   * `@vortoone/client/lib/composer-drafts`), forgotten on sign-out.
    */
   composerDrafts: "agentes.drafts",
 } as const;

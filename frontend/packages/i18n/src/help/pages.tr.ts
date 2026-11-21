@@ -87,7 +87,7 @@ export const helpTr: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Klasörler",
         blocks: [
-          "Her ajanın `~/agentes/<workspace>` içinde her zaman kendi klasörü vardır. Başka klasörlere izin bilgisayarın kendisinden verilir, asla web sitesinden verilmez: uygulamada **Tercihler › Klasörler** bölümünden, bir sunucudaysa `agentes-runner folders allow` ile. Her çalışma alanı kendi klasörlerine izin verir: birine verdiğiniz izin yalnızca onun ajanları için geçerlidir. Bir klasörü kaldırmak hiçbir şeyi silmez. Yalnızca erişimi kaldırır.",
+          "Her ajanın `~/vortoone/<workspace>` içinde her zaman kendi klasörü vardır. Başka klasörlere izin bilgisayarın kendisinden verilir, asla web sitesinden verilmez: uygulamada **Tercihler › Klasörler** bölümünden, bir sunucudaysa `vortoone-runner folders allow` ile. Her çalışma alanı kendi klasörlerine izin verir: birine verdiğiniz izin yalnızca onun ajanları için geçerlidir. Bir klasörü kaldırmak hiçbir şeyi silmez. Yalnızca erişimi kaldırır.",
         ],
       },
       {
@@ -100,11 +100,11 @@ export const helpTr: Partial<Record<HelpSlug, HelpDocument>> = {
               "dosyalarınız ve oturumlarınız",
               "diğer ajanların klasörleri, başka çalışma alanlarınınkiler dahil, ve tarayıcılarının sakladığı oturumlar",
               "bu bilgisayarı bağlayan jeton",
-              "VortoOne'i de çalıştıran bir bilgisayarda, onun `.agentes` içindeki veritabanı ve anahtarları",
+              "VortoOne'i de çalıştıran bir bilgisayarda, onun `.vortoone` içindeki veritabanı ve anahtarları",
             ],
           },
           "VortoOne anahtarların, token'ların ve oturum bilgilerinin adını geçiren komutları reddeder, ama bu bir kuraldır, duvar değil. **Komutlar** varsayılan olarak açıktır. Onları uygulamanın sorusunda **İzin ver**'e basmadan önce ya da daha sonra **Tercihler\u00a0›\u00a0Araçlar** içinde kapatın. Orada her çalışma alanının kendi anahtarı vardır (uygulama 0.8.1 ve sonrası) ve uygulama birini yeniden açmadan önce sorar. Claude Code ve Codex, Komutlar kapalıyken bile kendi komutlarını ajanın klasöründe, kendi kurallarıyla çalıştırır.",
-          "Gerçek bir duvar için bir Linux sunucu kullanın. Debian 13'te `--system` ile kurulduğunda her ajan ayrı bir kullanıcıdır. Ubuntu'da ajanlar tek bir kullanıcıyı, `agentes` kullanıcısını paylaşır: birbirlerinin klasörlerini görürler, sizinkileri ya da sunucununkileri görmezler. Ya da ajanlara kendilerine ait bir bilgisayar verin.",
+          "Gerçek bir duvar için bir Linux sunucu kullanın. Debian 13'te `--system` ile kurulduğunda her ajan ayrı bir kullanıcıdır. Ubuntu'da ajanlar tek bir kullanıcıyı, `vortoone` kullanıcısını paylaşır: birbirlerinin klasörlerini görürler, sizinkileri ya da sunucununkileri görmezler. Ya da ajanlara kendilerine ait bir bilgisayar verin.",
         ],
       },
     ],
@@ -462,7 +462,7 @@ export const helpTr: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop ve telefon): **Customize › Connectors** içinde **+ Add**'e, ardından **Add custom connector**'a tıklayın, adını VortoOne koyun, adresi yapıştırın ve **Continue**'ya tıklayın. **Sign in now** seçeneğini seçin, **Add**'e tıklayın ve yetki verin. Team ve Enterprise planlarında bağlayıcıyı Claude organizasyonunun Owner'ı Organization settings › Connectors içinden ekler ve her kişi Customize › Connectors içinde **Connect**'e tıklar. Claude'un ücretsiz planında bir özel bağlayıcıya yer vardır.",
-              "**Claude Code:** `claude mcp add --transport http --scope user agentes <address>` komutunu çalıştırın, ardından `/mcp` yazın, agentes'i seçin ve **Authenticate**'e tıklayın. Yalnızca geçerli klasör için `--scope user` kısmını çıkarın.",
+              "**Claude Code:** `claude mcp add --transport http --scope user VortoOne <address>` komutunu çalıştırın, ardından `/mcp` yazın, VortoOne'i seçin ve **Authenticate**'e tıklayın. Yalnızca geçerli klasör için `--scope user` kısmını çıkarın.",
               "**Cursor:** **Ayarlar › Yapay zeka uygulamaları** içindeki **Cursor'a ekle** ya da adresi `~/.cursor/mcp.json` dosyasına ekleyin. Cursor ilk kullanımda giriş yapmanızı ister.",
               '**VS Code:** **VS Code\'a ekle** ya da adresi `"type": "http"` ile `.vscode/mcp.json` dosyasına ekleyin.',
               "**Diğer uygulamalar:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains ve daha fazlasının adımları, adresiniz önceden doldurulmuş olarak **Uygulama bağla** içinde.",

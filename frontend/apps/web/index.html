@@ -101,7 +101,7 @@
           boot.removeAttribute("aria-hidden");
           boot.replaceChildren(box);
           // In the desktop app's window: its cover lifts (pageReady, src/lib/desktop.ts) and a Mac drags by the top.
-          const app = window.__agentesDesktop;
+          const app = window.__vortooneDesktop ?? window.__agentesDesktop;
           if (!app) return;
           if (app.platform !== "windows" && app.platform !== "linux") {
             const strip = boot.appendChild(document.createElement("div"));
@@ -115,7 +115,7 @@
             );
           }
         };
-        window.__agentesBootFailed = failed;
+        window.__vortooneBootFailed = failed;
         addEventListener(
           "error",
           (event) => {

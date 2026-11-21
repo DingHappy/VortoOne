@@ -1,6 +1,6 @@
-import { createRequester, useComputerSetup, useMachines } from "@agenteschat/client";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Button, Card } from "@agenteschat/ui";
+import { createRequester, useComputerSetup, useMachines } from "@vortoone/client";
+import { can } from "@vortoone/client/lib/permissions";
+import { Button, Card } from "@vortoone/ui";
 import { useEffect, useRef, useState } from "react";
 import type { PrivatePreviewKind } from "../screen/private-browser-preview";
 import { ComputerScreenPreview } from "./ComputerScreenPreview";

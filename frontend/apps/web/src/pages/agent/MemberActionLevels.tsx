@@ -3,8 +3,8 @@ import {
   ORG_ROLE_ACT_LEVELS,
   type OrgRoleActLevel,
   useApi,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
 import {
   Button,
   Dialog,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   Field,
   Select,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

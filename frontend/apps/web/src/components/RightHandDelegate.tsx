@@ -1,9 +1,9 @@
-import type { CardDelegate } from "@agenteschat/client";
-import { useUndoRightHand } from "@agenteschat/client";
-import { delegateLine } from "@agenteschat/client/lib/approval-words";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Button, Icon } from "@agenteschat/ui";
+import type { CardDelegate } from "@vortoone/client";
+import { useUndoRightHand } from "@vortoone/client";
+import { delegateLine } from "@vortoone/client/lib/approval-words";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
+import { Button, Icon } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";
 import { useDirectory } from "@/hooks/useDirectory";

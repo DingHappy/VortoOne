@@ -339,12 +339,12 @@ export function taskTime(
  * - `browser`, `screen`: the agent's own browser or desktop;
  * - `terminal`: code or a command on its computer;
  * - `app`: a connector, a mailbox, a database (`activity.service` names its logo, `activity.app` its name);
- * - `agentes`: one of our own tools (an issue, the Drive, memory…);
+ * - `vortoone`: one of our own tools (an issue, the Drive, memory…);
  * - `none`: nothing yet (queued, or only thinking).
  */
 export type TaskProgram =
   | { kind: "brain"; brain: "claude_code" | "codex" | "cursor"; inner: TaskProgram | null; detail: string | null }
-  | { kind: "browser" | "screen" | "terminal" | "agentes"; activity: Activity; detail: string | null }
+  | { kind: "browser" | "screen" | "terminal" | "vortoone"; activity: Activity; detail: string | null }
   | { kind: "app"; activity: Activity; detail: string | null }
   | { kind: "none" };
 
@@ -371,7 +371,7 @@ function programOf(now: TaskNow | null): TaskProgram | null {
     case "queryingDatabase":
       return { kind: "app", activity, detail };
     default:
-      return activity.service ? { kind: "app", activity, detail } : { kind: "agentes", activity, detail };
+      return activity.service ? { kind: "app", activity, detail } : { kind: "vortoone", activity, detail };
   }
 }
 

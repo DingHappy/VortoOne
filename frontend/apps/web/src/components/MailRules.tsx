@@ -1,7 +1,7 @@
-import type { MailAccount, MailPolicy } from "@agenteschat/client";
-import { useMailFolders } from "@agenteschat/client";
-import { AUTO_FROM, canSendWithoutAsking, mailboxAddresses, normalizePolicy } from "@agenteschat/client/lib/mail";
-import { AffixInput, CheckboxPill, Field, Icon, Input, Select, Switch } from "@agenteschat/ui";
+import type { MailAccount, MailPolicy } from "@vortoone/client";
+import { useMailFolders } from "@vortoone/client";
+import { AUTO_FROM, canSendWithoutAsking, mailboxAddresses, normalizePolicy } from "@vortoone/client/lib/mail";
+import { AffixInput, CheckboxPill, Field, Icon, Input, Select, Switch } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { AddressList } from "@/components/AddressList";
 import { useOrg } from "@/components/org-context";

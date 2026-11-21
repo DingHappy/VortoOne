@@ -1,5 +1,5 @@
-import { resources as shared } from "@agenteschat/i18n";
-import { loadStrings } from "@agenteschat/i18n/load";
+import { resources as shared } from "@vortoone/i18n";
+import { loadStrings } from "@vortoone/i18n/load";
 import {
   type AppLocale,
   appLocale,
@@ -7,9 +7,9 @@ import {
   isAppLocale,
   LOCALE_CODES,
   readyLocales,
-} from "@agenteschat/i18n/locale";
-import { fillPluralGaps, type LocaleStrings } from "@agenteschat/i18n/plurals";
-import { deepMerge } from "@agenteschat/i18n/tree";
+} from "@vortoone/i18n/locale";
+import { fillPluralGaps, type LocaleStrings } from "@vortoone/i18n/plurals";
+import { deepMerge } from "@vortoone/i18n/tree";
 import i18next, { type i18n as I18n, type InitOptions } from "i18next";
 import { initReactI18next } from "react-i18next";
 import type { Platform } from "../control/platform";
@@ -68,7 +68,7 @@ export function withDesktopKeys(resources: Record<string, Record<string, object>
   return out;
 }
 
-/** This computer's choice in Preferences (`agentes.desktop.locale`, shared by every window): a code or "auto". */
+/** This computer's choice in Preferences (`vortoone.desktop.locale`, shared by every window): a code or "auto". */
 export const LOCALE_PREF = "locale";
 
 /** The languages people can pick, each by its own name. */

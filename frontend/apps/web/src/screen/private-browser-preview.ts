@@ -1,4 +1,4 @@
-import { sealSecret } from "@agenteschat/client/lib/secret-box";
+import { sealSecret } from "@vortoone/client/lib/secret-box";
 
 export const MAX_PNG_BYTES = 768 * 1024;
 export const INPUT_TEXT_BYTES = 96;
