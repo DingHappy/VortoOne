@@ -12621,7 +12621,7 @@ html:not([data-pointer]) .sidebar__section-toggle:focus-visible {
   > :not([data-status="active"], :has(> [data-status="active"])) {
   display: none;
 }
-/* AGENTES closed still shows the right hand: it is never hidden. */
+/* VORTOONE closed still shows the right hand: it is never hidden. */
 .sidebar__section[data-open="false"] .sidebar__section-body > [data-right-hand] {
   display: flex;
 }
@@ -13055,7 +13055,7 @@ html:not([data-pointer]) .channel-perms__target:focus-visible {
   line-height: 18px;
   color: var(--faint);
 }
-/* AGENTES' groups (ADR 0083): the count at the header's end and, closed, how many work, in the trail's color. Closed,
+/* VORTOONE' groups (ADR 0083): the count at the header's end and, closed, how many work, in the trail's color. Closed,
    a group keeps in sight its agents that work, wait or wrote to me (`data-live`), as a category keeps its unread. */
 .sidebar__section--group[data-open="false"] .sidebar__section-body > [data-live="true"] {
   display: flex;
@@ -13117,7 +13117,7 @@ html:not([data-pointer]) .channel-perms__target:focus-visible {
 .sidebar__see-all {
   color: var(--ink-muted);
 }
-/* AGENTES closed hides its last row too, as it hides its groups. */
+/* VORTOONE closed hides its last row too, as it hides its groups. */
 .sidebar:not([data-rail="true"]) .sidebar__section--part[data-open="false"] ~ .sidebar__see-all {
   display: none;
 }

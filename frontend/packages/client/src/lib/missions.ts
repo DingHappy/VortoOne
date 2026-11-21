@@ -418,7 +418,7 @@ export function viaText(t: TFunction, executor: string, agentName: string, compu
   return computer ? t("missions.via", { executor: name, computer }) : t("missions.viaNoComputer", { executor: name });
 }
 
-// ── The `.agentes/` files, as the panel draws them ───────────────────────────
+// ── The `.vortoone/` files, as the panel draws them ───────────────────────────
 
 /** A checklist line's mark (the server writes `[ ]`, `[~]`, `[!]`, `[x]`, `[-]`). */
 export type CheckState = "todo" | "doing" | "waiting" | "done" | "dropped";

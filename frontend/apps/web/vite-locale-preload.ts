@@ -16,7 +16,7 @@ export function localeOfModule(id: string): string | null {
 export function preloadLocale(): Plugin {
   let base = "/";
   return {
-    name: "agentes:preload-locale",
+    name: "vortoone:preload-locale",
     apply: "build",
     configResolved(config) {
       base = config.base;

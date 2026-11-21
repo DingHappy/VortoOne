@@ -739,7 +739,7 @@ function DecisionBody({ decision: d, mission: m }: { decision: MissionDecision; 
   );
 }
 
-const DECISIONS_FILE = ".agentes/decisions.md";
+const DECISIONS_FILE = ".vortoone/decisions.md";
 const opinionsFor = (d: MissionDecision, option: string) =>
   d.opinions.filter((o) => o.option === option).map((o) => o.userId);
 
@@ -1163,7 +1163,7 @@ export function TaskNoticeLine({ message }: { message: Message }) {
   const names = useNamesComputers(org.id);
   const dir = useDirectory(org.id);
   const notice = taskNoticeOf(message.meta);
-  // A folder request to this very Mac (agentes for Mac): answered in the menu bar, one click away (ADR 0036).
+  // A folder request to this very Mac (VortoOne for Mac): answered in the menu bar, one click away (ADR 0036).
   const asked = (message.meta as { machineAccess?: { machineId?: unknown } } | null)?.machineAccess?.machineId;
   const here = useIsThisMac(org.id, typeof asked === "string" ? asked : "");
   // A note from before the workspace's own computer stopped taking requests: nobody can run its command there.

@@ -361,7 +361,7 @@ function DesktopUseNote({ machine: m }: { machine: Machine }) {
   );
 }
 
-/** In agentes for Mac, when the offline computer is this very Mac: "Reconectar" right there (ADR 0036). */
+/** In VortoOne for Mac, when the offline computer is this very Mac: "Reconectar" right there (ADR 0036). */
 function ThisMacReconnect({ machineId }: { machineId: string }) {
   const { org } = useOrg();
   const here = useIsThisMac(org.id, machineId);

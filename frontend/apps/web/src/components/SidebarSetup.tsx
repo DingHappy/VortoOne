@@ -80,7 +80,7 @@ function useToolOrder(orgId: string, personal = false) {
   return { order, put };
 }
 
-const TOOL_DRAG = "application/x-agentes-tool";
+const TOOL_DRAG = "application/x-vortoone-tool";
 const MOVE_KEYS = "Alt+Shift+ArrowUp Alt+Shift+ArrowDown";
 
 /**

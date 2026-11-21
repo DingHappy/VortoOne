@@ -56,7 +56,7 @@ export const installCommand = (origin: string) =>
 
 /** Granting happens on the machine: the fallback command for people without the app. */
 export const allowFolderCommand = (path: string, handle?: string) =>
-  `agentes-runner folders allow ${shellQuote(path)}${handle ? ` --agent ${handle}` : ""}`;
+  `vortoone-runner folders allow ${shellQuote(path)}${handle ? ` --agent ${handle}` : ""}`;
 
 /**
  * Why a computer can't run its agent browser or desktop use yet, in the person's words (`machines.reasons.<code>`).
@@ -74,7 +74,7 @@ export function machineReasonText(
   return tt(`machines.reasons.${code}`, { defaultValue: info?.reason ?? "" }) || (info?.reason ?? null);
 }
 
-/** The first command in a runner's own words ("…run `agentes-runner browser install --with-deps`"), to copy. */
+/** The first command in a runner's own words ("…run `vortoone-runner browser install --with-deps`"), to copy. */
 export function commandInReason(reason: string | null | undefined): string | null {
   const m = reason ? /`([^`]+)`/.exec(reason) : null;
   return m?.[1] ?? null;
@@ -85,9 +85,9 @@ export function commandInReason(reason: string | null | undefined): string | nul
  * mode (ADR 0057).
  */
 export const toolOnCommand = (m: Pick<Machine, "mode">, tool: keyof MachineAccess["tools"]) =>
-  `${m.mode === "system" ? "sudo " : ""}agentes-runner tools enable ${tool}`;
+  `${m.mode === "system" ? "sudo " : ""}vortoone-runner tools enable ${tool}`;
 
-/** A Mac or a PC: folders and tools are allowed in the agentes.chat app there. Any other may be a server without it. */
+/** A Mac or a PC: folders and tools are allowed in the VortoOne app there. Any other may be a server without it. */
 export const allowsInApp = (os: string | null | undefined) => os === "darwin" || os === "windows";
 
 /** The switch of the program a brain runs on its computer: Claude Code's is "claude". */

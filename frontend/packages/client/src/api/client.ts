@@ -389,7 +389,7 @@ export interface ApiClient {
   system: {
     health(): Promise<Health>;
     instance(): Promise<Instance>;
-    /** `null` unless I am the installation's owner (and not on agentes.chat itself). */
+    /** `null` unless I am the installation's owner (and not on VortoOne itself). */
     telemetry(): Promise<ServerTelemetry | null>;
     setTelemetry(enabled: boolean): Promise<ServerTelemetry>;
     /** By email to whoever runs the server; only where it takes feedback (`AuthConfig.feedback`). */
@@ -421,7 +421,7 @@ export interface ApiClient {
   };
   /** Voice messages (ADR 0100). */
   voice: {
-    /** Whether I may record now: fair use, on agentes.chat's own servers. */
+    /** Whether I may record now: fair use, on VortoOne's own servers. */
     allowed(orgId: string): Promise<{ allowed: boolean }>;
     /** Stores a recording; its message arrives over the socket with this `clientId`. */
     send(
@@ -917,7 +917,7 @@ export interface ApiClient {
     /** This month's usage per agent; `null` without the `view_usage` permission. */
     usage(orgId: string): Promise<AgentUsage[] | null>;
   };
-  /** Bringing agents and what's around them from another app or another agentes.chat (ADR 0055); admins. */
+  /** Bringing agents and what's around them from another app or another VortoOne (ADR 0055); admins. */
   imports: {
     /** The plan of a bundle (`dryRun`), or the picked items applied: either way every item with its action. */
     apply(orgId: string, input: ImportInput): Promise<ImportPlan>;
@@ -1068,7 +1068,7 @@ export interface ApiClient {
     undoRightHand(orgId: string, decisionId: string): Promise<void>;
   };
   connectors: {
-    /** Connectors agentes.chat knows, with their scopes, plus the built-in scopes. */
+    /** Connectors VortoOne knows, with their scopes, plus the built-in scopes. */
     catalog(): Promise<ConnectorCatalog>;
     /** The organization's connections (no secrets). */
     list(orgId: string): Promise<Connection[]>;
@@ -1175,7 +1175,7 @@ export interface ApiClient {
     /** Opens Xcode on the Mac (its owner or an admin): it shows Developer Mode on a plugged iPhone. */
     openXcode(orgId: string, machineId: string): Promise<{ opened: boolean }>;
   };
-  /** Connected computers (ADR 0025): machines running `agentes-runner`. */
+  /** Connected computers (ADR 0025): machines running `vortoone-runner`. */
   machines: {
     list(orgId: string): Promise<Machine[]>;
     rename(orgId: string, machineId: string, name: string): Promise<{ id: string; name: string }>;
@@ -1859,7 +1859,7 @@ export interface ApiClient {
     /** Checks a bucket: write, read, list and delete a test object. */
     test(orgId: string, input: S3Input): Promise<StorageTestResult>;
     /** Switches storage. `s3` requires a passing test of the same settings. */
-    save(orgId: string, input: { kind: "agentes" } | { kind: "s3"; s3: S3Input }): Promise<StorageConfig>;
+    save(orgId: string, input: { kind: "vortoone" } | { kind: "s3"; s3: S3Input }): Promise<StorageConfig>;
     /** Starts (or resumes) copying existing files to the bucket. */
     migrate(orgId: string): Promise<StorageMigration>;
     migration(orgId: string): Promise<StorageMigration | null>;

@@ -66,7 +66,7 @@ const PHRASES: Record<string, Omit<ApiRule, "timezone">> = {
 const UNREADABLE = "Não entendi. Tente “toda segunda às 9h” ou “dias úteis às 18h”.";
 
 /** A webhook routine's address, as the server makes them (a 43-character token). */
-const hookUrl = () => `https://app.agentes.test/api/hooks/${mockId("hook").padEnd(43, "x").slice(0, 43)}`;
+const hookUrl = () => `https://app.vortoone.test/api/hooks/${mockId("hook").padEnd(43, "x").slice(0, 43)}`;
 /** The workspace's webhook of a service: none made yet until `ensureWebhook`. */
 const webhookOf = (s: { webhooks: Map<WebhookProvider, WebhookSetup> }, provider: WebhookProvider) => {
   const setup = s.webhooks.get(provider) ?? {
@@ -1004,7 +1004,7 @@ export function createMockPlanning(
         const setup = webhookOf(await store(orgId), provider);
         if (!setup.id) {
           setup.id = mockId("webhook");
-          setup.url = `https://app.agentes.test/api/webhooks/${provider}/${setup.id}`;
+          setup.url = `https://app.vortoone.test/api/webhooks/${provider}/${setup.id}`;
           setup.secret = provider === "github" ? "gh-secret-1234" : null;
         }
         return clone(setup);

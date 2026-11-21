@@ -16,7 +16,7 @@ export interface BlockHost {
   labels: { send: string; more: string; thousand: string };
   /** The block's state, the same for everyone in the conversation (`block_states`). */
   state?: Record<string, unknown>;
-  /** Who set each value last (`agentes.who`). */
+  /** Who set each value last (`vortoone.who`). */
   who?: Record<string, BlockChange>;
   /** `@font-face` CSS with the font inlined: a block has no network. */
   fontFace?: string;
@@ -77,7 +77,7 @@ export function blockEvent(raw: unknown): BlockEvent | null {
   }
   if (!m || typeof m !== "object") return null;
   const e = m as Record<string, unknown>;
-  if (e.agentes !== 1) return null;
+  if (e.vortoone !== 1) return null;
   switch (e.type) {
     case "ready":
       return { type: "ready" };

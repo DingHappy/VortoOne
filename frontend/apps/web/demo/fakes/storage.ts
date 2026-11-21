@@ -2,7 +2,7 @@
  * Test fake — file storage ("Configurações → Armazenamento").
  * Mirrors these endpoints:
  * - `GET  /api/app/organizations/{orgId}/storage` → StorageConfig
- * - `PUT  …/storage` `{ kind: "agentes" } | { kind: "s3", s3: S3Input }` (s3 needs a passing test of the same settings)
+ * - `PUT  …/storage` `{ kind: "vortoone" } | { kind: "s3", s3: S3Input }` (s3 needs a passing test of the same settings)
  * - `POST …/storage/test` S3Input → `{ ok, steps: [{ step: "write" | "read" | "list" | "delete", ok, error?, code? }] }`
  * - `POST …/storage/migrate` (start or resume) and `GET …/storage/migrate` (status) → StorageMigration
  * The mock never reaches a bucket. A bucket named with "negado" fails the
@@ -41,7 +41,7 @@ export function createMockStorage(
     let c = configs.get(orgId);
     if (!c) {
       c = {
-        kind: "agentes",
+        kind: "vortoone",
         s3: null,
         migration: null,
         platform: platform() ?? { kind: "disk", folder: null },
@@ -77,8 +77,8 @@ export function createMockStorage(
     },
     save: async (orgId, input) => {
       const c = get(orgId);
-      if (input.kind === "agentes") {
-        Object.assign(c, { kind: "agentes", s3: null, migration: null });
+      if (input.kind === "vortoone") {
+        Object.assign(c, { kind: "vortoone", s3: null, migration: null });
         return clone(c);
       }
       if (passed.get(orgId) !== sig(input.s3))

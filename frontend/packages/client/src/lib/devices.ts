@@ -604,7 +604,7 @@ export function xcodeBlockedOf(host: ComputerDevice | undefined): XcodeBlocked |
 }
 
 /** What updates a runner installed from the Terminal (the app updates its own). */
-export const RUNNER_UPDATE_COMMAND = "agentes-runner update";
+export const RUNNER_UPDATE_COMMAND = "vortoone-runner update";
 
 /** How often the iPhone guide asks where a fix of the Mac's Xcode stands while it runs. */
 export const XCODE_FIX_POLL_MS = 1500;
@@ -912,7 +912,7 @@ export type PhoneScreenState =
   /** The phone needs its person first (unauthorized, replugged): opens again by itself. */
   | "notReady"
   | "forbidden"
-  /** The agentes.chat app on its computer is too old for this. */
+  /** The VortoOne app on its computer is too old for this. */
   | "outdated"
   /** Its computer can't show it (no adb, no Xcode, an iPhone without the test helper), or it's gone. */
   | "unavailable"

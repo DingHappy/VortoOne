@@ -46,7 +46,7 @@ export interface ServerWorkspaces {
   agentsHere?: boolean;
 }
 
-/** agentes.chat, a server on this computer, one on the person's Tailscale network, or one elsewhere. */
+/** VortoOne, a server on this computer, one on the person's Tailscale network, or one elsewhere. */
 export type ServerKind = "cloud" | "here" | "tailnet" | "own";
 
 export function serverKind(server: string): ServerKind {

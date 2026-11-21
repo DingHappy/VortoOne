@@ -91,7 +91,7 @@ export const helpEn: Record<HelpSlug, HelpDocument> = {
         id: "folders",
         heading: "Folders",
         blocks: [
-          "Each agent always has its own folder, in `~/agentes/<workspace>`. More folders are allowed on the computer itself, never from the website: in the app, **Preferences\u00a0›\u00a0Folders**, or with `agentes-runner folders allow` on a server. Each workspace allows its own folders: what you allow for one only counts for its agents. Removing a folder deletes nothing. It only takes the access away.",
+          "Each agent always has its own folder, in `~/vortoone/<workspace>`. More folders are allowed on the computer itself, never from the website: in the app, **Preferences\u00a0›\u00a0Folders**, or with `vortoone-runner folders allow` on a server. Each workspace allows its own folders: what you allow for one only counts for its agents. Removing a folder deletes nothing. It only takes the access away.",
         ],
       },
       {
@@ -104,11 +104,11 @@ export const helpEn: Record<HelpSlug, HelpDocument> = {
               "your files and sign-ins",
               "other agents' folders, other workspaces' included, and the logins their browsers keep",
               "the token that connects this computer",
-              "on a computer that also runs VortoOne, its database and keys in `.agentes`",
+              "on a computer that also runs VortoOne, its database and keys in `.vortoone`",
             ],
           },
           "VortoOne refuses commands that name its keys, tokens and sign-ins, but that's a rule, not a wall. **Commands** are on by default. Turn them off in the app's ask before you press **Allow**, or later in **Preferences\u00a0›\u00a0Tools**, where each workspace has its own switch (app 0.8.1 and later) and the app asks before turning one back on. Claude Code and Codex run their own commands in the agent's folder, under their own rules, even with Commands off.",
-          "For a real wall, use a Linux server. On Debian 13, installed with `--system`, each agent is a user of its own. On Ubuntu, agents share one user, `agentes`: they see each other's folders, not yours or the server's. Or give the agents a computer of their own.",
+          "For a real wall, use a Linux server. On Debian 13, installed with `--system`, each agent is a user of its own. On Ubuntu, agents share one user, `vortoone`: they see each other's folders, not yours or the server's. Or give the agents a computer of their own.",
         ],
       },
     ],
@@ -455,7 +455,7 @@ export const helpEn: Record<HelpSlug, HelpDocument> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop and phone): in **Customize\u00a0›\u00a0Connectors**, click **+ Add**, then **Add custom connector**, name it VortoOne, paste the address and click **Continue**. Choose **Sign in now**, click **Add** and authorize. On Team and Enterprise plans, the Claude organization's Owner adds the connector in Organization settings\u00a0›\u00a0Connectors, and each person clicks **Connect** in Customize\u00a0›\u00a0Connectors. Claude's free plan has room for one custom connector.",
-              "**Claude Code:** run `claude mcp add --transport http --scope user agentes <address>`, then type `/mcp`, pick agentes and **Authenticate**. For the current folder only, drop `--scope user`.",
+              "**Claude Code:** run `claude mcp add --transport http --scope user VortoOne <address>`, then type `/mcp`, pick VortoOne and **Authenticate**. For the current folder only, drop `--scope user`.",
               "**Cursor:** **Add to Cursor** in **Settings\u00a0›\u00a0AI apps**, or the address in `~/.cursor/mcp.json`. Cursor asks you to sign in the first time you use it.",
               '**VS Code:** **Add to VS Code**, or the address in `.vscode/mcp.json` with `"type": "http"`.',
               "**Other apps:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains and more each have their own steps in **Connect an app**, with your address filled in.",

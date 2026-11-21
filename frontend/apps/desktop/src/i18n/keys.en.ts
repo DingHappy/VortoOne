@@ -187,7 +187,7 @@ export const desktopEn = {
     title: "Sign in to a workspace that already exists",
     lead: "Its address, the same one you open in the browser.",
     label: "Server address",
-    placeholder: "agentes.yourteam.ts.net",
+    placeholder: "vortoone.yourteam.ts.net",
     go: "Sign in",
     checking: "Checking…",
     found: "Found",
@@ -206,7 +206,7 @@ export const desktopEn = {
     checkUpdates: "Check for updates",
     /** Under the found servers: none yet, so the always-on install. */
     noneYet: "Don't have one yet?",
-    invalid: "Check the address, something like agentes.yourteam.ts.net.",
+    invalid: "Check the address, something like vortoone.yourteam.ts.net.",
     httpRefused:
       "{{host}} doesn't use a secure connection (https), and only servers on this {{device}} may go without one. Use its https address or its Tailscale one.",
     noOwner:
@@ -217,7 +217,7 @@ export const desktopEn = {
       "We can't reach {{host}}, which is on your Tailscale network. Open Tailscale on this {{device}}, connect and try again.",
     unreachableHere: "Nothing answers at {{host}} on this {{device}}. Start VortoOne here, then try again.",
     certificate: "The certificate of {{host}} isn't valid. Talk to whoever runs the server.",
-    notAgentes: "{{host}} isn't an VortoOne server. Check the address.",
+    notVortoone: "{{host}} isn't an VortoOne server. Check the address.",
     serverTooOld: "{{host}} needs an update to work with this app.",
     appTooOld: "Update the app to use {{host}}.",
   },
@@ -360,7 +360,7 @@ export const desktopEn = {
     addAccount: "Add account",
     signedOutDone: "You signed out of {{host}}",
     removeFromApp: "Remove from this app",
-    /** The system's notification for a server not open in the window: "Oficina · agentes.exemplo.com.br". */
+    /** The system's notification for a server not open in the window: "Oficina · vortoone.exemplo.com.br". */
     newsOne: "1 new notification",
     newsMany: "{{n}} new notifications",
   },
@@ -457,12 +457,12 @@ export const desktopEn = {
     erase: "Erase and start over…",
     eraseTitle: "Erase VortoOne on this {{device}}?",
     eraseBody:
-      "Its workspaces go for everyone who uses them, on every device. Its data moves to {{path}} and stays there. What its agents kept on this {{device}}, such as their browsers and sign-ins, is deleted. The agents' files in ~/agentes are yours and stay where they are. Then you set it up again with a new owner.",
+      "Its workspaces go for everyone who uses them, on every device. Its data moves to {{path}} and stays there. What its agents kept on this {{device}}, such as their browsers and sign-ins, is deleted. The agents' files in ~/vortoone are yours and stay where they are. Then you set it up again with a new owner.",
     eraseConfirm: "Erase it",
     erased: "Erased. Its old data is in {{path}}.",
     eraseMoveFailed:
       "Its data couldn't be moved, so nothing was erased and it stays in {{path}}. It's stopped until you start it again.",
-    /** Another agentes-server, started outside the app, holds the folder's lock, so the folder can't move. */
+    /** Another vortoone-server, started outside the app, holds the folder's lock, so the folder can't move. */
     eraseHeld:
       "Another VortoOne server is using its folder, so nothing was erased. Stop that server, then try again.",
     noPassword: "Add a password to sign in from your phone and other computers.",

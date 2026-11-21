@@ -12,7 +12,7 @@ import { useChannelActions } from "./channel-actions";
  * dismissed it never comes back for that message (localStorage).
  */
 const askKey = (messageId: string) => ["correction-ask", messageId] as const;
-const storageKey = (messageId: string) => `agentes:correction-ask:${messageId}`;
+const storageKey = (messageId: string) => `vortoone:correction-ask:${messageId}`;
 
 function wasDismissed(messageId: string) {
   try {

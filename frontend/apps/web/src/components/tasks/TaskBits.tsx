@@ -276,15 +276,15 @@ export function useProgramText() {
         return { name: t("taskManager.program.screen"), detail: p.detail ?? verb };
       case "terminal":
         return { name: t("taskManager.program.terminal"), detail: p.detail ?? verb };
-      case "agentes":
-        return { name: t("taskManager.program.agentes"), detail: [verb, p.detail].filter(Boolean).join(" · ") };
+      case "vortoone":
+        return { name: t("taskManager.program.vortoone"), detail: [verb, p.detail].filter(Boolean).join(" · ") };
       default: {
         const logo = callLogo(p.activity, connectors);
         const name =
           (logo.kind === "service" && logo.label) ||
           appLabel(p.activity) ||
           capitalize(p.activity.service ?? "", i18n.language) ||
-          t("taskManager.program.agentes");
+          t("taskManager.program.vortoone");
         return { name, detail: p.detail ?? verb };
       }
     }

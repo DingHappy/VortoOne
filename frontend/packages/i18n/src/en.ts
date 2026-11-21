@@ -4,7 +4,7 @@ import type { Widen } from "./widen";
  * English: the source language and every other language's fallback (ADR 0122). A key exists here first; the other
  * languages are checked against it (`test/locales.test.ts`).
  * Rules (docs/design/design-system/README.md): short sentences, active voice,
- * no exclamation marks, buttons start with a verb, "agentes" in lower case.
+ * no exclamation marks, buttons start with a verb, "VortoOne" in lower case.
  */
 export const en = {
   app: {
@@ -594,7 +594,7 @@ export const en = {
       continue: "Continue on my server",
       address: "Server address",
       connect: "Connect",
-      invalid: "That isn't an address. Write it as in the browser, for example agentes.example.com.",
+      invalid: "That isn't an address. Write it as in the browser, for example vortoone.example.com.",
       unreachable: "We didn't find VortoOne at {{host}}. Check the address and that the server is on.",
       none: "Don't have one yet?",
       noneLink: "See how to get yours, free",
@@ -727,7 +727,7 @@ export const en = {
       confirmYes: "Yes, sign the app in",
       confirmNo: "This wasn't me",
       done: "All set.",
-      doneLead: "You're signed in to the agentes app. You can close this tab.",
+      doneLead: "You're signed in to the VortoOne app. You can close this tab.",
       expired: "This request expired.",
       expiredLead: "Go back to the app and choose {{provider}} again.",
       handover: "Signing in with your account from the other device…",
@@ -1334,7 +1334,7 @@ export const en = {
         paused: "Connect with MCP is off while this workspace is paused. Bring the agents this way for now.",
       },
       otherName: "Another app",
-      agenteschatName: "VortoOne",
+      vortooneName: "VortoOne",
       where: {
         openbotrun:
           "Drop openbot-import.json (from Migrator by OpenBot) or openbot-transfer.json (from the instance transfer), or the .zip it came in.",
@@ -1344,7 +1344,7 @@ export const en = {
         openclaw:
           "Drag the whole ~/.openclaw folder (it brings every agent) or just one workspace. On a Mac, ⌘⇧. shows hidden folders in the file picker.",
         paperclip: "Drag the package folder (the one with COMPANY.md), drop a .zip of it or paste its GitHub link.",
-        agenteschat:
+        vortoone:
           "In the other workspace: Settings → Import and export → Download the file. Then drop the .json here.",
       },
       whereOther: "Download the file from the other workspace and drop the .json here.",
@@ -2291,7 +2291,7 @@ export const en = {
     movedOut: "{{name}} left {{group}}",
     undo: "Undo",
   },
-  /** The sidebar's AGENTES part: the agents that talk to me, by group (ADR 0083). */
+  /** The sidebar's VORTOONE part: the agents that talk to me, by group (ADR 0083). */
   sidebarAgents: {
     options: "Agents options",
     add: "New agent or department",
@@ -2341,10 +2341,10 @@ export const en = {
     googlePlay: "Google Play",
   },
   openOnPhone: {
-    qr: "QR code to sign in to the agentes app",
+    qr: "QR code to sign in to the VortoOne app",
     making: "Making the code…",
     /** Followed by the App Store and Google Play, each marked Soon until the app is in it. */
-    stepApp: "Install the agentes app on your phone.",
+    stepApp: "Install the VortoOne app on your phone.",
     stepTailscale: "Install Tailscale on your phone and sign in with the same Tailscale account as this server.",
     /** The links to Tailscale in each store, after the step: the store's own name. */
     appStore: "App Store",
@@ -3927,7 +3927,7 @@ export const en = {
     planTitle: "Use {{owner}}'s plan?",
     planOpen:
       "Conversations with {{name}} will use {{owner}}'s {{plan}} plan and its limits. {{owner}} will get an email about it.",
-    /** "Usar em outros agentes" opening the plans of several people: then one `planOpen` line per owner. */
+    /** "Usar em outros VortoOne" opening the plans of several people: then one `planOpen` line per owner. */
     plansTitle: "Use the plans of {{owners}}?",
   },
   teamChecks: {
@@ -5776,7 +5776,7 @@ export const en = {
     noInstructions: "{{name}} has no instructions yet. Say how he should work.",
     noInstructions_female: "{{name}} has no instructions yet. Say how she should work.",
     savedToast: "{{name}}'s changes saved.",
-    builtinName: "agentes",
+    builtinName: "VortoOne",
     builtinNote: "built-in permissions",
     connectHint: "Connect services",
     subtitle: "{{role}} · owned by <b>{{owner}}</b> · {{model}} {{key}}",
@@ -6192,7 +6192,7 @@ export const en = {
         two: "Preferences",
         three: "Turn on Browser",
         done: "That's it. This page notices on its own, no reload needed.",
-        menuOpen: "Open agentes",
+        menuOpen: "Open VortoOne",
         menuPrefs: "Preferences…",
         menuPause: "Pause",
         menuQuit: "Quit",
@@ -6385,7 +6385,7 @@ export const en = {
       setAll: "Change all",
       connectors: "{{org}}'s connectors",
       connectorsPersonal: "Your connectors",
-      builtin: "Built into agentes",
+      builtin: "Built into VortoOne",
       noMatch: "Nothing matching “{{q}}”",
       noneHere: "Nothing in this filter",
       library: "Skills library",
@@ -8126,7 +8126,7 @@ export const en = {
     github_git_write: {
       label: "Push branches (git push)",
       description:
-        "Push commits to agentes/{agent}/… branches: never to the default branch, no force push, no tags. Deleting branches and pushing to someone else's branch ask for approval first.",
+        "Push commits to vortoone/{agent}/… branches: never to the default branch, no force push, no tags. Deleting branches and pushing to someone else's branch ask for approval first.",
     },
     custom_read: {
       label: "Read tools",
@@ -8618,7 +8618,7 @@ export const en = {
       signedOff: "Off: the agent gets any call to the address.",
       signedOn: "On: only calls signed with the secret get through.",
       signedHelp:
-        "Send the HMAC-SHA256 of the body (of a GET call: its query string, without the ?) in X-Agentes-Signature (sha256=…). GitHub's X-Hub-Signature-256 works too.",
+        "Send the HMAC-SHA256 of the body (of a GET call: its query string, without the ?) in X-VortoOne-Signature (sha256=…). GitHub's X-Hub-Signature-256 works too.",
       addSecret: "Require a signature",
       newSecret: "New secret",
       newSecretTitle: "Make a new secret?",
@@ -9022,7 +9022,7 @@ export const en = {
     event: {
       "sentry.issue_created": "New Sentry error",
       "github.pr_opened": "PR opened on GitHub",
-      "issue.created": "Task created in agentes",
+      "issue.created": "Task created in VortoOne",
       "deploy.succeeded": "Deploy finished",
     },
     when: { event: "When: {{event}}" },
@@ -9356,7 +9356,7 @@ export const en = {
       start: "Start",
       change: "Change something",
       started: "Started",
-      startedToast: "The plan started: it stays pinned on top of the thread and in .agentes/mission.md.",
+      startedToast: "The plan started: it stays pinned on top of the thread and in .vortoone/mission.md.",
       ownerStarts: "Only {{name}} can start it",
       see: "See plan",
       after: {
@@ -10676,7 +10676,7 @@ export const en = {
       antigravity: "Gemini",
       opencode: "OpenCode",
       needs: {
-        keys: "Update agentes on the computer to use a plan's key",
+        keys: "Update VortoOne on the computer to use a plan's key",
       },
       noComputer: "Accounts stay on a connected computer. Connect one of yours first.",
       addComputer: "Connect a computer",
@@ -10744,7 +10744,7 @@ export const en = {
       disconnected: "{{label}} disconnected.",
       useFor: "Use for {{name}} too",
       useForMenu: "Use for…",
-      /** "Usar em todos os agentes" on a coding plan key's row: one model of the key for every agent that may take it. */
+      /** "Usar em todos os VortoOne" on a coding plan key's row: one model of the key for every agent that may take it. */
       useAll: "Use on every agent",
       useAllTitle: "Use {{plan}} on every agent",
       useAllSub: "Choose the model they'll use with this key.",
@@ -11526,7 +11526,7 @@ export const en = {
     audienceRootText: "It reaches every page and folder of the wiki, and the ones added later.",
     audienceInRoot: "The whole wiki is limited: here you can only narrow it further.",
     audienceFollowsRoot: "From the whole wiki",
-    /** "Sempre no contexto dos agentes": a page that goes into every run of an agent that reads it (at most 3). */
+    /** "Sempre no contexto dos VortoOne": a page that goes into every run of an agent that reads it (at most 3). */
     context: {
       on: "Always in the agents' context",
       off: "Take out of the agents' context",
@@ -12526,8 +12526,8 @@ export const en = {
   storage: {
     title: "Storage",
     options: "Where to keep files",
-    agentes: "VortoOne storage",
-    agentesText: "Your files stay in our storage, kept apart per workspace.",
+    vortoone: "VortoOne storage",
+    vortooneText: "Your files stay in our storage, kept apart per workspace.",
     server: "This server",
     serverText: {
       disk: "Files stay on its disk.",
@@ -12537,7 +12537,7 @@ export const en = {
     },
     showFolder: "Show the folder",
     place: {
-      agentes: "VortoOne storage",
+      vortoone: "VortoOne storage",
       server: "this server",
     },
     s3: "Your own storage",
@@ -12553,7 +12553,7 @@ export const en = {
     region: "Region",
     bucket: "Bucket",
     prefix: "Prefix (optional)",
-    prefixHelp: "Folder inside the bucket, for example agentes/.",
+    prefixHelp: "Folder inside the bucket, for example vortoone/.",
     pathStyle: "Path-style addressing",
     pathStyleHelp: "Use for MinIO and others that don't accept the bucket in the host name.",
     accessKey: "Access key",
@@ -14342,32 +14342,32 @@ export const en = {
       supabase: {
         "1": "Open the SQL Editor in your Supabase project and run the command below (change the password).",
         "2": "In Project Settings → Database, copy the URI connection string.",
-        "3": "Swap the user and password in it for agentes_leitura and the password you chose, and paste it here.",
+        "3": "Swap the user and password in it for vortoone_reader and the password you chose, and paste it here.",
       },
       neon: {
         "1": "Open the SQL Editor in your Neon project and run the command below (change the password).",
         "2": "In Connect, copy the address of your database.",
-        "3": "Swap the user and password in it for agentes_leitura and the password you chose, and paste it here.",
+        "3": "Swap the user and password in it for vortoone_reader and the password you chose, and paste it here.",
       },
       railway: {
         "1": "In the Postgres service, open Data → Query and run the command below (change the password).",
         "2": "In Variables, copy DATABASE_PUBLIC_URL (DATABASE_URL is internal and doesn't work from here).",
-        "3": "Swap the user and password in it for agentes_leitura and the password you chose, and paste it here.",
+        "3": "Swap the user and password in it for vortoone_reader and the password you chose, and paste it here.",
       },
       rds: {
         "1": "Connect to the database with your usual tool and run the command below (change the password).",
         "2": "In Connectivity & security, copy the endpoint. The database needs public access on port 5432.",
-        "3": "Build the address postgres://agentes_leitura:password@endpoint:5432/database and paste it here.",
+        "3": "Build the address postgres://vortoone_reader:password@endpoint:5432/database and paste it here.",
       },
       render: {
         "1": "Connect with the PSQL command from the database page and run the command below (change the password).",
         "2": "In Connections, copy the External Database URL.",
-        "3": "Swap the user and password in it for agentes_leitura and the password you chose, and paste it here.",
+        "3": "Swap the user and password in it for vortoone_reader and the password you chose, and paste it here.",
       },
       other: {
         "1": "Ask whoever looks after the database to run the command below (with a password of their own).",
         "2": "Ask them for the public address of the server, its port and the database name.",
-        "3": "Build the address postgres://agentes_leitura:password@server:5432/database and paste it here.",
+        "3": "Build the address postgres://vortoone_reader:password@server:5432/database and paste it here.",
       },
     },
     howAll: "To read every database (Postgres 14 or newer).",
@@ -14514,7 +14514,7 @@ export const en = {
       "A password just for the agents. You create it on your email's site and can delete it anytime, without changing your own password.",
     step: {
       "1": "Open your account's security page.",
-      "2": "Create an app password named “agentes”.",
+      "2": "Create an app password named “VortoOne”.",
       "3": "Copy the password and paste it here.",
     },
     openPage: "Open the {{name}} page",
@@ -15350,7 +15350,7 @@ export const en = {
     nameHelp: "How people and agents see it.",
     os: { linux: "Linux", darwin: "macOS", windows: "Windows", other: "Other system" },
     commandCopied: "Command copied. Paste it in the computer's Terminal.",
-    // agentes for Mac (ADR 0036): this Mac, from the site inside the app.
+    // VortoOne for Mac (ADR 0036): this Mac, from the site inside the app.
     thisMac: {
       text: "Agents only use the folders you allow on this {{device}}.",
       connect: "Use this {{device}}",
@@ -15892,9 +15892,9 @@ export const en = {
       openLocalNetwork: "Open Local Network",
       qrLabel: "QR code for Wireless debugging on the phone",
       qrLine: "Not with the camera",
-      /** "agentes-…" is how the camera names the Wi-Fi network it reads in the QR: keep it as written. */
+      /** "vortoone-…" is how the camera names the Wi-Fi network it reads in the QR: keep it as written. */
       qrCaption:
-        "It offers a Wi-Fi network named agentes-…, which doesn't exist. Keep the phone on the computer's Wi-Fi.",
+        "It offers a Wi-Fi network named vortoone-…, which doesn't exist. Keep the phone on the computer's Wi-Fi.",
       fail: {
         mdns_off:
           "{{computer}} can't look for phones on the Wi-Fi. Update Android platform-tools there, or use a cable.",
@@ -16015,7 +16015,7 @@ export const en = {
         openXcode: "Open Xcode",
         opened: "Xcode opened on {{mac}}. Look in the iPhone's Settings again, then close Xcode.",
         unlock: "Turned it on and the iPhone restarted? Unlock it. The alert with Turn On shows only after that.",
-        /** A Terminal command (`agentes-runner update`) shows under it. */
+        /** A Terminal command (`vortoone-runner update`) shows under it. */
         outdated:
           "The VortoOne app on {{mac}} is out of date. Update the app, or run this in Terminal if you installed it there.",
       },
@@ -16245,7 +16245,7 @@ export const en = {
     reconnectDoneText: "{{name}} is back in {{org}}.",
     deniedTitle: "Not connected",
     denied: "The computer wasn't connected. If it wasn't you who opened it, nobody got access.",
-    home: "Go to agentes",
+    home: "Go to VortoOne",
   },
   apps: {
     connect: "Connect an app",
@@ -19390,7 +19390,7 @@ export const en = {
       /** The buttons that turn them on follow. */
       screensOffOne: "Screens are off on {{computer}}.",
       screensMissing: "{{computer}} can't show screens yet. On it:",
-      outdated: "Update agentes on {{computer}} to see {{name}}'s screen.",
+      outdated: "Update VortoOne on {{computer}} to see {{name}}'s screen.",
       noScreen: "{{name}} has no screen to show here",
       noScreenHelp: "Allow the screen or the browser in Tools and access.",
       noComputer: "Choose a computer for {{name}}.",
@@ -19545,7 +19545,7 @@ export const en = {
       browser: "Browser",
       screen: "Computer screen",
       terminal: "Terminal",
-      agentes: "agentes",
+      vortoone: "VortoOne",
       thinking: "Thinking",
       inside: "{{program}} · {{detail}}",
     },

@@ -209,7 +209,7 @@ export function NewMissionDialog({
                 <b>{t("missions.new.noEligibleTitle")}</b>
               </span>
               <span>{cloud ? waitWords : t("missions.new.noEligibleText")}</span>
-              {/* agentes for Mac: this Mac first, then the agent points at it (ADR 0036). */}
+              {/* VortoOne for Mac: this Mac first, then the agent points at it (ADR 0036). */}
               {!cloud && <ThisMacButton orgId={org.id} canPair={can(org, "pair_computers")} folders={false} />}
               {setupAgent && !cloud && (
                 <Link

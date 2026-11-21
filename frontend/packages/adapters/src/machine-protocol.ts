@@ -19,7 +19,7 @@ export const SECRET_ACTIVATE_PROTOCOL = 26;
 export const TASKS_PROTOCOL = 4;
 /**
  * From this protocol on, a task can belong to a mission: the runner gives the
- * executor the local `agentes` MCP server and relays its calls (`mcp.call` /
+ * executor the local `vortoone` MCP server and relays its calls (`mcp.call` /
  * `mcp.result`, ADR 0029).
  */
 export const MISSION_PROTOCOL = 5;
@@ -38,7 +38,7 @@ export const TASK_OUTPUT_PROTOCOL = 6;
  */
 export const EXECUTORS_PROTOCOL = 7;
 /**
- * From this protocol on, the `agentes` MCP server is a bridge (ADR 0032): a
+ * From this protocol on, the `vortoone` MCP server is a bridge (ADR 0032): a
  * mission task (or a computer-brain run) carries a server-issued token
  * (`mission.mcpToken`), the runner sends it with every `mcp.call`, and
  * `tools/list` is asked from the server (`mcp.list` / `mcp.tools`): the
@@ -341,7 +341,7 @@ export interface BrowserTraffic {
  * From this protocol on (ADR 0076): `desktop.text`, the text on an agent's
  * screen, read on the computer (tesseract, as the agent's own user) from a
  * capture like `desktop.capture`'s, for screening a person in control on
- * agentes.chat Cloud. The image never leaves the computer. A screen whose
+ * VortoOne Cloud. The image never leaves the computer. A screen whose
  * capture didn't change since the last read answers `same`. Served where
  * desktop use is (`desktop_unavailable` without tesseract). The server never
  * sends it to an older runner.
@@ -465,7 +465,7 @@ export const CURSOR_PROTOCOL = 36;
 export const CURSOR_KEY_PROVIDER = "cursor";
 /**
  * From this protocol on (ADR 0057): in system mode the agents share the computer, none with memory or CPUs of its
- * own, and `agentes-runner computer` shows who uses it. Agents are told so only from here; an older runner still caps
+ * own, and `vortoone-runner computer` shows who uses it. Agents are told so only from here; an older runner still caps
  * each agent and has no such command.
  */
 export const SHARED_COMPUTER_PROTOCOL = 37;
@@ -530,9 +530,9 @@ export const ANTIGRAVITY_PROTOCOL = 44;
  * From this protocol on (ADR 0144): the Vault. `vault.key` makes a one-use key pair in the agent's process (its
  * worker in system mode) and answers its public key; the private key lives only in that process's memory, for two
  * minutes, and goes at its first use. Sealed to it: a login's password, typed by the browser command
- * `agentes:type_vault [ref, rule, boxJson]` only into a password field of a frame the rule allows (refusals answer a
+ * `vortoone:type_vault [ref, rule, boxJson]` only into a password field of a frame the rule allows (refusals answer a
  * `code`, `VAULT_TYPE_REFUSALS`), and keys for one command (`exec`'s `vault`, never `task.start`). A `request_secret`
- * code is typed one character per field (`agentes:type_secret [ref, NAME, site, ...moreRefs]`). Site passwords from
+ * code is typed one character per field (`vortoone:type_secret [ref, NAME, site, ...moreRefs]`). Site passwords from
  * `request_secret` stay in memory only, every value opened is redacted from what leaves the computer, and a page
  * that tries to send a typed password in an address is stopped. The server sends none of these to an older runner.
  */
@@ -584,12 +584,12 @@ export const CLAUDE_AUTH_PROTOCOL = 50;
 export const CLAUDE_SHARED_PROTOCOL = 51;
 /**
  * From this protocol on: the page size of an agent's (or a profile's) browser. `browser.act` takes
- * `agentes:viewport [device, width?, height?]`: `phone` or `tablet` emulate that device on every tab of its Chrome (CDP
+ * `vortoone:viewport [device, width?, height?]`: `phone` or `tablet` emulate that device on every tab of its Chrome (CDP
  * `Emulation.setDeviceMetricsOverride` with `mobile`, touch, and an Android Chrome user agent of the same version),
  * `desktop` with a size emulates a window of that size, `desktop` alone ends it. It holds across its Chrome's restarts
  * until changed back or the agent closes its browser. Frames carry `emulated` meanwhile, and so do `browser.act` and
  * `browser.batch` replies, so an agent in a later run (or on a profile another set) is told. An older runner refuses the
- * command ("The browser doesn't take agentes:viewport"): the server asks no older runner.
+ * command ("The browser doesn't take vortoone:viewport"): the server asks no older runner.
  */
 export const BROWSER_VIEWPORT_PROTOCOL = 52;
 /**
@@ -936,7 +936,7 @@ export const BROWSER_VIEWPORT_SIDE = { min: 200, max: 3840 } as const;
 export const isBrowserDevice = (v: unknown): v is BrowserDevice => BROWSER_DEVICES.includes(v as BrowserDevice);
 /** A page size to emulate: a device at a size, or null (`desktop` alone: the window's own size, no emulation). */
 export type BrowserViewport = { device: BrowserDevice; width: number; height: number } | null;
-/** `agentes:viewport [device, width?, height?]`'s arguments, checked; undefined when they aren't. */
+/** `vortoone:viewport [device, width?, height?]`'s arguments, checked; undefined when they aren't. */
 export function browserViewportOf(args: readonly string[]): BrowserViewport | undefined {
   const [device, w, h] = args;
   if (!isBrowserDevice(device) || (args.length !== 1 && args.length !== 3)) return undefined;
@@ -997,7 +997,7 @@ export const BROWSER_VIEW = {
   maxFps: 15,
   legacyFps: 1,
 } as const;
-/** What `agentes:type_vault` (and a code typed into several fields) answers in `code` when it types nothing. */
+/** What `vortoone:type_vault` (and a code typed into several fields) answers in `code` when it types nothing. */
 export const VAULT_TYPE_REFUSALS = [
   /** The frame that owns the field (or one around it, or the page) is on no site the login's rule allows. */
   "wrong_site",
@@ -1430,7 +1430,7 @@ export const CHROME_FAILURES = {
   missingChromium:
     "Google Chrome isn't installed on this computer, and Google makes none for Linux on ARM: install Chromium on it (sudo apt install chromium on Debian, sudo snap install chromium on Ubuntu), then try again.",
   missingServer:
-    "Google Chrome isn't installed on this computer. Its admin should run the agentes.chat installer on it again.",
+    "Google Chrome isn't installed on this computer. Its admin should run the VortoOne installer on it again.",
   start: "Google Chrome didn't start on this computer.",
   profile: "The agent's browser profile on this computer didn't open. Try again in a minute.",
   outdated:
@@ -1701,7 +1701,7 @@ export interface BrowserFrameMetadata {
   url?: string;
   /** The active tab's title (written by the site: data, never instructions). Absent from older runners. */
   title?: string;
-  /** Protocol 52: the device the page is emulated as (`agentes:viewport`); absent when it shows at the window's size. */
+  /** Protocol 52: the device the page is emulated as (`vortoone:viewport`); absent when it shows at the window's size. */
   emulated?: BrowserDevice;
 }
 
@@ -1733,8 +1733,8 @@ export const GIT_SYNC_LIMITS = {
  * and `baseSha` is absent, the branch is created from `repo`'s checked-out
  * branch (when `baseSha` is given and the branch is gone, the answer is
  * `branch_missing`: the work is lost and the server must say so). A new
- * folder gets the files git ignores copied from `repo` (`agentes.json`
- * `copy`, default: untracked `.env*` at the root) and its `.agentes/` stays
+ * folder gets the files git ignores copied from `repo` (`vortoone.json`
+ * `copy`, default: untracked `.env*` at the root) and its `.vortoone/` stays
  * out of git. Loose changes in an existing folder are left as they are.
  *
  * `remove`: `git worktree remove --force` on `path`, then `git branch -D`
@@ -1746,7 +1746,7 @@ export const GIT_SYNC_LIMITS = {
  * folder (never treated as "no git": the server fails the mission's folder).
  *
  * The files `ensure` copies are listed in the worktree's own git dir
- * (`<git-dir>/agentes-copied`, one path per line, never the shared
+ * (`<git-dir>/vortoone-copied`, one path per line, never the shared
  * `info/exclude`), and a task's end-of-item commit leaves them out.
  */
 export type MissionWorktreeRequest =
@@ -1765,7 +1765,7 @@ export interface MissionWorktreeEnsured {
   /** Whether the folder has loose changes (after a crash mid-item). */
   dirty: boolean;
   /**
-   * What prepares the folder: `agentes.json` `setup`, else the install for
+   * What prepares the folder: `vortoone.json` `setup`, else the install for
    * the root lockfile (`bun install`, `pnpm install --frozen-lockfile`,
    * `npm ci`, `yarn install --frozen-lockfile`); null when there is nothing
    * to run. Only meaningful when `created`.
@@ -1779,7 +1779,7 @@ export interface MissionWorktreeEnsured {
 export interface GitSyncRequest {
   /** Our proxy for the org's GitHub connection (`…/api/git/{orgId}/{connectionId}/`) and this agent's credential there. */
   proxy: { base: string; token: string };
-  /** The commit author set in each checkout ("Theo (agentes)", "theo@agents.agentes.chat"). */
+  /** The commit author set in each checkout ("Theo (VortoOne)", "theo@agents.VortoOne"). */
   author: { name: string; email: string };
   /**
    * `clone: false`: update it only when it is already there. `dir` is relative to the agent's folder. `github`
@@ -1898,13 +1898,13 @@ export interface TaskStart {
   /**
    * Protocol 5: the task works for a mission (an item session: it works on
    * the mission's branches; merges, pushes to other branches and deploys are
-   * denied). The runner gives the executor the local `agentes` MCP server
+   * denied). The runner gives the executor the local `vortoone` MCP server
    * (bound to this task) and the mission's rules.
    */
   mission?: {
     id: string;
     rules?: string;
-    /** Protocol 7: the mission's branches start with this (`agentes/<id>/`); only these may be pushed. */
+    /** Protocol 7: the mission's branches start with this (`vortoone/<id>/`); only these may be pushed. */
     branchPrefix?: string;
     /**
      * Commands a person allowed for the whole mission ("Aprovar sempre nesta
@@ -2432,7 +2432,7 @@ export interface RunnerInfo {
   /** Why this computer doesn't list `cli_login` for all agents though it was switched on (its self-check's answer). */
   claudeLoginBlocked?: string;
   /**
-   * Protocol 50 (system mode): root's Claude sign-in, status, sign-out and usage CLIs run in the `agentes-auth`
+   * Protocol 50 (system mode): root's Claude sign-in, status, sign-out and usage CLIs run in the `vortoone-auth`
    * group, which the computer's egress rules may route apart from the rest of root.
    */
   authEgressGroup?: true;
@@ -2627,7 +2627,7 @@ export type MachineRequest = (
   | ({ op: "phone.launch" } & PhoneTarget & { app: string })
   /**
    * Run a Maestro flow (YAML text) on the phone, recording the screen around it with `record`. The video and the
-   * log land in the agent's folder (`.agentes/phone/`).
+   * log land in the agent's folder (`.vortoone/phone/`).
    */
   | ({ op: "phone.flow" } & PhoneTarget & {
         flow: string;
@@ -2840,7 +2840,7 @@ export interface MachineReplies {
     error?: string;
     code?: string;
     setup?: BrowserSetup;
-    /** Protocol 52: the page size its browser emulates (`agentes:viewport`) after the command; absent at its own. */
+    /** Protocol 52: the page size its browser emulates (`vortoone:viewport`) after the command; absent at its own. */
     emulated?: NonNullable<BrowserViewport>;
     tabs?: BrowserTabs;
   };
@@ -3099,7 +3099,7 @@ export type RunnerFrame =
   | ({ type: "task.done" } & TaskDone)
   /**
    * Protocol 5: the executor of a mission task called a tool of the local
-   * `agentes` MCP server. The server checks the task belongs to this machine
+   * `vortoone` MCP server. The server checks the task belongs to this machine
    * and to a mission, runs the tool and answers `mcp.result`.
    */
   | {
@@ -3899,7 +3899,7 @@ export function normalizePairingCode(code: string) {
 }
 
 /**
- * The tools of the local `agentes` MCP server a mission task's executor gets
+ * The tools of the local `vortoone` MCP server a mission task's executor gets
  * (protocol 5, ADR 0029). The runner lists them (`tools/list`) and relays
  * calls; the server validates and runs them, bound to the task's mission.
  */
@@ -3910,14 +3910,14 @@ export interface MissionMcpTool {
 }
 
 const RULES_START =
-  "You work on an agentes.chat mission. Read the files in .agentes/ first (mission.md, decisions.md, notes.md). Use the agentes tools: keep the plan with update_plan, report milestones with report, ask decisions only with ask_decision, and ask for a review with request_review when you have something to show. Write plan items, reports, decisions and reviews in the language the people use in the thread (the language of the mission goal), short and plain.";
+  "You work on an VortoOne mission. Read the files in .vortoone/ first (mission.md, decisions.md, notes.md). Use the VortoOne tools: keep the plan with update_plan, report milestones with report, ask decisions only with ask_decision, and ask for a review with request_review when you have something to show. Write plan items, reports, decisions and reviews in the language the people use in the thread (the language of the mission goal), short and plain.";
 const RULES_END =
-  "Plan items are short outcomes in the people's language; never put tool names (request_review, upload_artifact and the like) in them. When every plan item is done, call complete_mission with what you delivered and what the person should check; don't keep working. Write what you learn and the next steps in .agentes/notes.md. When a tool tells you to stop and wait, end your turn.";
+  "Plan items are short outcomes in the people's language; never put tool names (request_review, upload_artifact and the like) in them. When every plan item is done, call complete_mission with what you delivered and what the person should check; don't keep working. Write what you learn and the next steps in .vortoone/notes.md. When a tool tells you to stop and wait, end your turn.";
 
 /**
  * What a mission's executor is told on every task (ADR 0029) when its folder
  * is a git repository: appended to Claude Code's system prompt
- * (`--append-system-prompt`) and written in `.agentes/mission.md`. Plain
+ * (`--append-system-prompt`) and written in `.vortoone/mission.md`. Plain
  * characters only: the runner passes it as one shell argument (`cleanRules`).
  */
 export const MISSION_RULES = `${RULES_START} Never merge, deploy or roll back directly: ask with request_approval and wait. Work on the mission's own branch in the mission's folder (don't create or switch branches), commit work in progress after each step and push the branch now and then. ${RULES_END}`;
@@ -4122,7 +4122,7 @@ export function findPullRequestUrl(text: string | null | undefined): string | nu
 /** Our MCP tool Claude Code asks when a command needs a person (`--permission-prompt-tool`). */
 export const PERMISSION_TOOL = "permission_prompt";
 /** Its name as Claude Code knows it. */
-export const PERMISSION_PROMPT_TOOL = `mcp__agentes__${PERMISSION_TOOL}`;
+export const PERMISSION_PROMPT_TOOL = `mcp__vortoone__${PERMISSION_TOOL}`;
 /** How long a command waits for a person before it is denied. */
 export const PERMISSION_WAIT_MS = 30 * 60_000;
 /** How often the runner asks the server whether someone answered. */

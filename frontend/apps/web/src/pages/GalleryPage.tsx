@@ -237,7 +237,7 @@ export function GalleryPage() {
             value="platform"
             id="g-r1"
             checked={radio === "platform"}
-            title="Chave do agentes"
+            title="Chave do VortoOne"
             description="Mais simples."
           />
           <RadioCard

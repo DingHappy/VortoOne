@@ -16,7 +16,7 @@ export const CARD_MARK: Record<Exclude<ImportCard, "other">, { icon: string; dar
   hermes: { icon: "/brands/hermes.svg", dark: "/brands/hermes-dark.svg" },
   openclaw: { icon: "/brands/openclaw.svg" },
   paperclip: { icon: "/brands/paperclip.svg", dark: "/brands/paperclip-dark.svg" },
-  agenteschat: { icon: "/favicon.svg" },
+  vortoone: { icon: "/favicon.svg" },
 };
 
 /** A drop as the import reads it: the files, or every file in the dropped folders, with its path. */

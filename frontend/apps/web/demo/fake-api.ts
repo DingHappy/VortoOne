@@ -364,7 +364,7 @@ export interface FakeState {
   holdPosts?: Promise<void>;
   /** What `orgs.billingLink` throws (default: a link on billing.example.com). */
   billingLinkError?: ApiError;
-  /** A new workspace's standing (`orgs.create`): agentes.chat Cloud starts it waiting for its first plan. */
+  /** A new workspace's standing (`orgs.create`): VortoOne Cloud starts it waiting for its first plan. */
   newWorkspaceStanding?: OrgStanding;
   /** `orgs.limits` (ADR 0079); unset = no limits, the members counted from `members`. */
   limits?: WorkspaceLimits;
@@ -376,7 +376,7 @@ export interface FakeState {
   answerNowRuns?: { agentId: string; runId: string }[];
   /** `system.health`'s edition; unset = the Cloud. */
   edition?: Edition;
-  /** Overrides `system.instance` (default: agentes.chat Cloud). */
+  /** Overrides `system.instance` (default: VortoOne Cloud). */
   instance?: Partial<Instance>;
   /** `agents.brainMachines`: the computers a new agent could think on ("Criar agente"); unset = none. */
   brainMachines?: BrainMachine[];
@@ -1950,7 +1950,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       passwordLink: async (orgId, userId) => {
         log("orgs.passwordLink", orgId, userId);
         return {
-          url: `https://agentes.example.com/reset-password?token=link-for-${userId}`,
+          url: `https://vortoone.example.com/reset-password?token=link-for-${userId}`,
           expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         };
       },

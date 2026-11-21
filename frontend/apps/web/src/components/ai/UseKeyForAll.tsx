@@ -34,7 +34,7 @@ const FACES = 5;
 /**
  * "Usar em todos os agentes" on a coding plan key's row: one of the key's models, in runs by what the key did with
  * each (`keyModelGroups`), for every agent that may take it (the server's preview), saved like "Usar em outros
- * agentes" (`applySetup`), which also makes it what new agents start with. `model`: the one it starts on (a reply's
+ * VortoOne" (`applySetup`), which also makes it what new agents start with. `model`: the one it starts on (a reply's
  * stand-in), when the key may run it.
  */
 export function UseKeyForAll({ account, model, onClose }: { account: Row; model?: string; onClose: () => void }) {

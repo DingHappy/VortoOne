@@ -20,7 +20,7 @@ export const sectionName = (t: TFunction, id: SidebarSection, personal = false) 
         ? t("shell.agents")
         : t("shell.directMessages");
 
-const SECTION_DRAG = "application/x-agentes-section";
+const SECTION_DRAG = "application/x-vortoone-section";
 
 /**
  * The order of the sidebar's sections, the person's own in this workspace (`…/me/sidebar/order`): Move up / Move down

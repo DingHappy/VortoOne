@@ -97,7 +97,7 @@ function OutageNotice({
   const { t } = useTranslation();
   const { org } = useOrg();
   const [open, setOpen] = useState(false);
-  // In agentes for Mac, when it's this very Mac: say so, and reconnect from here (ADR 0036).
+  // In VortoOne for Mac, when it's this very Mac: say so, and reconnect from here (ADR 0036).
   const here = useIsThisMac(org.id, o.machineId);
   // The Cloud's one computer: its people are told it is being looked after, with no other computer to go to.
   const edition = useComputerEdition(org.id);

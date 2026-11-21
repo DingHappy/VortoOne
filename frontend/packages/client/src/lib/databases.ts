@@ -54,16 +54,16 @@ export function databaseErrorOf(error: unknown): DatabaseConnectError {
 export function readOnlyRoleSql(database: string, options: { wholeServer?: boolean } = {}) {
   if (options.wholeServer)
     return [
-      "create role agentes_leitura login password 'troque-esta-senha';",
-      "grant pg_read_all_data to agentes_leitura;",
+      "create role vortoone_reader login password 'troque-esta-senha';",
+      "grant pg_read_all_data to vortoone_reader;",
     ].join("\n");
   const db = /^[a-z_][a-z0-9_$]*$/i.test(database) ? database : `"${database.replace(/"/g, '""')}"`;
   return [
-    "create role agentes_leitura login password 'troque-esta-senha';",
-    `grant connect on database ${db} to agentes_leitura;`,
-    "grant usage on schema public to agentes_leitura;",
-    "grant select on all tables in schema public to agentes_leitura;",
-    "alter default privileges in schema public grant select on tables to agentes_leitura;",
+    "create role vortoone_reader login password 'troque-esta-senha';",
+    `grant connect on database ${db} to vortoone_reader;`,
+    "grant usage on schema public to vortoone_reader;",
+    "grant select on all tables in schema public to vortoone_reader;",
+    "alter default privileges in schema public grant select on tables to vortoone_reader;",
   ].join("\n");
 }
 

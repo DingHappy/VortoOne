@@ -25,8 +25,8 @@ import { useSetReportsTo } from "./ReportsTo";
 import { NoSectors, SectorMark, sectorStyle, useTeamLookups } from "./shared";
 
 /** Firefox starts a drag only with some data set; a line's drags carry these types. */
-const LINE_AGENT = "application/x-agentes-line-agent";
-const LINE_SECTOR = "application/x-agentes-line-sector";
+const LINE_AGENT = "application/x-vortoone-line-agent";
+const LINE_SECTOR = "application/x-vortoone-line-sector";
 
 /**
  * Equipe › Organograma (ADR 0148): the workspace on top with its right hand beside it (out of the line: it follows

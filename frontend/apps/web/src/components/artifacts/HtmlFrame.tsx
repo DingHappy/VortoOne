@@ -28,8 +28,8 @@ function mem(){var d={};return{getItem:function(k){k=String(k);return Object.pro
 ["localStorage","sessionStorage"].forEach(function(n){try{void window[n].length}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}});
 try{void document.cookie}catch(e){try{Object.defineProperty(document,"cookie",{get:function(){return""},set:function(){},configurable:true})}catch(_){}}
 function post(m){try{parent.postMessage(m,"*")}catch(_){}}
-window.addEventListener("error",function(e){post({agentesHtml:"error",message:String(e&&e.message||"").slice(0,300)})});
-post({agentesHtml:"ready"});
+window.addEventListener("error",function(e){post({vortooneHtml:"error",message:String(e&&e.message||"").slice(0,300)})});
+post({vortooneHtml:"ready"});
 })();</script><style>@media (hover:hover) and (pointer:fine){
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background-color:inherit}
@@ -105,9 +105,9 @@ export function HtmlFrame({
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (!frame.current || e.source !== frame.current.contentWindow) return;
-      const m = e.data as { agentesHtml?: unknown; message?: unknown } | null;
-      if (m?.agentesHtml === "ready") setReady(true);
-      else if (m?.agentesHtml === "error" && typeof m.message === "string") setError(m.message.slice(0, 300));
+      const m = e.data as { vortooneHtml?: unknown; message?: unknown } | null;
+      if (m?.vortooneHtml === "ready") setReady(true);
+      else if (m?.vortooneHtml === "error" && typeof m.message === "string") setError(m.message.slice(0, 300));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);

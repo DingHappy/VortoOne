@@ -56,7 +56,7 @@ import { softBreaks } from "@/lib/soft-breaks";
 import { useToast } from "@/lib/toast";
 import "./storage.css";
 
-type Choice = "agentes" | "s3";
+type Choice = "vortoone" | "s3";
 type BrandedProvider = Exclude<StorageProvider, "other">;
 
 /** Each service's mark and color (`public/connectors`, see its README); "Other" has none. */
@@ -152,7 +152,7 @@ export function StorageSection() {
   const metered = limits.data ? limits.data.storage.limitBytes !== null : limits.isPending;
   const edition = useComputerEdition(org.id);
   const reveals = useRevealsFiles();
-  const [choice, setChoice] = useState<Choice>("agentes");
+  const [choice, setChoice] = useState<Choice>("vortoone");
   const [connect, setConnect] = useState<"new" | "edit" | null>(null);
   useEffect(() => {
     if (storage.data) setChoice(storage.data.kind);
@@ -160,7 +160,7 @@ export function StorageSection() {
   if (!admin) return null;
   const config = edition ? storage.data : undefined;
   const cloud = edition === "cloud";
-  const place = t(cloud ? "storage.place.agentes" : "storage.place.server");
+  const place = t(cloud ? "storage.place.vortoone" : "storage.place.server");
   return (
     // The page's title names the card: a title of its own would say it twice.
     <Card aria-label={t("storage.title")}>
@@ -175,13 +175,13 @@ export function StorageSection() {
             className="stack-4"
             style={{ gap: 8 }}
           >
-            {(["agentes", "s3"] as const).map((k) => (
+            {(["vortoone", "s3"] as const).map((k) => (
               <RadioCard
                 key={k}
                 value={k}
                 id={`storage-${k}`}
                 checked={choice === k}
-                title={t(k === "s3" ? "storage.s3" : cloud ? "storage.agentes" : "storage.server")}
+                title={t(k === "s3" ? "storage.s3" : cloud ? "storage.vortoone" : "storage.server")}
                 description={
                   k === "s3" ? (
                     config.kind === "s3" ? (
@@ -190,7 +190,7 @@ export function StorageSection() {
                       t("storage.s3Text")
                     )
                   ) : cloud ? (
-                    t("storage.agentesText")
+                    t("storage.vortooneText")
                   ) : (
                     <PlatformLine platform={config.platform} />
                   )
@@ -200,7 +200,7 @@ export function StorageSection() {
                   config.kind === k && choice !== k ? <Chip icon="check">{t("storage.current")}</Chip> : undefined
                 }
                 detail={
-                  config.kind === k && !(k === "agentes" && metered)
+                  config.kind === k && !(k === "vortoone" && metered)
                     ? storageUsageLine(t, i18n.language, config)
                     : undefined
                 }
@@ -273,7 +273,7 @@ function InUse({ config, place, onEdit }: { config: StorageConfig; place: string
             loading={save.isPending}
             onClick={() =>
               save.mutate(
-                { kind: "agentes" },
+                { kind: "vortoone" },
                 {
                   onSuccess: () => {
                     setConfirm(false);

@@ -1,5 +1,5 @@
 /* Copied from docs/design/design-system/tokens.css (a test keeps them in sync). Do not edit here. */
-/* agentes — design system 2026-10 (spec: docs/design/refresh-2026-10.md) */
+/* VortoOne — design system 2026-10 (spec: docs/design/refresh-2026-10.md) */
 :root,
 [data-theme="light"] {
   /* Light is near white: white work area, paper sidebar; gray only in fields' tracks and chosen states. */

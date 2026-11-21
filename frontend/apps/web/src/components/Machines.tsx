@@ -345,7 +345,7 @@ function RemoveDialog({
 }
 
 /**
- * Configurações → Computadores, first: this server's computer (`HOST_COMPUTER_TOKEN`), the machine agentes.chat
+ * Configurações → Computadores, first: this server's computer (`HOST_COMPUTER_TOKEN`), the machine VortoOne
  * is installed on. An admin who stopped it here can use it again; with none, admins read how to make it one,
  * but only while sign-up is closed (with open sign-up the server refuses one).
  */
@@ -477,7 +477,7 @@ function FoldersCard({ machine: m, onReduce }: { machine: Machine; onReduce: (r:
   const access = m.access;
   const shared = sharedFolderOf(access);
   const folders = allowedFolders(access);
-  // This very Mac with an app too old to report: update it from here (agentes for Mac, ADR 0036).
+  // This very Mac with an app too old to report: update it from here (VortoOne for Mac, ADR 0036).
   const here = useIsThisMac(org.id, m.id);
   return (
     <Card aria-labelledby="sec-machine-folders">
@@ -662,7 +662,7 @@ function GrantCard({ machine: m }: { machine: Machine }) {
   const agent = t("machines.access.agentPlaceholder");
   // In system mode the runner's settings are root's (ADR 0057): allowing takes the computer's administrator.
   const system = m.mode === "system";
-  const allowExample = `${system ? "sudo " : ""}agentes-runner folders allow ${path} --agent ${agent}`;
+  const allowExample = `${system ? "sudo " : ""}vortoone-runner folders allow ${path} --agent ${agent}`;
   const app = allowsInApp(m.os);
   return (
     <Card aria-labelledby="sec-machine-grant">

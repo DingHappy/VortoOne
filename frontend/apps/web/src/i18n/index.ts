@@ -29,11 +29,11 @@ export const locales = readyLocales().map((l) => ({ code: l.code, label: l.nativ
 export const TYPED_VALUES = { tOptions: { interpolation: { escapeValue: true } }, shouldUnescape: true };
 
 /** This browser's language choice: a code, or "auto" (the browser's own). */
-const STORAGE_KEY = "agentes.locale";
+const STORAGE_KEY = "vortoone.locale";
 /** "1" while a choice made signed out waits for the next sign-in to reach the server. */
-const PENDING_KEY = "agentes.locale.pending";
-/** The landing's language switch (agentes.chat), shared with the app's host. */
-const LANDING_COOKIE = "agentes_locale";
+const PENDING_KEY = "vortoone.locale.pending";
+/** The landing's language switch (VortoOne), shared with the app's host. */
+const LANDING_COOKIE = "vortoone_locale";
 
 function browserLanguages(): readonly string[] {
   if (typeof navigator === "undefined") return [];

@@ -92,7 +92,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Cartelle",
         blocks: [
-          "Ogni agente ha sempre una cartella sua, in `~/agentes/<workspace>`. Altre cartelle si autorizzano sul computer stesso, mai dal sito: nell’app, in **Preferenze › Cartelle**, oppure con `agentes-runner folders allow` su un server. Ogni spazio di lavoro autorizza le sue cartelle: quello che autorizzi per uno vale solo per i suoi agenti. Rimuovere una cartella non elimina nulla. Toglie solo l’accesso.",
+          "Ogni agente ha sempre una cartella sua, in `~/vortoone/<workspace>`. Altre cartelle si autorizzano sul computer stesso, mai dal sito: nell’app, in **Preferenze › Cartelle**, oppure con `vortoone-runner folders allow` su un server. Ogni spazio di lavoro autorizza le sue cartelle: quello che autorizzi per uno vale solo per i suoi agenti. Rimuovere una cartella non elimina nulla. Toglie solo l’accesso.",
         ],
       },
       {
@@ -105,11 +105,11 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
               "i tuoi file e i tuoi accessi",
               "le cartelle degli altri agenti, anche di altri spazi di lavoro, e gli accessi salvati nei loro browser",
               "il token che collega questo computer",
-              "su un computer che fa girare anche VortoOne, il suo database e le sue chiavi in `.agentes`",
+              "su un computer che fa girare anche VortoOne, il suo database e le sue chiavi in `.vortoone`",
             ],
           },
           "VortoOne rifiuta i comandi che nominano le sue chiavi, i token e gli accessi salvati, ma è una regola, non un muro. I **Comandi** sono attivi fin dall’inizio. Disattivali nella domanda dell’app prima di premere **Consenti**, o più tardi in **Preferenze\u00a0›\u00a0Strumenti**, dove ogni spazio di lavoro ha il suo interruttore (app 0.8.1 e successive) e l’app chiede conferma prima di riattivarne uno. Claude Code e Codex eseguono i propri comandi nella cartella dell’agente, con le proprie regole, anche con i comandi disattivati.",
-          "Per un vero muro, usa un server Linux. Su Debian 13, installato con `--system`, ogni agente è un utente a sé. Su Ubuntu, gli agenti condividono un solo utente, `agentes`: vedono le cartelle degli altri, non le tue né quelle del server. Oppure dai agli agenti un computer tutto loro.",
+          "Per un vero muro, usa un server Linux. Su Debian 13, installato con `--system`, ogni agente è un utente a sé. Su Ubuntu, gli agenti condividono un solo utente, `vortoone`: vedono le cartelle degli altri, non le tue né quelle del server. Oppure dai agli agenti un computer tutto loro.",
         ],
       },
     ],
@@ -464,7 +464,7 @@ export const helpIt: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop e telefono): in **Personalizza › Connettori** (Customize › Connectors), fai clic su **+ Aggiungi**, poi su **Aggiungi connettore personalizzato** (Add custom connector), chiamalo VortoOne, incolla l’indirizzo e fai clic su **Continua**. Scegli **Accedi ora** (Sign in now), fai clic su **Aggiungi** e autorizza. Nei piani Team ed Enterprise, il Proprietario dell’organizzazione Claude aggiunge il connettore in Impostazioni dell’organizzazione › Connettori, e ogni persona fa clic su **Connetti** in Personalizza › Connettori. Il piano gratuito di Claude ha posto per un connettore personalizzato.",
-              "**Claude Code:** esegui `claude mcp add --transport http --scope user agentes <indirizzo>`, poi scrivi `/mcp`, scegli agentes e **Authenticate**. Solo per la cartella attuale, togli `--scope user`.",
+              "**Claude Code:** esegui `claude mcp add --transport http --scope user VortoOne <indirizzo>`, poi scrivi `/mcp`, scegli VortoOne e **Authenticate**. Solo per la cartella attuale, togli `--scope user`.",
               "**Cursor:** **Aggiungi a Cursor** in **Impostazioni › App IA**, oppure l’indirizzo in `~/.cursor/mcp.json`. Cursor ti chiede di accedere la prima volta che lo usi.",
               '**VS Code:** **Aggiungi a VS Code**, oppure l’indirizzo in `.vscode/mcp.json` con `"type": "http"`.',
               "**Altre app:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains e altre hanno ciascuna i propri passaggi in **Collega un'app**, con il tuo indirizzo già inserito.",

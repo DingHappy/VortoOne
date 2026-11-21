@@ -27,7 +27,7 @@ const SUMMARY_MAX = 120;
 /** Routines shown on a card before "and N more". */
 const CARD_ROUTINES = 2;
 const NO_CHANNEL = "none";
-const AGENT_DRAG = "application/x-agentes-map-agent";
+const AGENT_DRAG = "application/x-vortoone-map-agent";
 
 interface Line {
   key: string;

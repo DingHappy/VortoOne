@@ -138,7 +138,7 @@ export interface NewAgentRequest {
  * Connecting an app from the card may sign in on the provider's page, which reloads the app: the card waits here for
  * the way back (`?newAgent=resume`, plus the server's `?connected=`), for an hour, in this tab only.
  */
-const RESUME_KEY = "agentes:new-agent";
+const RESUME_KEY = "vortoone:new-agent";
 const RESUME_PARAM = "newAgent";
 const RESUME_TTL = 60 * 60 * 1000;
 interface Saved {
@@ -289,7 +289,7 @@ export function CreateAgentLink() {
  * Who sits outside the dialog's provider asks through this event: the Mac menu bar's New agent (`MenuBarActions`), and
  * Connect AI's "Criar um agente com este plano" (a `CustomEvent` whose `detail` is the request).
  */
-export const NEW_AGENT_EVENT = "agentes:new-agent";
+export const NEW_AGENT_EVENT = "vortoone:new-agent";
 
 /** The ready-made words of a starting point: a personal starter's (`teamTemplates.agents`) or a role's. */
 const isStarter = (pick: Pick): pick is PersonalStarter["id"] => PERSONAL_STARTERS.some((s) => s.id === pick);

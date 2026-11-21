@@ -11,7 +11,7 @@ import { useToast } from "../../ui/Toast";
 import { shortPath } from "../../ui/time";
 
 /**
- * The runner's defaults (the same numbers `agentes-runner`'s `DEFAULT_LIMITS` uses when the config has none): on
+ * The runner's defaults (the same numbers `vortoone-runner`'s `DEFAULT_LIMITS` uses when the config has none): on
  * Linux, where it reads free memory and closes idle conversations for a turn that needs room, they stay open longer.
  */
 export const defaultLimits = (platform: Platform): Required<Omit<ControlConfigPatch, "name">> => ({

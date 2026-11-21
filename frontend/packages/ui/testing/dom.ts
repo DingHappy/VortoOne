@@ -151,7 +151,7 @@ function traverseLikeABrowser(window: Window) {
 }
 
 function state(): DomState {
-  const existing = g.__agentesDom as DomState | undefined;
+  const existing = g.__vortooneDom as DomState | undefined;
   if (existing) return existing;
   const window = new Window({ url: "http://localhost:3000/", width: 1280, height: 900 });
   traverseLikeABrowser(window);
@@ -188,7 +188,7 @@ function state(): DomState {
   const native = new Map<string, PropertyDescriptor | undefined>();
   for (const key of SWAPPED) native.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
   const created: DomState = { window, native, attached: false };
-  g.__agentesDom = created;
+  g.__vortooneDom = created;
   return created;
 }
 

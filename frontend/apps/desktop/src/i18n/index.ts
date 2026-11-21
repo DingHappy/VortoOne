@@ -68,7 +68,7 @@ export function withDesktopKeys(resources: Record<string, Record<string, object>
   return out;
 }
 
-/** This computer's choice in Preferences (`agentes.desktop.locale`, shared by every window): a code or "auto". */
+/** This computer's choice in Preferences (`vortoone.desktop.locale`, shared by every window): a code or "auto". */
 export const LOCALE_PREF = "locale";
 
 /** The languages people can pick, each by its own name. */
@@ -87,7 +87,7 @@ export function detectedLocale(): AppLocale {
 /** The language picked in Preferences, else the system's. */
 export function systemLocale(): AppLocale {
   try {
-    const raw = localStorage.getItem(`agentes.desktop.${LOCALE_PREF}`);
+    const raw = localStorage.getItem(`vortoone.desktop.${LOCALE_PREF}`);
     const choice = raw ? JSON.parse(raw) : null;
     if (isAppLocale(choice)) return choice;
   } catch {

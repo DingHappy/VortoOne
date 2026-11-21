@@ -58,7 +58,7 @@ void authConfig.then(
 );
 // The language's file is the app's own too: index.html's boot fallback reloads or says so, and the error is reported.
 const i18n = await loadI18n(savedLocale()).catch((error: unknown) => {
-  window.__agentesBootFailed?.();
+  window.__vortooneBootFailed?.();
   throw error;
 });
 document.documentElement.lang = i18n.language;

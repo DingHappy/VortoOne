@@ -146,7 +146,7 @@ export function createFakeMachines(ctx: MockContext, log: (method: string, ...ar
       execAllowed: true,
       pairedBy: { id: "u-walter", name: "Walter" },
       agents: [],
-      workspace: "/home/runner/agentes",
+      workspace: "/home/runner/vortoone",
       canManage: true,
       createdAt: ctx.now().toISOString(),
       ...input,

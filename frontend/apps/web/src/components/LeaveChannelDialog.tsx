@@ -10,7 +10,7 @@ import { useOrg } from "./org-context";
 
 type Leaving = Pick<Channel, "id" | "name" | "visibility">;
 
-const EVENT = "agentes:channel-leave";
+const EVENT = "vortoone:channel-leave";
 
 /** Out of the channel, and off its page when it was open. */
 function useLeave() {

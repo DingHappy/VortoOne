@@ -742,7 +742,7 @@ function SourceSteps({
   const orgs = useMe().data?.organizations ?? [];
   const client = mcpClient(card);
   // Another workspace of this person's on this server: its export one click away, in a tab of its own.
-  const others = card === "agenteschat" ? orgs.filter((o) => o.id !== orgId && can(o, "create_agents")) : [];
+  const others = card === "vortoone" ? orgs.filter((o) => o.id !== orgId && can(o, "create_agents")) : [];
   const other = others.length === 1 ? others[0] : undefined;
   const prompt = isRequestCard(card) ? (
     <OtherApp card={card} />
@@ -1062,7 +1062,7 @@ export function Preview({
           </p>
         </div>
       </header>
-      {bundle.source.ref === `agenteschat:${orgId}` && (
+      {bundle.source.ref === `vortoone:${orgId}` && (
         <Alert tone="neutral">{t("onboarding.import.sameWorkspace")}</Alert>
       )}
 

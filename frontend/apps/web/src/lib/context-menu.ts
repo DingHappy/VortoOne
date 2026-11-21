@@ -28,7 +28,7 @@ export type MenuLook = "ours" | "system";
 /** The reactions at the top of a message's menu. */
 export const QUICK_REACTIONS = ["👍", "🎉", "👀", "✅", "❤️"] as const;
 
-const LOOK_EVENT = "agentes:menu-look";
+const LOOK_EVENT = "vortoone:menu-look";
 let look: MenuLook = storage.get(STORAGE_KEYS.menuLook) === "system" ? "system" : "ours";
 
 export const menuLook = () => look;
@@ -125,12 +125,12 @@ let systemRuns = new Map<string, () => void>();
 /** `ContextMenuHost` draws our menu through this. */
 export function setMenuHost(host: ((menu: OpenMenu | null) => void) | null) {
   show = host;
-  const w = window as { __agentesContextMenu?: (token: string, id: string) => void };
+  const w = window as { __vortooneContextMenu?: (token: string, id: string) => void };
   if (host) {
-    w.__agentesContextMenu = (token, id) => {
+    w.__vortooneContextMenu = (token, id) => {
       if (Number(token) === systemToken) systemRuns.get(id)?.();
     };
-  } else delete w.__agentesContextMenu;
+  } else delete w.__vortooneContextMenu;
 }
 
 /**

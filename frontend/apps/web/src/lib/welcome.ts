@@ -7,7 +7,7 @@ export * from "@vortoone/client/lib/welcome";
  * first channel you open greets you and says what its agents did since your
  * last visit. Visits are kept per workspace in localStorage.
  */
-const KEY = "agentes.welcome";
+const KEY = "vortoone.welcome";
 
 type Visits = Record<string, number>;
 

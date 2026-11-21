@@ -25,7 +25,7 @@ export const isPaletteShortcut = (e: Pick<KeyboardEvent, "key" | "metaKey" | "ct
   (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k";
 
 /** Opens the palette from elsewhere (a button). */
-export const openPalette = () => window.dispatchEvent(new Event("agentes:palette"));
+export const openPalette = () => window.dispatchEvent(new Event("vortoone:palette"));
 
 /**
  * The ⌘K palette: go to any channel, agent, person, page or settings section,
@@ -56,10 +56,10 @@ export function CommandMenu() {
     };
     const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("agentes:palette", onOpen);
+    window.addEventListener("vortoone:palette", onOpen);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("agentes:palette", onOpen);
+      window.removeEventListener("vortoone:palette", onOpen);
     };
   }, []);
 

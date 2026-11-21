@@ -1,5 +1,5 @@
 /** The organizations shown before leaving for GitHub's sign-in, read on the way back to say what changed. */
-const KEY = "agentes.github-orgs";
+const KEY = "vortoone.github-orgs";
 
 export function keepGithubOrgs(orgs: readonly string[]) {
   try {

@@ -48,7 +48,7 @@ import { useToast } from "@/lib/toast";
 function MachineTargetView({ target }: { target: Extract<ComputerTarget, { kind: "machine" }> }) {
   const { t } = useTranslation();
   const { org } = useOrg();
-  // In agentes for Mac, offline on this very Mac: reconnect from here (ADR 0036).
+  // In VortoOne for Mac, offline on this very Mac: reconnect from here (ADR 0036).
   const here = useIsThisMac(org.id, target.machineId);
   // The workspace's own computer: nobody connected it, nobody turns it on or off.
   const managed = useMachines(org.id).data?.find((m) => m.id === target.machineId)?.kind === "managed";

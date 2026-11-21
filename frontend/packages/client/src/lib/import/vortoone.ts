@@ -23,7 +23,7 @@ import {
  */
 
 const FORMAT = "vortoone.bundle";
-const LEGACY_FORMAT = "agenteschat.bundle";
+const LEGACY_FORMAT = "vortoone.bundle";
 const NOTE_KINDS: BundleNote["kind"][] = ["fact", "preference", "decision", "note", "lesson"];
 const TODO_KINDS: BundleTodo["kind"][] = ["connection", "app", "secret", "model", "file"];
 const LEFT_OUT_KINDS = new Set<string>([
@@ -120,7 +120,7 @@ export function parse(files: ImportFile[], d: Draft) {
   const app = slug(str(source.app));
   // Our export names the workspace. A reply's `ref` is a model's guess that changes from one export to the next, so
   // every reply from one app is one package: asking again updates what came before, it never makes it twice.
-  const reply = app !== "agenteschat";
+  const reply = app !== "vortoone";
   d.ref = reply ? app || str(source.ref) : `${app}:${str(source.ref)}`;
 
   const skills = new Map<string, string>();

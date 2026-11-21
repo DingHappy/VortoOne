@@ -4,7 +4,7 @@ import type { AgentTab } from "@vortoone/client/lib/agent-edit";
  * An agent's page in the panel, asked from outside the conversation's page (a sidebar row's settings button): the page
  * on screen opens it beside what it shows. With none on screen the ask waits, for the one the caller goes to.
  */
-const EVENT = "agentes:agent-panel";
+const EVENT = "vortoone:agent-panel";
 let pending: { agentId: string; tab?: AgentTab; keep?: boolean } | null = null;
 
 /**

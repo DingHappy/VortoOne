@@ -153,7 +153,7 @@ const ECHO_MS = 400;
 
 /**
  * The Mac's menu bar choices that are the site's (menus.rs `SITE_ACTIONS`): the app calls
- * `window.__agentesMenu(action)`. Mounted in the workspace, where they make sense.
+ * `window.__vortooneMenu(action)`. Mounted in the workspace, where they make sense.
  */
 export function MenuBarActions({ orgId }: { orgId: string }) {
   const { t, i18n } = useTranslation();
@@ -185,8 +185,8 @@ export function MenuBarActions({ orgId }: { orgId: string }) {
       goDrive: to(`${org}/drive`),
       orgSettings: to(`${org}/settings`),
     };
-    const w = window as { __agentesMenu?: (action: string, arg?: string) => void };
-    w.__agentesMenu = (action, arg) => {
+    const w = window as { __vortooneMenu?: (action: string, arg?: string) => void };
+    w.__vortooneMenu = (action, arg) => {
       // Go → an organization (⌘⌥1–9).
       if (action === "org" && arg) return router.history.push(`/org/${encodeURIComponent(arg)}`);
       if (performance.now() - (keyed.get(action) ?? -Infinity) < ECHO_MS) return;
@@ -194,7 +194,7 @@ export function MenuBarActions({ orgId }: { orgId: string }) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => {
-      delete w.__agentesMenu;
+      delete w.__vortooneMenu;
       window.removeEventListener("keydown", onKey, true);
     };
   }, [router, orgId]);

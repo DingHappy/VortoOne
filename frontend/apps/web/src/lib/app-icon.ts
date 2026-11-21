@@ -13,7 +13,7 @@ import { STORAGE_KEYS, storage } from "./storage";
 export type AppIconPick = AppIconId | { agent: AgentIcon };
 export type { AgentIcon };
 
-const CHANGE_EVENT = "agentes:app-icon";
+const CHANGE_EVENT = "vortoone:app-icon";
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** An agent as kept (this browser's storage, or the desktop app's answer): ids, a name and a look, or nothing. */

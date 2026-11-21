@@ -31,7 +31,7 @@ const CARD_ROUTINES = 3;
  * Equipe › Setores (ADR 0148): the agent groups (ADR 0083) as setores, one card each: who leads it and who covers,
  * its agents, the people around them, the channels they are in and their routines. Who manages agents creates,
  * edits, orders and deletes them, picks the lead and the substitute, and drags agents between cards. The sidebar's
- * AGENTES sections are the same groups.
+ * VORTOONE sections are the same groups.
  */
 export function TeamSectors({ team, groups }: { team: Team; groups: AgentGroup[] }) {
   const { t } = useTranslation();

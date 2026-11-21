@@ -296,7 +296,7 @@ export function AgentGroupMenu({
 }
 
 /** Firefox starts a drag only with some data set. */
-const AGENT_DRAG = "application/x-agentes-agent";
+const AGENT_DRAG = "application/x-vortoone-agent";
 
 /**
  * Moves an agent into a group (`null`: out of any), at `index` among its agents, and says so in a toast with Desfazer,
@@ -337,7 +337,7 @@ export function useMoveAgent(groups: AgentGroup[]) {
 }
 
 /**
- * Dragging agents between groups (Equipe and the sidebar's AGENTES, for who manages agents) (owners and admins): rows are draggable, groups take the drop.
+ * Dragging agents between groups (Equipe and the sidebar's VORTOONE, for who manages agents) (owners and admins): rows are draggable, groups take the drop.
  * Inside a group the row lands where the pointer is (`over.index`, before the first row whose middle is below it);
  * the agents in no group keep the workspace's order.
  */

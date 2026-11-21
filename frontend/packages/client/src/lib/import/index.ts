@@ -2,7 +2,7 @@ import { isSecretFile } from "@vortoone/tokens/names";
 import type { MigrationBundle } from "../../api/types";
 import { MAX_UPLOAD_BYTES } from "../files";
 import { excerpt } from "../text";
-import * as agenteschat from "./agenteschat";
+import * as vortoone from "./vortoone";
 import * as hermes from "./hermes";
 import * as openbot from "./openbot";
 import * as openbotrun from "./openbotrun";
@@ -36,7 +36,7 @@ import {
  * synchronous; nothing here touches the network.
  */
 
-export { EXPORT_PROMPT } from "./agenteschat";
+export { EXPORT_PROMPT } from "./vortoone";
 export { interpolateEnv } from "./openbot";
 export {
   IMPORT_MAX_BYTES,
@@ -61,7 +61,7 @@ export type ImportSource =
   | "openclaw"
   | "paperclip"
   | "openbot"
-  | "agenteschat";
+  | "vortoone";
 /** Every app the parsers read. */
 export const IMPORT_SOURCES: ImportSource[] = [
   "openbotrun",
@@ -70,7 +70,7 @@ export const IMPORT_SOURCES: ImportSource[] = [
   "openclaw",
   "paperclip",
   "openbot",
-  "agenteschat",
+  "vortoone",
 ];
 /** Brand names (not translated). */
 export const SOURCE_NAME: Record<ImportSource, string> = {
@@ -80,7 +80,7 @@ export const SOURCE_NAME: Record<ImportSource, string> = {
   openclaw: "OpenClaw",
   paperclip: "Paperclip",
   openbot: "OpenBot",
-  agenteschat: "agentes.chat",
+  vortoone: "VortoOne",
 };
 const ARCHIVES = ".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar";
 /** What the file picker offers for each source. */
@@ -91,7 +91,7 @@ export const SOURCE_ACCEPT: Record<ImportSource, string> = {
   openclaw: `.md,.json,.json5,${ARCHIVES}`,
   paperclip: `.md,.yaml,.yml,${ARCHIVES}`,
   openbot: `.yaml,.yml,${ARCHIVES}`,
-  agenteschat: ".json,.txt,.md,application/json",
+  vortoone: ".json,.txt,.md,application/json",
 };
 /** Everything any source accepts. */
 export const IMPORT_ACCEPT = [...new Set(Object.values(SOURCE_ACCEPT).flatMap((a) => a.split(",")))].join(",");
@@ -101,7 +101,7 @@ interface Parser {
   parse(files: ImportFile[], d: Draft): void;
 }
 const PARSERS: Record<ImportSource, Parser> = {
-  agenteschat,
+  vortoone,
   openbotrun,
   openmausbot,
   paperclip,
@@ -111,7 +111,7 @@ const PARSERS: Record<ImportSource, Parser> = {
 };
 /** Strongest signal first: a declared format, then a manifest file, then a folder layout. */
 const DETECTION: ImportSource[] = [
-  "agenteschat",
+  "vortoone",
   "openbotrun",
   "openmausbot",
   "paperclip",
@@ -355,7 +355,7 @@ function finish(d: Draft, app: ImportSource, files: ImportFile[]): { bundle: Mig
   const used = files.filter((f) => d.used.has(f.name));
   const seen = new Set<string>();
   const bundle: MigrationBundle = {
-    format: "agenteschat.bundle",
+    format: "vortoone.bundle",
     version: 1,
     source: {
       app,
