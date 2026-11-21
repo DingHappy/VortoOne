@@ -1,9 +1,9 @@
-import type { Mission } from "@agenteschat/client";
-import { useChannels, useMissionList } from "@agenteschat/client";
-import { formatShortDate, relativeTime } from "@agenteschat/client/lib/format";
-import { isOpenMission, missionCells, missionCellTitles, waitingText } from "@agenteschat/client/lib/missions";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Button, EmptyState, GroupHeading, Icon, Menu } from "@agenteschat/ui";
+import type { Mission } from "@vortoone/client";
+import { useChannels, useMissionList } from "@vortoone/client";
+import { formatShortDate, relativeTime } from "@vortoone/client/lib/format";
+import { isOpenMission, missionCells, missionCellTitles, waitingText } from "@vortoone/client/lib/missions";
+import { can } from "@vortoone/client/lib/permissions";
+import { Button, EmptyState, GroupHeading, Icon, Menu } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

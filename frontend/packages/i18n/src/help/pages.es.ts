@@ -92,7 +92,7 @@ export const helpEs: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Carpetas",
         blocks: [
-          "Cada agente siempre tiene su propia carpeta, en `~/agentes/<workspace>`. Se pueden permitir más carpetas en la propia computadora, nunca desde el sitio web: en la app, en **Preferencias › Carpetas**, o con `agentes-runner folders allow` en un servidor. Cada espacio de trabajo permite sus propias carpetas: lo que permites para uno solo vale para sus agentes. Quitar una carpeta no borra nada. Solo retira el acceso.",
+          "Cada agente siempre tiene su propia carpeta, en `~/vortoone/<workspace>`. Se pueden permitir más carpetas en la propia computadora, nunca desde el sitio web: en la app, en **Preferencias › Carpetas**, o con `vortoone-runner folders allow` en un servidor. Cada espacio de trabajo permite sus propias carpetas: lo que permites para uno solo vale para sus agentes. Quitar una carpeta no borra nada. Solo retira el acceso.",
         ],
       },
       {
@@ -105,11 +105,11 @@ export const helpEs: Partial<Record<HelpSlug, HelpDocument>> = {
               "tus archivos y tus sesiones iniciadas",
               "las carpetas de otros agentes, incluidas las de otros espacios de trabajo, y las sesiones que guardan sus navegadores",
               "el token que conecta esta computadora",
-              "en una computadora que también ejecuta VortoOne, su base de datos y sus claves en `.agentes`",
+              "en una computadora que también ejecuta VortoOne, su base de datos y sus claves en `.vortoone`",
             ],
           },
           "VortoOne rechaza los comandos que nombran sus claves, tokens e inicios de sesión, pero es una regla, no un muro. Los **Comandos** vienen activados. Desactívalos en la pregunta de la app antes de pulsar **Permitir**, o más tarde en **Preferencias\u00a0›\u00a0Herramientas**, donde cada espacio de trabajo tiene su propio interruptor (app 0.8.1 y posteriores) y la app pregunta antes de volver a activar uno. Claude Code y Codex ejecutan sus propios comandos en la carpeta del agente, con sus propias reglas, incluso con los comandos desactivados.",
-          "Para un muro de verdad, usa un servidor Linux. En Debian 13, instalado con `--system`, cada agente es un usuario propio. En Ubuntu, los agentes comparten un usuario, `agentes`: ven las carpetas de los demás, no las tuyas ni las del servidor. O dales a los agentes una computadora propia.",
+          "Para un muro de verdad, usa un servidor Linux. En Debian 13, instalado con `--system`, cada agente es un usuario propio. En Ubuntu, los agentes comparten un usuario, `vortoone`: ven las carpetas de los demás, no las tuyas ni las del servidor. O dales a los agentes una computadora propia.",
         ],
       },
     ],

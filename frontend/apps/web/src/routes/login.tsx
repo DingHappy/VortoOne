@@ -1,5 +1,5 @@
-import { authConfigQuery, invitationQuery, meQuery } from "@agenteschat/client";
-import { safeRedirect, signInFor } from "@agenteschat/client/lib/guards";
+import { authConfigQuery, invitationQuery, meQuery } from "@vortoone/client";
+import { safeRedirect, signInFor } from "@vortoone/client/lib/guards";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { fallBackToAccount } from "@/lib/accounts";
 import { AuthPage } from "@/pages/AuthPage";

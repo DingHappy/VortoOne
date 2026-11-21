@@ -1,9 +1,9 @@
-import type { Agent, AgentAudience } from "@agenteschat/client";
-import type { AccessResource, Level, LevelState } from "@agenteschat/client/lib/access-levels";
-import type { agentGrammar } from "@agenteschat/client/lib/grammar";
-import type { RepoChoice } from "@agenteschat/client/lib/repos";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { Button, CardHeader, Icon, type IconName } from "@agenteschat/ui";
+import type { Agent, AgentAudience } from "@vortoone/client";
+import type { AccessResource, Level, LevelState } from "@vortoone/client/lib/access-levels";
+import type { agentGrammar } from "@vortoone/client/lib/grammar";
+import type { RepoChoice } from "@vortoone/client/lib/repos";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
+import { Button, CardHeader, Icon, type IconName } from "@vortoone/ui";
 import { createContext, type ReactNode, useContext } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

@@ -1,5 +1,5 @@
-import type { Machine } from "@agenteschat/client";
-import { useAgents, useAuthConfig, useComputerSetup, useMachines } from "@agenteschat/client";
+import type { Machine } from "@vortoone/client";
+import { useAgents, useAuthConfig, useComputerSetup, useMachines } from "@vortoone/client";
 import {
   agentsWaitingForComputer,
   computerEdition,
@@ -19,12 +19,12 @@ import {
   statusRestatesChip,
   useEtaNow,
   WORKSPACE_COMPUTER_KIND,
-} from "@agenteschat/client/lib/computer";
-import { joinNames, lowerFirst } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { namesComputers } from "@agenteschat/client/lib/machines";
-import { around, endSentence } from "@agenteschat/client/lib/text";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/computer";
+import { joinNames, lowerFirst } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { namesComputers } from "@vortoone/client/lib/machines";
+import { around, endSentence } from "@vortoone/client/lib/text";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Card,
@@ -36,7 +36,7 @@ import {
   InfoHint,
   Spinner,
   Steps,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

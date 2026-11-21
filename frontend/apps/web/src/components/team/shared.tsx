@@ -1,10 +1,10 @@
-import type { AgentGroup, TeamAgent } from "@agenteschat/client";
-import { useAiStatus, useChannels } from "@agenteschat/client";
-import { groupOf } from "@agenteschat/client/lib/agent-groups";
-import { aiStateOf } from "@agenteschat/client/lib/no-ai";
-import { rightHandOf } from "@agenteschat/client/lib/right-hand";
-import { noSectorsCopy } from "@agenteschat/client/lib/team-views";
-import { Button, EmptyState, Icon, PixelSpinner, RoleMark, spriteTone } from "@agenteschat/ui";
+import type { AgentGroup, TeamAgent } from "@vortoone/client";
+import { useAiStatus, useChannels } from "@vortoone/client";
+import { groupOf } from "@vortoone/client/lib/agent-groups";
+import { aiStateOf } from "@vortoone/client/lib/no-ai";
+import { rightHandOf } from "@vortoone/client/lib/right-hand";
+import { noSectorsCopy } from "@vortoone/client/lib/team-views";
+import { Button, EmptyState, Icon, PixelSpinner, RoleMark, spriteTone } from "@vortoone/ui";
 import { type CSSProperties, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { NoAiChip } from "@/components/NoAi";

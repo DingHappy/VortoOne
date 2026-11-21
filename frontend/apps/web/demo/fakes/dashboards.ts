@@ -21,15 +21,15 @@ import type {
   WidgetStep,
   WidgetSuggestions,
   WidgetUpdate,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
 import {
   chartBlockToWidgetSpec,
   type ExampleWords,
   exampleWidgetSpec,
   sizeToLayout,
   type WidgetSpec,
-} from "@agenteschat/ui/widgets/spec";
+} from "@vortoone/ui/widgets/spec";
 import { clone, mockId } from "./context";
 
 export interface FakeDashboards {

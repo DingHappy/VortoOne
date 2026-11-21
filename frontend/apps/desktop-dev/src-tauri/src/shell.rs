@@ -1,6 +1,6 @@
 //! 首次引导和偏好设置窗口（`frontend/apps/desktop` 的窗口界面，连真外壳那一份）要的宿主能力。
 //!
-//! 接口照 agentes.chat 桌面端窗口与外壳之间的约定（`host/tauri.ts`），实现是自己写的：参照它的 ADR 0066，
+//! 接口照上游桌面端窗口与外壳之间的约定（`host/tauri.ts`），实现是自己写的：参照它的 ADR 0066，
 //! 不迁入对方的 Rust。第 1 步只实现「家的列表、首次引导、这台电脑上的服务」用得到的；其余能力（连接的电脑、
 //! 刘海、菜单栏、更新）按「没有」回答，窗口里对应的地方不显示。
 //!
@@ -1024,7 +1024,7 @@ mod tests {
             assert_eq!(accepted_link(ok).as_deref(), Some(ok), "{ok}");
         }
         let long = format!("vortoone://connect?server=x&pad={}", "a".repeat(LINK_MAX));
-        for no in ["vortoone://pair?server=x&link=ABCD-EFGH", "vortoone://connectx?server=x", "agenteschat://connect?server=x",
+        for no in ["vortoone://pair?server=x&link=ABCD-EFGH", "vortoone://connectx?server=x", "other://connect?server=x",
                    "https://box.example/connect", "vortoone://connect?server=x y", "vortoone://connect?server=\u{7}x", "", long.as_str()] {
             assert_eq!(accepted_link(no), None, "{no}");
         }

@@ -577,7 +577,7 @@ export const ptBR = {
       continue: "Continuar no meu servidor",
       address: "Endereço do servidor",
       connect: "Conectar",
-      invalid: "Isso não é um endereço. Escreva como no navegador, por exemplo agentes.example.com.",
+      invalid: "Isso não é um endereço. Escreva como no navegador, por exemplo vortoone.example.com.",
       unreachable: "Não achamos o VortoOne em {{host}}. Confira o endereço e se o servidor está ligado.",
       none: "Ainda não tem um?",
       noneLink: "Veja como ter o seu, grátis",
@@ -709,7 +709,7 @@ export const ptBR = {
       confirmYes: "Sim, entrar no app",
       confirmNo: "Não fui eu",
       done: "Tudo certo.",
-      doneLead: "Você entrou no app agentes. Pode fechar esta aba.",
+      doneLead: "Você entrou no app VortoOne. Pode fechar esta aba.",
       expired: "Esse pedido expirou.",
       expiredLead: "Volte ao app e escolha {{provider}} de novo.",
       handover: "Entrando com a sua conta do outro aparelho…",
@@ -1244,7 +1244,7 @@ export const ptBR = {
           "Conectar com MCP fica desligado enquanto este workspace está pausado. Por enquanto, traga os agentes por aqui.",
       },
       otherName: "Outro app",
-      agenteschatName: "VortoOne",
+      vortooneName: "VortoOne",
       where: {
         openbotrun:
           "Solte o openbot-import.json (do Migrator by OpenBot) ou o openbot-transfer.json (da transferência da instância), ou o .zip em que ele veio.",
@@ -1254,7 +1254,7 @@ export const ptBR = {
         openclaw:
           "Arraste a pasta ~/.openclaw inteira (ela traz todos os agentes) ou só um workspace. No Mac, ⌘⇧. mostra as pastas ocultas na janela de escolher.",
         paperclip: "Arraste a pasta do pacote (a que tem o COMPANY.md), solte um .zip dela ou cole o link do GitHub.",
-        agenteschat:
+        vortoone:
           "No outro workspace: Configurações → Importar e exportar → Baixar o arquivo. Depois é só soltar o .json aqui.",
       },
       whereOther: "Baixe o arquivo do outro workspace e solte o .json aqui.",
@@ -2232,9 +2232,9 @@ export const ptBR = {
     googlePlay: "Google Play",
   },
   openOnPhone: {
-    qr: "QR code para entrar no app agentes",
+    qr: "QR code para entrar no app VortoOne",
     making: "Gerando o código…",
-    stepApp: "Instale o app agentes no celular.",
+    stepApp: "Instale o app VortoOne no celular.",
     stepTailscale: "Instale o Tailscale no celular e entre com a mesma conta do Tailscale deste servidor.",
     appStore: "App Store",
     googlePlay: "Google Play",
@@ -5648,7 +5648,7 @@ export const ptBR = {
     noInstructions_female: "A {{name}} ainda não tem instruções. Diga como deve trabalhar.",
     savedToast: "Alterações do {{name}} salvas.",
     savedToast_female: "Alterações da {{name}} salvas.",
-    builtinName: "agentes",
+    builtinName: "VortoOne",
     builtinNote: "permissões embutidas",
     connectHint: "Conectar serviços",
     subtitle: "{{role}} · de <b>{{owner}}</b> · {{model}} {{key}}",
@@ -6079,7 +6079,7 @@ export const ptBR = {
         two: "Preferências",
         three: "Ligue o Navegador",
         done: "Pronto. Esta página percebe sozinha, não precisa recarregar.",
-        menuOpen: "Abrir agentes",
+        menuOpen: "Abrir VortoOne",
         menuPrefs: "Preferências…",
         menuPause: "Pausar",
         menuQuit: "Sair",
@@ -6283,7 +6283,7 @@ export const ptBR = {
       setAll: "Mudar todos",
       connectors: "Conectores da {{org}}",
       connectorsPersonal: "Os seus conectores",
-      builtin: "Nativos do agentes",
+      builtin: "Nativos do VortoOne",
       noMatch: "Nada com “{{q}}”",
       noneHere: "Nada neste filtro",
       library: "Biblioteca de skills",
@@ -8076,7 +8076,7 @@ export const ptBR = {
     github_git_write: {
       label: "Enviar branches (git push)",
       description:
-        "Enviar commits para branches agentes/{agente}/…: nunca na branch principal, sem force push, sem tags. Apagar branches e enviar para a branch de outra pessoa pedem aprovação antes.",
+        "Enviar commits para branches vortoone/{agente}/…: nunca na branch principal, sem force push, sem tags. Apagar branches e enviar para a branch de outra pessoa pedem aprovação antes.",
     },
     custom_read: {
       label: "Ferramentas de leitura",
@@ -8512,7 +8512,7 @@ export const ptBR = {
       signedOff: "Desligada: o agente recebe qualquer chamada ao endereço.",
       signedOn: "Ligada: só passam as chamadas assinadas com o segredo.",
       signedHelp:
-        "Mande o HMAC-SHA256 do corpo (numa chamada GET, da query string, sem o ?) em X-Agentes-Signature (sha256=…). O X-Hub-Signature-256 do GitHub também vale.",
+        "Mande o HMAC-SHA256 do corpo (numa chamada GET, da query string, sem o ?) em X-VortoOne-Signature (sha256=…). O X-Hub-Signature-256 do GitHub também vale.",
       addSecret: "Exigir assinatura",
       newSecret: "Gerar novo segredo",
       newSecretTitle: "Gerar um novo segredo?",
@@ -8918,7 +8918,7 @@ export const ptBR = {
     event: {
       "sentry.issue_created": "Erro novo no Sentry",
       "github.pr_opened": "PR aberto no GitHub",
-      "issue.created": "Tarefa criada no agentes",
+      "issue.created": "Tarefa criada no VortoOne",
       "deploy.succeeded": "Deploy concluído",
     },
     when: { event: "Quando: {{event}}" },
@@ -9261,7 +9261,7 @@ export const ptBR = {
       start: "Começar",
       change: "Mudar algo",
       started: "Começou",
-      startedToast: "Plano começou: fica fixado no topo da thread e em .agentes/mission.md.",
+      startedToast: "Plano começou: fica fixado no topo da thread e em .vortoone/mission.md.",
       ownerStarts: "Só {{name}} pode começar",
       see: "Ver plano",
       after: {
@@ -10599,7 +10599,7 @@ export const ptBR = {
       antigravity: "Gemini",
       opencode: "OpenCode",
       needs: {
-        keys: "Atualize o agentes no computador para usar a chave de um plano",
+        keys: "Atualize o VortoOne no computador para usar a chave de um plano",
       },
       noComputer: "As contas ficam num computador conectado. Conecte um seu primeiro.",
       addComputer: "Conectar um computador",
@@ -12453,8 +12453,8 @@ export const ptBR = {
   storage: {
     title: "Armazenamento",
     options: "Onde guardar os arquivos",
-    agentes: "Armazenamento do VortoOne",
-    agentesText: "Seus arquivos ficam no nosso armazenamento, separados por workspace.",
+    vortoone: "Armazenamento do VortoOne",
+    vortooneText: "Seus arquivos ficam no nosso armazenamento, separados por workspace.",
     server: "Este servidor",
     serverText: {
       disk: "Os arquivos ficam no disco dele.",
@@ -12465,7 +12465,7 @@ export const ptBR = {
     showFolder: "Mostrar a pasta",
     // `{{place}}` in the lines below: each is built so no preposition has to merge with it ("neste", "no").
     place: {
-      agentes: "o armazenamento do VortoOne",
+      vortoone: "o armazenamento do VortoOne",
       server: "este servidor",
     },
     s3: "Seu próprio armazenamento",
@@ -12482,7 +12482,7 @@ export const ptBR = {
     region: "Região",
     bucket: "Bucket",
     prefix: "Prefixo (opcional)",
-    prefixHelp: "Pasta dentro do bucket, por exemplo agentes/.",
+    prefixHelp: "Pasta dentro do bucket, por exemplo vortoone/.",
     pathStyle: "Estilo de caminho",
     pathStyleHelp: "Use para MinIO e outros que não aceitam o bucket no nome do host.",
     accessKey: "Access key",
@@ -12611,7 +12611,7 @@ export const ptBR = {
       },
       inUse: "{{provider}} · {{bucket}}",
       inUseAt: "{{bucket}} em {{host}}",
-      /** A failed test step by its code (`stepErrorText` in `@agenteschat/client/lib/storage`). */
+      /** A failed test step by its code (`stepErrorText` in `@vortoone/client/lib/storage`). */
       stepError: {
         auth: "A chave de acesso ou a secreta não foi aceita.",
         permission: "A chave não tem permissão para esta etapa.",
@@ -14239,32 +14239,32 @@ export const ptBR = {
       supabase: {
         "1": "Abra o SQL Editor do seu projeto no Supabase e rode o comando abaixo (troque a senha).",
         "2": "Em Project Settings → Database, copie a connection string do tipo URI.",
-        "3": "Troque nela o usuário e a senha por agentes_leitura e a senha que você escolheu, e cole aqui.",
+        "3": "Troque nela o usuário e a senha por vortoone_reader e a senha que você escolheu, e cole aqui.",
       },
       neon: {
         "1": "Abra o SQL Editor do seu projeto no Neon e rode o comando abaixo (troque a senha).",
         "2": "Em Connect, copie o endereço do seu banco.",
-        "3": "Troque nele o usuário e a senha por agentes_leitura e a senha que você escolheu, e cole aqui.",
+        "3": "Troque nele o usuário e a senha por vortoone_reader e a senha que você escolheu, e cole aqui.",
       },
       railway: {
         "1": "No serviço Postgres, abra Data → Query e rode o comando abaixo (troque a senha).",
         "2": "Em Variables, copie o DATABASE_PUBLIC_URL (o DATABASE_URL é interno e não funciona daqui).",
-        "3": "Troque nele o usuário e a senha por agentes_leitura e a senha que você escolheu, e cole aqui.",
+        "3": "Troque nele o usuário e a senha por vortoone_reader e a senha que você escolheu, e cole aqui.",
       },
       rds: {
         "1": "Conecte no banco com a ferramenta de sempre e rode o comando abaixo (troque a senha).",
         "2": "Em Connectivity & security, copie o endpoint. O banco precisa de acesso público na porta 5432.",
-        "3": "Monte o endereço postgres://agentes_leitura:senha@endpoint:5432/banco e cole aqui.",
+        "3": "Monte o endereço postgres://vortoone_reader:senha@endpoint:5432/banco e cole aqui.",
       },
       render: {
         "1": "Conecte com o comando PSQL da página do banco e rode o comando abaixo (troque a senha).",
         "2": "Em Connections, copie o External Database URL.",
-        "3": "Troque nele o usuário e a senha por agentes_leitura e a senha que você escolheu, e cole aqui.",
+        "3": "Troque nele o usuário e a senha por vortoone_reader e a senha que você escolheu, e cole aqui.",
       },
       other: {
         "1": "Peça para quem cuida do banco rodar o comando abaixo (com uma senha escolhida por ele).",
         "2": "Peça o endereço público do servidor, a porta e o nome do banco.",
-        "3": "Monte o endereço postgres://agentes_leitura:senha@servidor:5432/banco e cole aqui.",
+        "3": "Monte o endereço postgres://vortoone_reader:senha@servidor:5432/banco e cole aqui.",
       },
     },
     howAll: "Para ler todos os bancos (Postgres 14 ou mais novo).",
@@ -14415,7 +14415,7 @@ export const ptBR = {
       "Uma senha só para os agentes. Você cria no site do seu email e pode apagar quando quiser, sem mudar a sua senha.",
     step: {
       "1": "Abra a página de segurança da sua conta.",
-      "2": "Crie uma senha de app com o nome “agentes”.",
+      "2": "Crie uma senha de app com o nome “VortoOne”.",
       "3": "Copie a senha e cole aqui.",
     },
     openPage: "Abrir a página de {{name}}",
@@ -15772,7 +15772,7 @@ export const ptBR = {
       qrLabel: "Código QR para a depuração por Wi-Fi no celular",
       qrLine: "Não pela câmera",
       qrCaption:
-        "Ela oferece uma rede Wi-Fi chamada agentes-…, que não existe. Deixe o celular no Wi-Fi do computador.",
+        "Ela oferece uma rede Wi-Fi chamada vortoone-…, que não existe. Deixe o celular no Wi-Fi do computador.",
       fail: {
         mdns_off:
           "{{computer}} não consegue procurar celulares no Wi-Fi. Atualize o Android platform-tools nele, ou use um cabo.",
@@ -16098,7 +16098,7 @@ export const ptBR = {
     reconnectDoneText: "{{name}} voltou para a {{org}}.",
     deniedTitle: "Não conectamos",
     denied: "O computador não foi conectado. Se não foi você quem abriu, ninguém ganhou acesso.",
-    home: "Ir para o agentes",
+    home: "Ir para o VortoOne",
   },
   apps: {
     connect: "Conectar um app",
@@ -19331,8 +19331,8 @@ export const ptBR = {
       /** The buttons that turn them on follow. */
       screensOffOne: "As telas estão desligadas no {{computer}}.",
       screensMissing: "O {{computer}} ainda não mostra telas. Nele:",
-      outdated: "Atualize o agentes no {{computer}} para ver a tela do {{name}}.",
-      outdated_female: "Atualize o agentes no {{computer}} para ver a tela da {{name}}.",
+      outdated: "Atualize o VortoOne no {{computer}} para ver a tela do {{name}}.",
+      outdated_female: "Atualize o VortoOne no {{computer}} para ver a tela da {{name}}.",
       noScreen: "O {{name}} não tem tela para mostrar aqui",
       noScreen_female: "A {{name}} não tem tela para mostrar aqui",
       noScreenHelp: "Libere a tela ou o navegador em Ferramentas e acesso.",
@@ -19486,7 +19486,7 @@ export const ptBR = {
       browser: "Navegador",
       screen: "Tela do computador",
       terminal: "Terminal",
-      agentes: "agentes",
+      vortoone: "VortoOne",
       thinking: "Pensando",
       inside: "{{program}} · {{detail}}",
     },

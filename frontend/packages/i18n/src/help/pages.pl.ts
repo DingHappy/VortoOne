@@ -92,7 +92,7 @@ export const helpPl: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Foldery",
         blocks: [
-          "Każdy agent zawsze ma własny folder w `~/agentes/<workspace>`. Na kolejne foldery można zezwolić tylko na samym komputerze, nigdy ze strony: w aplikacji w **Preferencje › Foldery** albo na serwerze poleceniem `agentes-runner folders allow`. Każda przestrzeń robocza ma własne dozwolone foldery: to, na co zezwolisz w jednej, dotyczy tylko jej agentów. Usunięcie folderu niczego nie kasuje. Odbiera tylko dostęp.",
+          "Każdy agent zawsze ma własny folder w `~/vortoone/<workspace>`. Na kolejne foldery można zezwolić tylko na samym komputerze, nigdy ze strony: w aplikacji w **Preferencje › Foldery** albo na serwerze poleceniem `vortoone-runner folders allow`. Każda przestrzeń robocza ma własne dozwolone foldery: to, na co zezwolisz w jednej, dotyczy tylko jej agentów. Usunięcie folderu niczego nie kasuje. Odbiera tylko dostęp.",
         ],
       },
       {
@@ -105,11 +105,11 @@ export const helpPl: Partial<Record<HelpSlug, HelpDocument>> = {
               "twoje pliki i dane logowania",
               "foldery innych agentów, także z innych przestrzeni roboczych, oraz logowania zapisane w ich przeglądarkach",
               "token, który łączy ten komputer",
-              "na komputerze, który uruchamia też VortoOne, jego bazę danych i klucze w `.agentes`",
+              "na komputerze, który uruchamia też VortoOne, jego bazę danych i klucze w `.vortoone`",
             ],
           },
           "VortoOne odrzuca polecenia, które wskazują jego klucze, tokeny i dane logowania, ale to zasada, nie mur. **Polecenia** są domyślnie włączone. Wyłącz je w pytaniu aplikacji, zanim naciśniesz **Zezwól**, albo później w **Preferencje\u00a0›\u00a0Narzędzia**, gdzie każda przestrzeń robocza ma własny przełącznik (aplikacja 0.8.1 i nowsze), a aplikacja pyta, zanim ponownie jakiś włączy. Claude Code i Codex uruchamiają własne polecenia w folderze agenta, według własnych zasad, nawet przy wyłączonych poleceniach.",
-          "Prawdziwy mur da ci serwer z Linuksem. Na Debianie 13, zainstalowanym z `--system`, każdy agent jest osobnym użytkownikiem. Na Ubuntu agenci dzielą jednego użytkownika, `agentes`: widzą nawzajem swoje foldery, ale nie twoje ani serwera. Możesz też dać agentom osobny komputer.",
+          "Prawdziwy mur da ci serwer z Linuksem. Na Debianie 13, zainstalowanym z `--system`, każdy agent jest osobnym użytkownikiem. Na Ubuntu agenci dzielą jednego użytkownika, `vortoone`: widzą nawzajem swoje foldery, ale nie twoje ani serwera. Możesz też dać agentom osobny komputer.",
         ],
       },
     ],
@@ -458,7 +458,7 @@ export const helpPl: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop i telefon): w **Customize › Connectors** kliknij **+ Add**, potem **Add custom connector**, nazwij go VortoOne, wklej adres i kliknij **Continue**. Wybierz **Sign in now**, kliknij **Add** i autoryzuj. W planach Team i Enterprise konektor dodaje Owner organizacji Claude w Organization settings › Connectors, a każda osoba klika **Connect** w Customize › Connectors. Darmowy plan Claude mieści jeden własny konektor.",
-              "**Claude Code:** uruchom `claude mcp add --transport http --scope user agentes <adres>`, potem wpisz `/mcp`, wybierz agentes i **Authenticate**. Tylko dla bieżącego folderu pomiń `--scope user`.",
+              "**Claude Code:** uruchom `claude mcp add --transport http --scope user VortoOne <adres>`, potem wpisz `/mcp`, wybierz VortoOne i **Authenticate**. Tylko dla bieżącego folderu pomiń `--scope user`.",
               "**Cursor:** **Dodaj do Cursora** w **Ustawienia › Aplikacje AI** albo adres w `~/.cursor/mcp.json`. Cursor poprosi o zalogowanie przy pierwszym użyciu.",
               '**VS Code:** **Dodaj do VS Code** albo adres w `.vscode/mcp.json` z `"type": "http"`.',
               "**Inne aplikacje:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains i inne mają własne kroki w **Połącz aplikację**, z twoim adresem już wpisanym.",

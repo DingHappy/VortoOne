@@ -1,9 +1,9 @@
-import type { Message } from "@agenteschat/client";
-import { type DeviceWait, waitEndedText, waitText } from "@agenteschat/client/lib/devices";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { clockAt } from "@agenteschat/client/lib/format";
-import { computerKind } from "@agenteschat/client/lib/machines";
-import { ComputerIcon, EventPillAction, Icon, Menu, MenuItem, MenuNote, ProviderLogo } from "@agenteschat/ui";
+import type { Message } from "@vortoone/client";
+import { type DeviceWait, waitEndedText, waitText } from "@vortoone/client/lib/devices";
+import { errorText } from "@vortoone/client/lib/errors";
+import { clockAt } from "@vortoone/client/lib/format";
+import { computerKind } from "@vortoone/client/lib/machines";
+import { ComputerIcon, EventPillAction, Icon, Menu, MenuItem, MenuNote, ProviderLogo } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { useChannelActions } from "@/components/channel-actions";
 import { useOrg } from "@/components/org-context";

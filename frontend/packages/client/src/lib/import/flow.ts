@@ -75,7 +75,7 @@ export const IMPORT_CARDS = [
   "hermes",
   "openclaw",
   "paperclip",
-  "agenteschat",
+  "vortoone",
   "other",
 ] as const satisfies readonly (PromptApp | ImportSource | "other")[];
 export type ImportCard = (typeof IMPORT_CARDS)[number];
@@ -116,7 +116,7 @@ const cardOf = (app: string): ImportCard => IMPORT_CARDS.find((c) => c === app) 
 
 /**
  * The card and app name of a bundle (or of what one brought, `imports.sources`). One in our format names its app in
- * `source.ref` ("agenteschat:<org>" for our own export, "grok-bot" for a
+ * `source.ref` ("vortoone:<org>" for our own export, "grok-bot" for a
  * reply to `EXPORT_PROMPT`, "grok-bot:…" for one imported before); `app` is null for an app we don't know.
  */
 export function bundleOrigin(bundle: { source: Pick<MigrationBundle["source"], "app" | "ref"> }): {
@@ -125,7 +125,7 @@ export function bundleOrigin(bundle: { source: Pick<MigrationBundle["source"], "
 } {
   const source = IMPORT_SOURCES.find((s) => s === bundle.source.app);
   if (!source) return { card: "other", app: null };
-  if (source !== "agenteschat" || bundle.source.ref.startsWith("agenteschat:")) {
+  if (source !== "vortoone" || bundle.source.ref.startsWith("vortoone:")) {
     return { card: cardOf(source), app: SOURCE_NAME[source] };
   }
   const declared = EXPORT_PROMPT_APPS.find((a) => a.app === bundle.source.ref.split(":")[0]);
@@ -262,7 +262,7 @@ export async function applyInChunks(
 /** A card's name: the brand, or our own name and "Outro app" in the person's words. */
 export function cardName(t: TFunction, card: ImportCard): string {
   if (card === "other") return t("onboarding.import.otherName");
-  if (card === "agenteschat") return t("onboarding.import.agenteschatName");
+  if (card === "vortoone") return t("onboarding.import.vortooneName");
   if (card === "grok-bot" || card === "chatgpt-dots") {
     return EXPORT_PROMPT_APPS.find((a) => a.app === card)?.name ?? card;
   }

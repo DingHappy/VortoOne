@@ -1,8 +1,8 @@
-import type { Message, TeamCheck } from "@agenteschat/client";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { targetKind, teamChecksOf } from "@agenteschat/client/lib/team-checks";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { Icon, type IconName } from "@agenteschat/ui";
+import type { Message, TeamCheck } from "@vortoone/client";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { targetKind, teamChecksOf } from "@vortoone/client/lib/team-checks";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
+import { Icon, type IconName } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import { useOrg } from "./org-context";

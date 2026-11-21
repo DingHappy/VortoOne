@@ -1,4 +1,4 @@
-import { type DeletionProofInput, useAccountDeletionPlan, useApi, useAuthConfig, useMe } from "@agenteschat/client";
+import { type DeletionProofInput, useAccountDeletionPlan, useApi, useAuthConfig, useMe } from "@vortoone/client";
 import {
   type AccountDeletionLine,
   accountDeletionLines,
@@ -6,11 +6,11 @@ import {
   deletionDueFrom,
   workspaceLabel,
   workspaceNotes,
-} from "@agenteschat/client/lib/deletion";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { formatShortDate } from "@agenteschat/client/lib/format";
-import { settingUp } from "@agenteschat/client/lib/guards";
-import { Alert, Button, Dialog, DialogBody, DialogFooter, Icon, type IconName, Locked } from "@agenteschat/ui";
+} from "@vortoone/client/lib/deletion";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { formatShortDate } from "@vortoone/client/lib/format";
+import { settingUp } from "@vortoone/client/lib/guards";
+import { Alert, Button, Dialog, DialogBody, DialogFooter, Icon, type IconName, Locked } from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";

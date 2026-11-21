@@ -1,9 +1,9 @@
-import type { Edition, Machine } from "@agenteschat/client";
-import { type CantShow, cantShowLine } from "@agenteschat/client/lib/agent-computer";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { commandInReason, oneClickTerminal, toolOnCommand } from "@agenteschat/client/lib/machines";
-import type { AgentColor } from "@agenteschat/ui";
-import { Button } from "@agenteschat/ui";
+import type { Edition, Machine } from "@vortoone/client";
+import { type CantShow, cantShowLine } from "@vortoone/client/lib/agent-computer";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { commandInReason, oneClickTerminal, toolOnCommand } from "@vortoone/client/lib/machines";
+import type { AgentColor } from "@vortoone/ui";
+import { Button } from "@vortoone/ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Cover } from "../browser/Cover";

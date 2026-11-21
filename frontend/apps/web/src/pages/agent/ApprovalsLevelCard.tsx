@@ -1,7 +1,7 @@
-import { type ApprovalsLevel, useUpdateAgent } from "@agenteschat/client";
-import { APPROVALS_LEVELS, shownApprovalsLevel } from "@agenteschat/client/lib/approvals-level";
-import { can } from "@agenteschat/client/lib/permissions";
-import { Card, Dialog, DialogBody, OptionList } from "@agenteschat/ui";
+import { type ApprovalsLevel, useUpdateAgent } from "@vortoone/client";
+import { APPROVALS_LEVELS, shownApprovalsLevel } from "@vortoone/client/lib/approvals-level";
+import { can } from "@vortoone/client/lib/permissions";
+import { Card, Dialog, DialogBody, OptionList } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PrefRow } from "@/components/NoticePrefs";

@@ -1,4 +1,4 @@
-import type { AgentBrain, BrainKind, MachineAccount, MachineAccountKind, PlanUsage } from "@agenteschat/client";
+import type { AgentBrain, BrainKind, MachineAccount, MachineAccountKind, PlanUsage } from "@vortoone/client";
 import {
   useAiAccounts,
   useAiStatus,
@@ -7,7 +7,7 @@ import {
   useModels,
   usePlatformKey,
   useSettings,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   type AccountChoice,
   accountAbout,
@@ -19,12 +19,12 @@ import {
   ownSignInName,
   ownSignInTitle,
   signInOf,
-} from "@agenteschat/client/lib/ai-accounts";
-import { advancedContents, effortOf, viewSpeedFits } from "@agenteschat/client/lib/brain-advanced";
-import { computerNameOf, setupView } from "@agenteschat/client/lib/computer";
-import { contextChoices, isContextLimit } from "@agenteschat/client/lib/context-limits";
-import { holdText } from "@agenteschat/client/lib/errors";
-import { firstName, namesText } from "@agenteschat/client/lib/format";
+} from "@vortoone/client/lib/ai-accounts";
+import { advancedContents, effortOf, viewSpeedFits } from "@vortoone/client/lib/brain-advanced";
+import { computerNameOf, setupView } from "@vortoone/client/lib/computer";
+import { contextChoices, isContextLimit } from "@vortoone/client/lib/context-limits";
+import { holdText } from "@vortoone/client/lib/errors";
+import { firstName, namesText } from "@vortoone/client/lib/format";
 import {
   type AiChoice,
   aiChoiceOf,
@@ -36,8 +36,8 @@ import {
   planOfAccount,
   planOfKind,
   unsupportedGate,
-} from "@agenteschat/client/lib/no-ai";
-import { can as canDo } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/no-ai";
+import { can as canDo } from "@vortoone/client/lib/permissions";
 import {
   brainModelChoice,
   brainModelChoices,
@@ -45,10 +45,10 @@ import {
   PLAN_IDS,
   planModel as planModelOf,
   planOf,
-} from "@agenteschat/client/lib/plans";
-import { apiProviderOf, isAuto, keyLine, keySource, modelChoices } from "@agenteschat/client/lib/providers";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { Icon, type IconName, ProviderLogo, planState } from "@agenteschat/ui";
+} from "@vortoone/client/lib/plans";
+import { apiProviderOf, isAuto, keyLine, keySource, modelChoices } from "@vortoone/client/lib/providers";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
+import { Icon, type IconName, ProviderLogo, planState } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { modelOptions as apiModelOptions, DEFAULT_KEY } from "@/components/AgentFields";
 import type { HaveItem } from "@/components/arrival/ConnectHave";

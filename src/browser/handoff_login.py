@@ -171,7 +171,7 @@ class BrowserHandoffLogin:
             peer = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), epk)
             shared = pending.private_key.exchange(ec.ECDH(), peer)
             # Match the existing Web Crypto secret-box format, binding it to this offer and site.
-            key = HKDF(hashes.SHA256(), 32, epk, b"agentes.chat secret v1").derive(shared)
+            key = HKDF(hashes.SHA256(), 32, epk, b"vortoone secret v1").derive(shared)
             aad = f"vortoone-browser-login|v1|{offer_id}|{self._origin}".encode("utf-8")
             fields = decode_frame(AESGCM(key).decrypt(iv, ciphertext, aad))
             if not _valid_fields(pending.form, fields) or not current():

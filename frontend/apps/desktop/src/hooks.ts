@@ -1,6 +1,6 @@
-import type { ControlAgent } from "@agenteschat/adapters/runner-control";
-import type { WifiIphone } from "@agenteschat/client";
-import { WIFI_IPHONES_POLL_MS } from "@agenteschat/client/lib/devices";
+import type { ControlAgent } from "@vortoone/adapters/runner-control";
+import type { WifiIphone } from "@vortoone/client";
+import { WIFI_IPHONES_POLL_MS } from "@vortoone/client/lib/devices";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHost } from "./app";
 import { siteApi } from "./control/devices";
@@ -220,7 +220,7 @@ export function agentOf(home: Home | undefined, agent: { id: string; name: strin
 export function usePref<T>(key: string, fallback: T): [T, (value: T) => void] {
   const read = (): T => {
     try {
-      const raw = localStorage.getItem(`agentes.desktop.${key}`);
+      const raw = localStorage.getItem(`vortoone.desktop.${key}`);
       return raw === null ? fallback : (JSON.parse(raw) as T);
     } catch {
       return fallback;
@@ -231,7 +231,7 @@ export function usePref<T>(key: string, fallback: T): [T, (value: T) => void] {
     (v: T) => {
       setValue(v);
       try {
-        localStorage.setItem(`agentes.desktop.${key}`, JSON.stringify(v));
+        localStorage.setItem(`vortoone.desktop.${key}`, JSON.stringify(v));
       } catch {
         // Not kept; still applies now.
       }
@@ -243,7 +243,7 @@ export function usePref<T>(key: string, fallback: T): [T, (value: T) => void] {
 
 export function readPref<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(`agentes.desktop.${key}`);
+    const raw = localStorage.getItem(`vortoone.desktop.${key}`);
     return raw === null ? fallback : (JSON.parse(raw) as T);
   } catch {
     return fallback;
@@ -252,7 +252,7 @@ export function readPref<T>(key: string, fallback: T): T {
 
 export function writePref<T>(key: string, value: T) {
   try {
-    localStorage.setItem(`agentes.desktop.${key}`, JSON.stringify(value));
+    localStorage.setItem(`vortoone.desktop.${key}`, JSON.stringify(value));
   } catch {
     // ignore
   }

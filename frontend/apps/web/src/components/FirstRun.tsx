@@ -1,4 +1,4 @@
-import type { Agent } from "@agenteschat/client";
+import type { Agent } from "@vortoone/client";
 import {
   useAgentBrain,
   useAiStatus,
@@ -12,14 +12,14 @@ import {
   useMessages,
   useSettings,
   useUpdateSettings,
-} from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { emailName, joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { aiStateOf } from "@agenteschat/client/lib/no-ai";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { connectorName } from "@agenteschat/client/lib/scopes";
+} from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { emailName, joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { aiStateOf } from "@vortoone/client/lib/no-ai";
+import { can } from "@vortoone/client/lib/permissions";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { connectorName } from "@vortoone/client/lib/scopes";
 import {
   beatRow,
   type FirstRunFacts,
@@ -34,7 +34,7 @@ import {
   firstRunRowState,
   firstRunSayKey,
   firstRunSteps,
-} from "@agenteschat/client/lib/setup-checklist";
+} from "@vortoone/client/lib/setup-checklist";
 import {
   aboutYouContext,
   answerAfter,
@@ -42,9 +42,9 @@ import {
   type LifeArea,
   lifeAreaTemplate,
   readAboutYou,
-} from "@agenteschat/client/lib/team-plan";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { Button, Field, Icon, type IconName, Input, Locked } from "@agenteschat/ui";
+} from "@vortoone/client/lib/team-plan";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
+import { Button, Field, Icon, type IconName, Input, Locked } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

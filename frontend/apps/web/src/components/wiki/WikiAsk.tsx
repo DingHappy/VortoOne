@@ -1,6 +1,6 @@
-import { canTalk } from "@agenteschat/client/lib/audience";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { Button, Dialog, DialogBody, DialogFooter, Field, Locked, Select, Textarea } from "@agenteschat/ui";
+import { canTalk } from "@vortoone/client/lib/audience";
+import { errorText } from "@vortoone/client/lib/errors";
+import { Button, Dialog, DialogBody, DialogFooter, Field, Locked, Select, Textarea } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";

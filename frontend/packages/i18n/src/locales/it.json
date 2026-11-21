@@ -568,7 +568,7 @@
       "continue": "Continua sul mio server",
       "address": "Indirizzo del server",
       "connect": "Connetti",
-      "invalid": "Questo non è un indirizzo. Scrivilo come nel browser, per esempio agentes.example.com.",
+      "invalid": "Questo non è un indirizzo. Scrivilo come nel browser, per esempio vortoone.example.com.",
       "unreachable": "Non abbiamo trovato VortoOne su {{host}}. Controlla l'indirizzo e che il server sia acceso.",
       "none": "Non ne hai ancora uno?",
       "noneLink": "Scopri come averne uno tuo, gratis"
@@ -698,7 +698,7 @@
       "confirmYes": "Sì, fai accedere l'app",
       "confirmNo": "Non sono stato io",
       "done": "Tutto pronto.",
-      "doneLead": "Hai effettuato l'accesso all'app agentes. Puoi chiudere questa scheda.",
+      "doneLead": "Hai effettuato l'accesso all'app VortoOne. Puoi chiudere questa scheda.",
       "expired": "Questa richiesta è scaduta.",
       "expiredLead": "Torna all'app e scegli di nuovo {{provider}}.",
       "handover": "Accesso con il tuo account dall'altro dispositivo…",
@@ -1225,14 +1225,14 @@
         "paused": "Connetti con MCP è disattivato finché questo spazio di lavoro è in pausa. Per ora porta gli agenti da qui."
       },
       "otherName": "Un'altra app",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "Trascina qui openbot-import.json (da Migrator di OpenBot) o openbot-transfer.json (dal trasferimento dell'istanza), oppure il .zip in cui è arrivato.",
         "openmausbot": "In OpenMausBot: clic destro sul team → Condividi team… → Salva file.",
         "hermes": "In un terminale, esegui hermes profile export con il nome del profilo e trascina qui il .tar.gz. Oppure trascina la cartella ~/.hermes per portare tutti i profili.",
         "openclaw": "Trascina l'intera cartella ~/.openclaw (porta tutti gli agenti) o solo uno spazio di lavoro. Su Mac, ⌘⇧. mostra le cartelle nascoste nella finestra di scelta file.",
         "paperclip": "Trascina la cartella del pacchetto (quella con COMPANY.md), rilascia un suo .zip o incolla il suo link GitHub.",
-        "agenteschat": "Nell'altro spazio di lavoro: Impostazioni → Importa ed esporta → Scarica il file. Poi trascina qui il .json."
+        "vortoone": "Nell'altro spazio di lavoro: Impostazioni → Importa ed esporta → Scarica il file. Poi trascina qui il .json."
       },
       "whereOther": "Scarica il file dall'altro workspace e trascina qui il .json.",
       "whereOtherLink": "Scarica da {{org}}",
@@ -2244,9 +2244,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "Codice QR per accedere all'app agentes",
+    "qr": "Codice QR per accedere all'app VortoOne",
     "making": "Creazione del codice…",
-    "stepApp": "Installa l'app agentes sul telefono.",
+    "stepApp": "Installa l'app VortoOne sul telefono.",
     "stepTailscale": "Installa Tailscale sul telefono e accedi con lo stesso account Tailscale di questo server.",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5555,7 +5555,7 @@
     "noInstructions_female": "{{name}} non ha ancora istruzioni. Spiega come deve lavorare.",
     "savedToast": "Modifiche a {{name}} salvate.",
     "savedToast_female": "Modifiche a {{name}} salvate.",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "permessi integrati",
     "connectHint": "Collega servizi",
     "subtitle": "{{role}} · di <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5937,7 +5937,7 @@
         "two": "Preferenze",
         "three": "Attiva Browser",
         "done": "Fatto. Questa pagina se ne accorge da sola, non serve ricaricare.",
-        "menuOpen": "Apri agentes",
+        "menuOpen": "Apri VortoOne",
         "menuPrefs": "Preferenze…",
         "menuPause": "Pausa",
         "menuQuit": "Esci",
@@ -6140,7 +6140,7 @@
       "setAll": "Cambia tutti",
       "connectors": "Connettori di {{org}}",
       "connectorsPersonal": "I tuoi connettori",
-      "builtin": "Integrati in agentes",
+      "builtin": "Integrati in VortoOne",
       "noMatch": "Nessun risultato per “{{q}}”",
       "noneHere": "Niente in questo filtro",
       "library": "Libreria di skill",
@@ -7949,7 +7949,7 @@
     },
     "github_git_write": {
       "label": "Fare push di branch (git push)",
-      "description": "Fare push di commit sui branch agentes/{agent}/…: mai sul branch predefinito, niente force push, niente tag. Eliminare branch e fare push sul branch di qualcun altro chiedono prima l'approvazione."
+      "description": "Fare push di commit sui branch vortoone/{agent}/…: mai sul branch predefinito, niente force push, niente tag. Eliminare branch e fare push sul branch di qualcun altro chiedono prima l'approvazione."
     },
     "custom_read": {
       "label": "Strumenti di lettura",
@@ -8407,7 +8407,7 @@
       "signature": "Firma",
       "signedOff": "Disattivata: l'agente riceve qualsiasi chiamata all'indirizzo.",
       "signedOn": "Attivata: passano solo le chiamate firmate con il segreto.",
-      "signedHelp": "Invia l'HMAC-SHA256 del corpo (per una chiamata GET: della sua query string, senza il ?) in X-Agentes-Signature (sha256=…). Funziona anche X-Hub-Signature-256 di GitHub.",
+      "signedHelp": "Invia l'HMAC-SHA256 del corpo (per una chiamata GET: della sua query string, senza il ?) in X-VortoOne-Signature (sha256=…). Funziona anche X-Hub-Signature-256 di GitHub.",
       "addSecret": "Richiedi una firma",
       "newSecret": "Nuovo segreto",
       "newSecretTitle": "Creare un nuovo segreto?",
@@ -8812,7 +8812,7 @@
         "pr_opened": "PR aperta su GitHub"
       },
       "issue": {
-        "created": "Attività creata in agentes"
+        "created": "Attività creata in VortoOne"
       },
       "deploy": {
         "succeeded": "Deploy completato"
@@ -9178,7 +9178,7 @@
       "start": "Avvia",
       "change": "Cambia qualcosa",
       "started": "Avviato",
-      "startedToast": "Il piano è partito: resta fissato in cima al thread e in .agentes/mission.md.",
+      "startedToast": "Il piano è partito: resta fissato in cima al thread e in .vortoone/mission.md.",
       "ownerStarts": "Solo {{name}} può avviarlo",
       "see": "Vedi piano",
       "after": {
@@ -10644,7 +10644,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "Aggiorna agentes sul computer per usare la chiave di un piano"
+        "keys": "Aggiorna VortoOne sul computer per usare la chiave di un piano"
       },
       "noComputer": "Gli account restano su un computer collegato. Prima collega uno dei tuoi.",
       "addComputer": "Collega un computer",
@@ -12564,8 +12564,8 @@
   "storage": {
     "title": "Archiviazione",
     "options": "Dove conservare i file",
-    "agentes": "Archiviazione VortoOne",
-    "agentesText": "I tuoi file restano nel nostro archivio, separati per spazio di lavoro.",
+    "vortoone": "Archiviazione VortoOne",
+    "vortooneText": "I tuoi file restano nel nostro archivio, separati per spazio di lavoro.",
     "server": "Questo server",
     "serverText": {
       "disk": "I file restano sul suo disco.",
@@ -12575,7 +12575,7 @@
     },
     "showFolder": "Mostra la cartella",
     "place": {
-      "agentes": "l'archiviazione VortoOne",
+      "vortoone": "l'archiviazione VortoOne",
       "server": "questo server"
     },
     "s3": "La tua archiviazione",
@@ -12591,7 +12591,7 @@
     "region": "Regione",
     "bucket": "Bucket",
     "prefix": "Prefisso (facoltativo)",
-    "prefixHelp": "Cartella dentro il bucket, ad esempio agentes/.",
+    "prefixHelp": "Cartella dentro il bucket, ad esempio vortoone/.",
     "pathStyle": "Indirizzamento path-style",
     "pathStyleHelp": "Usalo per MinIO e altri che non accettano il bucket nel nome host.",
     "accessKey": "Chiave di accesso",
@@ -14519,32 +14519,32 @@
       "supabase": {
         "1": "Apri l'SQL Editor nel tuo progetto Supabase ed esegui il comando qui sotto (cambia la password).",
         "2": "In Project Settings → Database, copia la stringa di connessione URI.",
-        "3": "Sostituisci utente e password con agentes_leitura e la password che hai scelto, e incollala qui."
+        "3": "Sostituisci utente e password con vortoone_reader e la password che hai scelto, e incollala qui."
       },
       "neon": {
         "1": "Apri l'SQL Editor nel tuo progetto Neon ed esegui il comando qui sotto (cambia la password).",
         "2": "In Connect, copia l'indirizzo del tuo database.",
-        "3": "Sostituisci utente e password con agentes_leitura e la password che hai scelto, e incollalo qui."
+        "3": "Sostituisci utente e password con vortoone_reader e la password che hai scelto, e incollalo qui."
       },
       "railway": {
         "1": "Nel servizio Postgres, apri Data → Query ed esegui il comando qui sotto (cambia la password).",
         "2": "In Variables, copia DATABASE_PUBLIC_URL (DATABASE_URL è interno e non funziona da qui).",
-        "3": "Sostituisci utente e password con agentes_leitura e la password che hai scelto, e incollalo qui."
+        "3": "Sostituisci utente e password con vortoone_reader e la password che hai scelto, e incollalo qui."
       },
       "rds": {
         "1": "Collegati al database con il tuo strumento abituale ed esegui il comando qui sotto (cambia la password).",
         "2": "In Connectivity & security, copia l'endpoint. Il database deve avere l'accesso pubblico sulla porta 5432.",
-        "3": "Componi l'indirizzo postgres://agentes_leitura:password@endpoint:5432/database e incollalo qui."
+        "3": "Componi l'indirizzo postgres://vortoone_reader:password@endpoint:5432/database e incollalo qui."
       },
       "render": {
         "1": "Collegati con il comando PSQL dalla pagina del database ed esegui il comando qui sotto (cambia la password).",
         "2": "In Connections, copia l'External Database URL.",
-        "3": "Sostituisci utente e password con agentes_leitura e la password che hai scelto, e incollalo qui."
+        "3": "Sostituisci utente e password con vortoone_reader e la password che hai scelto, e incollalo qui."
       },
       "other": {
         "1": "Chiedi a chi gestisce il database di eseguire il comando qui sotto (con una password a sua scelta).",
         "2": "Chiedigli l'indirizzo pubblico del server, la porta e il nome del database.",
-        "3": "Componi l'indirizzo postgres://agentes_leitura:password@server:5432/database e incollalo qui."
+        "3": "Componi l'indirizzo postgres://vortoone_reader:password@server:5432/database e incollalo qui."
       }
     },
     "howAll": "Per leggere tutti i database (Postgres 14 o più recente).",
@@ -14712,7 +14712,7 @@
     "whatIsText": "Una password solo per gli agenti. La crei sul sito della tua email e puoi eliminarla quando vuoi, senza cambiare la tua password.",
     "step": {
       "1": "Apri la pagina di sicurezza del tuo account.",
-      "2": "Crea una password per app chiamata “agentes”.",
+      "2": "Crea una password per app chiamata “VortoOne”.",
       "3": "Copia la password e incollala qui."
     },
     "openPage": "Apri la pagina di {{name}}",
@@ -16101,7 +16101,7 @@
       "openLocalNetwork": "Apri Rete locale",
       "qrLabel": "Codice QR per il Debug wireless sul telefono",
       "qrLine": "Non con la fotocamera",
-      "qrCaption": "Propone una rete Wi-Fi chiamata agentes-…, che non esiste. Tieni il telefono sulla rete Wi-Fi del computer.",
+      "qrCaption": "Propone una rete Wi-Fi chiamata vortoone-…, che non esiste. Tieni il telefono sulla rete Wi-Fi del computer.",
       "fail": {
         "mdns_off": "{{computer}} non riesce a cercare telefoni sul Wi-Fi. Aggiorna lì gli Android platform-tools, o usa un cavo.",
         "mdns_offMac": "{{computer}} non riesce a cercare telefoni sul Wi-Fi. Su quel Mac, attiva VortoOne in Impostazioni di Sistema › Privacy e sicurezza › Rete locale e riprova.",
@@ -16410,7 +16410,7 @@
     "reconnectDoneText": "{{name}} è di nuovo in {{org}}.",
     "deniedTitle": "Non collegato",
     "denied": "Il computer non è stato collegato. Se non l'hai aperto tu, nessuno ha avuto accesso.",
-    "home": "Vai ad agentes"
+    "home": "Vai ad VortoOne"
   },
   "apps": {
     "connect": "Collega un'app",
@@ -19485,8 +19485,8 @@
       "screensOff": "Gli schermi sono disattivati su {{computer}}. Attivali lì:",
       "screensOffOne": "Gli schermi sono disattivati su {{computer}}.",
       "screensMissing": "{{computer}} non può ancora mostrare gli schermi. Su quel computer:",
-      "outdated": "Aggiorna agentes su {{computer}} per vedere lo schermo di {{name}}.",
-      "outdated_female": "Aggiorna agentes su {{computer}} per vedere lo schermo di {{name}}.",
+      "outdated": "Aggiorna VortoOne su {{computer}} per vedere lo schermo di {{name}}.",
+      "outdated_female": "Aggiorna VortoOne su {{computer}} per vedere lo schermo di {{name}}.",
       "noScreen": "{{name}} non ha uno schermo da mostrare qui",
       "noScreen_female": "{{name}} non ha uno schermo da mostrare qui",
       "noScreenHelp": "Consenti lo schermo o il browser in Strumenti e accesso.",
@@ -19647,7 +19647,7 @@
       "browser": "Browser",
       "screen": "Schermo del computer",
       "terminal": "Terminale",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "Sta pensando",
       "inside": "{{program}} · {{detail}}"
     },

@@ -18,7 +18,7 @@ import type {
   ScreenKind,
   SecretRequest,
   ThreadInfo,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   ApiError,
   agentStateOfRun,
@@ -78,8 +78,8 @@ import {
   useWaitingOnMe,
   useWikiTree,
   type WaitingItem,
-} from "@agenteschat/client";
-import { actionCardOf } from "@agenteschat/client/lib/action-cards";
+} from "@vortoone/client";
+import { actionCardOf } from "@vortoone/client/lib/action-cards";
 import {
   barConsultTime,
   barElapsed,
@@ -91,16 +91,16 @@ import {
   runElapsed,
   someoneTypes,
   waitsForWords,
-} from "@agenteschat/client/lib/activity";
-import type { AgentTab } from "@agenteschat/client/lib/agent-edit";
-import { foldTalk, TALK_LINE_CHARS, talksToAgent } from "@agenteschat/client/lib/agent-talk";
-import { returnsHere } from "@agenteschat/client/lib/agent-work";
-import { looksLikeApiKey } from "@agenteschat/client/lib/api-key-text";
-import { approvalCardItems, asOfNow, cardDeadline } from "@agenteschat/client/lib/approval-card";
-import { artifactRefs } from "@agenteschat/client/lib/artifacts";
-import { canTalk, unavailableNotice } from "@agenteschat/client/lib/audience";
-import { accessInput, accessOf, accessValid, type ChannelAccess } from "@agenteschat/client/lib/channel-access";
-import { channelRefsOf } from "@agenteschat/client/lib/channel-refs";
+} from "@vortoone/client/lib/activity";
+import type { AgentTab } from "@vortoone/client/lib/agent-edit";
+import { foldTalk, TALK_LINE_CHARS, talksToAgent } from "@vortoone/client/lib/agent-talk";
+import { returnsHere } from "@vortoone/client/lib/agent-work";
+import { looksLikeApiKey } from "@vortoone/client/lib/api-key-text";
+import { approvalCardItems, asOfNow, cardDeadline } from "@vortoone/client/lib/approval-card";
+import { artifactRefs } from "@vortoone/client/lib/artifacts";
+import { canTalk, unavailableNotice } from "@vortoone/client/lib/audience";
+import { accessInput, accessOf, accessValid, type ChannelAccess } from "@vortoone/client/lib/channel-access";
+import { channelRefsOf } from "@vortoone/client/lib/channel-refs";
 import {
   entersWithMotion,
   greetingSuggestions,
@@ -111,15 +111,15 @@ import {
   runPosition,
   screenAboveEnd,
   usageLine,
-} from "@agenteschat/client/lib/chat";
-import { firstUnreadId, opensAtLastRead, unreadThreadRootId } from "@agenteschat/client/lib/chat-look";
-import { choiceReplyLine } from "@agenteschat/client/lib/choices";
-import { draftKeyOf } from "@agenteschat/client/lib/composer-drafts";
-import { type ConsultPairItem, consultsForLine } from "@agenteschat/client/lib/consult-group";
-import { consultationsOf } from "@agenteschat/client/lib/consultations";
-import { deviceWaitOf } from "@agenteschat/client/lib/devices";
-import { clearDraft, peekDraft } from "@agenteschat/client/lib/drafts";
-import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
+} from "@vortoone/client/lib/chat";
+import { firstUnreadId, opensAtLastRead, unreadThreadRootId } from "@vortoone/client/lib/chat-look";
+import { choiceReplyLine } from "@vortoone/client/lib/choices";
+import { draftKeyOf } from "@vortoone/client/lib/composer-drafts";
+import { type ConsultPairItem, consultsForLine } from "@vortoone/client/lib/consult-group";
+import { consultationsOf } from "@vortoone/client/lib/consultations";
+import { deviceWaitOf } from "@vortoone/client/lib/devices";
+import { clearDraft, peekDraft } from "@vortoone/client/lib/drafts";
+import { ErrorBoundary } from "@vortoone/client/lib/error-boundary";
 import {
   errorCode,
   errorText,
@@ -130,19 +130,19 @@ import {
   runFailureLine,
   sendFailureText,
   sendNeedsEdit,
-} from "@agenteschat/client/lib/errors";
-import { everyoneWord, isEveryoneMention, mentionsReader, offersEveryone } from "@agenteschat/client/lib/everyone";
-import { fileIcon, fitsUpload, formatBytes, MAX_UPLOAD_MB, previewKind } from "@agenteschat/client/lib/files";
-import { dayLabel, formatClock, formatFullDate, formatTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
-import { issueTakenOf, issueWorkOf, taskConversationOf } from "@agenteschat/client/lib/issues";
-import { workAnchorBody, workContinuable, workIsOver } from "@agenteschat/client/lib/long-work";
-import { supersededBrainNotices } from "@agenteschat/client/lib/machine-outages";
-import { hasWideBlock, plainLine } from "@agenteschat/client/lib/markdown";
-import { isMediaAfterReply, isMediaAlone, messageMediaOf, quoteText, textOrMedia } from "@agenteschat/client/lib/media";
-import { serverBody } from "@agenteschat/client/lib/message-body";
-import { joinDrafts, tooLongToSend } from "@agenteschat/client/lib/message-length";
+} from "@vortoone/client/lib/errors";
+import { everyoneWord, isEveryoneMention, mentionsReader, offersEveryone } from "@vortoone/client/lib/everyone";
+import { fileIcon, fitsUpload, formatBytes, MAX_UPLOAD_MB, previewKind } from "@vortoone/client/lib/files";
+import { dayLabel, formatClock, formatFullDate, formatTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
+import { issueTakenOf, issueWorkOf, taskConversationOf } from "@vortoone/client/lib/issues";
+import { workAnchorBody, workContinuable, workIsOver } from "@vortoone/client/lib/long-work";
+import { supersededBrainNotices } from "@vortoone/client/lib/machine-outages";
+import { hasWideBlock, plainLine } from "@vortoone/client/lib/markdown";
+import { isMediaAfterReply, isMediaAlone, messageMediaOf, quoteText, textOrMedia } from "@vortoone/client/lib/media";
+import { serverBody } from "@vortoone/client/lib/message-body";
+import { joinDrafts, tooLongToSend } from "@vortoone/client/lib/message-length";
 import {
   isOpenMission,
   missionCommandOf,
@@ -154,27 +154,27 @@ import {
   missionSuggestionOf,
   parseMissionCommand,
   taskNoticeOf,
-} from "@agenteschat/client/lib/missions";
-import { noAiCardOf } from "@agenteschat/client/lib/no-ai";
-import { isTalkerReply, noticeOf, routineReportText, talkerWaited } from "@agenteschat/client/lib/notices";
-import { brainUnavailableOf, isOfflineNotice } from "@agenteschat/client/lib/outages";
-import { can, leavesChannel, makesAgents, managesChannel, setsAutoReply } from "@agenteschat/client/lib/permissions";
-import { modelStandInText } from "@agenteschat/client/lib/plan-usage";
-import { reachHandoffs } from "@agenteschat/client/lib/reach";
-import { localMeta, replyOf } from "@agenteschat/client/lib/reply";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { isReminderMessage, reminderBody, routineReplyOf } from "@agenteschat/client/lib/routines";
-import { picksForMe, replyAloneKey } from "@agenteschat/client/lib/routing";
-import { ConversationSeat } from "@agenteschat/client/lib/seat-context";
-import { seenMessageId } from "@agenteschat/client/lib/seen";
-import { hiddenCount, tasksOf, todayStart } from "@agenteschat/client/lib/task-manager";
-import { contextMarks, hiddenByThreads, rangeCandidates, threadStartOf } from "@agenteschat/client/lib/threads";
-import { buildTimeline, lastPostedId, mergeTimeline, type TimelineItem } from "@agenteschat/client/lib/timeline";
-import { usageWaitOf } from "@agenteschat/client/lib/usage-pause";
-import { appVia } from "@agenteschat/client/lib/via";
-import { voiceOf } from "@agenteschat/client/lib/voice";
-import { waitingAway, waitingNotification } from "@agenteschat/client/lib/waiting";
-import { barStep, makingImage, showsActivity, splitCanceled } from "@agenteschat/client/lib/work";
+} from "@vortoone/client/lib/missions";
+import { noAiCardOf } from "@vortoone/client/lib/no-ai";
+import { isTalkerReply, noticeOf, routineReportText, talkerWaited } from "@vortoone/client/lib/notices";
+import { brainUnavailableOf, isOfflineNotice } from "@vortoone/client/lib/outages";
+import { can, leavesChannel, makesAgents, managesChannel, setsAutoReply } from "@vortoone/client/lib/permissions";
+import { modelStandInText } from "@vortoone/client/lib/plan-usage";
+import { reachHandoffs } from "@vortoone/client/lib/reach";
+import { localMeta, replyOf } from "@vortoone/client/lib/reply";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { isReminderMessage, reminderBody, routineReplyOf } from "@vortoone/client/lib/routines";
+import { picksForMe, replyAloneKey } from "@vortoone/client/lib/routing";
+import { ConversationSeat } from "@vortoone/client/lib/seat-context";
+import { seenMessageId } from "@vortoone/client/lib/seen";
+import { hiddenCount, tasksOf, todayStart } from "@vortoone/client/lib/task-manager";
+import { contextMarks, hiddenByThreads, rangeCandidates, threadStartOf } from "@vortoone/client/lib/threads";
+import { buildTimeline, lastPostedId, mergeTimeline, type TimelineItem } from "@vortoone/client/lib/timeline";
+import { usageWaitOf } from "@vortoone/client/lib/usage-pause";
+import { appVia } from "@vortoone/client/lib/via";
+import { voiceOf } from "@vortoone/client/lib/voice";
+import { waitingAway, waitingNotification } from "@vortoone/client/lib/waiting";
+import { barStep, makingImage, showsActivity, splitCanceled } from "@vortoone/client/lib/work";
 import {
   AffixInput,
   Avatar,
@@ -219,7 +219,7 @@ import {
   Spinner,
   skeletonOnScreen,
   type VoiceNotice,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useRouter } from "@tanstack/react-router";
 import {

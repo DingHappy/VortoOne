@@ -1,4 +1,4 @@
-import type { Agent } from "@agenteschat/client";
+import type { Agent } from "@vortoone/client";
 import {
   ApiError,
   keys,
@@ -8,26 +8,26 @@ import {
   useAiStatus,
   useAuthConfig,
   type WorkspaceMode,
-} from "@agenteschat/client";
-import { billingHoldOf } from "@agenteschat/client/lib/billing";
-import { accountOutOfReach } from "@agenteschat/client/lib/deletion";
-import { errorCode, errorText } from "@agenteschat/client/lib/errors";
-import { firstName, joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { settingUp } from "@agenteschat/client/lib/guards";
-import { sendsEmail } from "@agenteschat/client/lib/join-requests";
-import { type AiChoice, planLabel, teamThinks } from "@agenteschat/client/lib/no-ai";
+} from "@vortoone/client";
+import { billingHoldOf } from "@vortoone/client/lib/billing";
+import { accountOutOfReach } from "@vortoone/client/lib/deletion";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
+import { firstName, joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { settingUp } from "@vortoone/client/lib/guards";
+import { sendsEmail } from "@vortoone/client/lib/join-requests";
+import { type AiChoice, planLabel, teamThinks } from "@vortoone/client/lib/no-ai";
 import {
   landingOf,
   type OnboardingStepId,
   type RailStep,
   railState,
   stepIndex,
-} from "@agenteschat/client/lib/onboarding";
-import { finishOnboarding, isRightHand, RIGHT_HAND_DEFAULT } from "@agenteschat/client/lib/right-hand";
-import { browserTimezone, timezoneName } from "@agenteschat/client/lib/routines";
-import { aboutOf, type BusinessType } from "@agenteschat/client/lib/team-plan";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/onboarding";
+import { finishOnboarding, isRightHand, RIGHT_HAND_DEFAULT } from "@vortoone/client/lib/right-hand";
+import { browserTimezone, timezoneName } from "@vortoone/client/lib/routines";
+import { aboutOf, type BusinessType } from "@vortoone/client/lib/team-plan";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   AgentSticker,
   Avatar,
@@ -41,7 +41,7 @@ import {
   Menu,
   MenuItem,
   setGaze,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -357,7 +357,7 @@ export function OnboardingPage() {
     markPlan.mutate(orgId);
   });
 
-  // On agentes.chat Cloud, while sign-up is by invitation, only accounts early access allowed make workspaces (ADR 0078).
+  // On VortoOne Cloud, while sign-up is by invitation, only accounts early access allowed make workspaces (ADR 0078).
   const inviteOnly = me.data?.user.canCreateWorkspace === false && orgId === null;
   const emails = sendsEmail(authConfig);
   const email = me.data?.user.email ?? "";
@@ -1092,7 +1092,7 @@ export function OnboardingPage() {
   );
 }
 
-/** The two answers to "What will you use agentes.chat for?" (ADR 0159), in this order. */
+/** The two answers to "What will you use VortoOne for?" (ADR 0159), in this order. */
 
 /**
  * The AI step and its stage inside the workspace's context and Connect an AI (ADR 0160), which the onboarding has

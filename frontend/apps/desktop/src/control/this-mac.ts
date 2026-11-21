@@ -9,7 +9,7 @@
  * before a `connect` gets here.
  */
 
-import type { RunnerTools } from "@agenteschat/adapters/machine-protocol";
+import type { RunnerTools } from "@vortoone/adapters/machine-protocol";
 import { ControlError } from "./client";
 import { filesFolder } from "./local-server";
 import { homeServer } from "./server";
@@ -63,7 +63,7 @@ export interface ThisMacDeps {
   showRequests(): Promise<void>;
   /** System Settings on a permission's list; absent: the page's request is refused. */
   openPrivacy?(pane: PrivacyPane): Promise<void>;
-  /** The server here's folder (`~/.agentes`), as the app runs it now. */
+  /** The server here's folder (`~/.vortoone`), as the app runs it now. */
   localDir(): Promise<string>;
   /** A folder of this computer in Finder or the file manager; rejects when it isn't one. */
   revealFolder(path: string): Promise<void>;

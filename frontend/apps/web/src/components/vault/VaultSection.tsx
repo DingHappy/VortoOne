@@ -1,7 +1,7 @@
-import type { VaultItem, VaultItemKind, VaultScope } from "@agenteschat/client";
-import { useVault } from "@agenteschat/client";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
+import type { VaultItem, VaultItemKind, VaultScope } from "@vortoone/client";
+import { useVault } from "@vortoone/client";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   EmptyState,
@@ -14,7 +14,7 @@ import {
   Segmented,
   Select,
   Toolbar,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorState, LoadingList } from "@/components/Loading";

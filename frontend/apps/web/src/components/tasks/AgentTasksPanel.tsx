@@ -1,5 +1,5 @@
-import type { EndedTask, ManagedTask } from "@agenteschat/client";
-import { TASK_MANAGER_POLL_MS, useTaskSteps } from "@agenteschat/client";
+import type { EndedTask, ManagedTask } from "@vortoone/client";
+import { TASK_MANAGER_POLL_MS, useTaskSteps } from "@vortoone/client";
 import {
   agentCardLine,
   agentSummary,
@@ -10,9 +10,9 @@ import {
   taskTitle,
   taskWaitWords,
   waitsOnPerson,
-} from "@agenteschat/client/lib/task-manager";
-import { formatDuration } from "@agenteschat/client/lib/work";
-import { Button, EmptyState, Icon, PixelStop } from "@agenteschat/ui";
+} from "@vortoone/client/lib/task-manager";
+import { formatDuration } from "@vortoone/client/lib/work";
+import { Button, EmptyState, Icon, PixelStop } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

@@ -3,10 +3,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import "./styles.css";
-import { authConfigQuery, createApiClient, createSnapshot, keys, type Me, meQuery, outbox } from "@agenteschat/client";
-import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { holdSkies, installTitleTips, trackInput } from "@agenteschat/ui";
+import { authConfigQuery, createApiClient, createSnapshot, keys, type Me, meQuery, outbox } from "@vortoone/client";
+import { ErrorBoundary } from "@vortoone/client/lib/error-boundary";
+import { errorText } from "@vortoone/client/lib/errors";
+import { holdSkies, installTitleTips, trackInput } from "@vortoone/ui";
 import { AppProviders, type AppServices } from "./app/providers";
 import { createQueryClient } from "./app/query-client";
 import { backToSignIn } from "./app/unauthorized";
@@ -58,7 +58,7 @@ void authConfig.then(
 );
 // The language's file is the app's own too: index.html's boot fallback reloads or says so, and the error is reported.
 const i18n = await loadI18n(savedLocale()).catch((error: unknown) => {
-  window.__agentesBootFailed?.();
+  window.__vortooneBootFailed?.();
   throw error;
 });
 document.documentElement.lang = i18n.language;

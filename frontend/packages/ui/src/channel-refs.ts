@@ -1,1 +1,1 @@
-export * from "@agenteschat/tokens/channel-refs";
+export * from "@vortoone/tokens/channel-refs";

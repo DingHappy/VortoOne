@@ -858,7 +858,7 @@ export const quietLine = (
   (l.count === 1 && l.kind === "creatingImage" && l.state === "done") ||
   (l.count === 1 &&
     !l.service &&
-    (!/^mcp__/i.test(l.tool) || /^mcp__agentes__/i.test(l.tool)) &&
+    (!/^mcp__/i.test(l.tool) || /^mcp__vortoone__/i.test(l.tool)) &&
     l.state === "done" &&
     QUIET_READS.has(l.kind) &&
     !l.code &&

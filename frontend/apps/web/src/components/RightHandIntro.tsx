@@ -1,4 +1,4 @@
-import type { Agent, AgentStyle } from "@agenteschat/client";
+import type { Agent, AgentStyle } from "@vortoone/client";
 import {
   useAiStatus,
   useComputerSetup,
@@ -6,20 +6,20 @@ import {
   useRightHandWave,
   useSetAgentStyle,
   useTeamAnswered,
-} from "@agenteschat/client";
-import { formatTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { aiStateOf, noAiCardOf } from "@agenteschat/client/lib/no-ai";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { formatTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { aiStateOf, noAiCardOf } from "@vortoone/client/lib/no-ai";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   introCards,
   introLeadKey,
   isRightHand,
   offersTeamSetup,
   welcomeOpen,
-} from "@agenteschat/client/lib/right-hand";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { AgentSticker, Button, Message, MessageText, WAVE_SECONDS } from "@agenteschat/ui";
+} from "@vortoone/client/lib/right-hand";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
+import { AgentSticker, Button, Message, MessageText, WAVE_SECONDS } from "@vortoone/ui";
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { MESSAGE_STICKER } from "@/chat/ChatMedia";

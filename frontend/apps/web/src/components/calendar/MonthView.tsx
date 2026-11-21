@@ -1,6 +1,6 @@
-import { type CalItem, type DayEntry, dayEntries, sameDay } from "@agenteschat/client/lib/calendar";
-import { toYmd } from "@agenteschat/client/lib/format";
-import { Popover } from "@agenteschat/ui";
+import { type CalItem, type DayEntry, dayEntries, sameDay } from "@vortoone/client/lib/calendar";
+import { toYmd } from "@vortoone/client/lib/format";
+import { Popover } from "@vortoone/ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { dayLabel, EventChip } from "./EventChip";

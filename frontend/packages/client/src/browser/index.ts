@@ -104,7 +104,7 @@ export function handoffFuse(h: Pick<BrowserHandoff, "createdAt" | "expiresAt">, 
 
 /** A tool of one of the agent's screens: its browser (`browser_open`, …) or its desktop (`desktop_do`, …). */
 export const isScreenTool = (tool: string | null | undefined, screen: ScreenKind) =>
-  Boolean(tool?.replace(/^mcp__agentes__/, "").startsWith(`${screen}_`));
+  Boolean(tool?.replace(/^mcp__vortoone__/, "").startsWith(`${screen}_`));
 
 /** A tool of the agent browser (`browser_open`, `browser_click`, …). */
 export const isBrowserTool = (tool: string | null | undefined) => isScreenTool(tool, "browser");
@@ -154,8 +154,8 @@ export function browserSteps(work: LiveWork[] | undefined): BrowserStep[] {
       ? [
           {
             id: w.id,
-            // A computer brain's call carries the bridge's prefix (`mcp__agentes__browser_open`).
-            tool: w.tool.replace(/^mcp__agentes__/, ""),
+            // A computer brain's call carries the bridge's prefix (`mcp__vortoone__browser_open`).
+            tool: w.tool.replace(/^mcp__vortoone__/, ""),
             detail: w.detail,
             running: w.running,
             ...(w.since ? { since: w.since } : {}),
@@ -178,7 +178,7 @@ export function screenSteps(work: LiveWork[] | undefined): ScreenStep[] {
     return [
       {
         id: w.id,
-        tool: w.tool.replace(/^mcp__agentes__/, ""),
+        tool: w.tool.replace(/^mcp__vortoone__/, ""),
         detail: w.detail,
         running: w.running,
         ...(w.since ? { since: w.since } : {}),

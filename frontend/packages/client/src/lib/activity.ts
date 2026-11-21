@@ -128,7 +128,7 @@ export type ActivityKind =
   | "readingConversation"
   | "usingTool";
 
-/** The computer's own permission check before a command (`PERMISSION_TOOL` in `@agenteschat/adapters`). */
+/** The computer's own permission check before a command (`PERMISSION_TOOL` in `@vortoone/adapters`). */
 export const PERMISSION_TOOL = "permission_prompt";
 
 export interface Activity {
@@ -341,7 +341,7 @@ export const serviceKey = (label: string) =>
     .replace(/\s+/g, "_");
 
 /** One of the org's mailboxes' tools (`mail_<slug>_<verb>`, ADR 0038), also through the executor's MCP. */
-const MAILBOX_TOOL = /^(?:mcp__agentes__)?mail_[a-z0-9]+_[a-z]+$/;
+const MAILBOX_TOOL = /^(?:mcp__vortoone__)?mail_[a-z0-9]+_[a-z]+$/;
 
 /**
  * The friendly activity of a tool call. `connector` is the app label when the
@@ -367,11 +367,11 @@ export function toolActivity(
 function activityOf(tool: string | null | undefined, connector?: string | null, detail?: string | null): Activity {
   let name = (tool ?? "").trim().toLowerCase();
   if (!name) return { kind: "thinking" };
-  // An executor's MCP tool (`mcp__agentes__update_plan`): ours by its own name; another server's is that app.
+  // An executor's MCP tool (`mcp__vortoone__update_plan`): ours by its own name; another server's is that app.
   const mcp = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(name);
   if (mcp) {
     const [, server = "", rest = ""] = mcp;
-    if (server !== "agentes" && !BUILTIN[rest]) return { kind: "consulting", app: CONNECTORS[server] ?? server };
+    if (server !== "vortoone" && !BUILTIN[rest]) return { kind: "consulting", app: CONNECTORS[server] ?? server };
     name = rest;
   }
   // "Theo está abrindo a skill Revisão de PR…", or "consultando uma skill" without the name.

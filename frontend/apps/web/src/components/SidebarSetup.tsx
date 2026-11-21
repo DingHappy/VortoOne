@@ -1,5 +1,5 @@
-import type { SidebarItem, SidebarPlace } from "@agenteschat/client";
-import { useSetSidebarItem, useSetSidebarToolOrder, useSidebarItems, useSidebarToolOrder } from "@agenteschat/client";
+import type { SidebarItem, SidebarPlace } from "@vortoone/client";
+import { useSetSidebarItem, useSetSidebarToolOrder, useSidebarItems, useSidebarToolOrder } from "@vortoone/client";
 import {
   moveSection,
   moveShownTool,
@@ -9,8 +9,8 @@ import {
   sidebarItemOrder,
   sidebarPlace,
   sidebarSections,
-} from "@agenteschat/client/lib/sidebar-items";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/sidebar-items";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   Button,
   Dialog,
@@ -20,7 +20,7 @@ import {
   type IconName,
   Segmented,
   type SegmentedOption,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import {
   cloneElement,
   type DragEvent,
@@ -80,7 +80,7 @@ function useToolOrder(orgId: string, personal = false) {
   return { order, put };
 }
 
-const TOOL_DRAG = "application/x-agentes-tool";
+const TOOL_DRAG = "application/x-vortoone-tool";
 const MOVE_KEYS = "Alt+Shift+ArrowUp Alt+Shift+ArrowDown";
 
 /**

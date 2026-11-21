@@ -1,12 +1,12 @@
-import { useAuthConfig, useChannels, useWikiTree } from "@agenteschat/client";
-import { AGENT_SECTIONS, AGENT_TABS, PERSONAL_AGENT_TABS } from "@agenteschat/client/lib/agent-edit";
-import { canTalk, listsAgent } from "@agenteschat/client/lib/audience";
-import { joinable } from "@agenteschat/client/lib/channel-access";
-import { setDraftFor } from "@agenteschat/client/lib/drafts";
-import { can, makesAgents } from "@agenteschat/client/lib/permissions";
-import { settingsSectionNameKey } from "@agenteschat/client/lib/personal-view";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { Avatar, CommandPalette, Icon, type PaletteItem } from "@agenteschat/ui";
+import { useAuthConfig, useChannels, useWikiTree } from "@vortoone/client";
+import { AGENT_SECTIONS, AGENT_TABS, PERSONAL_AGENT_TABS } from "@vortoone/client/lib/agent-edit";
+import { canTalk, listsAgent } from "@vortoone/client/lib/audience";
+import { joinable } from "@vortoone/client/lib/channel-access";
+import { setDraftFor } from "@vortoone/client/lib/drafts";
+import { can, makesAgents } from "@vortoone/client/lib/permissions";
+import { settingsSectionNameKey } from "@vortoone/client/lib/personal-view";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
+import { Avatar, CommandPalette, Icon, type PaletteItem } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -25,7 +25,7 @@ export const isPaletteShortcut = (e: Pick<KeyboardEvent, "key" | "metaKey" | "ct
   (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k";
 
 /** Opens the palette from elsewhere (a button). */
-export const openPalette = () => window.dispatchEvent(new Event("agentes:palette"));
+export const openPalette = () => window.dispatchEvent(new Event("vortoone:palette"));
 
 /**
  * The ⌘K palette: go to any channel, agent, person, page or settings section,
@@ -56,10 +56,10 @@ export function CommandMenu() {
     };
     const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("agentes:palette", onOpen);
+    window.addEventListener("vortoone:palette", onOpen);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("agentes:palette", onOpen);
+      window.removeEventListener("vortoone:palette", onOpen);
     };
   }, []);
 

@@ -1,4 +1,4 @@
-import type { ConnectorDef } from "@agenteschat/client";
+import type { ConnectorDef } from "@vortoone/client";
 import {
   keys,
   useAgents,
@@ -9,16 +9,16 @@ import {
   useMembers,
   useSkill,
   useSkills,
-} from "@agenteschat/client";
-import { type Level, saveLevels } from "@agenteschat/client/lib/access-levels";
-import { errorText as failureText } from "@agenteschat/client/lib/errors";
-import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
-import { addsAgentsTo, can } from "@agenteschat/client/lib/permissions";
-import { connectorName, scopeText } from "@agenteschat/client/lib/scopes";
-import { skillsToGive } from "@agenteschat/client/lib/skills";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client";
+import { type Level, saveLevels } from "@vortoone/client/lib/access-levels";
+import { errorText as failureText } from "@vortoone/client/lib/errors";
+import { FIELD_LIMITS } from "@vortoone/client/lib/field-limits";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
+import { addsAgentsTo, can } from "@vortoone/client/lib/permissions";
+import { connectorName, scopeText } from "@vortoone/client/lib/scopes";
+import { skillsToGive } from "@vortoone/client/lib/skills";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentAppearance,
   type AgentColor,
@@ -40,7 +40,7 @@ import {
   randomAppearance,
   setGaze,
   spriteTone,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -138,7 +138,7 @@ export interface NewAgentRequest {
  * Connecting an app from the card may sign in on the provider's page, which reloads the app: the card waits here for
  * the way back (`?newAgent=resume`, plus the server's `?connected=`), for an hour, in this tab only.
  */
-const RESUME_KEY = "agentes:new-agent";
+const RESUME_KEY = "vortoone:new-agent";
 const RESUME_PARAM = "newAgent";
 const RESUME_TTL = 60 * 60 * 1000;
 interface Saved {
@@ -289,7 +289,7 @@ export function CreateAgentLink() {
  * Who sits outside the dialog's provider asks through this event: the Mac menu bar's New agent (`MenuBarActions`), and
  * Connect AI's "Criar um agente com este plano" (a `CustomEvent` whose `detail` is the request).
  */
-export const NEW_AGENT_EVENT = "agentes:new-agent";
+export const NEW_AGENT_EVENT = "vortoone:new-agent";
 
 /** The ready-made words of a starting point: a personal starter's (`teamTemplates.agents`) or a role's. */
 const isStarter = (pick: Pick): pick is PersonalStarter["id"] => PERSONAL_STARTERS.some((s) => s.id === pick);

@@ -1,9 +1,9 @@
-import type { AppNotification } from "@agenteschat/client";
-import { useDecideDashboardProposal, useRefreshWidget } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { namesText } from "@agenteschat/client/lib/format";
-import { widgetNoticeOf } from "@agenteschat/client/lib/notifications";
-import { Button } from "@agenteschat/ui";
+import type { AppNotification } from "@vortoone/client";
+import { useDecideDashboardProposal, useRefreshWidget } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { namesText } from "@vortoone/client/lib/format";
+import { widgetNoticeOf } from "@vortoone/client/lib/notifications";
+import { Button } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { Dir } from "@/components/NotificationParts";

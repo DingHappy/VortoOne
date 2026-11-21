@@ -1,4 +1,4 @@
-import type { Issue, IssueActivity, IssuePatch, IssuePriority } from "@agenteschat/client";
+import type { Issue, IssueActivity, IssuePatch, IssuePriority } from "@vortoone/client";
 import {
   ApiError,
   keys,
@@ -7,17 +7,17 @@ import {
   useIssueAction,
   useIssueActivity,
   useIssueColumns,
-} from "@agenteschat/client";
-import { canTalk } from "@agenteschat/client/lib/audience";
-import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
-import { relativeTime, whenAt } from "@agenteschat/client/lib/format";
-import { githubLinkLabel, isGithubLink } from "@agenteschat/client/lib/github-link";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { webUrl } from "@agenteschat/client/lib/guards";
-import { NO_PROJECT } from "@agenteschat/client/lib/issue-projects";
-import { issueEventText } from "@agenteschat/client/lib/issues";
-import { can } from "@agenteschat/client/lib/permissions";
-import { foldSteps, shownSteps } from "@agenteschat/client/lib/work";
+} from "@vortoone/client";
+import { canTalk } from "@vortoone/client/lib/audience";
+import { FIELD_LIMITS } from "@vortoone/client/lib/field-limits";
+import { relativeTime, whenAt } from "@vortoone/client/lib/format";
+import { githubLinkLabel, isGithubLink } from "@vortoone/client/lib/github-link";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { webUrl } from "@vortoone/client/lib/guards";
+import { NO_PROJECT } from "@vortoone/client/lib/issue-projects";
+import { issueEventText } from "@vortoone/client/lib/issues";
+import { can } from "@vortoone/client/lib/permissions";
+import { foldSteps, shownSteps } from "@vortoone/client/lib/work";
 import {
   Alert,
   Button,
@@ -45,7 +45,7 @@ import {
   Tabs,
   useAutoGrow,
   WorkSweep,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";

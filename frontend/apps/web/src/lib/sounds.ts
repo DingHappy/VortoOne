@@ -1,5 +1,5 @@
-import { type SoundName, setSoundPlayer } from "@agenteschat/client/lib/sounds";
-import { DEFAULT_SOUND_STYLE, isSoundStyle, renderSound, SAMPLE_RATE, type SoundStyle } from "@agenteschat/ui/sfx";
+import { type SoundName, setSoundPlayer } from "@vortoone/client/lib/sounds";
+import { DEFAULT_SOUND_STYLE, isSoundStyle, renderSound, SAMPLE_RATE, type SoundStyle } from "@vortoone/ui/sfx";
 import { STORAGE_KEYS, sessionStore, storage } from "./storage";
 
 /**
@@ -8,7 +8,7 @@ import { STORAGE_KEYS, sessionStore, storage } from "./storage";
  */
 export type SoundChoice = SoundStyle | "off";
 
-const CHANGE_EVENT = "agentes:sounds";
+const CHANGE_EVENT = "vortoone:sounds";
 /** A cue under the conversation, never over it. */
 const VOLUME = 0.35;
 /** The same sound twice this close is one (a burst of events). */

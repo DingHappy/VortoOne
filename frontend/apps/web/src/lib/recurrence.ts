@@ -1,6 +1,6 @@
-import type { ApiRule, ProposedRoutine } from "@agenteschat/client";
-import { clockHour, joinNames, toYmd } from "@agenteschat/client/lib/format";
-import { timezoneName } from "@agenteschat/client/lib/routines";
+import type { ApiRule, ProposedRoutine } from "@vortoone/client";
+import { clockHour, joinNames, toYmd } from "@vortoone/client/lib/format";
+import { timezoneName } from "@vortoone/client/lib/routines";
 import {
   BUSINESS_DAYS,
   nextOccurrences,
@@ -9,7 +9,7 @@ import {
   WEEKDAYS,
   type Weekday,
   weekdayOfYmd,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 
 const pad = (n: number) => String(n).padStart(2, "0");

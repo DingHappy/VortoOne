@@ -32,7 +32,7 @@ export type DesktopViewState =
   /** The agent or its workspace is held and its screen isn't running: nothing starts it until the hold ends. */
   | "held"
   | "forbidden"
-  /** The agentes app on the computer is too old for screens. */
+  /** The VortoOne app on the computer is too old for screens. */
   | "outdated"
   /** Its switch is off on the computer, it can't run screens, or the agent may not use one. */
   | "unavailable"

@@ -1,9 +1,9 @@
-import type { Agent } from "@agenteschat/client";
-import { useAgentDetail } from "@agenteschat/client";
-import { audienceSummary } from "@agenteschat/client/lib/audience";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { tellsNameStory } from "@agenteschat/client/lib/right-hand";
-import { type AgentColor, Avatar, Button, Card, CardHeader, Chip, Icon } from "@agenteschat/ui";
+import type { Agent } from "@vortoone/client";
+import { useAgentDetail } from "@vortoone/client";
+import { audienceSummary } from "@vortoone/client/lib/audience";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { tellsNameStory } from "@vortoone/client/lib/right-hand";
+import { type AgentColor, Avatar, Button, Card, CardHeader, Chip, Icon } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";

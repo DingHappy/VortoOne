@@ -1,10 +1,10 @@
-import type { Machine } from "@agenteschat/client";
-import { ApiError, useConfirmDevice, useDenyDevice, useMachineDevice, useMe } from "@agenteschat/client";
-import { workspaceLabel, workspaceNotes } from "@agenteschat/client/lib/deletion";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { computerKind, formatUserCode, locationText } from "@agenteschat/client/lib/machines";
-import { can } from "@agenteschat/client/lib/permissions";
+import type { Machine } from "@vortoone/client";
+import { ApiError, useConfirmDevice, useDenyDevice, useMachineDevice, useMe } from "@vortoone/client";
+import { workspaceLabel, workspaceNotes } from "@vortoone/client/lib/deletion";
+import { errorText } from "@vortoone/client/lib/errors";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { computerKind, formatUserCode, locationText } from "@vortoone/client/lib/machines";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   Alert,
   Button,
@@ -16,7 +16,7 @@ import {
   Locked,
   Select,
   Switch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

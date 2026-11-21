@@ -1,6 +1,6 @@
-import type { ArtifactRef } from "@agenteschat/client";
-import { fileIcon, fitsUpload, formatBytes, MAX_UPLOAD_MB, previewKind } from "@agenteschat/client/lib/files";
-import { ComposerFile, type IconName } from "@agenteschat/ui";
+import type { ArtifactRef } from "@vortoone/client";
+import { fileIcon, fitsUpload, formatBytes, MAX_UPLOAD_MB, previewKind } from "@vortoone/client/lib/files";
+import { ComposerFile, type IconName } from "@vortoone/ui";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";

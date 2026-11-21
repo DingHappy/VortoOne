@@ -1,7 +1,7 @@
-import { type ModelTier, useModels, useSettings, useUpdateSettings } from "@agenteschat/client";
-import { can } from "@agenteschat/client/lib/permissions";
-import { MODEL_TIERS, nearestTier } from "@agenteschat/client/lib/providers";
-import { Button, Dialog, DialogBody, DialogFooter, Field, Locked, ProviderLogo, SettingRow } from "@agenteschat/ui";
+import { type ModelTier, useModels, useSettings, useUpdateSettings } from "@vortoone/client";
+import { can } from "@vortoone/client/lib/permissions";
+import { MODEL_TIERS, nearestTier } from "@vortoone/client/lib/providers";
+import { Button, Dialog, DialogBody, DialogFooter, Field, Locked, ProviderLogo, SettingRow } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ModelSelect, modelOptions } from "@/components/AgentFields";

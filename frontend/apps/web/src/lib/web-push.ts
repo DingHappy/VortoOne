@@ -1,4 +1,4 @@
-import type { ApiClient, NotificationCount, NotificationEvent, PushDeviceInput } from "@agenteschat/client";
+import type { ApiClient, NotificationCount, NotificationEvent, PushDeviceInput } from "@vortoone/client";
 import type { AuthClient } from "@/auth/client";
 import { inDesktopApp } from "./desktop";
 import { type PushOpen, pushOpenFrom } from "./push-open";
@@ -130,7 +130,7 @@ export function subscriptionBody(json: PushSubscriptionJSON, locale: string): Pu
 }
 
 /** The service worker's message when a notification is clicked on a page already open (public/sw.js). */
-export const PUSH_OPEN_MESSAGE = "agentes.push.open";
+export const PUSH_OPEN_MESSAGE = "vortoone.push.open";
 
 /** An in-app path from a notification's address: only this site's own pages; anything else is `null`. */
 export function inAppPath(url: unknown, origin: string): string | null {

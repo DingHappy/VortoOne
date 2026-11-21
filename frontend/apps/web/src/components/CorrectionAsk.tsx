@@ -1,5 +1,5 @@
-import type { Message } from "@agenteschat/client";
-import { Button, Input } from "@agenteschat/ui";
+import type { Message } from "@vortoone/client";
+import { Button, Input } from "@vortoone/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,7 +12,7 @@ import { useChannelActions } from "./channel-actions";
  * dismissed it never comes back for that message (localStorage).
  */
 const askKey = (messageId: string) => ["correction-ask", messageId] as const;
-const storageKey = (messageId: string) => `agentes:correction-ask:${messageId}`;
+const storageKey = (messageId: string) => `vortoone:correction-ask:${messageId}`;
 
 function wasDismissed(messageId: string) {
   try {

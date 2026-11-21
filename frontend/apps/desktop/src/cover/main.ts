@@ -8,10 +8,10 @@
  * expected. A server out of reach offers another one.
  */
 
-import { CLOUD_SERVER, isTailnet, serverHost } from "@agenteschat/client/lib/server";
-import { drawAgent, idlePose } from "@agenteschat/ui/agent/engine";
-import { startSky } from "@agenteschat/ui/sky/engine";
-import { SKY_TONES } from "@agenteschat/ui/sky/math";
+import { CLOUD_SERVER, isTailnet, serverHost } from "@vortoone/client/lib/server";
+import { drawAgent, idlePose } from "@vortoone/ui/agent/engine";
+import { startSky } from "@vortoone/ui/sky/engine";
+import { SKY_TONES } from "@vortoone/ui/sky/math";
 import { invoke } from "@tauri-apps/api/core";
 import "@fontsource-variable/onest/index.css";
 import "../fonts.css";
@@ -171,7 +171,7 @@ const w = window as { __coverShown?: () => void; __coverFade?: () => void };
 w.__coverShown = shown;
 w.__coverFade = fade;
 
-/** The server the main window opens (servers.json, through Rust); agentes.chat before one is chosen. */
+/** The server the main window opens (servers.json, through Rust); VortoOne before one is chosen. */
 const currentServer = () =>
   invoke<string | null>("cover_server").then(
     (s) => s ?? SITE_URL,

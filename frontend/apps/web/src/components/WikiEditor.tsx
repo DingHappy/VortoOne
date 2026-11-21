@@ -1,6 +1,6 @@
-import type { WikiPageSummary } from "@agenteschat/client";
-import { prefixLines, wikiQuery, wrapSelection } from "@agenteschat/client/lib/wiki";
-import { Button, Kbd, modKey, Segmented } from "@agenteschat/ui";
+import type { WikiPageSummary } from "@vortoone/client";
+import { prefixLines, wikiQuery, wrapSelection } from "@vortoone/client/lib/wiki";
+import { Button, Kbd, modKey, Segmented } from "@vortoone/ui";
 import { type KeyboardEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Markdown } from "@/lib/markdown";

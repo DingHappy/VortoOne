@@ -3,7 +3,7 @@
  * rows' hover buttons): the page opens its details, or goes straight to adding members, when it shows that channel,
  * now or once it mounts after the navigation.
  */
-const EVENT = "agentes:channel-details";
+const EVENT = "vortoone:channel-details";
 export type ChannelDetailsAsk = "details" | "add";
 let pending: { channelId: string; ask: ChannelDetailsAsk } | null = null;
 

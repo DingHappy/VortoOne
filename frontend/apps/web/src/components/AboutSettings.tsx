@@ -1,7 +1,7 @@
-import { instanceQuery } from "@agenteschat/client";
-import { PUBLIC_SOURCE_URL } from "@agenteschat/client/lib/about";
-import { shownAddress } from "@agenteschat/client/lib/sites";
-import { Card, CardHeader, Icon } from "@agenteschat/ui";
+import { instanceQuery } from "@vortoone/client";
+import { PUBLIC_SOURCE_URL } from "@vortoone/client/lib/about";
+import { shownAddress } from "@vortoone/client/lib/sites";
+import { Card, CardHeader, Icon } from "@vortoone/ui";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";

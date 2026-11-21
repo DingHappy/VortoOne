@@ -1,13 +1,13 @@
 import { storage } from "./storage";
 
-export * from "@agenteschat/client/lib/welcome";
+export * from "@vortoone/client/lib/welcome";
 
 /**
  * The channel's sky band: on the first visit of a new day to a workspace, the
  * first channel you open greets you and says what its agents did since your
  * last visit. Visits are kept per workspace in localStorage.
  */
-const KEY = "agentes.welcome";
+const KEY = "vortoone.welcome";
 
 type Visits = Record<string, number>;
 

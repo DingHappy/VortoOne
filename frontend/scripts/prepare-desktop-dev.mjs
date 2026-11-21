@@ -21,12 +21,12 @@ if (!process.argv.includes("--skip-build")) {
     stdio: "inherit",
   });
   // 连本机后端时由后端提供的界面（随包资源 web/）
-  execFileSync("npm", ["run", "build", "--workspace", "@agenteschat/web"], {
+  execFileSync("npm", ["run", "build", "--workspace", "@vortoone/web"], {
     cwd: root,
     stdio: "inherit",
   });
   // 首次引导、偏好设置窗口：连真外壳的那一份（不是示例数据），外壳从 shell/index.html 打开
-  execFileSync("npm", ["run", "build", "--workspace", "@agenteschat/desktop", "--", "--outDir", "dist-live"], {
+  execFileSync("npm", ["run", "build", "--workspace", "@vortoone/desktop", "--", "--outDir", "dist-live"], {
     cwd: root,
     stdio: "inherit",
   });

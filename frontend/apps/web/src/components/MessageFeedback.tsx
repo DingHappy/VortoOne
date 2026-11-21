@@ -1,8 +1,8 @@
-import type { ReactionCount } from "@agenteschat/client";
-import { useCorrectMessage } from "@agenteschat/client";
-import { formatInt } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { Button, Dialog, DialogBody, DialogFooter, Field, Locked, Textarea } from "@agenteschat/ui";
+import type { ReactionCount } from "@vortoone/client";
+import { useCorrectMessage } from "@vortoone/client";
+import { formatInt } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { Button, Dialog, DialogBody, DialogFooter, Field, Locked, Textarea } from "@vortoone/ui";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/lib/toast";

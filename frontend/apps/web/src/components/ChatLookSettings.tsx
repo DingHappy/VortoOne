@@ -1,4 +1,4 @@
-import { useSetChatPrefs } from "@agenteschat/client";
+import { useSetChatPrefs } from "@vortoone/client";
 import {
   CHAT_STYLES,
   CHAT_TEXT_SIZES,
@@ -11,8 +11,8 @@ import {
   facesShown,
   openAtOf,
   textSizeOf,
-} from "@agenteschat/client/lib/chat-look";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/chat-look";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   type AgentColor,
   Avatar,
@@ -27,7 +27,7 @@ import {
   Radio,
   RadioGroup,
   Segmented,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

@@ -1,4 +1,4 @@
-import { Icon } from "@agenteschat/ui";
+import { Icon } from "@vortoone/ui";
 import { useLayoutEffect, useRef } from "react";
 
 export interface RailStep {

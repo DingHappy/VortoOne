@@ -1,10 +1,10 @@
-import type { Agent, Message } from "@agenteschat/client";
-import { keys } from "@agenteschat/client";
-import { APP_BRANDS } from "@agenteschat/client/lib/apps";
-import { seesDetails } from "@agenteschat/client/lib/audience";
-import { pairItemOf } from "@agenteschat/client/lib/consult-group";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatTime } from "@agenteschat/client/lib/format";
+import type { Agent, Message } from "@vortoone/client";
+import { keys } from "@vortoone/client";
+import { APP_BRANDS } from "@vortoone/client/lib/apps";
+import { seesDetails } from "@vortoone/client/lib/audience";
+import { pairItemOf } from "@vortoone/client/lib/consult-group";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatTime } from "@vortoone/client/lib/format";
 import {
   consultationOfNotice,
   type NoticeView,
@@ -14,10 +14,10 @@ import {
   stopLine,
   stoppedNoticeOf,
   stopperOf,
-} from "@agenteschat/client/lib/notices";
-import type { RoutineReply } from "@agenteschat/client/lib/routines";
-import type { AppVia } from "@agenteschat/client/lib/via";
-import { stopsMovedOn } from "@agenteschat/client/lib/work";
+} from "@vortoone/client/lib/notices";
+import type { RoutineReply } from "@vortoone/client/lib/routines";
+import type { AppVia } from "@vortoone/client/lib/via";
+import { stopsMovedOn } from "@vortoone/client/lib/work";
 import {
   cx,
   EventPill,
@@ -27,7 +27,7 @@ import {
   type IconName,
   PixelStop,
   ProviderLogo,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useState } from "react";
 import { useTranslation } from "react-i18next";

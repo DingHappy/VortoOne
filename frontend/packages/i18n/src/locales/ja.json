@@ -542,7 +542,7 @@
       "continue": "自分のサーバーで続ける",
       "address": "サーバーのアドレス",
       "connect": "接続",
-      "invalid": "アドレスではありません。ブラウザと同じように入力してください。例: agentes.example.com",
+      "invalid": "アドレスではありません。ブラウザと同じように入力してください。例: vortoone.example.com",
       "unreachable": "{{host}} で VortoOne が見つかりませんでした。アドレスとサーバーの電源を確認してください。",
       "none": "まだお持ちでないですか？",
       "noneLink": "無料で用意する方法を見る"
@@ -670,7 +670,7 @@
       "confirmYes": "はい、アプリにログインします",
       "confirmNo": "心当たりがありません",
       "done": "準備完了です。",
-      "doneLead": "agentesアプリにログインしました。このタブは閉じてかまいません。",
+      "doneLead": "vortooneアプリにログインしました。このタブは閉じてかまいません。",
       "expired": "このリクエストは期限切れです。",
       "expiredLead": "アプリに戻って、もう一度{{provider}}を選んでください。",
       "handover": "別のデバイスのアカウントでログインしています…",
@@ -1171,14 +1171,14 @@
         "paused": "このワークスペースは一時停止中のため、「MCPで接続」は使えません。今はこの方法でエージェントを取り込んでください。"
       },
       "otherName": "別のアプリ",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "openbot-import.json（OpenBotのMigratorから）またはopenbot-transfer.json（インスタンスの移行から）、もしくはそれが入っていた.zipをドロップしてください。",
         "openmausbot": "OpenMausBotで、チームを右クリック → チームを共有… → ファイルを保存。",
         "hermes": "ターミナルでプロファイル名を指定してhermes profile exportを実行し、.tar.gzをここにドロップしてください。すべてのプロファイルを移すには、~/.hermesフォルダをドラッグしてください。",
         "openclaw": "~/.openclawフォルダ全体（すべてのエージェントを移行）か、ワークスペース1つだけをドラッグしてください。Macでは、ファイル選択画面で⌘⇧.を押すと隠しフォルダが表示されます。",
         "paperclip": "パッケージのフォルダ（COMPANY.mdがあるもの）をドラッグするか、その.zipをドロップするか、GitHubのリンクを貼り付けてください。",
-        "agenteschat": "もう一方のワークスペースで、設定 → インポートとエクスポート → ファイルをダウンロード。その.jsonをここにドロップしてください。"
+        "vortoone": "もう一方のワークスペースで、設定 → インポートとエクスポート → ファイルをダウンロード。その.jsonをここにドロップしてください。"
       },
       "whereOther": "もう一方のワークスペースからファイルをダウンロードして、ここに.jsonをドロップしてください。",
       "whereOtherLink": "{{org}}からダウンロード",
@@ -2118,9 +2118,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "agentesアプリにログインするためのQRコード",
+    "qr": "vortooneアプリにログインするためのQRコード",
     "making": "コードを作成中…",
-    "stepApp": "スマートフォンにagentesアプリをインストールしてください。",
+    "stepApp": "スマートフォンにvortooneアプリをインストールしてください。",
     "stepTailscale": "スマートフォンにTailscaleをインストールし、このサーバーと同じTailscaleアカウントでサインインしてください。",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5183,7 +5183,7 @@
     "noInstructions": "{{name}}にはまだ指示がありません。どのように働くか伝えましょう。",
     "noInstructions_female": "{{name}}にはまだ指示がありません。どのように働くか伝えましょう。",
     "savedToast": "{{name}}の変更を保存しました。",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "組み込みの権限",
     "connectHint": "サービスを接続",
     "subtitle": "{{role}} · オーナー: <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5530,7 +5530,7 @@
         "two": "環境設定",
         "three": "「ブラウザ」をオンにする",
         "done": "これで完了です。このページは自動で検知するので、再読み込みは不要です。",
-        "menuOpen": "agentesを開く",
+        "menuOpen": "vortooneを開く",
         "menuPrefs": "環境設定…",
         "menuPause": "一時停止",
         "menuQuit": "終了",
@@ -5705,7 +5705,7 @@
       "setAll": "すべて変更",
       "connectors": "{{org}}のコネクタ",
       "connectorsPersonal": "あなたのコネクタ",
-      "builtin": "agentesに組み込み",
+      "builtin": "vortooneに組み込み",
       "noMatch": "「{{q}}」に一致するものはありません",
       "noneHere": "この絞り込みに該当するものはありません",
       "library": "スキルライブラリ",
@@ -7394,7 +7394,7 @@
     },
     "github_git_write": {
       "label": "ブランチをプッシュ（git push）",
-      "description": "agentes/{agent}/…ブランチにコミットをプッシュします。デフォルトブランチへのプッシュ、強制プッシュ、タグは行いません。ブランチの削除や他人のブランチへのプッシュは、先に承認を求めます。"
+      "description": "vortoone/{agent}/…ブランチにコミットをプッシュします。デフォルトブランチへのプッシュ、強制プッシュ、タグは行いません。ブランチの削除や他人のブランチへのプッシュは、先に承認を求めます。"
     },
     "custom_read": {
       "label": "読み取りツール",
@@ -7817,7 +7817,7 @@
       "signature": "署名",
       "signedOff": "オフ: アドレスへのすべての呼び出しがエージェントに届きます。",
       "signedOn": "オン: シークレットで署名された呼び出しだけが届きます。",
-      "signedHelp": "本文（GETの呼び出しではクエリ文字列、?を除く）のHMAC-SHA256をX-Agentes-Signature（sha256=…）で送ってください。GitHubのX-Hub-Signature-256も使えます。",
+      "signedHelp": "本文（GETの呼び出しではクエリ文字列、?を除く）のHMAC-SHA256をX-VortoOne-Signature（sha256=…）で送ってください。GitHubのX-Hub-Signature-256も使えます。",
       "addSecret": "署名を必須にする",
       "newSecret": "新しいシークレット",
       "newSecretTitle": "新しいシークレットを作成しますか？",
@@ -8215,7 +8215,7 @@
         "pr_opened": "GitHubでPRが作成されたとき"
       },
       "issue": {
-        "created": "agentesでタスクが作成されたとき"
+        "created": "vortooneでタスクが作成されたとき"
       },
       "deploy": {
         "succeeded": "デプロイが完了したとき"
@@ -8537,7 +8537,7 @@
       "start": "開始",
       "change": "変更を依頼",
       "started": "開始済み",
-      "startedToast": "計画を開始しました。スレッドの上部と.agentes/mission.mdに固定されます。",
+      "startedToast": "計画を開始しました。スレッドの上部と.vortoone/mission.mdに固定されます。",
       "ownerStarts": "開始できるのは{{name}}だけです",
       "see": "計画を見る",
       "after": {
@@ -9836,7 +9836,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "プランのキーを使うには、コンピューターのagentesをアップデートしてください"
+        "keys": "プランのキーを使うには、コンピューターのvortooneをアップデートしてください"
       },
       "noComputer": "アカウントは接続済みのコンピューターに保存されます。まずあなたのコンピューターを接続してください。",
       "addComputer": "コンピューターを接続",
@@ -11593,8 +11593,8 @@
   "storage": {
     "title": "ストレージ",
     "options": "ファイルの保存先",
-    "agentes": "VortoOneストレージ",
-    "agentesText": "ファイルは当社のストレージに、ワークスペースごとに分けて保存されます。",
+    "vortoone": "VortoOneストレージ",
+    "vortooneText": "ファイルは当社のストレージに、ワークスペースごとに分けて保存されます。",
     "server": "このサーバー",
     "serverText": {
       "disk": "ファイルはサーバーのディスクに保存されます。",
@@ -11604,7 +11604,7 @@
     },
     "showFolder": "フォルダを表示",
     "place": {
-      "agentes": "VortoOneストレージ",
+      "vortoone": "VortoOneストレージ",
       "server": "このサーバー"
     },
     "s3": "独自のストレージ",
@@ -11620,7 +11620,7 @@
     "region": "リージョン",
     "bucket": "バケット",
     "prefix": "プレフィックス（任意）",
-    "prefixHelp": "バケット内のフォルダ。例: agentes/",
+    "prefixHelp": "バケット内のフォルダ。例: vortoone/",
     "pathStyle": "パス形式のアドレス指定",
     "pathStyleHelp": "ホスト名にバケットを含められないMinIOなどで使います。",
     "accessKey": "アクセスキー",
@@ -13496,32 +13496,32 @@
       "supabase": {
         "1": "SupabaseプロジェクトでSQL Editorを開き、下のコマンドを実行します（パスワードは変更してください）。",
         "2": "Project Settings → DatabaseでURI接続文字列をコピーします。",
-        "3": "その中のユーザーとパスワードを、agentes_leituraと選んだパスワードに置き換えて、ここに貼り付けます。"
+        "3": "その中のユーザーとパスワードを、vortoone_readerと選んだパスワードに置き換えて、ここに貼り付けます。"
       },
       "neon": {
         "1": "NeonプロジェクトでSQL Editorを開き、下のコマンドを実行します（パスワードは変更してください）。",
         "2": "Connectでデータベースのアドレスをコピーします。",
-        "3": "その中のユーザーとパスワードを、agentes_leituraと選んだパスワードに置き換えて、ここに貼り付けます。"
+        "3": "その中のユーザーとパスワードを、vortoone_readerと選んだパスワードに置き換えて、ここに貼り付けます。"
       },
       "railway": {
         "1": "PostgresサービスでData → Queryを開き、下のコマンドを実行します（パスワードは変更してください）。",
         "2": "VariablesでDATABASE_PUBLIC_URLをコピーします（DATABASE_URLは内部用で、ここからは使えません）。",
-        "3": "その中のユーザーとパスワードを、agentes_leituraと選んだパスワードに置き換えて、ここに貼り付けます。"
+        "3": "その中のユーザーとパスワードを、vortoone_readerと選んだパスワードに置き換えて、ここに貼り付けます。"
       },
       "rds": {
         "1": "いつものツールでデータベースに接続し、下のコマンドを実行します（パスワードは変更してください）。",
         "2": "Connectivity & securityでエンドポイントをコピーします。データベースはポート5432でパブリックアクセスが必要です。",
-        "3": "postgres://agentes_leitura:password@endpoint:5432/database の形でアドレスを作り、ここに貼り付けます。"
+        "3": "postgres://vortoone_reader:password@endpoint:5432/database の形でアドレスを作り、ここに貼り付けます。"
       },
       "render": {
         "1": "データベースのページにあるPSQLコマンドで接続し、下のコマンドを実行します（パスワードは変更してください）。",
         "2": "ConnectionsでExternal Database URLをコピーします。",
-        "3": "その中のユーザーとパスワードを、agentes_leituraと選んだパスワードに置き換えて、ここに貼り付けます。"
+        "3": "その中のユーザーとパスワードを、vortoone_readerと選んだパスワードに置き換えて、ここに貼り付けます。"
       },
       "other": {
         "1": "データベースの管理者に、下のコマンドを実行してもらいます（パスワードは管理者が決めます）。",
         "2": "サーバーの公開アドレス、ポート、データベース名を教えてもらいます。",
-        "3": "postgres://agentes_leitura:password@server:5432/database の形でアドレスを作り、ここに貼り付けます。"
+        "3": "postgres://vortoone_reader:password@server:5432/database の形でアドレスを作り、ここに貼り付けます。"
       }
     },
     "howAll": "すべてのデータベースを読むには (Postgres 14 以降)。",
@@ -13677,7 +13677,7 @@
     "whatIsText": "エージェント専用のパスワードです。メールのサイトで作成し、ご自身のパスワードを変えずにいつでも削除できます。",
     "step": {
       "1": "アカウントのセキュリティページを開きます。",
-      "2": "「agentes」という名前のアプリパスワードを作成します。",
+      "2": "「VortoOne」という名前のアプリパスワードを作成します。",
       "3": "パスワードをコピーして、ここに貼り付けます。"
     },
     "openPage": "{{name}}のページを開く",
@@ -15042,7 +15042,7 @@
       "openLocalNetwork": "ローカルネットワークを開く",
       "qrLabel": "スマートフォンのワイヤレス デバッグ用 QR コード",
       "qrLine": "カメラでは読み取らないでください",
-      "qrCaption": "カメラには agentes-… という Wi-Fi ネットワークが表示されますが、そのネットワークは存在しません。スマートフォンはコンピューターと同じ Wi-Fi のままにしてください。",
+      "qrCaption": "カメラには vortoone-… という Wi-Fi ネットワークが表示されますが、そのネットワークは存在しません。スマートフォンはコンピューターと同じ Wi-Fi のままにしてください。",
       "fail": {
         "mdns_off": "{{computer}}は Wi-Fi 上のスマートフォンを探せません。そこで Android platform-tools を更新するか、ケーブルを使ってください。",
         "mdns_offMac": "{{computer}}は Wi-Fi 上のスマートフォンを探せません。その Mac で システム設定 › プライバシーとセキュリティ › ローカルネットワーク の VortoOne をオンにして、もう一度試してください。",
@@ -15333,7 +15333,7 @@
     "reconnectDoneText": "{{name}}が{{org}}に戻りました。",
     "deniedTitle": "接続されていません",
     "denied": "コンピューターは接続されませんでした。開いたのがあなたでなければ、誰もアクセスしていません。",
-    "home": "agentesへ移動"
+    "home": "vortooneへ移動"
   },
   "apps": {
     "connect": "アプリを接続",
@@ -18222,7 +18222,7 @@
       "screensOff": "{{computer}}で画面表示がオフになっています。そちらでオンにしてください:",
       "screensOffOne": "{{computer}} では画面がオフです。",
       "screensMissing": "{{computer}}はまだ画面を表示できません。そのコンピューターで:",
-      "outdated": "{{name}}の画面を見るには、{{computer}}のagentesをアップデートしてください。",
+      "outdated": "{{name}}の画面を見るには、{{computer}}のvortooneをアップデートしてください。",
       "noScreen": "{{name}}にはここに表示できる画面がありません",
       "noScreenHelp": "「ツールとアクセス」で画面またはブラウザを許可してください。",
       "noComputer": "{{name}}のコンピューターを選択してください。",
@@ -18357,7 +18357,7 @@
       "browser": "ブラウザ",
       "screen": "コンピューターの画面",
       "terminal": "ターミナル",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "考え中",
       "inside": "{{program}} · {{detail}}"
     },

@@ -4,7 +4,7 @@ import { groupOf } from "./agent-groups";
 /** At most this many pinned rows on top of each section (`SIDEBAR_PIN_LIMIT`, packages/engine/src/sidebar-items.ts). */
 export const SIDEBAR_PIN_LIMIT = 5;
 export type PinKind = keyof SidebarPins;
-/** AGENTES' orders, as its ⋯ menu lists them (`AGENT_SORTS`, packages/engine/src/sidebar-items.ts). */
+/** VORTOONE' orders, as its ⋯ menu lists them (`AGENT_SORTS`, packages/engine/src/sidebar-items.ts). */
 export const AGENT_SORTS = ["workspace", "mine", "working"] as const satisfies readonly SidebarView["agentSort"][];
 
 /** The view of someone who never changed it. */
@@ -12,7 +12,7 @@ export const SIDEBAR_VIEW_DEFAULT: SidebarView = { agentSort: "workspace", showA
 const NO_PINS: SidebarPins = { agents: [], channels: [], people: [] };
 
 /**
- * Day one ("Fixar no topo" never used nor dismissed): the person's own agents on top of AGENTES, the most recently
+ * Day one ("Fixar no topo" never used nor dismissed): the person's own agents on top of VORTOONE, the most recently
  * active first (`lastActive`: agent id → ISO time of its DM's last message), then in the workspace's order (the
  * agents' list: as they were made, a template team in its template's order), at most the limit. Only the ones in no
  * group: these follow the DMs' activity, so a grouped agent pinned here would move inside its group whenever its

@@ -1,10 +1,10 @@
-import type { AgentGroup, Team, TeamAgent } from "@agenteschat/client";
-import { useAgentGroupAction, useRoutines } from "@agenteschat/client";
-import { setDraftFor } from "@agenteschat/client/lib/drafts";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
-import { sectorGap, sectorLineChanges, sectorReach, sectorSupervisor } from "@agenteschat/client/lib/team-views";
-import { AvatarStack, Button, Card, Icon, Select } from "@agenteschat/ui";
+import type { AgentGroup, Team, TeamAgent } from "@vortoone/client";
+import { useAgentGroupAction, useRoutines } from "@vortoone/client";
+import { setDraftFor } from "@vortoone/client/lib/drafts";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
+import { sectorGap, sectorLineChanges, sectorReach, sectorSupervisor } from "@vortoone/client/lib/team-views";
+import { AvatarStack, Button, Card, Icon, Select } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,7 +31,7 @@ const CARD_ROUTINES = 3;
  * Equipe › Setores (ADR 0148): the agent groups (ADR 0083) as setores, one card each: who leads it and who covers,
  * its agents, the people around them, the channels they are in and their routines. Who manages agents creates,
  * edits, orders and deletes them, picks the lead and the substitute, and drags agents between cards. The sidebar's
- * AGENTES sections are the same groups.
+ * VORTOONE sections are the same groups.
  */
 export function TeamSectors({ team, groups }: { team: Team; groups: AgentGroup[] }) {
   const { t } = useTranslation();

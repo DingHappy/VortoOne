@@ -1,7 +1,7 @@
-import type { BatchInviteResult } from "@agenteschat/client";
-import { useAllInvitations, useInviteMany, useMembers, useRoles } from "@agenteschat/client";
-import { everyoneOf, isEveryone, roleSummary, sortRoles } from "@agenteschat/client/lib/roles";
-import { Button, Icon, Locked } from "@agenteschat/ui";
+import type { BatchInviteResult } from "@vortoone/client";
+import { useAllInvitations, useInviteMany, useMembers, useRoles } from "@vortoone/client";
+import { everyoneOf, isEveryone, roleSummary, sortRoles } from "@vortoone/client/lib/roles";
+import { Button, Icon, Locked } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type ChipAddress, ChipNote, ChipRole, chipsFrom, EmailChips } from "@/components/invite/EmailChips";

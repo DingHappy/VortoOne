@@ -1,4 +1,4 @@
-import type { Agent, AgentAudience, AgentProposal } from "@agenteschat/client";
+import type { Agent, AgentAudience, AgentProposal } from "@vortoone/client";
 import {
   ApiError,
   useAgentProposal,
@@ -19,9 +19,9 @@ import {
   useRoles,
   useSettings,
   useSkills,
-} from "@agenteschat/client";
-import { LEVELS, type Level, saveLevels, sharedLevel } from "@agenteschat/client/lib/access-levels";
-import { draftLevels, draftMailLevels } from "@agenteschat/client/lib/action-cards";
+} from "@vortoone/client";
+import { LEVELS, type Level, saveLevels, sharedLevel } from "@vortoone/client/lib/access-levels";
+import { draftLevels, draftMailLevels } from "@vortoone/client/lib/action-cards";
 import {
   autonomyName,
   autonomyWords,
@@ -29,8 +29,8 @@ import {
   type NewAgentStart,
   newAgentStart,
   newAgentStartText,
-} from "@agenteschat/client/lib/agent-setup";
-import { thinksWith } from "@agenteschat/client/lib/brain";
+} from "@vortoone/client/lib/agent-setup";
+import { thinksWith } from "@vortoone/client/lib/brain";
 import {
   type BrainPickOption,
   brainPickInput,
@@ -39,19 +39,19 @@ import {
   needsOwnSignIn,
   newPlanAccountOption,
   planAccountOption,
-} from "@agenteschat/client/lib/brain-picker";
-import { type ConnectedItem, itemName } from "@agenteschat/client/lib/connected";
-import { errorText as failureText } from "@agenteschat/client/lib/errors";
-import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { choiceOf, defaultPolicy, MAIL_ACTIONS, toMailLevel } from "@agenteschat/client/lib/mail";
-import { type PlanChoice as AiPlan, planOfKind } from "@agenteschat/client/lib/no-ai";
-import { addsAgentsTo, can } from "@agenteschat/client/lib/permissions";
-import { keeperKey } from "@agenteschat/client/lib/personal-view";
-import { AUTO, apiProviderOf, isAuto, modelChoices, usableModels } from "@agenteschat/client/lib/providers";
-import { scopeText } from "@agenteschat/client/lib/scopes";
-import { isPersonal, modeKey } from "@agenteschat/client/lib/workspace-mode";
+} from "@vortoone/client/lib/brain-picker";
+import { type ConnectedItem, itemName } from "@vortoone/client/lib/connected";
+import { errorText as failureText } from "@vortoone/client/lib/errors";
+import { FIELD_LIMITS } from "@vortoone/client/lib/field-limits";
+import { joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { choiceOf, defaultPolicy, MAIL_ACTIONS, toMailLevel } from "@vortoone/client/lib/mail";
+import { type PlanChoice as AiPlan, planOfKind } from "@vortoone/client/lib/no-ai";
+import { addsAgentsTo, can } from "@vortoone/client/lib/permissions";
+import { keeperKey } from "@vortoone/client/lib/personal-view";
+import { AUTO, apiProviderOf, isAuto, modelChoices, usableModels } from "@vortoone/client/lib/providers";
+import { scopeText } from "@vortoone/client/lib/scopes";
+import { isPersonal, modeKey } from "@vortoone/client/lib/workspace-mode";
 import {
   AffixInput,
   type AgentAppearance,
@@ -81,7 +81,7 @@ import {
   Spinner,
   Switch,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

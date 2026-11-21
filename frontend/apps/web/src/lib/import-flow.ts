@@ -1,8 +1,8 @@
-import type { ImportCard } from "@agenteschat/client/lib/import/flow";
+import type { ImportCard } from "@vortoone/client/lib/import/flow";
 import type { PickedFile } from "@/lib/import";
 import { filesFromDrop } from "@/lib/obsidian";
 
-export * from "@agenteschat/client/lib/import/flow";
+export * from "@vortoone/client/lib/import/flow";
 
 /**
  * Each card's tile: the app's official mark (apps/web/public/brands/README.md), and the maker's own dark
@@ -16,7 +16,7 @@ export const CARD_MARK: Record<Exclude<ImportCard, "other">, { icon: string; dar
   hermes: { icon: "/brands/hermes.svg", dark: "/brands/hermes-dark.svg" },
   openclaw: { icon: "/brands/openclaw.svg" },
   paperclip: { icon: "/brands/paperclip.svg", dark: "/brands/paperclip-dark.svg" },
-  agenteschat: { icon: "/favicon.svg" },
+  vortoone: { icon: "/favicon.svg" },
 };
 
 /** A drop as the import reads it: the files, or every file in the dropped folders, with its path. */

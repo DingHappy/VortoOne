@@ -58,7 +58,7 @@ export interface CommandScope {
   folders: string[];
   /** The person's home, for `~`. */
   home?: string;
-  /** The runner's own home wherever it is (`AGENTES_RUNNER_HOME`): its accounts, tokens and settings are secrets. */
+  /** The runner's own home wherever it is (`VORTOONE_RUNNER_HOME`): its accounts, tokens and settings are secrets. */
   runnerHome?: string;
 }
 
@@ -306,36 +306,36 @@ const insideOrTmp = (scope: CommandScope, p: string) => {
  * (`<this>/<the agent's user>`). The agent's commands run as that user too, so only these rules keep its
  * model from reading them.
  */
-export const AGENT_WORKER_HOMES = "/var/lib/agentes-runner-agents";
+export const AGENT_WORKER_HOMES = "/var/lib/vortoone-runner-agents";
 
 /**
  * System mode: Grok Build's account folders (`<this>/<account id>`, 0700, the agent's user's only while lent to it).
  * Outside `AGENT_WORKER_HOMES`, whose closed (0711) folders Grok's sandbox can't bind: it binds every folder above
  * `GROK_HOME`, so each of them must be open to the agent's user (0755). Its folder names (account ids) are listable.
  */
-export const GROK_ACCOUNT_HOMES = "/var/lib/agentes-runner-grok";
+export const GROK_ACCOUNT_HOMES = "/var/lib/vortoone-runner-grok";
 
 /**
  * System mode's runner home (`install.sh --system`), and the state of the server's own computer
- * (`agentes-runner host`): every organization's machine token is in it.
+ * (`vortoone-runner host`): every organization's machine token is in it.
  */
-export const SYSTEM_RUNNER_HOME = "/var/lib/agentes-runner";
+export const SYSTEM_RUNNER_HOME = "/var/lib/vortoone-runner";
 
 /**
  * In the person's home only: the native install (the app, its `.env`, its database). An agent's own folder has a
- * `.agentes` of its own: its mission's files, which it reads, and its browser's profile, which it never does.
+ * `.vortoone` of its own: its mission's files, which it reads, and its browser's profile, which it never does.
  */
-const HOME_SECRET_DIRS = [".agentes"] as const;
+const HOME_SECRET_DIRS = [".vortoone"] as const;
 
 /**
  * The agent browser's profile, in the agent's folder: its Chrome keeps the agent's logins there (cookies that
  * Chrome on Linux encrypts with a key anyone can read, so a copy is a working login elsewhere). Only the runner
  * and that Chrome use it.
  */
-export const AGENT_BROWSER_PROFILE = ".agentes/browser";
+export const AGENT_BROWSER_PROFILE = ".vortoone/browser";
 
 /** Whether a path (either separator) is an agent browser's profile or inside one, whoever's folder it is in. */
-export const inBrowserProfile = (p: string) => /(^|[\\/])\.agentes[\\/]browser([\\/]|$)/i.test(p);
+export const inBrowserProfile = (p: string) => /(^|[\\/])\.vortoone[\\/]browser([\\/]|$)/i.test(p);
 
 /**
  * Folders that hold keys and tokens, anywhere (the runner's own home and its agents' workers' too): nothing
@@ -353,7 +353,7 @@ const SECRET_DIRS = [
   ".gcloud",
   ".password-store",
   "Keychains",
-  ".agentes-runner",
+  ".vortoone-runner",
   path.basename(AGENT_WORKER_HOMES),
   path.basename(GROK_ACCOUNT_HOMES),
   SYSTEM_RUNNER_HOME.slice(1),
@@ -916,8 +916,8 @@ function readOnlySimple(s: Simple, scope: CommandScope, plan = false): boolean {
       return !plan && readOnlyWget(s.argv, scope);
     // What the computer has and which agents use it: reads /proc, the cgroup tree and /etc only. The full path is
     // system mode's, root's (`SYSTEM_LAUNCHER`).
-    case "agentes-runner":
-    case "/usr/local/bin/agentes-runner":
+    case "vortoone-runner":
+    case "/usr/local/bin/vortoone-runner":
       return args.length === 1 && args[0] === "computer";
     default:
       return false;
@@ -1066,7 +1066,7 @@ export const SECRET_BASH_DENY_RULES: readonly string[] = [
   ".password-store",
   ".config/gh",
   ".config/gcloud",
-  ".agentes-runner",
+  ".vortoone-runner",
   path.basename(AGENT_WORKER_HOMES),
   path.basename(GROK_ACCOUNT_HOMES),
   SYSTEM_RUNNER_HOME.slice(1),
@@ -1644,7 +1644,7 @@ export interface RepoFacts {
   pushTarget(): Promise<{ remote: string | null; branch: string | null } | null>;
   /** The remote's default branch: `refs/remotes/<remote>/HEAD`, else the remote's own `HEAD`; null when unknown. */
   defaultBranch(remote: string): Promise<string | null>;
-  /** The branches the repository marks protected (`git config agentes.protectedBranch`, `*` matches anything). */
+  /** The branches the repository marks protected (`git config vortoone.protectedBranch`, `*` matches anything). */
   protectedBranches(): Promise<readonly string[]>;
   /** Every push URL of the remote (or of a URL as git rewrites it) is our git proxy's; false when unknown. */
   viaProxy(remote: string): Promise<boolean>;
@@ -1679,7 +1679,7 @@ const globMatches = (pattern: string, s: string) =>
 
 /**
  * Whether one push waits for a person (ADR 0053 §3, amended 2026-10-30): a push to the agent's own branches
- * (`own`, under its `agentes/<handle>/` prefix: nobody else's) or to any other branch but the default and
+ * (`own`, under its `vortoone/<handle>/` prefix: nobody else's) or to any other branch but the default and
  * the protected ones is ordinary work; a push to the default or a protected branch, a force push to a branch
  * that isn't its own, deleting a remote branch, `--all`, `--mirror` and `--prune` wait. When git can't tell
  * where a push goes or which branch is the default, it waits too.
@@ -1862,7 +1862,7 @@ export const policyRefusal = (message: string) => message.endsWith(NO_TERMINAL_C
 export const DELETE_BRANCHES_POINTER = `agents don't delete branches with git. Ask with delete_branches (repo, branches, why): a person approves them all on one card and they're deleted on GitHub. ${NO_TERMINAL_COMMANDS}`;
 /** Said by the git proxy to an agent pushing, with no person's approval, to branches that aren't its own. */
 export const otherBranchPointer = (branches: readonly string[], handle: string) =>
-  `${branches.join(", ")} ${branches.length === 1 ? "isn't your branch" : "aren't your branches"} (yours: agentes/${handle}/…). To push there, ask with request_branch_push (repo, branch, why); once a person approves, push again. Or push to agentes/${handle}/<topic> and open a pull request. ${NO_TERMINAL_COMMANDS}`;
+  `${branches.join(", ")} ${branches.length === 1 ? "isn't your branch" : "aren't your branches"} (yours: vortoone/${handle}/…). To push there, ask with request_branch_push (repo, branch, why); once a person approves, push again. Or push to vortoone/${handle}/<topic> and open a pull request. ${NO_TERMINAL_COMMANDS}`;
 
 /** The addresses a call opens: WebFetch's `url`, every http(s) argument of a curl or wget. */
 function outboundUrls(toolName: string, input: Record<string, unknown> | null | undefined): string[] {

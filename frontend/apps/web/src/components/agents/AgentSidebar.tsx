@@ -1,4 +1,4 @@
-import type { Agent, Issue, Routine } from "@agenteschat/client";
+import type { Agent, Issue, Routine } from "@vortoone/client";
 import {
   agentStateIn,
   asksPicture,
@@ -9,7 +9,7 @@ import {
   useIssues,
   useRoutines,
   useUsage,
-} from "@agenteschat/client";
+} from "@vortoone/client";
 import {
   entryButton,
   entryKind,
@@ -18,20 +18,20 @@ import {
   entryState,
   pictureWhen,
   surfaceOf,
-} from "@agenteschat/client/lib/agent-computer";
-import { seesDetails } from "@agenteschat/client/lib/audience";
-import { computerName } from "@agenteschat/client/lib/computer";
-import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
-import { formatPercent, formatUsd, relativeTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { STATUS_ICON } from "@agenteschat/client/lib/issues";
-import { can } from "@agenteschat/client/lib/permissions";
-import { usageShown } from "@agenteschat/client/lib/plan-usage";
-import { agentFaceWord } from "@agenteschat/client/lib/presence";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { siteHost } from "@agenteschat/client/lib/secret-requests";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
-import { Button, ComputerPortrait, GroupHeading, Icon, InfoHint, PresenceBadge, Switch } from "@agenteschat/ui";
+} from "@vortoone/client/lib/agent-computer";
+import { seesDetails } from "@vortoone/client/lib/audience";
+import { computerName } from "@vortoone/client/lib/computer";
+import { ErrorBoundary } from "@vortoone/client/lib/error-boundary";
+import { formatPercent, formatUsd, relativeTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { STATUS_ICON } from "@vortoone/client/lib/issues";
+import { can } from "@vortoone/client/lib/permissions";
+import { usageShown } from "@vortoone/client/lib/plan-usage";
+import { agentFaceWord } from "@vortoone/client/lib/presence";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { siteHost } from "@vortoone/client/lib/secret-requests";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
+import { Button, ComputerPortrait, GroupHeading, Icon, InfoHint, PresenceBadge, Switch } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";

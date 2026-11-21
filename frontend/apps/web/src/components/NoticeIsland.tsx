@@ -1,16 +1,16 @@
-import type { AppNotification } from "@agenteschat/client";
-import { useApprovals, useChannels, useNotificationAction, useNotificationReply } from "@agenteschat/client";
-import { approvalTitle } from "@agenteschat/client/lib/approval-words";
-import { type IslandItem, islandLead, noticeLine } from "@agenteschat/client/lib/island";
-import { mediaWord } from "@agenteschat/client/lib/media";
+import type { AppNotification } from "@vortoone/client";
+import { useApprovals, useChannels, useNotificationAction, useNotificationReply } from "@vortoone/client";
+import { approvalTitle } from "@vortoone/client/lib/approval-words";
+import { type IslandItem, islandLead, noticeLine } from "@vortoone/client/lib/island";
+import { mediaWord } from "@vortoone/client/lib/media";
 import {
   opensConnectAi,
   opensOnComputer,
   openTarget,
   quickReply,
   waitingCardOf,
-} from "@agenteschat/client/lib/notifications";
-import { Button, CountBadge, cx, Icon, Kbd, Locked, prefersReducedMotion } from "@agenteschat/ui";
+} from "@vortoone/client/lib/notifications";
+import { Button, CountBadge, cx, Icon, Kbd, Locked, prefersReducedMotion } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type FormEvent, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";

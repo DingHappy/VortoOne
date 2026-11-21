@@ -1,7 +1,7 @@
-import type { Agent } from "@agenteschat/client";
-import { WORKSPACE_COMPUTER_KIND } from "@agenteschat/client/lib/computer";
-import { planMark, SCENE_PLANS } from "@agenteschat/client/lib/no-ai";
-import { rightHandOf, sceneTeam } from "@agenteschat/client/lib/right-hand";
+import type { Agent } from "@vortoone/client";
+import { WORKSPACE_COMPUTER_KIND } from "@vortoone/client/lib/computer";
+import { planMark, SCENE_PLANS } from "@vortoone/client/lib/no-ai";
+import { rightHandOf, sceneTeam } from "@vortoone/client/lib/right-hand";
 import {
   ComputerPortrait,
   cx,
@@ -11,7 +11,7 @@ import {
   ProviderLogo,
   teamSky,
   useDawn,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type CSSProperties, type ReactNode, useMemo } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import "./arrival.css";

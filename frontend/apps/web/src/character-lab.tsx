@@ -10,8 +10,8 @@ import {
   switchTheme,
   type AgentAppearance,
   type AgentState,
-} from "@agenteschat/ui";
-import type { Expression } from "@agenteschat/ui/agent/engine";
+} from "@vortoone/ui";
+import type { Expression } from "@vortoone/ui/agent/engine";
 import { LookPicker } from "./components/AgentFields";
 import { loadI18n } from "./i18n";
 import "./styles.css";

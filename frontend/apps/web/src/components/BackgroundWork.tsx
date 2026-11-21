@@ -1,8 +1,8 @@
-import { type Issue, type Message, useChannels, type WorkView } from "@agenteschat/client";
-import { heldBack } from "@agenteschat/client/lib/issues";
-import { workLine, workPlanProgress, workWaitsOnPerson } from "@agenteschat/client/lib/long-work";
-import { can } from "@agenteschat/client/lib/permissions";
-import { WorkLine, WorkLineAction, WorkPlan } from "@agenteschat/ui";
+import { type Issue, type Message, useChannels, type WorkView } from "@vortoone/client";
+import { heldBack } from "@vortoone/client/lib/issues";
+import { workLine, workPlanProgress, workWaitsOnPerson } from "@vortoone/client/lib/long-work";
+import { can } from "@vortoone/client/lib/permissions";
+import { WorkLine, WorkLineAction, WorkPlan } from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";

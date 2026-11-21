@@ -1,5 +1,5 @@
-import { useApi, useMe } from "@agenteschat/client";
-import { Button, EmptyState } from "@agenteschat/ui";
+import { useApi, useMe } from "@vortoone/client";
+import { Button, EmptyState } from "@vortoone/ui";
 import { createRootRouteWithContext, Link, Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +21,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function Root() {
-  // agentes for Mac: the workspace has its title bar (org.$orgId.tsx); every other page drags from the top.
+  // VortoOne for Mac: the workspace has its title bar (org.$orgId.tsx); every other page drags from the top.
   const inWorkspace = useRouterState({ select: (s) => s.location.pathname.startsWith("/org/") });
   const router = useRouter();
   const me = useMe().data;
@@ -37,8 +37,8 @@ function Root() {
   // loading it again: the route moves (main_window.rs). Downloads and the API go as a plain load.
   useEffect(() => {
     if (!inDesktopApp()) return;
-    const w = window as { __agentesNavigate?: (path: string) => void };
-    w.__agentesNavigate = (path) => {
+    const w = window as { __vortooneNavigate?: (path: string) => void };
+    w.__vortooneNavigate = (path) => {
       if (!path.startsWith("/") || path.startsWith("//")) return;
       // "Show QR code" in the app: the dialog over the page the person is on.
       if (asksForPhone(new URL(path, window.location.origin).search)) askForPhone();
@@ -46,7 +46,7 @@ function Root() {
       else router.history.push(path);
     };
     return () => {
-      delete w.__agentesNavigate;
+      delete w.__vortooneNavigate;
     };
   }, [router]);
   // A click on a browser notification while the app is open in a tab (ADR 0071): the open workspace opens it

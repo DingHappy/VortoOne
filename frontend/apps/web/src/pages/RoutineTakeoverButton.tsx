@@ -1,7 +1,7 @@
-import { keys, type Routine, useApi } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { timezoneName } from "@agenteschat/client/lib/routines";
-import { Button, Dialog, DialogBody, DialogFooter } from "@agenteschat/ui";
+import { keys, type Routine, useApi } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { timezoneName } from "@vortoone/client/lib/routines";
+import { Button, Dialog, DialogBody, DialogFooter } from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

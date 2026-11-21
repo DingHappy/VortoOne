@@ -1,6 +1,6 @@
-import type { Agent } from "@agenteschat/client";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { Button, Dialog, DialogBody, DialogFooter, Icon, type IconName } from "@agenteschat/ui";
+import type { Agent } from "@vortoone/client";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { Button, Dialog, DialogBody, DialogFooter, Icon, type IconName } from "@vortoone/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type HaveItem, HaveList, HaveRow } from "@/components/arrival/ConnectHave";

@@ -1,8 +1,8 @@
-import type { OrgRole, Person } from "@agenteschat/client";
-import { useChannels } from "@agenteschat/client";
-import { joinNames, namesText } from "@agenteschat/client/lib/format";
-import type { RoleTab } from "@agenteschat/client/lib/roles";
-import { Avatar, Chip, ChipButton, RoleMark, Tip } from "@agenteschat/ui";
+import type { OrgRole, Person } from "@vortoone/client";
+import { useChannels } from "@vortoone/client";
+import { joinNames, namesText } from "@vortoone/client/lib/format";
+import type { RoleTab } from "@vortoone/client/lib/roles";
+import { Avatar, Chip, ChipButton, RoleMark, Tip } from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import type { HTMLAttributes, ReactNode } from "react";
 import { useTranslation } from "react-i18next";

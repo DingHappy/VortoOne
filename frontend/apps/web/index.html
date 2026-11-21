@@ -15,7 +15,7 @@
     <script>
       // Apply the saved or system theme before the first paint (no flash).
       try {
-        var t = localStorage.getItem("agentes.theme");
+        var t = localStorage.getItem("vortoone.theme");
         if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         document.documentElement.dataset.theme = t;
       } catch (e) {}
@@ -26,7 +26,7 @@
       // file. The key mirrors STORAGE_KEYS.bootRetry (src/lib/storage.ts), the language rule `savedLocale()`
       // (src/i18n/index.ts, test/locale-preload.test.ts keeps them one) and public/unavailable.html.
       (() => {
-        const KEY = "agentes.bootRetry";
+        const KEY = "vortoone.bootRetry";
         const reloaded = () => {
           try {
             if (Date.now() - Number(sessionStorage.getItem(KEY)) < 30000) return false;
@@ -65,10 +65,10 @@
         const language = () => {
           let lang = null;
           try {
-            lang = localStorage.getItem("agentes.locale");
+            lang = localStorage.getItem("vortoone.locale");
           } catch {}
           if (lang && Object.hasOwn(WORDS, lang)) return lang;
-          const cookie = /(?:^|;\s*)agentes_locale=([\w-]+)/.exec(document.cookie);
+          const cookie = /(?:^|;\s*)vortoone_locale=([\w-]+)/.exec(document.cookie);
           if (lang !== "auto" && cookie && known(cookie[1])) return known(cookie[1]);
           const tags = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
           for (const tag of tags) if (known(tag)) return known(tag);
@@ -101,7 +101,7 @@
           boot.removeAttribute("aria-hidden");
           boot.replaceChildren(box);
           // In the desktop app's window: its cover lifts (pageReady, src/lib/desktop.ts) and a Mac drags by the top.
-          const app = window.__agentesDesktop;
+          const app = window.__vortooneDesktop;
           if (!app) return;
           if (app.platform !== "windows" && app.platform !== "linux") {
             const strip = boot.appendChild(document.createElement("div"));
@@ -115,7 +115,7 @@
             );
           }
         };
-        window.__agentesBootFailed = failed;
+        window.__vortooneBootFailed = failed;
         addEventListener(
           "error",
           (event) => {

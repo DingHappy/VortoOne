@@ -1,4 +1,4 @@
-import { keys } from "@agenteschat/client";
+import { keys } from "@vortoone/client";
 import {
   Avatar,
   Button,
@@ -22,7 +22,7 @@ import {
   Segmented,
   TabPanel,
   Tabs,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

@@ -1,8 +1,8 @@
-import type { Channel, Run } from "@agenteschat/client";
-import { useChannels, useDms } from "@agenteschat/client";
-import { keeperKey } from "@agenteschat/client/lib/personal-view";
-import { modeKey } from "@agenteschat/client/lib/workspace-mode";
-import { Chip, Icon } from "@agenteschat/ui";
+import type { Channel, Run } from "@vortoone/client";
+import { useChannels, useDms } from "@vortoone/client";
+import { keeperKey } from "@vortoone/client/lib/personal-view";
+import { modeKey } from "@vortoone/client/lib/workspace-mode";
+import { Chip, Icon } from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { AgentSpinner } from "@/components/AgentAvatar";

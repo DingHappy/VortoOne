@@ -1,6 +1,6 @@
-import { ApiError, useThreadInfo, useThreadMission } from "@agenteschat/client";
-import { isOpenMission } from "@agenteschat/client/lib/missions";
-import { EmptyState } from "@agenteschat/ui";
+import { ApiError, useThreadInfo, useThreadMission } from "@vortoone/client";
+import { isOpenMission } from "@vortoone/client/lib/missions";
+import { EmptyState } from "@vortoone/ui";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/Loading";

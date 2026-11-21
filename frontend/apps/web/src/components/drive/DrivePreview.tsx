@@ -1,8 +1,8 @@
-import type { Artifact, ArtifactContent, ArtifactFileContent } from "@agenteschat/client";
-import { useArtifact } from "@agenteschat/client";
-import { documentPreview, parsePatch, patchCounts } from "@agenteschat/client/lib/artifacts";
-import { previewKind } from "@agenteschat/client/lib/files";
-import { cx } from "@agenteschat/ui";
+import type { Artifact, ArtifactContent, ArtifactFileContent } from "@vortoone/client";
+import { useArtifact } from "@vortoone/client";
+import { documentPreview, parsePatch, patchCounts } from "@vortoone/client/lib/artifacts";
+import { previewKind } from "@vortoone/client/lib/files";
+import { cx } from "@vortoone/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MAX_THUMB_BYTES, usePreviewUrl } from "@/components/artifacts/FileView";

@@ -1,8 +1,8 @@
-import type { LocaleStrings } from "@agenteschat/i18n/plurals";
+import type { LocaleStrings } from "@vortoone/i18n/plurals";
 
 /**
  * The desktop app's own strings (pt-BR; English, `keys.en.ts`, is the source), under `desktop.*`. `./index.ts` merges
- * them into the shared resources (`@agenteschat/i18n`); `keys.en.ts` has exactly the same shape.
+ * them into the shared resources (`@vortoone/i18n`); `keys.en.ts` has exactly the same shape.
  * Never "runner", "MCP" or "protocolo". `{{device}}` is this computer's name (`device.*`), filled in by
  * `./index.ts` for every string. A path to a setting ("Preferências › Servidores") has no-break spaces around
  * its `›` (`\u00a0`), so a line never breaks inside it.
@@ -187,7 +187,7 @@ export const desktopPtBR = {
     title: "Entrar num workspace que já existe",
     lead: "O endereço dele, o mesmo que você abre no navegador.",
     label: "Endereço do servidor",
-    placeholder: "agentes.suaequipe.ts.net",
+    placeholder: "vortoone.suaequipe.ts.net",
     go: "Entrar",
     checking: "Conferindo…",
     found: "Encontrados",
@@ -204,7 +204,7 @@ export const desktopPtBR = {
     addressHint: "Um endereço com https, ou o do Tailscale, que termina em .ts.net.",
     checkUpdates: "Procurar atualizações",
     noneYet: "Ainda não tem um?",
-    invalid: "Confira o endereço, algo como agentes.suaequipe.ts.net.",
+    invalid: "Confira o endereço, algo como vortoone.suaequipe.ts.net.",
     httpRefused:
       "{{host}} não usa uma conexão segura (https), e só servidores neste {{device}} podem ficar sem ela. Use o endereço com https dele ou o do Tailscale.",
     noOwner:
@@ -214,7 +214,7 @@ export const desktopPtBR = {
       "Não conseguimos acessar {{host}}, que fica na sua rede do Tailscale. Abra o Tailscale neste {{device}}, conecte e tente de novo.",
     unreachableHere: "Nada responde em {{host}} neste {{device}}. Inicie o VortoOne aqui e tente de novo.",
     certificate: "O certificado de {{host}} não é válido. Fale com quem cuida do servidor.",
-    notAgentes: "{{host}} não é um servidor do VortoOne. Confira o endereço.",
+    notVortoone: "{{host}} não é um servidor do VortoOne. Confira o endereço.",
     serverTooOld: "{{host}} precisa de uma atualização para funcionar com este app.",
     appTooOld: "Atualize o app para usar {{host}}.",
   },
@@ -304,7 +304,7 @@ export const desktopPtBR = {
     runningText: "Este app roda ele. Abra para entrar.",
     openIt: "Abrir",
   },
-  /** A link to a server (`agenteschat://connect`): the server in large type, nothing changes before Connect. */
+  /** A link to a server (`vortoone://connect`): the server in large type, nothing changes before Connect. */
   link: {
     question: "Abrir este workspace no app?",
     questionSignIn: "Entrar neste servidor com a sua conta do outro aparelho?",
@@ -449,7 +449,7 @@ export const desktopPtBR = {
     erase: "Apagar e começar de novo…",
     eraseTitle: "Apagar o VortoOne neste {{device}}?",
     eraseBody:
-      "Os workspaces dele somem para todos que os usam, em qualquer aparelho. Os dados dele vão para {{path}} e ficam lá. O que os agentes dele guardavam neste {{device}}, como navegadores e logins, é apagado. Os arquivos dos agentes em ~/agentes são seus e ficam onde estão. Depois você configura de novo, com um novo dono.",
+      "Os workspaces dele somem para todos que os usam, em qualquer aparelho. Os dados dele vão para {{path}} e ficam lá. O que os agentes dele guardavam neste {{device}}, como navegadores e logins, é apagado. Os arquivos dos agentes em ~/vortoone são seus e ficam onde estão. Depois você configura de novo, com um novo dono.",
     eraseConfirm: "Apagar",
     erased: "Apagado. Os dados antigos estão em {{path}}.",
     eraseMoveFailed:

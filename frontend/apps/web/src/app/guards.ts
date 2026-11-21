@@ -1,6 +1,5 @@
-import type { Me } from "@agenteschat/client";
-import { authConfigQuery, meQuery } from "@agenteschat/client";
-import type { LegalKind } from "@agenteschat/i18n/legal";
+import type { Me } from "@vortoone/client";
+import { meQuery } from "@vortoone/client";
 import { redirect } from "@tanstack/react-router";
 import type { RouterContext } from "./router-context";
 
@@ -24,11 +23,3 @@ export async function requireUserIn(context: RouterContext, href: string, orgId:
   return fresh;
 }
 
-/** Policy pages use this installation's configured URLs. */
-export async function legalPage(context: RouterContext, kind: LegalKind): Promise<boolean> {
-  const config = await context.queryClient.ensureQueryData(authConfigQuery(context.api));
-  const own = kind === "terms" ? config.termsUrl : config.privacyUrl;
-  // A page at this same address is this app's, which would land back here.
-  if (own && new URL(own, window.location.href).origin !== window.location.origin) throw redirect({ href: own });
-  return false;
-}

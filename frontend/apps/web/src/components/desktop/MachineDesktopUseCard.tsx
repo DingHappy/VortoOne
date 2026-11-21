@@ -1,13 +1,13 @@
-import type { Machine } from "@agenteschat/client";
-import { commandInReason, machineReasonText, oneClickTerminal } from "@agenteschat/client/lib/machines";
-import { Card, CardHeader, Chip, Icon } from "@agenteschat/ui";
+import type { Machine } from "@vortoone/client";
+import { commandInReason, machineReasonText, oneClickTerminal } from "@vortoone/client/lib/machines";
+import { Card, CardHeader, Chip, Icon } from "@vortoone/ui";
 import { useTranslation } from "react-i18next";
 import { MachineToolButtons, useToolOneClick } from "../devices/ToolOneClick";
 import { CommandBlock, TerminalFallback } from "../machine-bits";
 import "../browser/browser.css";
 
 /** Both switches desktop use needs, turned on at the computer. */
-const TURN_ON = "agentes-runner tools enable desktop && agentes-runner tools enable commands";
+const TURN_ON = "vortoone-runner tools enable desktop && vortoone-runner tools enable commands";
 
 /**
  * Apps on the agents' desktops, on a computer's page (ADR 0062): whether agents can use apps on their own

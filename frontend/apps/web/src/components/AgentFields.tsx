@@ -1,7 +1,7 @@
-import type { Credential, Member } from "@agenteschat/client";
-import { apiPickOptions, type BrainPickOption, brainPickText } from "@agenteschat/client/lib/brain-picker";
-import { keyLine, keySource, type ModelChoice } from "@agenteschat/client/lib/providers";
-import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
+import type { Credential, Member } from "@vortoone/client";
+import { apiPickOptions, type BrainPickOption, brainPickText } from "@vortoone/client/lib/brain-picker";
+import { keyLine, keySource, type ModelChoice } from "@vortoone/client/lib/providers";
+import { isPersonal } from "@vortoone/client/lib/workspace-mode";
 import {
   AffixInput,
   AGENT_ACCESSORIES,
@@ -25,7 +25,7 @@ import {
   SearchSelect,
   Select,
   type SelectOption,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import {
   type CSSProperties,

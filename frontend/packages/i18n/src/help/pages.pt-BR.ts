@@ -91,7 +91,7 @@ export const helpPtBR: Record<HelpSlug, HelpDocument> = {
         id: "folders",
         heading: "Pastas",
         blocks: [
-          "Cada agente sempre tem a própria pasta, em `~/agentes/<workspace>`. Pastas a mais se liberam no próprio computador, nunca pelo site: no app, em **Preferências\u00a0›\u00a0Pastas**, ou com `agentes-runner folders allow` num servidor. Cada workspace libera as próprias pastas: o que você libera para um vale só para os agentes dele. Remover uma pasta não apaga nada. Só tira o acesso.",
+          "Cada agente sempre tem a própria pasta, em `~/vortoone/<workspace>`. Pastas a mais se liberam no próprio computador, nunca pelo site: no app, em **Preferências\u00a0›\u00a0Pastas**, ou com `vortoone-runner folders allow` num servidor. Cada workspace libera as próprias pastas: o que você libera para um vale só para os agentes dele. Remover uma pasta não apaga nada. Só tira o acesso.",
         ],
       },
       {
@@ -104,11 +104,11 @@ export const helpPtBR: Record<HelpSlug, HelpDocument> = {
               "os seus arquivos e logins",
               "as pastas de outros agentes, inclusive as de outros workspaces, e os logins que os navegadores deles guardam",
               "o token que conecta o computador",
-              "num computador que também roda o VortoOne, o banco de dados e as chaves dele em `.agentes`",
+              "num computador que também roda o VortoOne, o banco de dados e as chaves dele em `.vortoone`",
             ],
           },
           "O VortoOne recusa comandos que citam as chaves, os tokens e os logins, mas isso é uma regra, não uma parede. Os **Comandos** já vêm ligados. Desligue na pergunta do app antes de apertar **Permitir**, ou depois em **Preferências\u00a0›\u00a0Ferramentas**, onde cada workspace tem a própria chave (app 0.8.1 ou mais novo) e o app pergunta antes de ligar de novo. O Claude Code e o Codex rodam os próprios comandos na pasta do agente, com as próprias regras, mesmo com Comandos desligado.",
-          "Para uma parede de verdade, use um servidor Linux. No Debian 13, instalado com `--system`, cada agente é um usuário só dele. No Ubuntu, os agentes dividem um usuário, `agentes`: eles veem as pastas uns dos outros, não as suas nem as do servidor. Ou dê aos agentes um computador só deles.",
+          "Para uma parede de verdade, use um servidor Linux. No Debian 13, instalado com `--system`, cada agente é um usuário só dele. No Ubuntu, os agentes dividem um usuário, `vortoone`: eles veem as pastas uns dos outros, não as suas nem as do servidor. Ou dê aos agentes um computador só deles.",
         ],
       },
     ],

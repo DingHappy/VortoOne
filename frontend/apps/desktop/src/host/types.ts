@@ -1,4 +1,4 @@
-import type { ServerCheck } from "@agenteschat/client/lib/server";
+import type { ServerCheck } from "@vortoone/client/lib/server";
 import type { HelloLine } from "../control/client";
 import type { Candidate } from "../control/first-run";
 import type {
@@ -129,9 +129,9 @@ export interface Host {
   signOutServer(server: string): Promise<void>;
   /** Where a server may be: this computer and the person's Tailscale network, not checked yet. */
   discover(): Promise<Candidate[]>;
-  /** Whether `server` is an agentes.chat server this app can use (`GET /api/instance`). */
+  /** Whether `server` is an VortoOne server this app can use (`GET /api/instance`). */
   checkServer(server: string): Promise<ServerCheck>;
-  /** The connect link (`agenteschat://connect…`) waiting for an answer, taken once; null when none. */
+  /** The connect link (`vortoone://connect…`) waiting for an answer, taken once; null when none. */
   takeLink(): Promise<string | null>;
   /** A connect link arrived (the welcome window takes it). */
   onLink(cb: () => void): () => void;
@@ -181,11 +181,11 @@ export interface Host {
   setSiteNotify(on: boolean): Promise<void>;
   /** The Dock's counts whenever the site changes them. */
   onBadge(cb: (counts: BadgeCounts) => void): () => void;
-  /** The server here (`local_server.rs`): whether this build carries it, what `~/.agentes` holds, its state. */
+  /** The server here (`local_server.rs`): whether this build carries it, what `~/.vortoone` holds, its state. */
   localServer(): Promise<LocalServerStatus>;
   onLocalServer(cb: (status: LocalServerStatus) => void): () => void;
   /**
-   * "Run agentes.chat on this computer": sets it up, starts it, makes the owner, makes this computer its agents'
+   * "Run VortoOne on this computer": sets it up, starts it, makes the owner, makes this computer its agents'
    * computer, turns reach on when asked, and opens the main window there, signed in. Rejects with the step that
    * failed, or "cancelled" after `cancelLocalSetup`; each step's progress arrives at `onSetupStep`.
    */

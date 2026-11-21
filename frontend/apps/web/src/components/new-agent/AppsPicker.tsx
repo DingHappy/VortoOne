@@ -1,8 +1,8 @@
-import type { ConnectorDef } from "@agenteschat/client";
-import { hiddenWithoutComposio } from "@agenteschat/client/lib/composio";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { connectorDescription, connectorName } from "@agenteschat/client/lib/scopes";
-import { Button, Dialog, DialogBody, DialogFooter, GroupHeading, Icon, SearchField } from "@agenteschat/ui";
+import type { ConnectorDef } from "@vortoone/client";
+import { hiddenWithoutComposio } from "@vortoone/client/lib/composio";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { connectorDescription, connectorName } from "@vortoone/client/lib/scopes";
+import { Button, Dialog, DialogBody, DialogFooter, GroupHeading, Icon, SearchField } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon, searchCatalog } from "@/components/ConnectorCatalog";

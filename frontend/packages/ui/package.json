@@ -1,5 +1,5 @@
 {
-  "name": "@agenteschat/ui",
+  "name": "@vortoone/ui",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -60,8 +60,8 @@
     "react-dom": "^19.2.8"
   },
   "dependencies": {
-    "@agenteschat/i18n": "*",
-    "@agenteschat/tokens": "*",
+    "@vortoone/i18n": "*",
+    "@vortoone/tokens": "*",
     "radix-ui": "^1.8.1",
     "uqr": "0.1.3"
   },

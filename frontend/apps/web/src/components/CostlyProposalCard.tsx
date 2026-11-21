@@ -1,9 +1,9 @@
-import type { CostlyDecision, Message } from "@agenteschat/client";
-import { useApi } from "@agenteschat/client";
-import { type CostlyProposalCard, mayDecideCostly, mayRememberCostly } from "@agenteschat/client/lib/action-cards";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
-import { EventPillAction, Locked } from "@agenteschat/ui";
+import type { CostlyDecision, Message } from "@vortoone/client";
+import { useApi } from "@vortoone/client";
+import { type CostlyProposalCard, mayDecideCostly, mayRememberCostly } from "@vortoone/client/lib/action-cards";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
+import { EventPillAction, Locked } from "@vortoone/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "@/components/org-context";

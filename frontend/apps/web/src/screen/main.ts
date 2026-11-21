@@ -1,4 +1,4 @@
-import { SHARED_SEAT } from "@agenteschat/client/lib/seat";
+import { SHARED_SEAT } from "@vortoone/client/lib/seat";
 import { type ScreenEvent, ScreenSession } from "./session";
 
 declare global {

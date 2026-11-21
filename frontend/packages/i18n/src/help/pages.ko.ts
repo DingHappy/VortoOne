@@ -87,7 +87,7 @@ export const helpKo: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "폴더",
         blocks: [
-          "에이전트마다 항상 `~/agentes/<workspace>`에 자기 폴더가 있어요. 다른 폴더는 웹사이트가 아니라 컴퓨터에서 직접만 허용할 수 있어요. 앱에서는 **환경설정 › 폴더**, 서버에서는 `agentes-runner folders allow`로 허용하세요. 폴더 허용은 워크스페이스마다 따로예요. 한 워크스페이스에서 허용한 폴더는 그 워크스페이스의 에이전트에게만 적용돼요. 폴더를 제거해도 아무것도 삭제되지 않고 접근 권한만 없어져요.",
+          "에이전트마다 항상 `~/vortoone/<workspace>`에 자기 폴더가 있어요. 다른 폴더는 웹사이트가 아니라 컴퓨터에서 직접만 허용할 수 있어요. 앱에서는 **환경설정 › 폴더**, 서버에서는 `vortoone-runner folders allow`로 허용하세요. 폴더 허용은 워크스페이스마다 따로예요. 한 워크스페이스에서 허용한 폴더는 그 워크스페이스의 에이전트에게만 적용돼요. 폴더를 제거해도 아무것도 삭제되지 않고 접근 권한만 없어져요.",
         ],
       },
       {
@@ -100,11 +100,11 @@ export const helpKo: Partial<Record<HelpSlug, HelpDocument>> = {
               "내 파일과 로그인 정보",
               "다른 워크스페이스의 것을 포함한 다른 에이전트의 폴더와, 그 브라우저에 남아 있는 로그인",
               "이 컴퓨터를 연결하는 토큰",
-              "VortoOne도 실행하는 컴퓨터라면 `.agentes`에 있는 그 데이터베이스와 키",
+              "VortoOne도 실행하는 컴퓨터라면 `.vortoone`에 있는 그 데이터베이스와 키",
             ],
           },
           "VortoOne은 키, 토큰, 로그인 정보를 가리키는 명령을 거부하지만, 그건 규칙일 뿐 벽은 아니에요. **명령**은 처음부터 켜져 있어요. 앱이 물어볼 때 **허용**을 누르기 전에, 또는 나중에 **환경설정\u00a0›\u00a0도구**에서 끌 수 있어요. 거기에는 워크스페이스마다 스위치가 있고(앱 0.8.1 이상), 다시 켜기 전에 앱이 먼저 물어봐요. Claude Code와 Codex는 명령이 꺼져 있어도 에이전트 폴더에서 자기 규칙에 따라 자기 명령을 실행해요.",
-          "진짜 벽이 필요하면 Linux 서버를 쓰세요. Debian 13에 `--system`으로 설치하면 에이전트마다 자기 사용자가 생겨요. Ubuntu에서는 에이전트가 `agentes`라는 사용자 하나를 함께 써요. 서로의 폴더는 보이지만 내 것이나 서버의 것은 보이지 않아요. 아니면 에이전트에게 전용 컴퓨터를 주세요.",
+          "진짜 벽이 필요하면 Linux 서버를 쓰세요. Debian 13에 `--system`으로 설치하면 에이전트마다 자기 사용자가 생겨요. Ubuntu에서는 에이전트가 `vortoone`라는 사용자 하나를 함께 써요. 서로의 폴더는 보이지만 내 것이나 서버의 것은 보이지 않아요. 아니면 에이전트에게 전용 컴퓨터를 주세요.",
         ],
       },
     ],
@@ -459,7 +459,7 @@ export const helpKo: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude**(claude.ai, Claude Desktop, 휴대폰): **맞춤 설정 › 커넥터**(Customize › Connectors)에서 **+ 추가**를 클릭하고 **사용자 지정 커넥터 추가**(Add custom connector)를 클릭하세요. 이름을 VortoOne으로 정하고 주소를 붙여넣은 뒤 **계속**을 클릭하세요. **지금 로그인**(Sign in now)을 고르고 **추가**를 클릭한 다음 권한을 허용하세요. Team과 Enterprise 요금제에서는 Claude 조직의 소유자가 조직 설정 › 커넥터에서 커넥터를 추가하고, 각자 맞춤 설정 › 커넥터에서 **연결**을 클릭해요. Claude 무료 요금제에서는 사용자 지정 커넥터를 하나 추가할 수 있어요.",
-              "**Claude Code:** `claude mcp add --transport http --scope user agentes <주소>`를 실행한 다음 `/mcp`를 입력하고 agentes를 골라 **Authenticate**를 선택하세요. 현재 폴더에서만 쓰려면 `--scope user`를 빼세요.",
+              "**Claude Code:** `claude mcp add --transport http --scope user VortoOne <주소>`를 실행한 다음 `/mcp`를 입력하고 vortoone를 골라 **Authenticate**를 선택하세요. 현재 폴더에서만 쓰려면 `--scope user`를 빼세요.",
               "**Cursor:** **설정 › AI 앱**에서 **Cursor에 추가**를 누르거나, `~/.cursor/mcp.json`에 주소를 넣으세요. 처음 쓸 때 Cursor가 로그인을 요청해요.",
               '**VS Code:** **VS Code에 추가**를 누르거나, `.vscode/mcp.json`에 `"type": "http"`와 함께 주소를 넣으세요.',
               "**다른 앱:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains 등은 **앱 연결**에 각자의 단계가 있고, 주소도 미리 채워져 있어요.",

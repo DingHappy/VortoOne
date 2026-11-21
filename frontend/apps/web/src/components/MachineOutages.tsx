@@ -1,9 +1,9 @@
-import type { ComputerBrain, MachineOutage, MachineOutages, OutageTarget } from "@agenteschat/client";
-import { useMachineOutages, useMachines, useMoveAgents } from "@agenteschat/client";
-import { awayText } from "@agenteschat/client/lib/computer-queue";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { joinNames, timeAgo } from "@agenteschat/client/lib/format";
-import { computerKind } from "@agenteschat/client/lib/machines";
+import type { ComputerBrain, MachineOutage, MachineOutages, OutageTarget } from "@vortoone/client";
+import { useMachineOutages, useMachines, useMoveAgents } from "@vortoone/client";
+import { awayText } from "@vortoone/client/lib/computer-queue";
+import { errorText } from "@vortoone/client/lib/errors";
+import { joinNames, timeAgo } from "@vortoone/client/lib/format";
+import { computerKind } from "@vortoone/client/lib/machines";
 import {
   type BrainUnavailable,
   brainName,
@@ -13,8 +13,8 @@ import {
   targetBlock,
   targetsFor,
   waitingText,
-} from "@agenteschat/client/lib/outages";
-import { can } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client/lib/outages";
+import { can } from "@vortoone/client/lib/permissions";
 import {
   Button,
   Checkbox,
@@ -30,7 +30,7 @@ import {
   type OptionListItem,
   ProviderLogo,
   useNow,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -97,7 +97,7 @@ function OutageNotice({
   const { t } = useTranslation();
   const { org } = useOrg();
   const [open, setOpen] = useState(false);
-  // In agentes for Mac, when it's this very Mac: say so, and reconnect from here (ADR 0036).
+  // In VortoOne for Mac, when it's this very Mac: say so, and reconnect from here (ADR 0036).
   const here = useIsThisMac(org.id, o.machineId);
   // The Cloud's one computer: its people are told it is being looked after, with no other computer to go to.
   const edition = useComputerEdition(org.id);

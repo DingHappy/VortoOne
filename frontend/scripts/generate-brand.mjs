@@ -125,7 +125,7 @@ writeFileSync(
       /<svg class="mark"[\s\S]*?<\/svg>/,
       svg.replace("<svg ", '<svg class="mark" aria-hidden="true" '),
     )
-    .replaceAll("agentes.chat", "VortoOne"),
+    .replaceAll("VortoOne", "VortoOne"),
 );
 console.log(
   "Generated VortoOne web marks, favicons, email assets and desktop favicon from the live engine.",

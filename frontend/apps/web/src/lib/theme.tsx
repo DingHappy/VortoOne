@@ -1,4 +1,4 @@
-import { switchTheme } from "@agenteschat/ui";
+import { switchTheme } from "@vortoone/ui";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { STORAGE_KEYS, storage } from "./storage";
 

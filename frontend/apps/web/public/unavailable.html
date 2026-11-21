@@ -44,7 +44,7 @@ html[data-desktop=mac] .strip{display:block}
 <script>
 // Before the first paint, as index.html does. Mirrors the app's choices: STORAGE_KEYS.theme
 // (apps/web/src/lib/storage.ts), savedLocale (apps/web/src/i18n/index.ts) and appLocale
-// (packages/i18n/src/locale.ts), plus the landing's agentes_locale cookie. index.html's boot box picks the same way, from the same 14 languages.
+// (packages/i18n/src/locale.ts), plus the landing's vortoone_locale cookie. index.html's boot box picks the same way, from the same 14 languages.
 (() => {
   const html = document.documentElement;
   const saved = (key) => {
@@ -55,7 +55,7 @@ html[data-desktop=mac] .strip{display:block}
     }
   };
   try {
-    let theme = saved("agentes.theme");
+    let theme = saved("vortoone.theme");
     if (theme !== "light" && theme !== "dark") theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     html.dataset.theme = theme;
   } catch {}
@@ -66,16 +66,16 @@ html[data-desktop=mac] .strip{display:block}
     return CODES.includes(code) ? code : null;
   };
   const lang = () => {
-    const stored = saved("agentes.locale");
+    const stored = saved("vortoone.locale");
     if (stored && stored !== "auto" && known(stored)) return known(stored);
-    const cookie = /(?:^|;\s*)agentes_locale=([\w-]+)/.exec(document.cookie);
+    const cookie = /(?:^|;\s*)vortoone_locale=([\w-]+)/.exec(document.cookie);
     if (stored !== "auto" && cookie && known(cookie[1])) return known(cookie[1]);
     const tags = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
     for (const tag of tags) if (known(tag)) return known(tag);
     return "en";
   };
   html.lang = lang();
-  const app = window.__agentesDesktop;
+  const app = window.__vortooneDesktop;
   if (app) html.dataset.desktop = app.platform === "windows" || app.platform === "linux" ? app.platform : "mac";
 })();
 </script>
@@ -155,7 +155,7 @@ html[data-desktop=mac] .strip{display:block}
   // In the desktop app's window: the app's cover lifts once this page is on the glass (pageReady in
   // apps/web/src/lib/desktop.ts).
   const tauri = window.__TAURI_INTERNALS__;
-  if (window.__agentesDesktop && tauri && typeof tauri.invoke === "function") {
+  if (window.__vortooneDesktop && tauri && typeof tauri.invoke === "function") {
     requestAnimationFrame(() => requestAnimationFrame(() => Promise.resolve(tauri.invoke("page_ready", {})).catch(() => {})));
   }
 })();

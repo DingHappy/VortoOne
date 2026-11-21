@@ -1,9 +1,9 @@
-import type { MissionFileName } from "@agenteschat/client";
-import { useMission, useMissionFiles } from "@agenteschat/client";
-import { formatTime, relativeTime } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { editDiff, executorName, type MdLine, mdLines, newLineIndexes } from "@agenteschat/client/lib/missions";
-import { DetailsDialog, Diff, Icon, Segmented, Skeleton } from "@agenteschat/ui";
+import type { MissionFileName } from "@vortoone/client";
+import { useMission, useMissionFiles } from "@vortoone/client";
+import { formatTime, relativeTime } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { editDiff, executorName, type MdLine, mdLines, newLineIndexes } from "@vortoone/client/lib/missions";
+import { DetailsDialog, Diff, Icon, Segmented, Skeleton } from "@vortoone/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/Loading";
@@ -13,14 +13,14 @@ import { codeAndBold } from "@/lib/markdown";
 
 /**
  * "Arquivos da missão": mission.md (plan and
- * rules, written by agentes.chat), decisions.md (approved decisions) and
+ * rules, written by VortoOne), decisions.md (approved decisions) and
  * notes.md (the executor's notes), rendered. Lines that arrived while the
  * panel was open fade in with a faint time; an edit found on the computer
  * says we kept the approved version, with the small diff on demand.
  */
 
 export const MISSION_FILES: MissionFileName[] = ["mission.md", "decisions.md", "notes.md"];
-const FOLDER = ".agentes/";
+const FOLDER = ".vortoone/";
 
 /** What each file was the last time this page drew it (new lines fade in after). */
 const seen = new Map<string, string>();
@@ -149,7 +149,7 @@ export function MissionFilesPanel({
   );
 }
 
-/** The `.agentes/` files' Markdown: headings, checklists, bullets, quotes, paragraphs. */
+/** The `.vortoone/` files' Markdown: headings, checklists, bullets, quotes, paragraphs. */
 export function MissionMarkdown({
   content,
   fresh = new Set(),

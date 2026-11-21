@@ -1,5 +1,5 @@
-import { PUBLIC_SOURCE_URL } from "@agenteschat/client/lib/about";
-import { Button, Chip, InfoHint, Switch } from "@agenteschat/ui";
+import { PUBLIC_SOURCE_URL } from "@vortoone/client/lib/about";
+import { Button, Chip, InfoHint, Switch } from "@vortoone/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useHost } from "../../app";

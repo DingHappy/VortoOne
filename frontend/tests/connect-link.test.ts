@@ -16,7 +16,7 @@ test("a connect link keeps its one-time sign-in in the fragment and reads back",
 test("a secret in the query, another scheme, or plain http elsewhere is no link", () => {
   const server = encodeURIComponent(SERVER);
   assert.equal(parseConnectLink(`vortoone://connect?server=${server}&token=${TOKEN}`), null);
-  assert.equal(parseConnectLink(`agenteschat://connect?server=${server}`), null);
+  assert.equal(parseConnectLink(`other://connect?server=${server}`), null);
   assert.equal(parseConnectLink(`vortoone://connect?server=${encodeURIComponent("http://box.example.com")}`), null);
   assert.equal(parseConnectLink(`vortoone://connect?server=${server}#token=short`), null);
   const here = `vortoone://connect?server=${encodeURIComponent("http://127.0.0.1:8080")}`;

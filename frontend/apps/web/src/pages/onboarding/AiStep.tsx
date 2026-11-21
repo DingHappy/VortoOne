@@ -1,10 +1,10 @@
-import { type Agent, type Me, type OrgSummary, useComputerSetup } from "@agenteschat/client";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { type AiChoice, gateDims, planLabel, planMark } from "@agenteschat/client/lib/no-ai";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
-import { Button, Icon, ProviderLogo } from "@agenteschat/ui";
+import { type Agent, type Me, type OrgSummary, useComputerSetup } from "@vortoone/client";
+import { joinNames } from "@vortoone/client/lib/format";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { type AiChoice, gateDims, planLabel, planMark } from "@vortoone/client/lib/no-ai";
+import { can } from "@vortoone/client/lib/permissions";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
+import { Button, Icon, ProviderLogo } from "@vortoone/ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanGates } from "@/components/ai/ConnectAiSteps";

@@ -1,5 +1,5 @@
-import type { AppLocale } from "@agenteschat/i18n/locale";
-import { Button, Dialog, DialogFooter, Input, Select, Switch } from "@agenteschat/ui";
+import type { AppLocale } from "@vortoone/i18n/locale";
+import { Button, Dialog, DialogFooter, Input, Select, Switch } from "@vortoone/ui";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost, useSnapshot, useStore } from "../../app";
@@ -94,7 +94,7 @@ export function General() {
     }
   };
 
-  // Open at login has an ⓘ only where it changes something: agentes.chat running here, or agents working here.
+  // Open at login has an ⓘ only where it changes something: VortoOne running here, or agents working here.
   const launchHint = local.run || works;
   const launchRow = (
     <PrefRow

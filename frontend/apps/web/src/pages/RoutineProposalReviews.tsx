@@ -1,6 +1,6 @@
-import { keys, type RoutineProposalReview, useApi } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { timezoneName } from "@agenteschat/client/lib/routines";
+import { keys, type RoutineProposalReview, useApi } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { timezoneName } from "@vortoone/client/lib/routines";
 import {
   Button,
   Card,
@@ -9,7 +9,7 @@ import {
   DialogBody,
   DialogFooter,
   GroupHeading,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

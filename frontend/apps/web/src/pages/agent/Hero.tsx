@@ -1,6 +1,6 @@
-import { useAgentDetail } from "@agenteschat/client";
-import { agentGrammar } from "@agenteschat/client/lib/grammar";
-import { type AgentColor, Button, Icon, Menu, MenuItem } from "@agenteschat/ui";
+import { useAgentDetail } from "@vortoone/client";
+import { agentGrammar } from "@vortoone/client/lib/grammar";
+import { type AgentColor, Button, Icon, Menu, MenuItem } from "@vortoone/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";

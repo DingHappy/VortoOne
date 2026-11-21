@@ -40,7 +40,7 @@ export interface JevKey {
 }
 
 /**
- * The installation's GIPHY key, for its pinned owner on a server that isn't agentes.chat's own (`GET
+ * The installation's GIPHY key, for its pinned owner on a server that isn't VortoOne's own (`GET
  * /api/app/gif-key`, ADR 0091): with it, every workspace has GIFs (`OrgSettings.gifsAvailable`).
  */
 export interface GifKey {
@@ -56,7 +56,7 @@ export interface GifKey {
 export type SpeechProvider = "assemblyai" | "elevenlabs" | "soniox" | "groq" | "openai" | "local" | "deepinfra";
 
 /**
- * The installation's speech engine, for its pinned owner on a server that isn't agentes.chat's own (`GET
+ * The installation's speech engine, for its pinned owner on a server that isn't VortoOne's own (`GET
  * /api/app/speech-key`, ADR 0100): with one, every workspace has voice messages (`OrgSettings.voiceAvailable`).
  */
 export interface SpeechKey {
@@ -154,13 +154,13 @@ export interface AuthConfig {
   supportEmail?: string | null;
   /** The server takes feedback (`POST /api/app/feedback`): the apps show the form; absent: a server too old to. */
   feedback?: boolean;
-  /** It goes to the agentes.chat team, not to whoever runs this server: the form says so and takes pictures only. */
+  /** It goes to the VortoOne team, not to whoever runs this server: the form says so and takes pictures only. */
   feedbackRelay?: boolean;
   /** Every workspace gets a computer of its own (the Cloud); absent: a server too old to say. */
   workspaceComputer?: boolean;
   /** The billing service (ADR 0079): owners and admins open a workspace's plan there; null or absent: no billing. */
   billingUrl?: string | null;
-  /** One of agentes.chat's own servers (`Instance.cloud`); absent: a self-hosted server too old to say. */
+  /** One of VortoOne's own servers (`Instance.cloud`); absent: a self-hosted server too old to say. */
   cloud?: boolean;
   /** The bot check's site key (Cloudflare Turnstile, ADR 0075); null or absent: no check, nothing from Cloudflare. */
   turnstileSiteKey?: string | null;
@@ -227,7 +227,7 @@ export interface SignInOptions {
 
 /** `GET /api/instance`: what the phone and desktop apps check before using a server. Public, nothing secret. */
 export interface Instance {
-  /** Always "agentes.chat". */
+  /** Always "VortoOne". */
   name: string;
   version: string;
   /** The app API contract the server speaks, and the oldest one it still serves. */
@@ -241,7 +241,7 @@ export interface Instance {
   signup: "open" | "invite";
   /** No account yet, and the first one only through the owner link the setup printed (absent: false). */
   ownerClaim?: boolean;
-  /** One of agentes.chat's own servers: `/terms` and `/privacy` are agentes.chat Cloud's (absent: an older server). */
+  /** One of VortoOne's own servers: `/terms` and `/privacy` are VortoOne Cloud's (absent: an older server). */
   cloud?: boolean;
 }
 
@@ -269,7 +269,7 @@ export interface User {
    */
   confirmsOnThisMac?: boolean;
   /**
-   * A new workspace would be made for them (false on agentes.chat Cloud while sign-up is by invitation, unless early
+   * A new workspace would be made for them (false on VortoOne Cloud while sign-up is by invitation, unless early
    * access allowed them; `org.create_refused` and `org.create_unpaid` can still refuse it).
    */
   canCreateWorkspace?: boolean;
@@ -290,7 +290,7 @@ export type StandingState = "active" | "hold" | "suspended";
 export interface OrgStanding {
   state: StandingState;
   reason: string | null;
-  /** agentes.chat Cloud: a reason reads with how to contest it, and `review` as the automatic hold's line. */
+  /** VortoOne Cloud: a reason reads with how to contest it, and `review` as the automatic hold's line. */
   cloud?: boolean;
 }
 
@@ -2244,7 +2244,7 @@ export type ConnectorCategory =
   | "automation"
   | "social";
 
-/** A connector agentes.chat knows (`GET /connectors/catalog`: ours and the one-click MCP servers, one per service). */
+/** A connector VortoOne knows (`GET /connectors/catalog`: ours and the one-click MCP servers, one per service). */
 export interface ConnectorDef {
   id: string;
   label: string;
@@ -2262,7 +2262,7 @@ export interface ConnectorDef {
   oauthConfigured: boolean;
   /** Can be connected on this server; `false` shows "Em breve". */
   available: boolean;
-  /** The vendor hasn't approved agentes.chat yet: greyed out with a lock, nothing to open. Older servers leave it out. */
+  /** The vendor hasn't approved VortoOne yet: greyed out with a lock, nothing to open. Older servers leave it out. */
   soon?: boolean;
   /** Connects through Composio (ADR 0107): its page signs in. Unavailable on a server without Composio. */
   via?: "composio";
@@ -2318,7 +2318,7 @@ export interface GitHubAppSetup {
   slug: string | null;
   /** The app's page on GitHub. */
   htmlUrl: string | null;
-  /** `invalid`: a saved app this server can't open (another `AGENTES_SECRET`). */
+  /** `invalid`: a saved app this server can't open (another `VORTOONE_SECRET`). */
   state: "off" | "ok" | "invalid";
   /** No app yet: the manifest flow makes one. */
   canCreate: boolean;
@@ -2333,9 +2333,9 @@ export interface GitHubAppSetup {
 export interface GitHubAppInfo {
   installable: boolean;
   installations: GitHubAppInstallation[];
-  /** The server's pinned owner only; null for everyone else and on agentes.chat. */
+  /** The server's pinned owner only; null for everyone else and on VortoOne. */
   setup?: GitHubAppSetup | null;
-  /** The server has no app and its owner can make one in Settings (never on agentes.chat). */
+  /** The server has no app and its owner can make one in Settings (never on VortoOne). */
   ownerCreates?: boolean;
 }
 
@@ -3026,7 +3026,7 @@ export type CustomConnectStart =
   | { status: "connected"; server: CustomServer; outcome?: ConnectOutcome }
   | { status: "oauth"; authorizeUrl: string }
   /**
-   * `not_approved`: it has OAuth but only lets in apps it approved, and agentes.chat isn't one yet. `detail`: how it
+   * `not_approved`: it has OAuth but only lets in apps it approved, and VortoOne isn't one yet. `detail`: how it
    * refused our registration, in its own words (`error: error_description`, short).
    */
   | { status: "needs_key"; reason?: "not_approved"; detail?: string };
@@ -3572,7 +3572,7 @@ export interface SecretBox {
 
 // ── File storage (expected: `GET/PUT …/storage`, `POST …/storage/test`, `…/storage/migrate`) ──
 
-export type StorageKind = "agentes" | "s3";
+export type StorageKind = "vortoone" | "s3";
 
 /** The service an admin picked when connecting their own storage: which steps the app shows. */
 export type StorageProvider = "r2" | "s3" | "b2" | "other";
@@ -3676,7 +3676,7 @@ export type ArtifactContent =
   | { kind: "diagram"; mermaid: string }
   | { kind: "html"; html: string }
   /**
-   * Parts the apps draw (`spec`, checked and drawn by `@agenteschat/ui/blocks/spec`), or the agent's own page (`html`),
+   * Parts the apps draw (`spec`, checked and drawn by `@vortoone/ui/blocks/spec`), or the agent's own page (`html`),
    * which runs only when a person asks (ADR 0113). Exactly one of the two.
    */
   | { kind: "block"; spec?: Record<string, unknown>; html?: string; subtitle?: string }
@@ -4810,7 +4810,7 @@ export type MachineOs = "linux" | "darwin" | "windows" | "other";
 /** `connected`: a person paired it; `host`: the server's own; `managed`: the workspace's own (ADR 0056 §10). */
 export type MachineKind = "connected" | "host" | "managed";
 
-/** `GET …/machines`: a computer connected with `agentes-runner`. */
+/** `GET …/machines`: a computer connected with `vortoone-runner`. */
 export interface Machine {
   id: string;
   /** The public address measured through an agent process, absent on older runners. */
@@ -5372,10 +5372,10 @@ export interface WikiImportResult {
  * Never carries keys, tokens or passwords.
  */
 export interface MigrationBundle {
-  format: "agenteschat.bundle";
+  format: "vortoone.bundle";
   version: 1;
   source: {
-    /** The app it came from: an import source id ("openmausbot", "openclaw"…) or "agenteschat". */
+    /** The app it came from: an import source id ("openmausbot", "openclaw"…) or "vortoone". */
     app: string;
     /** Stable id of the package or workspace in that app; with `app`, which earlier import an item belongs to. */
     ref: string;
@@ -6315,7 +6315,7 @@ export interface AccountLoginStart {
   expiresAt: string;
 }
 
-/** Why a sign-in ended on the computer (mirror of `ACCOUNT_LOGIN_FAILURES` in `@agenteschat/adapters`). */
+/** Why a sign-in ended on the computer (mirror of `ACCOUNT_LOGIN_FAILURES` in `@vortoone/adapters`). */
 export type AccountLoginFailure =
   | "not_installed"
   | "no_tty"
@@ -6487,7 +6487,7 @@ export interface MissionFile {
   updatedAt: string | null;
 }
 
-/** A `.agentes/` file edited on the machine: we kept the approved version. */
+/** A `.vortoone/` file edited on the machine: we kept the approved version. */
 export interface MissionFileEdit {
   id?: string;
   name?: string;
@@ -6721,7 +6721,7 @@ export type NotificationKind =
   | "secret_request"
   /**
    * ADR 0056 §8: the workspace was held, suspended or restored (owners and admins). `latest.statusTo`, `latest.text`:
-   * why. On agentes.chat Cloud also an agent held (`statusTo: "agent_hold"`, `latest.holdKind`, `source.agentId`).
+   * why. On VortoOne Cloud also an agent held (`statusTo: "agent_hold"`, `latest.holdKind`, `source.agentId`).
    */
   | "org_standing"
   /** ADR 0056 §10: the workspace's own computer is ready (owners). `source.machineId`; `source.label` = its name. */
@@ -6971,9 +6971,9 @@ export interface NotificationLatest {
   detail?: string;
   /** `approval`: asked while nobody watched, by a routine or an unattended run (ADR 0053 §8). */
   origin?: ApprovalOrigin;
-  /** `org_standing` to `agent_hold` (agentes.chat Cloud): `network` or `operator`, never the hold's reason. */
+  /** `org_standing` to `agent_hold` (VortoOne Cloud): `network` or `operator`, never the hold's reason. */
   holdKind?: string;
-  /** `org_standing` on agentes.chat Cloud: `text` is the reason a restriction reads with (`restrictionOf`). */
+  /** `org_standing` on VortoOne Cloud: `text` is the reason a restriction reads with (`restrictionOf`). */
   cloud?: boolean;
   /** `join_request`: the first two people who asked, in the order they asked (`count` says how many in all). */
   names?: string[];
@@ -7153,7 +7153,7 @@ export type SidebarPlace = "always" | "more" | "auto";
 export type SidebarItems = Partial<Record<SidebarItem, SidebarPlace>>;
 /** A section of the sidebar, in the order I put them (`SIDEBAR_SECTIONS` in packages/engine/src/sidebar-items.ts). */
 export type SidebarSection = "tools" | "channels" | "agents" | "people";
-/** How AGENTES orders each group (`AGENT_SORTS` in packages/engine/src/sidebar-items.ts). */
+/** How VORTOONE orders each group (`AGENT_SORTS` in packages/engine/src/sidebar-items.ts). */
 export type AgentSort = "workspace" | "mine" | "working";
 /** "Fixar no topo": agent, channel and user ids on top of their own section, in order. */
 export interface SidebarPins {
@@ -8267,7 +8267,7 @@ export interface WifiIphone {
   osVersion: string;
 }
 
-/** The iPhones a Mac offers over Wi-Fi; `update`: its agentes.chat is too old for it. */
+/** The iPhones a Mac offers over Wi-Fi; `update`: its VortoOne is too old for it. */
 export interface WifiIphones {
   available: WifiIphone[];
   update?: true;
@@ -8301,7 +8301,7 @@ export interface CliInstall {
   cause?: "git_missing" | "still_missing";
 }
 
-/** `fix: null`: none ran; `update`: the Mac's agentes.chat is too old to fix it (the Terminal way instead). */
+/** `fix: null`: none ran; `update`: the Mac's VortoOne is too old to fix it (the Terminal way instead). */
 export interface XcodeFixView {
   fix: XcodeFix | null;
   update?: true;
@@ -8312,7 +8312,7 @@ export interface WifiPairing {
   id: string;
   way: "qr" | "code";
   state: "waiting" | "pairing" | "connecting" | "connected" | "failed";
-  /** Why it failed; `update`: the computer's agentes.chat is too old for it. */
+  /** Why it failed; `update`: the computer's VortoOne is too old for it. */
   reason?: WifiPairFailure;
   /** Only when it starts: Android's QR text for Wireless debugging. */
   qr?: string;

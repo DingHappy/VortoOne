@@ -92,7 +92,7 @@ export const helpDe: Partial<Record<HelpSlug, HelpDocument>> = {
         id: "folders",
         heading: "Ordner",
         blocks: [
-          "Jeder Agent hat immer einen eigenen Ordner, in `~/agentes/<workspace>`. Weitere Ordner gibst du nur auf dem Computer selbst frei, nie über die Website: in der App unter **Einstellungen\u00a0›\u00a0Ordner** oder auf einem Server mit `agentes-runner folders allow`. Jeder Workspace gibt seine eigenen Ordner frei: Was du für einen freigibst, gilt nur für dessen Agenten. Einen Ordner zu entfernen löscht nichts. Es nimmt nur den Zugriff weg.",
+          "Jeder Agent hat immer einen eigenen Ordner, in `~/vortoone/<workspace>`. Weitere Ordner gibst du nur auf dem Computer selbst frei, nie über die Website: in der App unter **Einstellungen\u00a0›\u00a0Ordner** oder auf einem Server mit `vortoone-runner folders allow`. Jeder Workspace gibt seine eigenen Ordner frei: Was du für einen freigibst, gilt nur für dessen Agenten. Einen Ordner zu entfernen löscht nichts. Es nimmt nur den Zugriff weg.",
         ],
       },
       {
@@ -105,11 +105,11 @@ export const helpDe: Partial<Record<HelpSlug, HelpDocument>> = {
               "deine Dateien und Anmeldungen",
               "die Ordner anderer Agenten, auch die anderer Workspaces, und die Logins, die ihre Browser speichern",
               "das Token, das diesen Computer verbindet",
-              "auf einem Computer, der auch VortoOne ausführt, dessen Datenbank und Schlüssel in `.agentes`",
+              "auf einem Computer, der auch VortoOne ausführt, dessen Datenbank und Schlüssel in `.vortoone`",
             ],
           },
           "VortoOne lehnt Befehle ab, die seine Schlüssel, Tokens und Anmeldungen nennen, aber das ist eine Regel, keine Mauer. **Befehle** sind von Anfang an eingeschaltet. Schalte sie in der Frage der App aus, bevor du **Erlauben** drückst, oder später unter **Einstellungen\u00a0›\u00a0Tools**, wo jeder Workspace einen eigenen Schalter hat (ab App-Version 0.8.1) und die App nachfragt, bevor sie einen wieder einschaltet. Claude Code und Codex führen ihre eigenen Befehle im Ordner des Agenten aus, nach ihren eigenen Regeln, auch wenn Befehle aus sind.",
-          "Für eine echte Mauer nimm einen Linux-Server. Unter Debian 13, installiert mit `--system`, ist jeder Agent ein eigener Benutzer. Unter Ubuntu teilen sich die Agenten einen Benutzer, `agentes`: Sie sehen die Ordner der anderen, aber nicht deine oder die des Servers. Oder gib den Agenten einen eigenen Computer.",
+          "Für eine echte Mauer nimm einen Linux-Server. Unter Debian 13, installiert mit `--system`, ist jeder Agent ein eigener Benutzer. Unter Ubuntu teilen sich die Agenten einen Benutzer, `vortoone`: Sie sehen die Ordner der anderen, aber nicht deine oder die des Servers. Oder gib den Agenten einen eigenen Computer.",
         ],
       },
     ],
@@ -464,7 +464,7 @@ export const helpDe: Partial<Record<HelpSlug, HelpDocument>> = {
           {
             list: [
               "**Claude** (claude.ai, Claude Desktop und Handy): Klick unter **Customize\u00a0›\u00a0Connectors** auf **+ Add**, dann auf **Add custom connector**, nenne ihn VortoOne, füge die Adresse ein und klick auf **Continue**. Wähle **Sign in now**, klick auf **Add** und autorisiere. In den Team- und Enterprise-Abos fügt der Owner der Claude-Organisation den Konnektor unter Organization settings\u00a0›\u00a0Connectors hinzu, und jede Person klickt unter Customize\u00a0›\u00a0Connectors auf **Connect**. Das kostenlose Claude-Abo bietet Platz für einen eigenen Konnektor.",
-              "**Claude Code:** Führe `claude mcp add --transport http --scope user agentes <address>` aus, tippe dann `/mcp`, wähle agentes und **Authenticate**. Nur für den aktuellen Ordner lässt du `--scope user` weg.",
+              "**Claude Code:** Führe `claude mcp add --transport http --scope user VortoOne <address>` aus, tippe dann `/mcp`, wähle VortoOne und **Authenticate**. Nur für den aktuellen Ordner lässt du `--scope user` weg.",
               "**Cursor:** **Zu Cursor hinzufügen** unter **Einstellungen\u00a0›\u00a0KI-Apps** oder die Adresse in `~/.cursor/mcp.json`. Cursor bittet dich bei der ersten Nutzung, dich anzumelden.",
               '**VS Code:** **Zu VS Code hinzufügen** oder die Adresse in `.vscode/mcp.json` mit `"type": "http"`.',
               "**Andere Apps:** ChatGPT, Gemini, Grok, Perplexity, Codex, Zed, JetBrains und weitere haben jeweils eigene Schritte unter **App verbinden**, mit deiner Adresse schon eingetragen.",

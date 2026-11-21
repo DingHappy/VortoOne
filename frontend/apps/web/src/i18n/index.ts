@@ -1,6 +1,6 @@
-import { type LocaleState, useLocaleSync } from "@agenteschat/client/lib/locale-sync";
-import { resources } from "@agenteschat/i18n";
-import { loadStrings } from "@agenteschat/i18n/load";
+import { type LocaleState, useLocaleSync } from "@vortoone/client/lib/locale-sync";
+import { resources } from "@vortoone/i18n";
+import { loadStrings } from "@vortoone/i18n/load";
 import {
   type AppLocale,
   appLocale,
@@ -9,7 +9,7 @@ import {
   LOCALE_CODES,
   localeInfo,
   readyLocales,
-} from "@agenteschat/i18n/locale";
+} from "@vortoone/i18n/locale";
 import i18n, { type i18n as I18n, type InitOptions } from "i18next";
 import { useEffect, useState } from "react";
 import { initReactI18next, useTranslation } from "react-i18next";
@@ -29,11 +29,11 @@ export const locales = readyLocales().map((l) => ({ code: l.code, label: l.nativ
 export const TYPED_VALUES = { tOptions: { interpolation: { escapeValue: true } }, shouldUnescape: true };
 
 /** This browser's language choice: a code, or "auto" (the browser's own). */
-const STORAGE_KEY = "agentes.locale";
+const STORAGE_KEY = "vortoone.locale";
 /** "1" while a choice made signed out waits for the next sign-in to reach the server. */
-const PENDING_KEY = "agentes.locale.pending";
-/** The landing's language switch (agentes.chat), shared with the app's host. */
-const LANDING_COOKIE = "agentes_locale";
+const PENDING_KEY = "vortoone.locale.pending";
+/** The landing's language switch (VortoOne), shared with the app's host. */
+const LANDING_COOKIE = "vortoone_locale";
 
 function browserLanguages(): readonly string[] {
   if (typeof navigator === "undefined") return [];

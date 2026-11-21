@@ -1,9 +1,9 @@
-import type { AgentSetup, AiAccounts as AiAccountsView } from "@agenteschat/client";
-import { keys, useApi, useSetupPreview } from "@agenteschat/client";
-import { setupOutcome, takers } from "@agenteschat/client/lib/agent-setup";
-import { type KeyModel, keyModelFirst, keyModelGroups } from "@agenteschat/client/lib/brain-picker";
-import { type CodingPlan, planOf } from "@agenteschat/client/lib/plans";
-import { providerLabel } from "@agenteschat/client/lib/providers";
+import type { AgentSetup, AiAccounts as AiAccountsView } from "@vortoone/client";
+import { keys, useApi, useSetupPreview } from "@vortoone/client";
+import { setupOutcome, takers } from "@vortoone/client/lib/agent-setup";
+import { type KeyModel, keyModelFirst, keyModelGroups } from "@vortoone/client/lib/brain-picker";
+import { type CodingPlan, planOf } from "@vortoone/client/lib/plans";
+import { providerLabel } from "@vortoone/client/lib/providers";
 import {
   Button,
   Checkbox,
@@ -16,7 +16,7 @@ import {
   type OptionListItem,
   ProviderLogo,
   SettingNote,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,7 +34,7 @@ const FACES = 5;
 /**
  * "Usar em todos os agentes" on a coding plan key's row: one of the key's models, in runs by what the key did with
  * each (`keyModelGroups`), for every agent that may take it (the server's preview), saved like "Usar em outros
- * agentes" (`applySetup`), which also makes it what new agents start with. `model`: the one it starts on (a reply's
+ * VortoOne" (`applySetup`), which also makes it what new agents start with. `model`: the one it starts on (a reply's
  * stand-in), when the key may run it.
  */
 export function UseKeyForAll({ account, model, onClose }: { account: Row; model?: string; onClose: () => void }) {

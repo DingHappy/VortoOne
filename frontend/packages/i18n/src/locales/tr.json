@@ -555,7 +555,7 @@
       "continue": "Kendi sunucumla devam et",
       "address": "Sunucu adresi",
       "connect": "Bağlan",
-      "invalid": "Bu bir adres değil. Tarayıcıdaki gibi yazın, örneğin agentes.example.com.",
+      "invalid": "Bu bir adres değil. Tarayıcıdaki gibi yazın, örneğin vortoone.example.com.",
       "unreachable": "{{host}} adresinde VortoOne bulunamadı. Adresi ve sunucunun açık olduğunu kontrol edin.",
       "none": "Henüz yok mu?",
       "noneLink": "Nasıl ücretsiz edineceğinizi görün"
@@ -684,7 +684,7 @@
       "confirmYes": "Evet, uygulamada giriş yap",
       "confirmNo": "Bu ben değildim",
       "done": "Her şey hazır.",
-      "doneLead": "agentes uygulamasında giriş yaptınız. Bu sekmeyi kapatabilirsiniz.",
+      "doneLead": "VortoOne uygulamasında giriş yaptınız. Bu sekmeyi kapatabilirsiniz.",
       "expired": "Bu isteğin süresi doldu.",
       "expiredLead": "Uygulamaya dönüp yeniden {{provider}} seçin.",
       "handover": "Diğer cihazdaki hesabınızla giriş yapılıyor…",
@@ -1197,14 +1197,14 @@
         "paused": "Bu çalışma alanı duraklatıldığı sürece MCP ile bağlan kapalı. Şimdilik ajanları bu yolla getirin."
       },
       "otherName": "Başka bir uygulama",
-      "agenteschatName": "VortoOne",
+      "vortooneName": "VortoOne",
       "where": {
         "openbotrun": "openbot-import.json (OpenBot'un Migrator aracından) veya openbot-transfer.json (örnek aktarımından) dosyasını ya da geldiği .zip dosyasını bırakın.",
         "openmausbot": "OpenMausBot'ta: ekibe sağ tıklayın → Ekibi paylaş… → Dosyayı kaydet.",
         "hermes": "Bir terminalde profilin adıyla hermes profile export komutunu çalıştırın ve .tar.gz dosyasını buraya bırakın. Ya da tüm profilleri getirmek için ~/.hermes klasörünü sürükleyin.",
         "openclaw": "~/.openclaw klasörünün tamamını (tüm ajanları getirir) ya da yalnızca bir çalışma alanını sürükleyin. Mac'te ⌘⇧. dosya seçicide gizli klasörleri gösterir.",
         "paperclip": "Paket klasörünü (COMPANY.md dosyasının olduğu) sürükleyin, .zip halini bırakın ya da GitHub bağlantısını yapıştırın.",
-        "agenteschat": "Diğer çalışma alanında: Ayarlar → İçe ve dışa aktarma → Dosyayı indir. Sonra .json dosyasını buraya bırakın."
+        "vortoone": "Diğer çalışma alanında: Ayarlar → İçe ve dışa aktarma → Dosyayı indir. Sonra .json dosyasını buraya bırakın."
       },
       "whereOther": "Dosyayı diğer çalışma alanından indirin ve .json dosyasını buraya bırakın.",
       "whereOtherLink": "{{org}} çalışma alanından indir",
@@ -2180,9 +2180,9 @@
     "googlePlay": "Google Play"
   },
   "openOnPhone": {
-    "qr": "agentes uygulamasına giriş yapmak için QR kodu",
+    "qr": "VortoOne uygulamasına giriş yapmak için QR kodu",
     "making": "Kod oluşturuluyor…",
-    "stepApp": "agentes uygulamasını telefonunuza yükleyin.",
+    "stepApp": "VortoOne uygulamasını telefonunuza yükleyin.",
     "stepTailscale": "Telefonunuza Tailscale'i kurun ve bu sunucuyla aynı Tailscale hesabıyla giriş yapın.",
     "appStore": "App Store",
     "googlePlay": "Google Play",
@@ -5362,7 +5362,7 @@
     "noInstructions": "{{name}} için henüz talimat yok. Nasıl çalışması gerektiğini yazın.",
     "noInstructions_female": "{{name}} için henüz talimat yok. Nasıl çalışması gerektiğini yazın.",
     "savedToast": "{{name}} için yapılan değişiklikler kaydedildi.",
-    "builtinName": "agentes",
+    "builtinName": "VortoOne",
     "builtinNote": "yerleşik izinler",
     "connectHint": "Hizmetleri bağla",
     "subtitle": "{{role}} · sahibi <b>{{owner}}</b> · {{model}} {{key}}",
@@ -5717,7 +5717,7 @@
         "two": "Tercihler",
         "three": "Tarayıcıyı açın",
         "done": "Hepsi bu. Bu sayfa bunu kendisi fark eder, yenilemeye gerek yok.",
-        "menuOpen": "agentes'i aç",
+        "menuOpen": "VortoOne'i aç",
         "menuPrefs": "Tercihler…",
         "menuPause": "Duraklat",
         "menuQuit": "Çık",
@@ -5903,7 +5903,7 @@
       "setAll": "Tümünü değiştir",
       "connectors": "{{org}} bağlayıcıları",
       "connectorsPersonal": "Bağlayıcılarınız",
-      "builtin": "agentes içinde yerleşik",
+      "builtin": "VortoOne içinde yerleşik",
       "noMatch": "“{{q}}” ile eşleşen bir şey yok",
       "noneHere": "Bu filtrede bir şey yok",
       "library": "Beceri kütüphanesi",
@@ -7633,7 +7633,7 @@
     },
     "github_git_write": {
       "label": "Dal gönderme (git push)",
-      "description": "agentes/{agent}/… dallarına commit gönderme: asla varsayılan dala değil, force push yok, etiket yok. Dal silmek ve başkasının dalına göndermek önce onay ister."
+      "description": "vortoone/{agent}/… dallarına commit gönderme: asla varsayılan dala değil, force push yok, etiket yok. Dal silmek ve başkasının dalına göndermek önce onay ister."
     },
     "custom_read": {
       "label": "Okuma araçları",
@@ -8069,7 +8069,7 @@
       "signature": "İmza",
       "signedOff": "Kapalı: ajan, adrese yapılan her çağrıyı alır.",
       "signedOn": "Açık: yalnızca gizli anahtarla imzalanan çağrılar geçer.",
-      "signedHelp": "Gövdenin (GET çağrısında: ? olmadan sorgu dizesinin) HMAC-SHA256 değerini X-Agentes-Signature başlığında (sha256=…) gönderin. GitHub'ın X-Hub-Signature-256 başlığı da çalışır.",
+      "signedHelp": "Gövdenin (GET çağrısında: ? olmadan sorgu dizesinin) HMAC-SHA256 değerini X-VortoOne-Signature başlığında (sha256=…) gönderin. GitHub'ın X-Hub-Signature-256 başlığı da çalışır.",
       "addSecret": "İmza iste",
       "newSecret": "Yeni gizli anahtar",
       "newSecretTitle": "Yeni bir gizli anahtar oluşturulsun mu?",
@@ -8469,7 +8469,7 @@
         "pr_opened": "GitHub'da PR açıldı"
       },
       "issue": {
-        "created": "agentes'te görev oluşturuldu"
+        "created": "VortoOne'te görev oluşturuldu"
       },
       "deploy": {
         "succeeded": "Dağıtım tamamlandı"
@@ -8811,7 +8811,7 @@
       "start": "Başlat",
       "change": "Bir şeyi değiştir",
       "started": "Başladı",
-      "startedToast": "Plan başladı: ileti dizisinin üstünde ve .agentes/mission.md dosyasında sabit kalır.",
+      "startedToast": "Plan başladı: ileti dizisinin üstünde ve .vortoone/mission.md dosyasında sabit kalır.",
       "ownerStarts": "Yalnızca {{name}} başlatabilir",
       "see": "Planı gör",
       "after": {
@@ -10186,7 +10186,7 @@
       "antigravity": "Gemini",
       "opencode": "OpenCode",
       "needs": {
-        "keys": "Plan anahtarı kullanmak için bilgisayardaki agentes uygulamasını güncelleyin"
+        "keys": "Plan anahtarı kullanmak için bilgisayardaki VortoOne uygulamasını güncelleyin"
       },
       "noComputer": "Hesaplar bağlı bir bilgisayarda kalır. Önce kendi bilgisayarlarınızdan birini bağlayın.",
       "addComputer": "Bilgisayar bağla",
@@ -12029,8 +12029,8 @@
   "storage": {
     "title": "Depolama",
     "options": "Dosyalar nerede saklansın",
-    "agentes": "VortoOne depolama alanı",
-    "agentesText": "Dosyalarınız, her çalışma alanı için ayrı tutularak bizim depolama alanımızda kalır.",
+    "vortoone": "VortoOne depolama alanı",
+    "vortooneText": "Dosyalarınız, her çalışma alanı için ayrı tutularak bizim depolama alanımızda kalır.",
     "server": "Bu sunucu",
     "serverText": {
       "disk": "Dosyalar sunucunun diskinde kalır.",
@@ -12040,7 +12040,7 @@
     },
     "showFolder": "Klasörü göster",
     "place": {
-      "agentes": "VortoOne depolama alanı",
+      "vortoone": "VortoOne depolama alanı",
       "server": "bu sunucu"
     },
     "s3": "Kendi depolama alanınız",
@@ -12056,7 +12056,7 @@
     "region": "Bölge",
     "bucket": "Bucket",
     "prefix": "Önek (isteğe bağlı)",
-    "prefixHelp": "Bucket içindeki klasör, örneğin agentes/.",
+    "prefixHelp": "Bucket içindeki klasör, örneğin vortoone/.",
     "pathStyle": "Yol stili adresleme",
     "pathStyleHelp": "MinIO ve bucket'ı ana bilgisayar adında kabul etmeyen diğerleri için kullanın.",
     "accessKey": "Erişim anahtarı",
@@ -13956,32 +13956,32 @@
       "supabase": {
         "1": "Supabase projenizde SQL Editor'ı açın ve aşağıdaki komutu çalıştırın (şifreyi değiştirin).",
         "2": "Project Settings → Database bölümünde URI bağlantı dizesini kopyalayın.",
-        "3": "İçindeki kullanıcı ve şifreyi agentes_leitura ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
+        "3": "İçindeki kullanıcı ve şifreyi vortoone_reader ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
       },
       "neon": {
         "1": "Neon projenizde SQL Editor'ı açın ve aşağıdaki komutu çalıştırın (şifreyi değiştirin).",
         "2": "Connect bölümünde veritabanınızın adresini kopyalayın.",
-        "3": "İçindeki kullanıcı ve şifreyi agentes_leitura ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
+        "3": "İçindeki kullanıcı ve şifreyi vortoone_reader ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
       },
       "railway": {
         "1": "Postgres hizmetinde Data → Query bölümünü açın ve aşağıdaki komutu çalıştırın (şifreyi değiştirin).",
         "2": "Variables bölümünde DATABASE_PUBLIC_URL değerini kopyalayın (DATABASE_URL dahilidir ve buradan çalışmaz).",
-        "3": "İçindeki kullanıcı ve şifreyi agentes_leitura ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
+        "3": "İçindeki kullanıcı ve şifreyi vortoone_reader ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
       },
       "rds": {
         "1": "Her zamanki aracınızla veritabanına bağlanın ve aşağıdaki komutu çalıştırın (şifreyi değiştirin).",
         "2": "Connectivity & security bölümünde uç noktayı kopyalayın. Veritabanının 5432 numaralı bağlantı noktasında herkese açık erişimi olmalı.",
-        "3": "postgres://agentes_leitura:şifre@uç-nokta:5432/veritabanı adresini oluşturup buraya yapıştırın."
+        "3": "postgres://vortoone_reader:şifre@uç-nokta:5432/veritabanı adresini oluşturup buraya yapıştırın."
       },
       "render": {
         "1": "Veritabanı sayfasındaki PSQL komutuyla bağlanın ve aşağıdaki komutu çalıştırın (şifreyi değiştirin).",
         "2": "Connections bölümünde External Database URL değerini kopyalayın.",
-        "3": "İçindeki kullanıcı ve şifreyi agentes_leitura ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
+        "3": "İçindeki kullanıcı ve şifreyi vortoone_reader ve seçtiğiniz şifreyle değiştirip buraya yapıştırın."
       },
       "other": {
         "1": "Veritabanıyla ilgilenen kişiden aşağıdaki komutu (kendi seçtiği bir şifreyle) çalıştırmasını isteyin.",
         "2": "Ondan sunucunun herkese açık adresini, bağlantı noktasını ve veritabanı adını isteyin.",
-        "3": "postgres://agentes_leitura:şifre@sunucu:5432/veritabanı adresini oluşturup buraya yapıştırın."
+        "3": "postgres://vortoone_reader:şifre@sunucu:5432/veritabanı adresini oluşturup buraya yapıştırın."
       }
     },
     "howAll": "Tüm veritabanlarını okumak için (Postgres 14 veya daha yeni).",
@@ -14143,7 +14143,7 @@
     "whatIsText": "Yalnızca ajanlar için bir şifre. E-postanızın sitesinde oluşturursunuz ve kendi şifrenizi değiştirmeden istediğiniz zaman silebilirsiniz.",
     "step": {
       "1": "Hesabınızın güvenlik sayfasını açın.",
-      "2": "“agentes” adında bir uygulama şifresi oluşturun.",
+      "2": "“VortoOne” adında bir uygulama şifresi oluşturun.",
       "3": "Şifreyi kopyalayıp buraya yapıştırın."
     },
     "openPage": "{{name}} sayfasını aç",
@@ -15520,7 +15520,7 @@
       "openLocalNetwork": "Yerel Ağ'ı aç",
       "qrLabel": "Telefondaki Kablosuz hata ayıklama için QR kodu",
       "qrLine": "Kamerayla değil",
-      "qrCaption": "Kamera agentes-… adlı bir Wi-Fi ağı önerir, ama böyle bir ağ yok. Telefonu bilgisayarın Wi-Fi ağında tutun.",
+      "qrCaption": "Kamera vortoone-… adlı bir Wi-Fi ağı önerir, ama böyle bir ağ yok. Telefonu bilgisayarın Wi-Fi ağında tutun.",
       "fail": {
         "mdns_off": "{{computer}}, Wi-Fi ağında telefon arayamıyor. Orada Android platform-tools'u güncelleyin ya da kablo kullanın.",
         "mdns_offMac": "{{computer}}, Wi-Fi ağında telefon arayamıyor. O Mac'te Sistem Ayarları › Gizlilik ve Güvenlik › Yerel Ağ bölümünden VortoOne'i açıp tekrar deneyin.",
@@ -15820,7 +15820,7 @@
     "reconnectDoneText": "{{name}}, {{org}} çalışma alanına geri döndü.",
     "deniedTitle": "Bağlanmadı",
     "denied": "Bilgisayar bağlanmadı. Onu açan siz değilseniz kimse erişim almadı.",
-    "home": "agentes'e git"
+    "home": "VortoOne'e git"
   },
   "apps": {
     "connect": "Uygulama bağla",
@@ -18741,7 +18741,7 @@
       "screensOff": "{{computer}} üzerinde ekranlar kapalı. Oradan açın:",
       "screensOffOne": "Ekranlar {{computer}} üzerinde kapalı.",
       "screensMissing": "{{computer}} henüz ekran gösteremiyor. İlgileniyoruz:",
-      "outdated": "{{name}} ajanının ekranını görmek için {{computer}} üzerindeki agentes uygulamasını güncelleyin.",
+      "outdated": "{{name}} ajanının ekranını görmek için {{computer}} üzerindeki VortoOne uygulamasını güncelleyin.",
       "noScreen": "{{name}} ajanının burada gösterilecek bir ekranı yok",
       "noScreenHelp": "Araçlar ve erişim bölümünden ekrana veya tarayıcıya izin verin.",
       "noComputer": "{{name}} için bir bilgisayar seçin.",
@@ -18887,7 +18887,7 @@
       "browser": "Tarayıcı",
       "screen": "Bilgisayar ekranı",
       "terminal": "Terminal",
-      "agentes": "agentes",
+      "vortoone": "VortoOne",
       "thinking": "Düşünüyor",
       "inside": "{{program}} · {{detail}}"
     },

@@ -6,8 +6,8 @@ import {
   helpUrl,
   normalizeServer,
   serverHost,
-} from "@agenteschat/client/lib/server";
-import { DOWNLOAD_URL } from "@agenteschat/i18n/docs";
+} from "@vortoone/client/lib/server";
+import { DOWNLOAD_URL } from "@vortoone/i18n/docs";
 import {
   Button,
   Chip,
@@ -20,13 +20,13 @@ import {
   Icon,
   Input,
   OptionList,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./hosting.css";
 
 /** What a server of one's own looks like typed: the example in the address field. */
-const EXAMPLE_HOST = "agentes.example.com";
+const EXAMPLE_HOST = "vortoone.example.com";
 
 /** The chosen option's lines: what it gives (the Cloud) or what it asks of you (your own server). */
 function Points({ hosting }: { hosting: Hosting }) {

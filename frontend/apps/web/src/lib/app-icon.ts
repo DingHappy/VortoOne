@@ -1,5 +1,5 @@
-import { type AppIconId, DEFAULT_APP_ICON, isAppIcon } from "@agenteschat/client/lib/app-icons";
-import { normalizeAppearance } from "@agenteschat/ui";
+import { type AppIconId, DEFAULT_APP_ICON, isAppIcon } from "@vortoone/client/lib/app-icons";
+import { normalizeAppearance } from "@vortoone/ui";
 import { type AgentIcon, agentDesktopPictures, agentFavicon, sameAgent } from "./agent-app-icon";
 import { desktopPicksAppIcon, inDesktopApp, thisMac } from "./desktop";
 import { STORAGE_KEYS, storage } from "./storage";
@@ -13,7 +13,7 @@ import { STORAGE_KEYS, storage } from "./storage";
 export type AppIconPick = AppIconId | { agent: AgentIcon };
 export type { AgentIcon };
 
-const CHANGE_EVENT = "agentes:app-icon";
+const CHANGE_EVENT = "vortoone:app-icon";
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** An agent as kept (this browser's storage, or the desktop app's answer): ids, a name and a look, or nothing. */

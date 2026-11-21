@@ -1,4 +1,4 @@
-import type { Agent, AgentBrain, Message } from "@agenteschat/client";
+import type { Agent, AgentBrain, Message } from "@vortoone/client";
 import {
   keys,
   useAgentBrain,
@@ -8,8 +8,8 @@ import {
   useModels,
   usePlatformKey,
   useUpdateAgent,
-} from "@agenteschat/client";
-import { type EffortLevel, effortLevelsOf, effortOf, effortTextOf } from "@agenteschat/client/lib/brain-advanced";
+} from "@vortoone/client";
+import { type EffortLevel, effortLevelsOf, effortOf, effortTextOf } from "@vortoone/client/lib/brain-advanced";
 import {
   mayPickModel,
   modelPickerModels,
@@ -18,12 +18,12 @@ import {
   modelPickerUndo,
   type PickerBefore,
   type PickerModel,
-} from "@agenteschat/client/lib/brain-picker";
-import { can } from "@agenteschat/client/lib/permissions";
-import { modelStandInKey, planMeterText } from "@agenteschat/client/lib/plan-usage";
-import { planOf } from "@agenteschat/client/lib/plans";
-import { modelChoices } from "@agenteschat/client/lib/providers";
-import { isRightHand } from "@agenteschat/client/lib/right-hand";
+} from "@vortoone/client/lib/brain-picker";
+import { can } from "@vortoone/client/lib/permissions";
+import { modelStandInKey, planMeterText } from "@vortoone/client/lib/plan-usage";
+import { planOf } from "@vortoone/client/lib/plans";
+import { modelChoices } from "@vortoone/client/lib/providers";
+import { isRightHand } from "@vortoone/client/lib/right-hand";
 import {
   BrainIcon,
   Button,
@@ -36,7 +36,7 @@ import {
   Popover,
   ProviderLogo,
   planLine,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactElement, useState } from "react";
 import { useTranslation } from "react-i18next";

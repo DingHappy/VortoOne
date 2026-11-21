@@ -1,9 +1,9 @@
-import type { CanceledReturn, ComputerSummary, EndedTask, ManagedTask, PendingReturn } from "@agenteschat/client";
-import { useCancelFollowUp, useTaskManager } from "@agenteschat/client";
-import { returnClock, returnWhen } from "@agenteschat/client/lib/agent-work";
-import { listsAgent } from "@agenteschat/client/lib/audience";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatLineTime } from "@agenteschat/client/lib/format";
+import type { CanceledReturn, ComputerSummary, EndedTask, ManagedTask, PendingReturn } from "@vortoone/client";
+import { useCancelFollowUp, useTaskManager } from "@vortoone/client";
+import { returnClock, returnWhen } from "@vortoone/client/lib/agent-work";
+import { listsAgent } from "@vortoone/client/lib/audience";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatLineTime } from "@vortoone/client/lib/format";
 import {
   type AgentTasks,
   activityLine,
@@ -31,8 +31,8 @@ import {
   taskWhere,
   todayStart,
   type WaitCause,
-} from "@agenteschat/client/lib/task-manager";
-import { formatDuration } from "@agenteschat/client/lib/work";
+} from "@vortoone/client/lib/task-manager";
+import { formatDuration } from "@vortoone/client/lib/work";
 import {
   type AgentColor,
   Button,
@@ -51,7 +51,7 @@ import {
   ProviderLogo,
   SearchField,
   Tip,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";

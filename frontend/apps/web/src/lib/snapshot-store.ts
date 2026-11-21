@@ -1,6 +1,6 @@
-import type { SnapshotStorage } from "@agenteschat/client";
+import type { SnapshotStorage } from "@vortoone/client";
 
-const DB = "agentes";
+const DB = "vortoone";
 const STORE = "snapshot";
 const KEY = "chats";
 

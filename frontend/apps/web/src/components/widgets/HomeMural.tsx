@@ -1,6 +1,6 @@
-import type { Dashboard, HomeTile } from "@agenteschat/client";
-import { frozenBoard, useHomeBoard } from "@agenteschat/client";
-import { GroupHeading } from "@agenteschat/ui";
+import type { Dashboard, HomeTile } from "@vortoone/client";
+import { frozenBoard, useHomeBoard } from "@vortoone/client";
+import { GroupHeading } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";

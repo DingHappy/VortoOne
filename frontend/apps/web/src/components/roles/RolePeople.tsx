@@ -1,9 +1,9 @@
-import type { OrgRole, OrgRoles, Person, RoleMailLoss } from "@agenteschat/client";
-import { useApi, useSetMemberRoles } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { useHeldWhile } from "@agenteschat/client/lib/hold";
-import { can } from "@agenteschat/client/lib/permissions";
-import { isBelow, PEOPLE_SEARCH_FROM, peopleWith, roleLock, roleName } from "@agenteschat/client/lib/roles";
+import type { OrgRole, OrgRoles, Person, RoleMailLoss } from "@vortoone/client";
+import { useApi, useSetMemberRoles } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { useHeldWhile } from "@vortoone/client/lib/hold";
+import { can } from "@vortoone/client/lib/permissions";
+import { isBelow, PEOPLE_SEARCH_FROM, peopleWith, roleLock, roleName } from "@vortoone/client/lib/roles";
 import {
   Avatar,
   Button,
@@ -18,7 +18,7 @@ import {
   Locked,
   SearchField,
   Toolbar,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

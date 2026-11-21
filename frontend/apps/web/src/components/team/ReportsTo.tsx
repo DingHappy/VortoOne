@@ -1,10 +1,10 @@
-import type { AgentLineChange, TeamAgent } from "@agenteschat/client";
-import { useSetAgentLines, useTeam } from "@agenteschat/client";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { can } from "@agenteschat/client/lib/permissions";
-import { rightHandOf } from "@agenteschat/client/lib/right-hand";
-import { mayReportTo, reportsOf, supervisorOf } from "@agenteschat/client/lib/team-views";
-import { Field, Icon, MenuRadioGroup, Select } from "@agenteschat/ui";
+import type { AgentLineChange, TeamAgent } from "@vortoone/client";
+import { useSetAgentLines, useTeam } from "@vortoone/client";
+import { errorText } from "@vortoone/client/lib/errors";
+import { can } from "@vortoone/client/lib/permissions";
+import { rightHandOf } from "@vortoone/client/lib/right-hand";
+import { mayReportTo, reportsOf, supervisorOf } from "@vortoone/client/lib/team-views";
+import { Field, Icon, MenuRadioGroup, Select } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";

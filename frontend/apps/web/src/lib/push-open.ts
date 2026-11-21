@@ -1,5 +1,5 @@
-import type { NotificationKind } from "@agenteschat/client";
-import { type OpenTarget, ROUTINE_TROUBLE, WIDGET_NOTICES } from "@agenteschat/client/lib/notifications";
+import type { NotificationKind } from "@vortoone/client";
+import { type OpenTarget, ROUTINE_TROUBLE, WIDGET_NOTICES } from "@vortoone/client/lib/notifications";
 
 /**
  * A click on a browser notification (Web Push, ADR 0071) lands where a click on the same notification in the

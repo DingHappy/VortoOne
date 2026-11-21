@@ -1,12 +1,12 @@
-import { docsUrl } from "@agenteschat/i18n/docs";
-import { appLocale } from "@agenteschat/i18n/locale";
+import { docsUrl } from "@vortoone/i18n/docs";
+import { appLocale } from "@vortoone/i18n/locale";
 import type { FetchLike } from "../api/http";
 import type { Instance } from "../api/types";
 
 /**
  * Choosing a server in the phone and desktop apps ("Seu servidor"): the address a person types, the connect
  * link that the web app's QR code and the self-host setup print, and the check that an address is an
- * agentes.chat server these apps can talk to.
+ * VortoOne server these apps can talk to.
  */
 
 export const CLOUD_SERVER = "http://localhost:3000";
@@ -14,7 +14,7 @@ export const CLOUD_SERVER = "http://localhost:3000";
 /**
  * A help page on the public docs site, in the reader's language, at a section. Every edition and app links there,
  * with only the page, the language and the section: no server, organization or person. Every language has every
- * page (`@agenteschat/i18n` help test), so no English fallback here.
+ * page (`@vortoone/i18n` help test), so no English fallback here.
  */
 export const helpUrl = (slug: string, locale: string, section?: string) =>
   docsUrl(appLocale([locale], true) ?? "en", slug, section);
@@ -49,7 +49,7 @@ const LOCAL_HOST =
 const LOOPBACK_HOST = /^(localhost|127(\.\d+){3}|\[::1\])$/i;
 
 /**
- * "agentes.tail1234.ts.net" or "https://chat.example.com/login" → the server's origin. Null when it can't be
+ * "vortoone.tail1234.ts.net" or "https://chat.example.com/login" → the server's origin. Null when it can't be
  * one: not http(s), a space in it, a user or password in it, or http where it isn't allowed. `allowHttp: true`
  * (a development build) allows the local network; `"loopback"` (the desktop app) only this computer.
  */
@@ -169,17 +169,17 @@ export function parseConnectLink(raw: string, opts: { allowHttp?: boolean | "loo
   return link;
 }
 
-export type ServerProblem = "unreachable" | "certificate" | "not-agentes" | "server-too-old" | "app-too-old";
+export type ServerProblem = "unreachable" | "certificate" | "not-vortoone" | "server-too-old" | "app-too-old";
 /** `server`: the address to use, or the one that failed (a server's own address can differ from the one typed). */
 export type ServerCheck =
   | { ok: true; server: string; instance: Instance }
   | { ok: false; server: string; problem: ServerProblem };
 
-/** What `GET /api/instance` answered: an agentes.chat server these apps can use, or why not. */
+/** What `GET /api/instance` answered: an VortoOne server these apps can use, or why not. */
 export function readInstance(server: string, body: unknown): ServerCheck {
   const instance = (body ?? {}) as Partial<Instance>;
-  if (!["VortoOne", "agentes.chat"].includes(instance.name ?? "") || typeof instance.api !== "number")
-    return { ok: false, server, problem: "not-agentes" };
+  if (!["VortoOne", "VortoOne"].includes(instance.name ?? "") || typeof instance.api !== "number")
+    return { ok: false, server, problem: "not-vortoone" };
   const fits = apiFits(instance.api, instance.minApi ?? 1);
   if (!fits.ok) return { ok: false, server, problem: fits.problem };
   return { ok: true, server, instance: instance as Instance };

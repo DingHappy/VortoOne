@@ -4,14 +4,14 @@ import type {
   ImportItemResult,
   ImportSkipReason,
   MigrationBundle,
-} from "@agenteschat/client";
-import { keys, useAgents, useApps, useMe } from "@agenteschat/client";
-import { aiAppImport } from "@agenteschat/client/lib/apps";
-import { errorText } from "@agenteschat/client/lib/errors";
-import { formatBytes, MAX_UPLOAD_MB } from "@agenteschat/client/lib/files";
-import { joinNames } from "@agenteschat/client/lib/format";
-import { frontmatter, PASTED } from "@agenteschat/client/lib/import/shared";
-import { can, makesAgents } from "@agenteschat/client/lib/permissions";
+} from "@vortoone/client";
+import { keys, useAgents, useApps, useMe } from "@vortoone/client";
+import { aiAppImport } from "@vortoone/client/lib/apps";
+import { errorText } from "@vortoone/client/lib/errors";
+import { formatBytes, MAX_UPLOAD_MB } from "@vortoone/client/lib/files";
+import { joinNames } from "@vortoone/client/lib/format";
+import { frontmatter, PASTED } from "@vortoone/client/lib/import/shared";
+import { can, makesAgents } from "@vortoone/client/lib/permissions";
 import {
   AffixInput,
   Alert,
@@ -36,7 +36,7 @@ import {
   SwapLabel,
   Switch,
   Textarea,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
@@ -742,7 +742,7 @@ function SourceSteps({
   const orgs = useMe().data?.organizations ?? [];
   const client = mcpClient(card);
   // Another workspace of this person's on this server: its export one click away, in a tab of its own.
-  const others = card === "agenteschat" ? orgs.filter((o) => o.id !== orgId && can(o, "create_agents")) : [];
+  const others = card === "vortoone" ? orgs.filter((o) => o.id !== orgId && can(o, "create_agents")) : [];
   const other = others.length === 1 ? others[0] : undefined;
   const prompt = isRequestCard(card) ? (
     <OtherApp card={card} />
@@ -1062,7 +1062,7 @@ export function Preview({
           </p>
         </div>
       </header>
-      {bundle.source.ref === `agenteschat:${orgId}` && (
+      {bundle.source.ref === `vortoone:${orgId}` && (
         <Alert tone="neutral">{t("onboarding.import.sameWorkspace")}</Alert>
       )}
 

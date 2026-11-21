@@ -1,4 +1,4 @@
-import type { Widget, WidgetKind, WidgetWait } from "@agenteschat/client";
+import type { Widget, WidgetKind, WidgetWait } from "@vortoone/client";
 import {
   useDesktopStatus,
   useWidgetLacksAi,
@@ -7,11 +7,11 @@ import {
   widgetWaitFix,
   widgetWaiting,
   widgetWaitText,
-} from "@agenteschat/client";
-import { relativeTime } from "@agenteschat/client/lib/format";
-import { maySetAgentAi, noAiLockedLine, planKeyIntent } from "@agenteschat/client/lib/no-ai";
-import { can } from "@agenteschat/client/lib/permissions";
-import { type AgentColor, Icon, PixelSpinner } from "@agenteschat/ui";
+} from "@vortoone/client";
+import { relativeTime } from "@vortoone/client/lib/format";
+import { maySetAgentAi, noAiLockedLine, planKeyIntent } from "@vortoone/client/lib/no-ai";
+import { can } from "@vortoone/client/lib/permissions";
+import { type AgentColor, Icon, PixelSpinner } from "@vortoone/ui";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import type { MouseEvent } from "react";

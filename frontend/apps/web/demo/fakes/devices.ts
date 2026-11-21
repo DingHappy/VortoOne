@@ -23,8 +23,8 @@ import type {
   WifiIphone,
   WifiPairing,
   XcodeFixView,
-} from "@agenteschat/client";
-import { ApiError } from "@agenteschat/client";
+} from "@vortoone/client";
+import { ApiError } from "@vortoone/client";
 import { clone } from "./context";
 
 export interface FakeDevices {
@@ -175,7 +175,7 @@ export function createFakeDevices(
         id: `00000000-0000-4000-8000-00000000000${pairings}`,
         way,
         state: way === "code" ? "pairing" : "waiting",
-        ...(way === "qr" ? { qr: `WIFI:T:ADB;S:agentes-Fake${pairings}xxxxx;P:fakepassword;;` } : {}),
+        ...(way === "qr" ? { qr: `WIFI:T:ADB;S:vortoone-Fake${pairings}xxxxx;P:fakepassword;;` } : {}),
         expiresAt: new Date(now().getTime() + 120_000).toISOString(),
       };
       return clone(pairing);

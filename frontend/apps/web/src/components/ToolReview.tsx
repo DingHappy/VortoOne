@@ -1,5 +1,5 @@
-import type { ToolDecision } from "@agenteschat/client";
-import { formatInt } from "@agenteschat/client/lib/format";
+import type { ToolDecision } from "@vortoone/client";
+import { formatInt } from "@vortoone/client/lib/format";
 import {
   bySubject,
   countLevels,
@@ -9,7 +9,7 @@ import {
   type ReviewTool,
   SENSITIVE_LEVELS,
   subjectLabel,
-} from "@agenteschat/client/lib/tool-review";
+} from "@vortoone/client/lib/tool-review";
 import {
   AskPixels,
   HappyAgent,
@@ -21,7 +21,7 @@ import {
   type ToolLevelKind,
   ToolLevelStrip,
   ToolLevelSwatch,
-} from "@agenteschat/ui";
+} from "@vortoone/ui";
 import type { TFunction } from "i18next";
 import { useDeferredValue, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
