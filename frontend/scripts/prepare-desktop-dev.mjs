@@ -37,7 +37,7 @@ await mkdir(output, { recursive: true });
 await cp(new URL("../apps/web/dist-preview/", import.meta.url), output, {
   recursive: true,
 });
-await cp(new URL("../NOTICE", import.meta.url), new URL("NOTICE", output));
+await cp(new URL("../../NOTICE", import.meta.url), new URL("NOTICE", output));
 await cp(new URL("../apps/desktop/dist-live/", import.meta.url), new URL("shell/", output), {
   recursive: true,
 });

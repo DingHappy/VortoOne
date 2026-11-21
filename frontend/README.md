@@ -68,7 +68,7 @@ npm run desktop:dev
 | `packages/ui` / `client` / `tokens` / `i18n` | 原始组件、主题、查询、实时协议和国际化 |
 | `apps/web/src/vortoone` | 旧 runtime 协议调试页，独立保留 |
 
-来源提交和复制路径见 `upstream.json`。保留上游内部包名和协议名，减少迁移改动；第三方声明见 `NOTICE`。
+前端来源版本、版权及第三方声明见 [仓库 NOTICE](../NOTICE)。
 
 ## 当前接入边界
 
