@@ -1,0 +1,1286 @@
+{
+  "schema_version": 1,
+  "kind": "source_inventory_not_behavioral_acceptance",
+  "review_date": "2026-11-15",
+  "report": "../AGENTES_PARITY_GAP_REVIEW_2026-11.md",
+  "upstream": {
+    "repository": "https://github.com/agentes-chat/agentes-chat",
+    "commit": "50ca784dd4c83efbc7ca916a6f07faa8accfe7f6"
+  },
+  "vortoone": {
+    "repository": "https://github.com/DingHappy/VortoOne",
+    "main_commit": "39147d97afb06ff458be3790c73edd4dcd405199",
+    "open_pr_heads": {
+      "894": "baebe67469ee43e098d36a1eeff55f24e916998e",
+      "895": "e2ad9ddbb6ec31b33a3f5a6ad9b32090ee9da618",
+      "896": "72c8ddd27911f0a7b1a368cbf4fb6e1aff854b0a"
+    }
+  },
+  "limits": [
+    "枚举的是固定源码下的路由文件、分区与窗口；别名、辅助模块、开发页和法律页不计作独立功能。",
+    "映射到差异项仅用于确认盘点入口没有遗漏，不证明已动态访问页面或验证所有调用分支。",
+    "不是完整引擎/数据库审计，也不证明外部服务、商业服务、模型或真实设备可用。",
+    "开放 PR 未计入 main；字段、权限及业务范围的改变仍待主人选择。"
+  ],
+  "counts": {
+    "feature_rows": 56,
+    "web_routes": 60,
+    "api_modules": 57,
+    "desktop_windows": 15,
+    "settings_sections": 22
+  },
+  "web_routes": [
+    {
+      "source_file": "apps/web/src/routes/__root.tsx",
+      "feature_ids": [
+        "V02",
+        "V07"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/autorizar.tsx",
+      "feature_ids": [
+        "O07"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/baixar.tsx",
+      "feature_ids": [
+        "O06",
+        "W07"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/conectando.tsx",
+      "feature_ids": [
+        "X02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/conectar.tsx",
+      "feature_ids": [
+        "W01",
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/desktop.connector.tsx",
+      "feature_ids": [
+        "X04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/desktop.handover.tsx",
+      "feature_ids": [
+        "W01",
+        "W07"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/desktop.sign-in.tsx",
+      "feature_ids": [
+        "O01",
+        "W01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/desktop.signed-in.tsx",
+      "feature_ids": [
+        "O01",
+        "W01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/dev.gallery.tsx",
+      "feature_ids": [
+        "V08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/download.tsx",
+      "feature_ids": [
+        "O06",
+        "W07"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/email-undo.tsx",
+      "feature_ids": [
+        "O01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/index.tsx",
+      "feature_ids": [
+        "W01",
+        "W03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/invite.$token.tsx",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/login.tsx",
+      "feature_ids": [
+        "O01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/onboarding.tsx",
+      "feature_ids": [
+        "W01",
+        "W03",
+        "O02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.agents.$agentId.index.tsx",
+      "feature_ids": [
+        "V05",
+        "A01",
+        "A02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.agents.$agentId.memory.tsx",
+      "feature_ids": [
+        "K01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.agents.new.tsx",
+      "feature_ids": [
+        "V04",
+        "A01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.approvals.tsx",
+      "feature_ids": [
+        "T06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.c.$channelId.tsx",
+      "feature_ids": [
+        "C01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.calendar.tsx",
+      "feature_ids": [
+        "T05"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.dashboards.$dashboardId.tsx",
+      "feature_ids": [
+        "K05"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.dashboards.index.tsx",
+      "feature_ids": [
+        "K05"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.dm.agent.$agentId.tsx",
+      "feature_ids": [
+        "C02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.dm.person.$userId.tsx",
+      "feature_ids": [
+        "C02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.drive.tsx",
+      "feature_ids": [
+        "K04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.home.tsx",
+      "feature_ids": [
+        "C06",
+        "K05"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.index.tsx",
+      "feature_ids": [
+        "W03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.issues.$number.tsx",
+      "feature_ids": [
+        "T01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.issues.index.tsx",
+      "feature_ids": [
+        "T01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.members.tsx",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.notifications.tsx",
+      "feature_ids": [
+        "C06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.onboarding.tsx",
+      "feature_ids": [
+        "W01",
+        "W03",
+        "O02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.proposals.tsx",
+      "feature_ids": [
+        "A06",
+        "T06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.routines.tsx",
+      "feature_ids": [
+        "T03",
+        "T04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.search.tsx",
+      "feature_ids": [
+        "K02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings.tsx",
+      "feature_ids": [
+        "V06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.$section.tsx",
+      "feature_ids": [
+        "V06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.computers.$machineId.tsx",
+      "feature_ids": [
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.devices.$deviceId.tsx",
+      "feature_ids": [
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.devices.android-setup.tsx",
+      "feature_ids": [
+        "W07",
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.devices.iphone-setup.tsx",
+      "feature_ids": [
+        "W07",
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.devices.phones.$phoneId.tsx",
+      "feature_ids": [
+        "W07",
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.settings_.roles.$roleId.tsx",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.task-manager.tsx",
+      "feature_ids": [
+        "T02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.team.tsx",
+      "feature_ids": [
+        "A04"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.threads.$threadId.tsx",
+      "feature_ids": [
+        "C03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.threads.index.tsx",
+      "feature_ids": [
+        "C03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.tsx",
+      "feature_ids": [
+        "V02",
+        "W03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.waiting.tsx",
+      "feature_ids": [
+        "C06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.wiki.tsx",
+      "feature_ids": [
+        "K03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/org.$orgId.wiki_.$slug.tsx",
+      "feature_ids": [
+        "K03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/owner.tsx",
+      "feature_ids": [
+        "O01",
+        "W01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/privacidade.tsx",
+      "feature_ids": [
+        "O01",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/privacy.tsx",
+      "feature_ids": [
+        "O01",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/reset-password.tsx",
+      "feature_ids": [
+        "O01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/signup.tsx",
+      "feature_ids": [
+        "O01"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/termos.tsx",
+      "feature_ids": [
+        "O01",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/routes/terms.tsx",
+      "feature_ids": [
+        "O01",
+        "O06"
+      ]
+    }
+  ],
+  "settings_sections": [
+    {
+      "section_id": "account",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O01"
+      ]
+    },
+    {
+      "section_id": "notifications",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "C06",
+        "O05"
+      ]
+    },
+    {
+      "section_id": "download",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O06",
+        "W07"
+      ]
+    },
+    {
+      "section_id": "approvals",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "T06"
+      ]
+    },
+    {
+      "section_id": "apps",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O07"
+      ]
+    },
+    {
+      "section_id": "general",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "W03",
+        "V06"
+      ]
+    },
+    {
+      "section_id": "media",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "C07"
+      ]
+    },
+    {
+      "section_id": "voice",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "C07"
+      ]
+    },
+    {
+      "section_id": "members",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "section_id": "invites",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "section_id": "roles",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "section_id": "usage",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "A05",
+        "X01",
+        "X02"
+      ]
+    },
+    {
+      "section_id": "billing",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O02"
+      ]
+    },
+    {
+      "section_id": "connectors",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "X03",
+        "X04"
+      ]
+    },
+    {
+      "section_id": "skills",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "X05"
+      ]
+    },
+    {
+      "section_id": "vault",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "X06"
+      ]
+    },
+    {
+      "section_id": "access",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "A02"
+      ]
+    },
+    {
+      "section_id": "devices",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "X08",
+        "W07"
+      ]
+    },
+    {
+      "section_id": "storage",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O04"
+      ]
+    },
+    {
+      "section_id": "import",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "K06"
+      ]
+    },
+    {
+      "section_id": "audit",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O03"
+      ]
+    },
+    {
+      "section_id": "about",
+      "source_file": "apps/web/src/pages/settings-sections.ts",
+      "feature_ids": [
+        "O06"
+      ]
+    }
+  ],
+  "desktop_windows": [
+    {
+      "source_file": "apps/desktop/src/windows/FirstRun.tsx",
+      "feature_ids": [
+        "W01"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/IphoneSetup.tsx",
+      "feature_ids": [
+        "W07"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/Notch.tsx",
+      "feature_ids": [
+        "V08",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/Pair.tsx",
+      "feature_ids": [
+        "W07"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/Popover.tsx",
+      "feature_ids": [
+        "V08",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/Prefs.tsx",
+      "feature_ids": [
+        "V06"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Accounts.tsx",
+      "feature_ids": [
+        "O01",
+        "X02"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Activity.tsx",
+      "feature_ids": [
+        "O03"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Advanced.tsx",
+      "feature_ids": [
+        "O03"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Folders.tsx",
+      "feature_ids": [
+        "X08",
+        "K04"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/General.tsx",
+      "feature_ids": [
+        "V06",
+        "V07"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Servers.tsx",
+      "feature_ids": [
+        "W01",
+        "W03"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/ThisMac.tsx",
+      "feature_ids": [
+        "W01",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Tools.tsx",
+      "feature_ids": [
+        "X02",
+        "X03",
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/desktop/src/windows/prefs/Updates.tsx",
+      "feature_ids": [
+        "O06"
+      ]
+    }
+  ],
+  "api_modules": [
+    {
+      "source_file": "apps/server/src/routes/app/access.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "A02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/account.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O01",
+        "W03",
+        "W04"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/actions.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "T07"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/agent-imports.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "K06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/agents.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "A01",
+        "A02",
+        "A05",
+        "X01"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/approvals.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "T06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/apps.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O07"
+      ],
+      "note": "外部 AI 客户端访问本 Workspace；不是调用外部模型 Provider。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/artifacts.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "K04",
+        "K05",
+        "C07"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/audit.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O03"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/billing.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O02"
+      ],
+      "note": "依赖外部计费服务；本模块不拥有计划、价格与币种。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/browser-profiles.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/browser.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/calendar.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "T05"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/channels.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C01"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/chat.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C05"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/connectors-custom.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X03"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/connectors.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X03",
+        "X04",
+        "X01"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/context.ts",
+      "entry_kind": "helper",
+      "feature_ids": [
+        "W05"
+      ],
+      "note": "共享请求上下文、认证与依赖辅助；不是单独业务路由。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/credential-view.ts",
+      "entry_kind": "helper",
+      "feature_ids": [
+        "X01"
+      ],
+      "note": "模型凭据视图与价格单位转换辅助。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/dashboard-schemas.ts",
+      "entry_kind": "helper",
+      "feature_ids": [
+        "K05"
+      ],
+      "note": "仪表盘请求/响应 schema 辅助。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/dashboards.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "K05"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/databases.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X07"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/desktop.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X08",
+        "O06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/device-waits.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X08"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/dms.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/extras.ts",
+      "entry_kind": "helper",
+      "feature_ids": [
+        "X01",
+        "X08",
+        "O05"
+      ],
+      "note": "可选后端服务依赖声明；未配置时能力可能不开放。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/feedback.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O03"
+      ],
+      "note": "发给运营方的问题反馈、附件与邮件转交，不是角色自动学习。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/gif-key.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C07"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/gifs.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C07"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/invites.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/issues.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "T01"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/jev.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C04",
+        "X01",
+        "O03"
+      ],
+      "note": "安装所有者配置 TypeSafe Jev 的状态与用量；用于受约束的语义判断/路由，不是自由授予权限。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/knowledge.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "K02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/machine-accounts.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/mail.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X04",
+        "T04"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/management.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "A04",
+        "V06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/memory.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "K01"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/missions.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "T02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/notifications.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/person-usage.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "A05"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/plan-usage.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/push.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O05"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/questions.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C06",
+        "T02"
+      ],
+      "note": "问题等待、答复、跳过及超时合同，与动作批准分开。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/roles.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "W04"
+      ],
+      "note": "真人成员的职务/权限；不是本仓 Agent 岗位。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/routines.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "T03",
+        "T04"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/sandboxes.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X08",
+        "T02"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/schemas.ts",
+      "entry_kind": "helper",
+      "feature_ids": [
+        "W05"
+      ],
+      "note": "共享 API schema；不代表独立领域或运行能力。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/secrets.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/skills.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X05"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/storage.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O04"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/team-week.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C06",
+        "A04"
+      ],
+      "note": "总助手日/周卡、待批摘要、提醒与各自自动行为开关。"
+    },
+    {
+      "source_file": "apps/server/src/routes/app/telemetry.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "O03"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/threads.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C03"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/vault.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "X06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/voice.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C07"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/waiting.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "C06"
+      ]
+    },
+    {
+      "source_file": "apps/server/src/routes/app/wiki.ts",
+      "entry_kind": "route_module",
+      "feature_ids": [
+        "K03"
+      ]
+    }
+  ],
+  "additional_sources": [
+    {
+      "source_file": "apps/web/src/styles.css",
+      "feature_ids": [
+        "V01",
+        "V07"
+      ],
+      "note": "应用最终字体覆盖与基础状态；不能只读 UI 库的默认变量。"
+    },
+    {
+      "source_file": "apps/web/src/layout.css",
+      "feature_ids": [
+        "V02",
+        "V05"
+      ]
+    },
+    {
+      "source_file": "packages/ui/src/components/Button.tsx",
+      "feature_ids": [
+        "V03"
+      ]
+    },
+    {
+      "source_file": "packages/ui/src/styles/tokens.css",
+      "feature_ids": [
+        "V01",
+        "V03"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/components/new-agent/NewAgentDialog.tsx",
+      "feature_ids": [
+        "V04",
+        "A01",
+        "A02"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/pages/agent/Hero.tsx",
+      "feature_ids": [
+        "V05"
+      ]
+    },
+    {
+      "source_file": "packages/ui/src/components/Settings.tsx",
+      "feature_ids": [
+        "V06"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/i18n/index.ts",
+      "feature_ids": [
+        "V07"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/components/CommandMenu.tsx",
+      "feature_ids": [
+        "V07"
+      ]
+    },
+    {
+      "source_file": "SELF_HOSTING.md",
+      "feature_ids": [
+        "W01",
+        "W02"
+      ],
+      "note": "分发和自托管说明，不能证明本次实际安装或云服务可用。"
+    },
+    {
+      "source_file": "apps/desktop/src-tauri/tauri.conf.json",
+      "feature_ids": [
+        "W06",
+        "O06"
+      ],
+      "note": "桌面包装与平台声明；不是跨平台发布验收。"
+    },
+    {
+      "source_file": "packages/client/src/lib/workspace-mode.ts",
+      "feature_ids": [
+        "W03"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/permissions.ts",
+      "feature_ids": [
+        "W04"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/channel-permissions.ts",
+      "feature_ids": [
+        "W05",
+        "C01"
+      ]
+    },
+    {
+      "source_file": "apps/mobile/package.json",
+      "feature_ids": [
+        "W07"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/router.ts",
+      "feature_ids": [
+        "C04"
+      ]
+    },
+    {
+      "source_file": "packages/client/src/lib/access-levels.ts",
+      "feature_ids": [
+        "A02"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/agents.ts",
+      "feature_ids": [
+        "A01",
+        "A03",
+        "A05"
+      ]
+    },
+    {
+      "source_file": "apps/web/src/pages/TeamPage.tsx",
+      "feature_ids": [
+        "A04"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/context/proposals.ts",
+      "feature_ids": [
+        "A06"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/right-hand-approvals.ts",
+      "feature_ids": [
+        "T06"
+      ],
+      "note": "只覆盖有限提议类别，并核对来源链、真人权限和额度；不是让模型自由授予权限。"
+    },
+    {
+      "source_file": "packages/engine/src/connector-triggers.ts",
+      "feature_ids": [
+        "T04"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/search.ts",
+      "feature_ids": [
+        "K02"
+      ]
+    },
+    {
+      "source_file": "packages/providers/src/index.ts",
+      "feature_ids": [
+        "X01"
+      ]
+    },
+    {
+      "source_file": "packages/engine/src/judge.ts",
+      "feature_ids": [
+        "C04",
+        "X01"
+      ],
+      "note": "小模型或 Jev 回答有类型的语义问题；代码掌握策略，判断器本身不授予权限。"
+    }
+  ]
+}
