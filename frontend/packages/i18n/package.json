@@ -15,7 +15,6 @@
     "./format": "./src/format.ts",
     "./plurals": "./src/plurals.ts",
     "./locales/*": "./src/locales/*",
-    "./legal": "./src/legal/index.ts",
     "./help": "./src/help/index.ts",
     "./docs": "./src/docs.ts",
     "./testing": "./test/check-locale.ts",
