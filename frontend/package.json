@@ -14,7 +14,7 @@
     "preview": "npm run preview --workspace @vortoone/web",
     "typecheck": "npm run typecheck --workspace @vortoone/web && npm run typecheck --workspace @vortoone/desktop && npm run runtime:typecheck",
     "test": "node --import tsx --test tests/*.test.ts",
-    "brand:generate": "node scripts/generate-brand.mjs && npm run icons --workspace @vortoone/desktop && npm exec --workspace @vortoone/desktop -- tauri icon app-icon.png --output src-tauri/icons",
+    "brand:generate": "node scripts/generate-brand.mjs",
     "check": "npm run typecheck && npm test && npm run build",
     "desktop:dev": "npm run dev --workspace @vortoone/desktop -- --port 1421",
     "desktop:build": "npm run build --workspace @vortoone/desktop",

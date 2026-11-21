@@ -8,7 +8,6 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
-    "icons": "node --import tsx scripts/icons.ts",
     "tauri": "tauri"
   },
   "dependencies": {
