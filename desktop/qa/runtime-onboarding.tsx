@@ -10,6 +10,8 @@ import { modelSettingsState } from "../src/lib/modelSettings";
 import type { DesktopLlmProfileStatus, DesktopProjectProfile } from "../src/types";
 import type { LocalResidentStatus } from "../src/lib/localResident";
 import { STORAGE_KEYS } from "../src/lib/storage";
+import "../src/styles/tokens.css";
+import "../src/styles/components.css";
 import "../src/App.css";
 
 const params = new URLSearchParams(location.search), scenario = params.get("scenario") || "new";
