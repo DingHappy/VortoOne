@@ -145,7 +145,7 @@ export function EditInvitationDialog({
   invitation: InvitationWithStatus;
   open: boolean;
   onClose: () => void;
-  onRenew: () => void;
+  onRenew?: () => void;
 }) {
   const { t } = useTranslation();
   const { org } = useOrg();
@@ -201,16 +201,18 @@ export function EditInvitationDialog({
         <DialogFooter bar>
           <Button onClick={onClose}>{t("common.cancel")}</Button>
           {off ? (
-            <Button
-              variant="primary"
-              icon="refresh"
-              onClick={() => {
-                onRenew();
-                onClose();
-              }}
-            >
-              {t("members.invitations.renew")}
-            </Button>
+            onRenew && (
+              <Button
+                variant="primary"
+                icon="refresh"
+                onClick={() => {
+                  onRenew();
+                  onClose();
+                }}
+              >
+                {t("members.invitations.renew")}
+              </Button>
+            )
           ) : (
             <Button variant="primary" loading={save.isPending} onClick={submit}>
               {t("common.save")}
