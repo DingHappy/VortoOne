@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 268 个，剩 **363** 个：
-- **要做：293**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 269 个，剩 **362** 个：
+- **要做：292**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -805,11 +805,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/artifacts-trash` | `artifacts.trash` |  |
 | ☐ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` |  |
 
-### org/notification-prefs（2 个，要做 2）
+### org/notification-prefs（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/notification-prefs` | `notifications.prefs` |  |
+| ☑ | GET | `ORG/notification-prefs` | `notifications.prefs` | 当前登录人的手机通知状态。仅所有者有已配置的 APNs 目标，按实际投递登记去重。分类投递开关待接。 |
 | ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` |  |
 
 ### org/questions（2 个，要做 0）
