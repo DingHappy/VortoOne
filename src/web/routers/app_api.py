@@ -3853,13 +3853,13 @@ def _agent_view(root: str, staff_id: str) -> Optional[Dict[str, Any]]:
 
 # ── 聊天里的新建 agent 提议卡片（主人 2026-11-22 定）：和审批列表是同一份提议、同一套核对 ──────────
 
-async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action):
+async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action, *, kind: str = "member"):
     root = _root(org_id)
     if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
         return _error(403, "owner_proof_required", "提议卡片只有已认证的所有者能看和决定")
 
     def run():
-        item = views.find_agent_proposal(root, message_id)
+        item = views.find_agent_proposal(root, message_id, kind=kind)
         return None if item is None else action(root, item)
     try:
         result = await asyncio.to_thread(run)
@@ -3873,7 +3873,7 @@ def _decide_card(root: str, item: Dict[str, Any], approve: bool) -> Dict[str, An
     from src.workflow.staff.owner_confirmation import owner_route
     if item["status"] != "pending":
         raise ValueError("这份提议已经处理过了")
-    if views.agent_proposal(root, item, can_decide=True)["expired"]:
+    if views.proposal_expired(item):
         raise ValueError("这份提议已经过期，请让助理重新提")
     with owner_route(root):
         StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
@@ -3917,6 +3917,33 @@ async def proposed_agent_routine(org_id: str, message_id: str, request: Request)
     def run(root, item):
         raise ValueError("这份提议没有附带例行工作；需要的话请让助理另提一份例行工作提议")
     return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/create")
+async def create_proposed_team(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准整张开通单（岗位、agent、部门、例行工作一起登记）。"""
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, True)), "noAi": []}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/deny")
+async def deny_proposed_team(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, False))}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/undo")
+async def undo_proposed_team(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("登记了就不能一键撤回；要停用这些 agent 或例行工作，请让助理提议")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
+
+
+@router.patch(_ORG + "/team-proposals/{message_id}/agents/{handle}")
+async def adjust_proposed_team_agent(org_id: str, message_id: str, handle: str, request: Request):
+    def run(root, item):
+        raise ValueError("批的是卡片上的这一版；要改内容，请让助理重新提")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
 
 
 @router.post(_ORG + "/agents")

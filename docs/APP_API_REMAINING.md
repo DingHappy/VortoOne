@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 258 个，剩 **373** 个：
-- **要做：303**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 262 个，剩 **369** 个：
+- **要做：299**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -559,14 +559,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/push/stale` | `push.stale` |  |
 | ☐ | GET | `/api/app/push/web` | `push.webKey` |  |
 
-### org/team-proposals（4 个，要做 4）
+### org/team-proposals（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/team-proposals/{x}/agents/{x}` | `agents.adjustTeamAgent` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/create` | `agents.createTeam` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` |  |
+| ☑ | PATCH | `ORG/team-proposals/{x}/agents/{x}` | `agents.adjustTeamAgent` | 批的是卡片上这一版，要改请助理重新提，回 409 |
+| ☑ | POST | `ORG/team-proposals/{x}/create` | `agents.createTeam` | 助理提的开通单（新 agent 连同岗位、例行工作）以团队卡片出现在主要聊天里；按这一版批准整张开通单 |
+| ☑ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` | 拒绝 |
+| ☑ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` | 登记了不能一键撤回，回 409 |
 
 ### org/runs（4 个，要做 3）
 
