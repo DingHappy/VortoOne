@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 208 个，剩 **423** 个：
-- **要做：351**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 209 个，剩 **422** 个：
+- **要做：350**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -321,7 +321,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/usage/plans` | `orgs.planUsage` |  |
 | ☐ | GET | `ORG/usage/report` | `orgs.usageReport` |  |
 
-### org/routines（10 个，要做 10）
+### org/routines（10 个，要做 9）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -333,7 +333,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` |  |
 | ☐ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` |  |
 | ☐ | POST | `ORG/routines/{x}/run` | `routines.runNow` |  |
-| ☐ | GET | `ORG/routines/{x}/runs` | `routines.runs` |  |
+| ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录 |
 | ☐ | POST | `ORG/routines/{x}/stop` | `routines.stop` |  |
 
 ### org/credentials（9 个，要做 9）
