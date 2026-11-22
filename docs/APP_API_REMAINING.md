@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 234 个，剩 **397** 个：
-- **要做：325**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 236 个，剩 **395** 个：
+- **要做：323**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -47,7 +47,7 @@
 9. **本地门禁**：本机 Python 3.14 下 `test_computer_connector.py::test_real_https_validates_injected_ca_and_rejects_untrusted_peer[True]` 必挂，和改动无关；CI 上的 3.10 和 3.12 是绿的
 10. **端到端验证**要带 `VORTOONE_WORKSPACE_SCOPE=general`，常驻助理和 Desktop 都以这个范围运行
 11. 在 worktree 里不要用 `git stash`：它整个仓库共用，会弹出别人的暂存
-12. 到现在为止都只测了接口，**还没在真实 Desktop 界面里点过**，建议每做完几块就实际点一遍
+12. 每完成两到三块，在 General 作用域的原生 Desktop 验证实际入口，并在对应 PR 记录操作结果和未覆盖的场景。个人 Vault、Markdown 导入和个人状态的验收分别见 #995、#1004、#1002
 
 ## 建议顺序
 
@@ -512,15 +512,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` |  |
 | ☐ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` |  |
 
-### org/storage（5 个，要做 5）
+### org/storage（5 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/storage` | `storage.get` |  |
-| ☐ | PUT | `ORG/storage` | `storage.save` |  |
-| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` |  |
-| ☐ | GET | `ORG/storage/migration` | `storage.migration` |  |
-| ☐ | POST | `ORG/storage/test` | `storage.test` |  |
+| ☑ | GET | `ORG/storage` | `storage.get` | 显示当前服务器磁盘状态，仅所有者可读 |
+| ☐ | PUT | `ORG/storage` | `storage.save` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | GET | `ORG/storage/migration` | `storage.migration` | 本地磁盘无迁移任务时返回 null，仅所有者可读 |
+| ☐ | POST | `ORG/storage/test` | `storage.test` | 当前仅用服务器磁盘，接口明确拒绝 |
 
 ### org/notifications（5 个，要做 0）
 

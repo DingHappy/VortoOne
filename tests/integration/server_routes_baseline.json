@@ -2532,6 +2532,36 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/storage",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage/migrate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage/migration",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage/test",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/task-manager",
     "methods": [
       "GET"
