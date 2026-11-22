@@ -2774,6 +2774,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/runs/{run_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/runs/{run_id}/cancel",
     "methods": [
       "POST"
@@ -3301,6 +3307,12 @@
     "path": "/api/app/organizations/{org_id}/approvals/decide",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/audit",
+    "methods": [
+      "GET"
     ]
   },
   {
