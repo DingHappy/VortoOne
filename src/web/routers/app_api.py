@@ -3090,6 +3090,7 @@ async def _owner_write(request: Request, root: str, what: str):
 
 
 async def _skill_write(request: Request, org_id: str, action):
+    from src.workflow.workbench.skill_import import SkillImportError
     from src.workflow.workbench.personal_skills import SkillConflict
     root = _root(org_id)
     refused = await _owner_write(request, root, "技能")
@@ -3097,6 +3098,8 @@ async def _skill_write(request: Request, org_id: str, action):
         return refused
     try:
         return await asyncio.to_thread(action, root)
+    except SkillImportError as error:
+        return _error(error.status, error.code, str(error))
     except SkillConflict as error:
         return _error(409, "conflict", str(error))
     except ValueError as error:
@@ -3109,6 +3112,50 @@ async def _skill_write(request: Request, org_id: str, action):
 async def create_skill(org_id: str, body: Dict[str, Any], request: Request):
     """主人写一条新技能。只是给主助理的说明，不执行脚本、不增加工具权限。"""
     return await _skill_write(request, org_id, lambda root: views.create_skill(root, body))
+
+
+async def _skill_upload_body(request: Request) -> dict:
+    from src.workflow.workbench.skill_import import MAX_IMPORT_BODY, SkillImportError
+
+    oversized = SkillImportError("本地技能 ZIP 最大 128 KiB", status=413, code="skill.local_upload_too_large")
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise SkillImportError("技能导入需要 JSON 正文", status=415)
+    try:
+        declared = int(request.headers.get("content-length", "0"))
+    except ValueError as error:
+        raise SkillImportError("无效的正文长度") from error
+    if declared < 0:
+        raise SkillImportError("无效的正文长度")
+    if declared > MAX_IMPORT_BODY:
+        raise oversized
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > MAX_IMPORT_BODY:
+            raise oversized
+        raw.extend(chunk)
+    try:
+        body = json.loads(raw)
+    except (ValueError, RecursionError) as error:
+        raise SkillImportError("技能导入 JSON 无效") from error
+    if not isinstance(body, dict):
+        raise SkillImportError("技能导入需要 JSON 对象")
+    return body
+
+
+@router.post(_ORG + "/skills/import")
+async def import_skill(org_id: str, request: Request):
+    """上传私人技能 ZIP，启用沿用原有正文审阅与版本核对。"""
+    from src.workflow.workbench.skill_import import SkillImportError
+
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "导入个人技能需要已认证的同源所有者会话")
+    try:
+        body = await _skill_upload_body(request)
+    except SkillImportError as error:
+        return _error(error.status, error.code, str(error))
+    return await _skill_write(request, org_id, lambda root: views.import_skill(root, body))
 
 
 @router.patch(_ORG + "/skills/{skill_id}")
@@ -3138,17 +3185,30 @@ async def save_skill_settings(org_id: str, body: Dict[str, Any], request: Reques
 
 
 @router.put(_ORG + "/agents/{agent_id}/skills")
-async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any]):
+async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], request: Request):
     """主助理启用哪些个人技能。专员按岗位装配，不在这里改。"""
     from src.workflow.workbench.personal_skills import SkillConflict
     root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "启停个人技能需要已认证的同源所有者会话")
     if agent_id != views.main_agent_id(root):
         return _error(404 if not _known_agent(org_id, agent_id) else 400, "unsupported", "专员的技能按岗位装配")
-    wanted = body.get("skills")
-    if set(body) != {"skills"} or not isinstance(wanted, list) or not all(isinstance(x, str) for x in wanted):
+    rows = body.get("skills")
+    if set(body) != {"skills"} or not isinstance(rows, list):
         return _error(400, "invalid", "需要技能 id 列表")
+    referenced = None
+    if all(isinstance(row, str) for row in rows):
+        wanted = rows
+    elif all(isinstance(row, dict) and set(row) == {"skillId", "enabled"}
+             and isinstance(row["skillId"], str) and type(row["enabled"]) is bool for row in rows):
+        referenced = [row["skillId"] for row in rows]
+        if len(set(referenced)) != len(referenced):
+            return _error(400, "invalid", "同一个技能只能指定一次")
+        wanted = [row["skillId"] for row in rows if row["enabled"]]
+    else:
+        return _error(400, "invalid", "需要技能 id 列表或技能启停状态")
     try:
-        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted)}
+        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted, referenced=referenced)}
     except LookupError:
         return _error(404, "not_found", "没有这条技能")
     except SkillConflict as error:

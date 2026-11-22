@@ -2930,6 +2930,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/skills/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
     "methods": [
       "DELETE"

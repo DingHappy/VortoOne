@@ -700,7 +700,7 @@ def _skill(root: str, item: Dict[str, Any], created: str) -> Dict[str, Any]:
     revision = item.get("revision")
     return {"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
             "description": str(item.get("description") or ""),
-            "version": revision if type(revision) is int else 1, "source": "manual", "sourceUrl": None,
+            "version": revision if type(revision) is int else 1, "source": item.get("source", "manual"), "sourceUrl": None,
             "defaultForNewAgents": False, "metadata": {}, "origin": "person",
             "ownerUserId": owner_id(root), "createdAt": created, "updatedAt": created,
             "enabled": bool(item.get("enabled"))}
@@ -731,6 +731,10 @@ def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
     except (OSError, ValueError):
         return None
     _SHOWN_SKILLS[(root, skill_id)] = str(item["revision"])
+    return _skill_detail(root, item)
+
+
+def _skill_detail(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
     row = _skill(root, item, _home_created(root))
     return {**{k: v for k, v in row.items() if k != "enabled"}, "body": item["instructions"], "files": [],
             "pending": None, "changes": []}
@@ -773,8 +777,37 @@ def create_skill(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
     return detail
 
 
+def import_skill(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow.workbench.skill_import import SkillImportError, upload_draft
+
+    if "url" in body or "forAgentId" in body:
+        raise SkillImportError("本地技能仅支持上传 ZIP，需要审阅后手动启用",
+                               status=409, code="skill.import_unsupported")
+    if set(body) - {"zipBase64", "personal"} or "zipBase64" not in body:
+        raise SkillImportError("需要 ZIP 文件及可选的个人范围")
+    if "personal" in body and type(body["personal"]) is not bool:
+        raise SkillImportError("personal 需要布尔值")
+
+    store = _skill_store(root)
+    # The client omits the scope before a single-person library has personal skills.
+    if body.get("personal") is not True and (
+        "personal" in body or MemberRegistry(root).snapshot()["members"] or store.list()["items"]
+    ):
+        raise SkillImportError("这里仅支持导入到个人技能，请选择个人范围",
+                               status=409, code="skill.import_unsupported")
+    draft = upload_draft(body["zipBase64"])
+    if not draft["name"].strip():
+        raise SkillImportError("技能名称不能为空")
+    skill_id = _new_skill_id(store, draft["name"].strip())
+    _SHOWN_SKILLS.pop((root, skill_id), None)
+    item = store.save(skill_id, draft, uploaded=True, preview=True)
+    # Preserve the separate detail review for this imported revision.
+    return _skill_detail(root, item)
+
+
 def update_skill(root: str, skill_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """改说明或正文。技能登记处规定改过就要重新核对；改的人就是主人自己，所以原来启用的照旧启用。"""
+    """导入的技能改过后重新审阅，主人自己写的技能沿用原启用状态。"""
     unsupported = set(patch) - {"description", "body", "defaultForNewAgents"}
     if unsupported or patch.get("defaultForNewAgents") not in (None, False):
         raise ValueError(f"这些选项这里还不支持：{sorted(unsupported) or ['defaultForNewAgents']}")
@@ -785,10 +818,16 @@ def update_skill(root: str, skill_id: str, patch: Dict[str, Any]) -> Optional[Di
         return None
     if "description" not in patch and "body" not in patch:
         return skill_detail(root, skill_id)
+    uploaded = current.get("source") == "upload"
+    if uploaded:
+        _SHOWN_SKILLS.pop((root, skill_id), None)
     saved = store.save(skill_id, {"name": current["name"],
                                   "description": patch.get("description", current["description"]),
                                   "instructions": patch.get("body", current["instructions"]),
-                                  "revision": current["revision"]})
+                                  "revision": current["revision"]},
+                       uploaded=uploaded, preview=uploaded)
+    if uploaded:
+        return _skill_detail(root, saved)
     if current["enabled"]:
         store.set_enabled(skill_id, enabled=True, revision=saved["revision"])
     return skill_detail(root, skill_id)
@@ -804,7 +843,7 @@ def remove_skill(root: str, skill_id: str) -> bool:
     return True
 
 
-def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
+def set_main_skills(root: str, wanted: List[str], *, referenced: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """把主助理启用的个人技能改成 wanted。停用随时可以；启用只认主人在界面上看过正文的那个版本——
     没看过、或看过之后内容变了，都拒绝（SkillConflict），要主人重新打开核对。"""
     from src.workflow.workbench.personal_skills import SkillConflict
@@ -812,9 +851,10 @@ def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
     if store is None:
         raise ValueError("个人技能仅在私人助理范围管理")
     items = {str(item["id"]): item for item in store.list()["items"]}
-    unknown = [skill_id for skill_id in wanted if skill_id not in items]
+    unknown = [skill_id for skill_id in (wanted if referenced is None else referenced) if skill_id not in items]
     if unknown:
         raise LookupError(unknown[0])
+    changes = []
     for skill_id, item in items.items():
         enable = skill_id in wanted
         if enable == bool(item.get("enabled")):
@@ -822,6 +862,8 @@ def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
         revision = str(item["revision"])
         if enable and _SHOWN_SKILLS.get((root, skill_id)) != revision:
             raise SkillConflict("启用前请先打开这条技能核对正文")
+        changes.append((skill_id, enable, revision))
+    for skill_id, enable, revision in changes:
         store.set_enabled(skill_id, enabled=enable, revision=revision)
     return skills(root)
 
