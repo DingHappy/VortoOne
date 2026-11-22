@@ -1606,9 +1606,50 @@ async def channel_active_runs(org_id: str, channel_id: str, request: Request):
 
 
 @router.get(_ORG + "/active-runs")
-async def active_runs(org_id: str):
-    bridge = existing_bridge(_root(org_id))
-    return {"runs": bridge.active_runs() if bridge else []}
+async def active_runs(org_id: str, request: Request):
+    """主要聊天和 agent 此刻在跑的；agent 私聊里的事要所有者证明才列。"""
+    from src.web import app_work
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return {"runs": []}
+    bridge, staff = existing_bridge(root), app_staff.owner_proof(request)
+    main = bridge.active_runs() if bridge else []
+    approving = {task.id for task, _card in _staff_actions(root)} if staff else set()
+    return {"runs": await asyncio.to_thread(app_work.active_runs, root, main, approving, staff=staff)}
+
+
+@router.get(_ORG + "/task-manager")
+async def task_manager(org_id: str, request: Request, since: str = "", doneToday: str = ""):  # noqa: N803 —— 界面的查询参数名
+    from src.web import app_work
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "任务管理器只有所有者能看")
+    try:
+        after = app_work.since_time(since)
+    except ValueError:
+        return _error(400, "invalid", "since 要是 ISO 时间")
+    bridge, staff = existing_bridge(root), app_staff.owner_proof(request)
+    main = bridge.active_runs() if bridge else []
+    approving = {task.id for task, _card in _staff_actions(root)} if staff else set()
+    view = await asyncio.to_thread(app_work.task_manager, root, main, approving, after, staff=staff,
+                                   done_today=doneToday == "true")
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/waiting")
+async def waiting_on_me(org_id: str, request: Request, channelId: str = ""):  # noqa: N803 —— 界面的查询参数名
+    """等所有者处理的：审批页里那些，加上问他的问题。"""
+    from src.web import app_work
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "这些待办属于所有者")
+    bridge, staff = existing_bridge(root), app_staff.owner_proof(request)
+    rows = [views.approval(root, item) for item in bridge.pending_confirmations()] if bridge else []
+    if staff:
+        rows += [views.staff_action_approval(root, task, card) for task, card in _staff_actions(root)]
+        rows += await asyncio.to_thread(_staff_proposal_approvals, root)
+    view = await asyncio.to_thread(app_work.waiting, root, rows, staff=staff, channel_id=channelId)
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
 
 
 @router.post(_ORG + "/runs/{run_id}/cancel", status_code=204)
@@ -2166,9 +2207,7 @@ async def unread_team_threads(org_id: str, request: Request):
 
 _EMPTY: Dict[str, Any] = {
     "/unread-tasks": {"tasks": []},
-    "/waiting": {"items": [], "count": 0},
     "/machines/outages": {"outages": [], "targets": []},
-    "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
     "/mail/accounts": {"accounts": []},
