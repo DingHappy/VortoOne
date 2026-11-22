@@ -379,18 +379,40 @@ async def device_sign_out(request: Request, response: Response):
 
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
+async def _current_profile(root: str, request: Request, actor):
+    if actor.is_owner:
+        result = views.me(root)
+    else:
+        result = await _members_call(lambda: app_members.me(root, actor, request.state.member_account))
+    if isinstance(result, dict) and result["organizations"] and (not actor.is_owner or app_staff.owner_proof(request)):
+        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
+    return result
+
+
 @router.get("/api/app/me")
 async def me(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
-    account = getattr(request.state, "member_account", None)
-    if account is None:
-        result = views.me(root)
-    else:
-        result = await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
-    if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
-        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
-    return result
+    return await _current_profile(root, request, member_auth.principal(request, root))
+
+
+@router.get("/api/app/device-accounts")
+async def device_accounts(request: Request, response: Response):
+    """Report the account of this session. Each browser session holds at most one account."""
+    response.headers["Cache-Control"] = "no-store"
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not views.owner_connection():
+            return {"accounts": []}
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", "读取当前账号需要已认证的同源会话")
+    profile = await _current_profile(root, request, actor)
+    if isinstance(profile, JSONResponse):
+        return profile
+    user = profile["user"]
+    return {"accounts": [{"current": True, "user": {key: user[key] for key in ("id", "name", "email", "image")},
+                          "organizations": profile["organizations"], "unread": []}]}
 
 
 @router.patch("/api/app/me", status_code=204)

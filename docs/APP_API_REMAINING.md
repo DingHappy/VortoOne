@@ -1,10 +1,11 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 295 个，剩 **336** 个：
-- **要做：261**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 296 个，剩 **335** 个：
+- **要做：260**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
-- **按已定决定不做：12**
+- **按已定决定不做：13**
+- **暂缓：4**（投票与选择）
 
 表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办或已定不做。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
@@ -714,11 +715,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `/api/app/telemetry` | `system.telemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 | — | PUT | `/api/app/telemetry` | `system.setTelemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 
-### /api/app/device-accounts（2 个，要做 2）
+### /api/app/device-accounts（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `/api/app/device-accounts` | `account.deviceAccounts` |  |
+| ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前会话的账号和可见空间。第二个会话和未读汇总独立处理。 |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
 
 ### org/logo（2 个，要做 0）
