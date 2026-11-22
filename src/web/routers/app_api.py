@@ -669,10 +669,12 @@ async def invitation_preview(token: str):
 @router.post("/api/app/invitations/{token}/accept")
 async def accept_invitation(token: str, request: Request):
     """已登录的成员账号接受邀请、成为成员。所有者不需要、也不能接受邀请。"""
+    from src.web.auth import is_authed
     from src.workflow.members.accounts import MemberAccounts
     from src.workflow.members.registry import MemberRegistry
     root = os.getcwd()
-    account = member_auth.account(request)
+    # Use the same identity ordering as the authenticated routes when both sessions are present.
+    account = None if is_authed(request) else member_auth.account(request)
     if account is None or not member_auth.same_origin(request):
         return _error(401, "unauthorized", "先登录或注册，再接受邀请")
 
