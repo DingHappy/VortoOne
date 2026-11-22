@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_channels, app_gifs, app_members, app_prefs, app_staff, app_voice, member_auth
+from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channels import is_team_channel
 
@@ -1423,7 +1423,6 @@ _EMPTY: Dict[str, Any] = {
     "/waiting": {"items": [], "count": 0},
     "/missions": {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}},
     "/machines/outages": {"outages": [], "targets": []},
-    "/issues": {"issues": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
@@ -1724,6 +1723,165 @@ async def voice_audio(org_id: str, clip_id: str, request: Request):
         return _error(410, "voice.expired", "这段录音已经不在了")
     return Response(content=content, media_type=record["contentType"],
                     headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+# ── 任务看板 ──────────────────────────────────────────────────────────────────
+# 规矩在 web/app_board.py：所有者全部；成员看可见范围里的、凭「编辑资料」新建和编辑、只删自己建的。
+# 交给 agent 走现有派活入口，不另起执行器。
+
+async def _board(org_id: str, request: Request, action, *, edit: bool = False):
+    from src.workflow.board.store import BoardError, NotFound
+    from src.workflow.members.registry import Refused
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if edit and not app_board.can_edit(root, who):
+        return _error(403, "forbidden", "你没有编辑看板的权限")
+    try:
+        return await asyncio.to_thread(action, root, who)
+    except (NotFound, LookupError) as error:
+        return _error(404, "not_found", str(error))
+    except (Refused, PermissionError) as error:
+        return _error(403, "forbidden", str(error))
+    except (BoardError, ValueError) as error:
+        return _error(400, "invalid", str(error))
+    except OSError:
+        return _error(409, "unavailable", "看板记录读写失败")
+
+
+@router.get(_ORG + "/issues")
+async def list_issues(org_id: str, request: Request, q: str = "", projectId: str = ""):  # noqa: N803
+    return await _board(org_id, request, lambda root, who: {
+        "issues": app_board.listing(root, who, q=q, project_id=projectId)})
+
+
+@router.get(_ORG + "/issues/by-number/{number}")
+async def issue_by_number(org_id: str, number: int, request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.get(root, who, number))
+
+
+@router.post(_ORG + "/issues")
+async def create_issue(org_id: str, body: Dict[str, Any], request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.create(root, who, body), edit=True)
+
+
+@router.patch(_ORG + "/issues/{issue_id}")
+async def update_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.update(root, who, issue_id, body), edit=True)
+
+
+@router.delete(_ORG + "/issues/{issue_id}", status_code=204)
+async def delete_issue(org_id: str, issue_id: str, request: Request):
+    result = await _board(org_id, request, lambda root, who: app_board.delete(root, who, issue_id), edit=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.post(_ORG + "/issues/{issue_id}/share")
+async def share_issue(org_id: str, issue_id: str, request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.set_audience(
+        root, who, issue_id, {"mode": "everyone"}), edit=True)
+
+
+@router.put(_ORG + "/issues/{issue_id}/audience")
+async def set_issue_audience(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.set_audience(root, who, issue_id, body),
+                        edit=True)
+
+
+@router.put(_ORG + "/issues/{issue_id}/criteria/{criterion_id}")
+async def set_issue_criterion(org_id: str, issue_id: str, criterion_id: str, body: Dict[str, Any],
+                              request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.set_criterion(
+        root, who, issue_id, criterion_id, body.get("done")), edit=True)
+
+
+@router.get(_ORG + "/issues/{issue_id}/activity")
+async def issue_activity(org_id: str, issue_id: str, request: Request):
+    return await _board(org_id, request, lambda root, who: {"activity": app_board.activity(root, who, issue_id)})
+
+
+@router.post(_ORG + "/issues/{issue_id}/comments")
+async def comment_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
+    return await _board(org_id, request, lambda root, who: app_board.comment(root, who, issue_id, body), edit=True)
+
+
+@router.post(_ORG + "/issues/{issue_id}/ask-agent")
+async def ask_agent_on_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
+    proof = app_staff.owner_proof(request)
+    return await _board(org_id, request, lambda root, who: app_board.ask_agent(
+        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of), edit=True)
+
+
+@router.get(_ORG + "/issue-columns")
+async def issue_columns(org_id: str, request: Request):
+    from src.workflow.board.store import Board
+    return await _board(org_id, request, lambda root, who: {"columns": Board(root).columns()})
+
+
+@router.post(_ORG + "/issue-columns")
+async def add_issue_column(org_id: str, body: Dict[str, Any], request: Request):
+    from src.workflow.board.store import Board
+    return await _board(org_id, request, lambda root, who: {"columns": Board(root).add_column(body)}, edit=True)
+
+
+@router.patch(_ORG + "/issue-columns/{column_id}")
+async def update_issue_column(org_id: str, column_id: str, body: Dict[str, Any], request: Request):
+    from src.workflow.board.store import Board
+    return await _board(org_id, request, lambda root, who: {"columns": Board(root).update_column(column_id, body)},
+                        edit=True)
+
+
+@router.delete(_ORG + "/issue-columns/{column_id}")
+async def delete_issue_column(org_id: str, column_id: str, request: Request, moveTo: str = ""):  # noqa: N803
+    from src.workflow.board.store import Board
+    return await _board(org_id, request, lambda root, who: {
+        "columns": Board(root).delete_column(column_id, moveTo or None)}, edit=True)
+
+
+@router.get(_ORG + "/issue-projects")
+async def issue_projects(org_id: str, request: Request):
+    def read(root, who):
+        from src.workflow.board.store import Board
+        issues = [issue for issue in Board(root).issues() if app_board.can_see(issue, who)]
+        open_ones = [issue for issue in issues if issue["status"] not in ("done", "canceled")]
+        projects = [{**project, "open": sum(1 for issue in open_ones if issue["projectId"] == project["id"])}
+                    for project in Board(root).projects()]
+        return {"projects": projects, "unfiled": sum(1 for issue in open_ones if not issue["projectId"])}
+    return await _board(org_id, request, read)
+
+
+@router.post(_ORG + "/issue-projects")
+async def create_issue_project(org_id: str, body: Dict[str, Any], request: Request):
+    from src.workflow.board.store import Board
+    return await _board(org_id, request, lambda root, who: {**Board(root).create_project(body), "open": 0},
+                        edit=True)
+
+
+@router.patch(_ORG + "/issue-projects/{project_id}")
+async def update_issue_project(org_id: str, project_id: str, body: Dict[str, Any], request: Request):
+    from src.workflow.board.store import Board
+    return await _board(org_id, request, lambda root, who: Board(root).update_project(project_id, body), edit=True)
+
+
+@router.delete(_ORG + "/issue-projects/{project_id}", status_code=204)
+async def delete_issue_project(org_id: str, project_id: str, request: Request):
+    from src.workflow.board.store import Board
+    result = await _board(org_id, request, lambda root, who: Board(root).delete_project(project_id), edit=True)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+@router.get(_ORG + "/me/issues-view")
+async def issues_view(org_id: str, request: Request):
+    return await _sidebar(org_id, request, lambda root, who: {"view": app_prefs.issues_view(root, who)})
+
+
+@router.put(_ORG + "/me/issues-view")
+async def set_issues_view(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"view"}:
+        return _error(400, "invalid", "要给 view")
+    return await _sidebar(org_id, request, lambda root, who: {
+        "view": app_prefs.set_issues_view(root, who, body["view"])})
 
 
 # ── 每个人自己的侧栏 ──────────────────────────────────────────────────────────

@@ -2148,6 +2148,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/issues",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/machines",
     "methods": [
       "GET"
@@ -2986,6 +2992,108 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/issue-columns",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns/{column_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns/{column_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects/{project_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects/{project_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/by-number/{number}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/activity",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/ask-agent",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/comments",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/criteria/{criterion_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/share",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
     "methods": [
       "DELETE"
@@ -3004,6 +3112,18 @@
   {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
     "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/issues-view",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/issues-view",
+    "methods": [
+      "PUT"
+    ]
   },
   {
     "path": "/api/app/organizations/{org_id}/voice/allowed",
