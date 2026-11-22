@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 263 个，剩 **368** 个：
-- **要做：298**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 265 个，剩 **366** 个：
+- **要做：296**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -721,12 +721,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `/api/app/device-accounts` | `account.deviceAccounts` |  |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
 
-### org/logo（2 个，要做 2）
+### org/logo（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | DELETE | `ORG/logo` | `orgs.removeLogo` |  |
-| ☐ | PUT | `ORG/logo` | `orgs.setLogo` |  |
+| ☑ | DELETE | `ORG/logo` | `orgs.removeLogo` | 所有者可删除，本机工作区恢复默认标识 |
+| ☑ | PUT | `ORG/logo` | `orgs.setLogo` | 所有者可上传 ≤768 KiB、最长边 ≤512 像素的 8 位 RGB/RGBA 非隔行 PNG |
 
 ### org/team（2 个，要做 1）
 

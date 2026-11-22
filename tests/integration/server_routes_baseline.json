@@ -2358,6 +2358,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/logo",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/logo",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/members",
     "methods": [
       "GET"

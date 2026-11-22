@@ -24,8 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_personal_vault,
-    app_prefs, app_schedule, app_staff, app_voice, member_auth,
+    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
@@ -385,8 +385,12 @@ async def me(request: Request, response: Response):
     root = os.getcwd()
     account = getattr(request.state, "member_account", None)
     if account is None:
-        return views.me(root)
-    return await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
+        result = views.me(root)
+    else:
+        result = await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
+    if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
+        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
+    return result
 
 
 @router.patch("/api/app/me", status_code=204)
@@ -557,6 +561,50 @@ async def update_home(org_id: str, body: Dict[str, Any], request: Request):
     """界面「改空间名字与背景」的旧写法，和 PATCH …/settings 同一套规矩。"""
     result = await _patch_settings(org_id, body, request)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+async def _change_workspace_logo(org_id: str, request: Request, *, remove: bool = False):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "工作区 Logo")
+    if refused:
+        return refused
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "更新工作区 Logo 需要所有者的同源会话")
+    try:
+        if remove:
+            await asyncio.to_thread(app_org_logo.remove_logo, root)
+            return Response(status_code=204)
+        if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+            return _error(415, "logo.invalid", "工作区 Logo 只接受 JSON 请求")
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > app_org_logo.MAX_REQUEST_BYTES:
+                return _error(413, "logo.too_large", "工作区 Logo 请求过大")
+            raw.extend(chunk)
+        try:
+            body = json.loads(raw)
+        except (ValueError, RecursionError):
+            return _error(400, "logo.invalid", "工作区 Logo 请求格式无效")
+        logo = await asyncio.to_thread(app_org_logo.set_logo, root, body)
+        return JSONResponse({"logo": logo}, headers={"Cache-Control": "no-store"})
+    except app_org_logo.LogoTooLarge as error:
+        return _error(413, "logo.too_large", str(error))
+    except app_org_logo.InvalidLogo as error:
+        return _error(400, "logo.invalid", str(error))
+    except (HomeMaintenanceError, OSError):
+        return _error(409, "logo.unavailable", "无法保存或删除工作区 Logo")
+
+
+@router.put(_ORG + "/logo")
+async def set_workspace_logo(org_id: str, request: Request):
+    return await _change_workspace_logo(org_id, request)
+
+
+@router.delete(_ORG + "/logo", status_code=204)
+async def delete_workspace_logo(org_id: str, request: Request):
+    return await _change_workspace_logo(org_id, request, remove=True)
 
 
 @router.get(_ORG + "/members")
