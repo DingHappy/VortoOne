@@ -2532,6 +2532,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/roles/{role_id}/members/preview",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines",
     "methods": [
       "GET"

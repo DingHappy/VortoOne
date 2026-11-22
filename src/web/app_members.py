@@ -210,6 +210,12 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
     return MemberRegistry(root).set_member_groups(actor, member_id, role_ids)
 
 
+def role_mail_loss(root: str, actor: Principal, role_id: str, member_ids: List[str]) -> Dict[str, Any]:
+    MemberRegistry(root).check_group_grants(actor, role_id, member_ids)
+    # 工作区没有 agent 邮箱绑定。本机 IMAP 是独立能力，授予身份组不会撤掉它的访问。
+    return {"mailboxes": []}
+
+
 def removal_preview(root: str, actor: Principal, member_id: str) -> Dict[str, Any]:
     """读已在册成员的移除预览，实际移除仍要重新核对权限。"""
     if not MemberRegistry(root).manages(actor, member_id):

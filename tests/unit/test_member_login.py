@@ -321,6 +321,70 @@ def test_password_reset_by_whoever_manages_the_member(home):
                       ).status_code == 200
 
 
+def test_role_mail_loss_preview_unblocks_role_assignment_without_writing(home):
+    role = _group(home, "财务", ["view_usage"])
+    first = _join(home, email="first@example.test")
+    second = _join(home, email="second@example.test", roleIds=[role])
+    first_id = first.get("/api/app/me").json()["user"]["id"]
+    second_id = second.get("/api/app/me").json()["user"]["id"]
+    owner, base = home["owner"], home["base"]
+    members = owner.get(base + "/members").json()
+
+    path = f"{base}/roles/{role}/members/preview"
+    preview = owner.post(path, json={"userIds": [first_id, second_id, first_id]})
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "no-store"
+    assert preview.json() == {"mailboxes": []}
+    assert owner.get(base + "/members").json() == members
+    saved = owner.put(f"{base}/members/{first_id}/roles", json={"roleIds": [role], "mailLossSeen": []})
+    assert saved.status_code == 200
+    assert saved.json() == {"roleIds": [role]}
+    assert owner.post(path, json={"userIds": [first_id]}).json() == {"mailboxes": []}
+
+
+def test_role_mail_loss_preview_uses_the_role_assignment_owner_boundary(home, monkeypatch):
+    role = _group(home, "财务", ["view_usage"])
+    managers = _group(home, "成员管理员", ["manage_members"])
+    manager = _join(home, email="manager@example.test", roleIds=[managers])
+    member = _join(home, email="member@example.test")
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    path = f"{home['base']}/roles/{role}/members/preview"
+    body = {"userIds": [member_id]}
+
+    visitor = TestClient(home["app"])
+    assert visitor.post(path, json=body).status_code == 401
+    for client in (manager, member):
+        assert client.post(path, json=body).status_code == 403
+        assert client.put(f"{home['base']}/members/{member_id}/roles", json={"roleIds": [role]}).status_code == 403
+    owner_cookie = TestClient(home["app"])
+    assert owner_cookie.post("/api/auth/login", json={"token": TOKEN}, headers=ORIGIN).status_code == 200
+    assert owner_cookie.post(path, json=body, headers=ORIGIN).json() == {"mailboxes": []}
+    assert owner_cookie.post(path, json=body).status_code == 403
+    denied = owner_cookie.post(path, json=body, headers={"Origin": "https://other.example.test"})
+    assert denied.status_code == 403
+    assert denied.headers["cache-control"] == "no-store"
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert visitor.post(path, json=body, headers=ORIGIN).status_code == 403
+
+
+def test_role_mail_loss_preview_checks_the_workspace_role_and_each_member(home):
+    role = _group(home, "财务", ["view_usage"])
+    member = _join(home, email="member@example.test")
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    owner, base = home["owner"], home["base"]
+    path = f"{base}/roles/{role}/members/preview"
+    assert owner.post(path, json={"userIds": [member_id, "unknown-member"]}).status_code == 404
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    assert owner.post(path, json={"userIds": [owner_id]}).status_code == 404
+    assert owner.post(f"{base}/roles/unknown-role/members/preview", json={"userIds": [member_id]}).status_code == 404
+    other = f"/api/app/organizations/unknown-workspace/roles/{role}/members/preview"
+    assert owner.post(other, json={"userIds": [member_id]}).status_code == 404
+    assert owner.post(path, json={"userIds": member_id}).status_code == 422
+    assert owner.post(path, json={"userIds": [1]}).status_code == 422
+    assert owner.post(path, json={"userIds": [member_id], "roleIds": [role]}).status_code == 422
+    assert owner.post(path, json={"userIds": [member_id] * 501}).status_code == 422
+
+
 def test_a_removed_member_is_out_at_once(home):
     browser = _join(home)
     member_id = browser.get("/api/app/me").json()["user"]["id"]
