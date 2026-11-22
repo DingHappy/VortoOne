@@ -629,12 +629,47 @@ def routines(root: str) -> List[Dict[str, Any]]:
                {"createdByUserId": owner_id(root), "awaitingTakeoverResume": registry.awaiting_takeover_resume(item)}
                if item["state"].get("takeover") else {}),
         })
+    rows.extend(_pending_routines(root, {row["id"] for row in rows}))
     history = routine_history(root)
     for row in rows:
         past = history.get(row["id"])
         if past:
             row.update(past)
             row["usage"]["runs"] = past["health"]["total"]
+    return rows
+
+
+def _pending_routines(root: str, known: Set[str]) -> List[Dict[str, Any]]:
+    """还在等主人核对的新例行工作：列出来但不运行（state=waiting_person），核对通过后换成真的那一条（同一个 id）。"""
+    from src.web import app_prefs
+    from src.workflow.staff.approvals import StaffApprovals
+    try:
+        from_ui = app_prefs.ui_routine_proposals(root)
+        pending = StaffApprovals(root).pending_routine_reviews() if from_ui else []
+    except (OSError, ValueError):
+        return []
+    rows = []
+    for item in pending:
+        if item["id"] not in from_ui:
+            continue
+        snapshot = item["snapshot"]
+        data = snapshot["data"]
+        if snapshot.get("previous") or data["id"] in known:
+            continue
+        agent = member_agent_id(root, str(data["member"]))
+        rows.append({
+            "id": data["id"], "name": data["name"], "agentId": agent, "prompt": data["prompt"],
+            "target": {"type": "conversation", "channelId": dm_channel_id(agent), "threadId": None},
+            "trigger": _trigger(str(data["schedule"]), str(data["timezone"])),
+            "active": False, "nextRunAt": None, "createdAt": _iso(item.get("created_at")), "access": "read",
+            "report": "always" if data.get("delivery") == "notify" else "when_new",
+            "pausedReason": None, "failuresInRow": 0, "state": "waiting_person",
+            "waitingFor": {"kind": "approval", "proposalId": item["id"]},
+            "brain": {"kind": "model", "machineName": None},
+            "health": {"ok": 0, "silent": 0, "failed": 0, "skipped": 0, "missed": 0, "total": 0},
+            "canSeeDetails": True, "canManage": False, "lastRun": None, "recentRuns": [],
+            "usage": {"runs": 0, "tokens": 0, "costNanoUsd": 0, "billedTo": "api"}, "ownActions": [],
+        })
     return rows
 
 

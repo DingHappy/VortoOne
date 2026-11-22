@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_channels, app_gifs, app_members, app_prefs, app_staff, app_voice, member_auth
+from src.web import app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channels import is_team_channel
 
@@ -1942,6 +1942,122 @@ async def propose_member_routine(org_id: str, body: Dict[str, Any], request: Req
     return await _members_call(propose, write=True)
 
 
+# ── 新建例行工作：先成为待核对的提议 ──────────────────────────────────────────
+# 例行工作到点会在没人看着时运行，所以和助理、成员提的一样，要主人在「核对例行工作提议」里按摘要确认后
+# 才登记（ADR-019 之后的既有流程）。界面新建的那一条在列表里显示为「等你核对」，确认后变成同一个 id 的真例行工作。
+
+def _schedule_error(error: "app_schedule.ScheduleError") -> Dict[str, Any]:
+    return {"ok": False, "error": str(error), "code": error.code}
+
+
+def _home_timezone(root: str, wanted: Any) -> str:
+    return wanted if isinstance(wanted, str) and wanted else (views.settings(root)["timezone"] or "UTC")
+
+
+@router.post(_ORG + "/routines/parse-schedule")
+async def parse_schedule(org_id: str, body: Dict[str, Any]):
+    root = _root(org_id)
+    try:
+        info = app_schedule.parse_phrase(str(body.get("phrase") or ""), _home_timezone(root, body.get("timezone")))
+    except (app_schedule.ScheduleError, ValueError) as error:
+        return {"ok": False, "error": str(error)}
+    return {"ok": True, "cron": info["cron"], "description": info["description"], "timezone": info["rule"]["timezone"]}
+
+
+@router.post(_ORG + "/routines/parse-rule")
+async def parse_rule(org_id: str, body: Dict[str, Any]):
+    root = _root(org_id)
+    try:
+        return app_schedule.parse_phrase(str(body.get("phrase") or ""), _home_timezone(root, body.get("timezone")))
+    except app_schedule.ScheduleError as error:
+        return _schedule_error(error)
+    except ValueError as error:
+        return {"ok": False, "error": str(error), "code": "invalid"}
+
+
+@router.post(_ORG + "/routines/describe-rule")
+async def describe_rule(org_id: str, body: Dict[str, Any]):
+    _root(org_id)
+    try:
+        return app_schedule.rule_info(body.get("rule"))
+    except app_schedule.ScheduleError as error:
+        return _schedule_error(error)
+
+
+def _routine_schedule(root: str, trigger: Any) -> tuple:
+    """界面的 trigger → (排期写法, 时区)。只认按时间的三种；事件、邮件、webhook、连接器触发没有对应能力。"""
+    if not isinstance(trigger, dict) or trigger.get("type") not in ("schedule", "once"):
+        raise app_schedule.ScheduleError("routine.trigger_unsupported", "这里的例行工作只能按时间触发")
+    if trigger["type"] == "once":
+        at = trigger.get("at")
+        tz = _home_timezone(root, trigger.get("timezone"))
+        from src.scheduling.routine_schedule import instant, zone
+        zone(tz)
+        try:
+            moment = instant(at)
+        except (ValueError, TypeError) as error:
+            raise app_schedule.ScheduleError("invalid", "一次性的时间要带时区") from error
+        return f"once {moment.isoformat()}", tz
+    if "rule" in trigger:
+        info = app_schedule.rule_info(trigger["rule"])
+    else:
+        info = app_schedule.parse_phrase(str(trigger.get("phrase") or ""),
+                                         _home_timezone(root, trigger.get("timezone")))
+    return info["cron"], info["rule"]["timezone"]
+
+
+def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    import uuid
+    from src.gateway.main_conversation import main_chat_key
+    from src.workflow.staff.approvals import StaffApprovals
+    allowed = {"name", "agentId", "prompt", "target", "trigger", "access", "report"}
+    if set(body) - allowed:
+        raise ValueError(f"这些选项这里还不支持：{sorted(set(body) - allowed)}")
+    agent_id = body.get("agentId")
+    if not isinstance(agent_id, str):
+        raise ValueError("要选一位 agent")
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        if agent_id == views.main_agent_id(root):
+            raise ValueError("例行工作要交给一位专员；主助理可以替你提议")
+        raise LookupError("没有这个 agent")
+    target = body.get("target") or {"type": "dm"}
+    if target != {"type": "dm"}:
+        raise ValueError("例行工作的结果目前只能发到和这位 agent 的私聊")
+    if body.get("report") not in (None, "always", "when_new"):
+        raise ValueError("report 只能是 always 或 when_new")
+    prompt = body.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("要写这件事要做什么")
+    name = body.get("name") if isinstance(body.get("name"), str) and body["name"].strip() else prompt.strip()[:30]
+    schedule, timezone = _routine_schedule(root, body.get("trigger"))
+    owner = main_chat_key(root)
+    if not owner:
+        raise ValueError("主要聊天还没登记，暂时不能提议例行工作")
+    data = {"id": "routine-" + uuid.uuid4().hex[:12], "name": name.strip()[:80], "member": staff_id,
+            "prompt": prompt.strip(), "schedule": schedule, "timezone": timezone,
+            "delivery": "notify" if body.get("report") == "always" else "review", "enabled": True,
+            "token_budget": 0, "acceptance": []}
+    proposal = StaffApprovals(root).propose(owner, "routine", data, f"主人在界面上新建例行工作「{data['name']}」")
+    app_prefs.remember_ui_routine_proposal(root, proposal["id"])
+    return next(row for row in views.routines(root) if row["id"] == data["id"])
+
+
+@router.post(_ORG + "/routines")
+async def create_routine(org_id: str, body: Dict[str, Any], request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "新建例行工作需要已认证的所有者")
+    try:
+        return await asyncio.to_thread(_propose_routine, root, body)
+    except app_schedule.ScheduleError as error:
+        return _error(400, error.code, str(error))
+    except LookupError as error:
+        return _error(404, "not_found", str(error))
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+
+
 @router.get(_ORG + "/routines/proposals/review")
 async def routine_proposal_reviews(org_id: str, request: Request):
     root = _root(org_id)
@@ -1953,11 +2069,14 @@ async def routine_proposal_reviews(org_id: str, request: Request):
         from src.workflow.staff.approvals import StaffApprovals
         members = MemberRegistry(root).snapshot()["members"]
         proposals = []
-        for item in StaffApprovals(root).pending_member_routine_reviews():
+        from_ui = app_prefs.ui_routine_proposals(root)
+        for item in StaffApprovals(root).pending_routine_reviews():
+            if not item["snapshot"].get("initiator") and item["id"] not in from_ui:
+                continue                     # 助理替主人提的不在这里核对
             snapshot = item["snapshot"]
             data = snapshot["data"]
             grants = snapshot["role_snapshot"]["grants"]
-            submitter = members.get(snapshot["initiator"])
+            submitter = members.get(snapshot.get("initiator") or "")
             proposals.append({**_routine_proposal_row(item),
                               "submitterName": submitter["name"] if submitter else None, "reason": item["reason"],
                               "prompt": data["prompt"], "acceptance": data["acceptance"],
@@ -1992,8 +2111,13 @@ async def decide_routine_proposal(org_id: str, proposal_id: str, body: _RoutineP
         from src.workflow.staff.approvals import StaffApprovals
         from src.workflow.staff.owner_confirmation import owner_route
         with owner_route(root):
-            item = StaffApprovals(root).decide_member_routine(
-                proposal_id, body.approve, body.digest, nonce=body.nonce, round=body.round, instance=body.instance)
+            approvals = StaffApprovals(root)
+            if proposal_id in app_prefs.ui_routine_proposals(root):
+                item = approvals.decide_routine(proposal_id, body.approve, body.digest, nonce=body.nonce,
+                                                round=body.round, instance=body.instance)
+            else:
+                item = approvals.decide_member_routine(proposal_id, body.approve, body.digest, nonce=body.nonce,
+                                                       round=body.round, instance=body.instance)
         return {"id": item["id"], "status": item["status"]}
 
     try:
