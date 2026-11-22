@@ -11,10 +11,14 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import os
 import re
+import shutil
+import stat
 import tempfile
+from threading import Lock
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +34,7 @@ def _slugify(title: str) -> str:
 
 # 制品体积上限：默认 16 MiB（对齐 Claude Code），VORTOONE_ARTIFACT_MAX_BYTES 可覆盖。
 DEFAULT_MAX_BYTES = 16 * 1024 * 1024
+_WINDOWS_ARTIFACT_LOCK = Lock()
 
 
 def max_bytes() -> int:
@@ -90,6 +95,34 @@ class ArtifactStore:
     def _dir(self, artifact_id: str) -> Path:
         return self.root / artifact_id
 
+    @contextmanager
+    def _mutation(self):
+        """Serialize publishing, pinning and moves of a whole artifact directory."""
+        if self.root.is_symlink():
+            raise OSError("制品目录不能是符号链接")
+        self.root.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.root / ".lock", os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "r+b") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise OSError("制品锁不可用")
+            if os.name != "nt":
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                yield
+                return
+            with _WINDOWS_ARTIFACT_LOCK:
+                import msvcrt
+                if not os.fstat(handle.fileno()).st_size:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
     def exists(self, artifact_id: str) -> bool:
         aid = self._safe_id(artifact_id)
         return bool(aid and (self._dir(aid) / "meta.json").is_file())
@@ -103,7 +136,8 @@ class ArtifactStore:
         aid = self._safe_id(artifact_id) if artifact_id else None
         if not aid:
             aid = f"{_slugify(title)}-{uuid.uuid4().hex[:6]}"
-        return self._publish_at(self._dir(aid), aid, title, html, kind)
+        with self._mutation():
+            return self._publish_at(self._dir(aid), aid, title, html, kind)
 
     def publish_new(self, title: str, html: str) -> dict:
         """Publish a new HTML artifact only once all initial files are present."""
@@ -112,7 +146,8 @@ class ArtifactStore:
         with tempfile.TemporaryDirectory(prefix=".upload-", dir=self.root) as temporary:
             destination = Path(temporary) / aid
             meta = self._publish_at(destination, aid, title, html, "html")
-            destination.rename(self._dir(aid))
+            with self._mutation():
+                destination.rename(self._dir(aid))
         return meta
 
     @staticmethod
@@ -154,24 +189,29 @@ class ArtifactStore:
     def delete(self, artifact_id: str, *, strict: bool = False) -> bool:
         """删除一个制品（整目录）。成功 True；id 非法或不存在 False。"""
         aid = self._safe_id(artifact_id)
-        if not aid:
+        if not aid or not self.root.is_dir():
             return False
-        d = self._dir(aid)
-        if not d.is_dir():
-            return False
-        import shutil
-        shutil.rmtree(d, ignore_errors=not strict)
-        return True
+        with self._mutation():
+            d = self._dir(aid)
+            if not d.is_dir():
+                return False
+            shutil.rmtree(d, ignore_errors=not strict)
+            return True
 
     def meta(self, artifact_id: str) -> Optional[dict]:
         aid = self._safe_id(artifact_id)
         if not aid:
             return None
-        p = self._dir(aid) / "meta.json"
+        return self._read_meta(self._dir(aid))
+
+    @staticmethod
+    def _read_meta(directory: Path) -> Optional[dict]:
+        p = directory / "meta.json"
         if not p.is_file():
             return None
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            meta = json.loads(p.read_text(encoding="utf-8"))
+            return meta if isinstance(meta, dict) else None
         except Exception:  # noqa: BLE001
             return None
 
@@ -221,8 +261,12 @@ class ArtifactStore:
         返回更新后的 meta；id/版本非法返回 None。
         """
         aid = self._safe_id(artifact_id)
-        if not aid:
+        if not aid or not self.root.is_dir():
             return None
+        with self._mutation():
+            return self._pin(aid, version)
+
+    def _pin(self, aid: str, version: Optional[int]) -> Optional[dict]:
         m = self.meta(aid)
         if not m:
             return None

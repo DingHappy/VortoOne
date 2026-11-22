@@ -1239,6 +1239,12 @@ def _artifact(root: str, meta: Dict[str, Any], *, desktop_upload: bool = False) 
     return row
 
 
+def trashed_artifact(root: str, meta: Dict[str, Any], deleted_at: datetime, purge_at: datetime, *,
+                     desktop_upload: bool = False) -> Dict[str, Any]:
+    return {**_artifact(root, meta, desktop_upload=desktop_upload),
+            "deletedAt": deleted_at.isoformat(), "purgeAt": purge_at.isoformat()}
+
+
 def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
               include_uploads: bool = False) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore

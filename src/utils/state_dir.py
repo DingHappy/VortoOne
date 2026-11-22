@@ -219,6 +219,8 @@ _STATE_ENTRIES = [
     "session_events/",
     "artifacts/",
     "desktop-artifacts/",
+    "artifact-trash/",
+    "desktop-artifact-trash/",
     "states/",
     "projects/",
     "ai_apps/",
