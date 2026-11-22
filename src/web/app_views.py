@@ -899,31 +899,6 @@ def agent_access(root: str, agent_id: str) -> Dict[str, Any]:
                           "state": "granted", "tools": tools}]}
 
 
-# ── 通知 ─────────────────────────────────────────────────────────────────────
-
-def notifications(root: str, *, filter_name: str = "", limit: int = 50) -> Dict[str, Any]:
-    """后台通知台账（定时作业结果、巡视发现等）整理成界面的通知，新的在前。
-
-    台账不记「读没读」，所以这些通知一律按已读列出：只进「全部」，不计未读数、不进「等我处理」，
-    免得界面上挂一个永远消不掉的红点。真正要主人处理的事在审批里。"""
-    from src.scheduling.notices import load_notices
-    agent = main_agent_id(root)
-    items = []
-    for row in load_notices(root, max(1, min(int(limit), 100))):
-        text, stamp = str(row.get("text") or ""), _iso(row.get("ts"))
-        if not text:
-            continue
-        key = hashlib.sha256(f"{row.get('ts')}\0{row.get('source')}\0{text}".encode("utf-8", "surrogatepass"))
-        items.append({"id": _id("notice", key.hexdigest()), "kind": "agent_reply", "waiting": False,
-                      "actors": [{"type": "agent", "id": agent}], "count": 1,
-                      "source": {"channelId": dm_channel_id(agent)}, "latest": {"text": text},
-                      "readAt": stamp, "doneAt": None, "snoozedUntil": None, "createdAt": stamp,
-                      "updatedAt": stamp})
-    counts = {"all": len(items), "mentions": 0, "waiting": 0, "unread": 0, "reactions": 0}
-    shown = items if filter_name in {"", "all"} else []
-    return {"items": shown, "counts": counts, "nextCursor": None}
-
-
 # ── 运行记录与用量：来自任务台账和模型用量账本 ────────────────────────────────
 
 _RUN_STATUS = {"queued": "queued", "running": "running", "blocked": "running", "done": "done"}

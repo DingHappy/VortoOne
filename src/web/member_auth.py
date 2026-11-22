@@ -158,6 +158,7 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/routines", {"routines": []}),
     (_ORG + r"/notifications", {"items": [], "counts": {"all": 0, "mentions": 0, "waiting": 0, "unread": 0,
                                                        "reactions": 0}, "nextCursor": None}),
+    (_ORG + r"/notifications/count", {"unread": 0, "waiting": 0}),
     (_ORG + r"/runs", {"runs": []}),
     (_ORG + r"/active-runs", {"runs": []}),
     (_ORG + r"/usage", {"usage": []}),

@@ -2352,6 +2352,36 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/notifications/done-all",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/read-all",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/{notice_id}/done",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/{notice_id}/read",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/{notice_id}/snooze",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/overview",
     "methods": [
       "GET"
