@@ -21,13 +21,15 @@ from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDis
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
 from src.gateway import app_protocol as F
+from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_artifact_upload
 from src.web import app_artifacts
 from src.web import app_views as views
 from src.web import (
     app_board, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox, app_org_logo,
-    app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
+    app_personal_vault, app_prefs, app_profile_avatar, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
@@ -717,6 +719,99 @@ async def people(org_id: str, request: Request, response: Response):
     return await _members_call(lambda: {"people": app_members.people(root, who)})
 
 
+_AVATAR_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+
+
+def _avatar_error(status: int, code: str, message: str) -> JSONResponse:
+    result = _error(status, code, message)
+    result.headers.update(_AVATAR_HEADERS)
+    return result
+
+
+def _avatar_actor(request: Request, root: str):
+    who = _who(request, root)
+    return who if who and (not who.is_owner or app_staff.owner_proof(request)) else None
+
+
+async def _avatar_body(request: Request):
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise ValueError("头像上传需要 JSON 正文")
+    limit = app_profile_avatar.MAX_REQUEST_BYTES
+    try:
+        declared = int(request.headers.get("content-length", "0"))
+    except ValueError as error:
+        raise ValueError("头像正文长度无效") from error
+    if declared < 0:
+        raise ValueError("头像正文长度无效")
+    if declared > limit:
+        raise app_profile_avatar.AvatarTooLarge("头像最大 768 KiB")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > limit:
+            raise app_profile_avatar.AvatarTooLarge("头像最大 768 KiB")
+        raw.extend(chunk)
+    try:
+        return json.loads(raw)
+    except (ValueError, RecursionError) as error:
+        raise ValueError("头像 JSON 无效") from error
+
+
+@router.put(_ORG + "/me/avatar")
+async def set_person_avatar(org_id: str, request: Request, response: Response):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    who = _avatar_actor(request, root)
+    if who is None:
+        return _avatar_error(403, "forbidden", "更改头像需要已认证的空间成员")
+    try:
+        body = await _avatar_body(request)
+        avatar_url = await asyncio.to_thread(app_profile_avatar.set_avatar, root, org_id, who.id, body)
+    except app_profile_avatar.AvatarTooLarge as error:
+        return _avatar_error(413, "avatar_too_large", str(error))
+    except ValueError as error:
+        return _avatar_error(400, "invalid", str(error))
+    except (OSError, HomeMaintenanceError):
+        return _avatar_error(409, "unavailable", "无法保存头像")
+    response.headers.update(_AVATAR_HEADERS)
+    return {"avatarUrl": avatar_url}
+
+
+@router.delete(_ORG + "/me/avatar", status_code=204)
+async def delete_person_avatar(org_id: str, request: Request):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    who = _avatar_actor(request, root)
+    if who is None:
+        return _avatar_error(403, "forbidden", "更改头像需要已认证的空间成员")
+    try:
+        await asyncio.to_thread(app_profile_avatar.remove_avatar, root, who.id)
+    except (OSError, HomeMaintenanceError):
+        return _avatar_error(409, "unavailable", "无法删除头像")
+    return Response(status_code=204, headers=_AVATAR_HEADERS)
+
+
+@router.get(_ORG + "/people/{person_id}/avatar")
+async def person_avatar(org_id: str, person_id: str, request: Request, v: str = Query("", max_length=24)):
+    from src.workflow.members.registry import Damaged, Missing
+
+    root = _root(org_id)
+    if _avatar_actor(request, root) is None:
+        return _avatar_error(403, "forbidden", "读取头像需要已认证的空间成员")
+    try:
+        if person_id != views.owner_id(root):
+            await asyncio.to_thread(MemberRegistry(root).standing, person_id)
+        content_type, data = await asyncio.to_thread(app_profile_avatar.media, root, person_id, v)
+    except (Missing, FileNotFoundError):
+        return _avatar_error(404, "not_found", "没有这个头像")
+    except (Damaged, OSError, ValueError):
+        return _avatar_error(409, "unavailable", "无法读取头像")
+    headers = {**_AVATAR_HEADERS, "Cross-Origin-Resource-Policy": "same-origin"}
+    return Response(data, media_type=content_type, headers=headers)
+
+
 @router.put(_ORG + "/me/status")
 async def set_person_status(org_id: str, body: Dict[str, Any], request: Request, response: Response):
     root = _root(org_id)
@@ -924,6 +1019,74 @@ async def resend_invitation(org_id: str, invitation_id: str, body: Dict[str, Any
     return result
 
 
+_JOIN_REQUESTS = _ORG + "/join-requests"
+
+
+async def _join_suggestion_call(org_id: str, request: Request, response: Response, action, *,
+                                owner: bool, write: bool = False, empty: bool = False):
+    from src.workflow.members.registry import JoinSuggestionConflict
+
+    root = _root(org_id)
+    who = _who(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if who is None or who.is_owner != owner or (owner and not app_staff.owner_proof(request)):
+        result = _error(403, "forbidden", "此操作需要已认证的所有者" if owner else "此操作需要已加入空间的成员")
+    else:
+        try:
+            result = await _members_call(lambda: action(root, who), write=write)
+        except JoinSuggestionConflict as error:
+            status = 400 if error.code == "join.invalid_email" else 409
+            result = _error(status, error.code, str(error))
+    if empty and result is None:
+        result = Response(status_code=204)
+    if isinstance(result, Response):
+        result.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.get(_JOIN_REQUESTS)
+async def list_join_suggestions(org_id: str, request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=True,
+                                       action=lambda root, who: {"requests": app_members.join_suggestions(root, who)})
+
+
+@router.get(_JOIN_REQUESTS + "/mine")
+async def my_join_suggestions(org_id: str, request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=False, action=lambda root, who: {
+        "suggestions": app_members.join_suggestions(root, who)})
+
+
+@router.post(_JOIN_REQUESTS + "/suggest")
+async def suggest_join(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=False, write=True,
+                                       action=lambda root, who: app_members.suggest_join(root, who, body))
+
+
+@router.delete(_JOIN_REQUESTS + "/{suggestion_id}", status_code=204)
+async def cancel_join_suggestion(org_id: str, suggestion_id: str, request: Request, response: Response):
+    from src.workflow.members.registry import MemberRegistry
+
+    return await _join_suggestion_call(org_id, request, response, owner=False, write=True, empty=True,
+                                       action=lambda root, who: MemberRegistry(root).close_join_suggestion(
+                                           who, suggestion_id))
+
+
+@router.post(_JOIN_REQUESTS + "/{suggestion_id}/approve")
+async def approve_join_suggestion(org_id: str, suggestion_id: str, body: Dict[str, Any],
+                                  request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=True, write=True,
+                                       action=lambda root, who: app_members.approve_join_suggestion(
+                                           root, who, suggestion_id, body, _origin(request)))
+
+
+@router.post(_JOIN_REQUESTS + "/{suggestion_id}/deny", status_code=204)
+async def deny_join_suggestion(org_id: str, suggestion_id: str, body: Dict[str, Any], request: Request,
+                               response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=True, write=True, empty=True,
+                                       action=lambda root, who: app_members.deny_join_suggestion(
+                                           root, who, suggestion_id, body))
+
+
 @router.patch(_ORG + "/members/{user_id}", status_code=204)
 async def change_member_role(org_id: str, user_id: str, body: Dict[str, Any], request: Request):
     """这里的成员不分「管理员 / 普通成员」两档：权限按身份组给（PUT …/members/{id}/roles）。
@@ -967,10 +1130,12 @@ async def expired_invitation_state(token: str, response: Response):
 @router.post("/api/app/invitations/{token}/accept")
 async def accept_invitation(token: str, request: Request):
     """已登录的成员账号接受邀请、成为成员。所有者不需要、也不能接受邀请。"""
+    from src.web.auth import is_authed
     from src.workflow.members.accounts import MemberAccounts
     from src.workflow.members.registry import MemberRegistry
     root = os.getcwd()
-    account = member_auth.account(request)
+    # Use the same identity ordering as the authenticated routes when both sessions are present.
+    account = None if is_authed(request) else member_auth.account(request)
     if account is None or not member_auth.same_origin(request):
         return _error(401, "unauthorized", "先登录或注册，再接受邀请")
 
@@ -2826,6 +2991,26 @@ async def thread_mission_draft(org_id: str, thread_id: str, request: Request):
                                   _mission_view(drafts, drafts.get(actor, thread_id, by_thread=True)))
 
 
+@router.get(_ORG + "/threads/{thread_id}/tasks")
+async def mission_draft_thread_tasks(org_id: str, thread_id: str, request: Request):
+    def read(drafts, actor):
+        drafts.get(actor, thread_id, by_thread=True)
+        # 草案不会派活，也没有关联的运行会话。其它任务台账与这个话题无关。
+        return {"tasks": []}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/files")
+async def mission_draft_files(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        drafts.get(actor, mission_id)
+        # 草案存于频道数据库，尚未创建隔离目录或任何 Mission 文件。
+        return {"files": [], "editedOnMachine": []}
+
+    return await _mission_request(org_id, request, read)
+
+
 @router.get(_ORG + "/missions/{mission_id}/plan")
 async def mission_draft_plan(org_id: str, mission_id: str, request: Request):
     return await _mission_request(org_id, request, lambda drafts, actor: {
@@ -2848,6 +3033,24 @@ async def mission_draft_participants(org_id: str, mission_id: str, request: Requ
         row = drafts.get(actor, mission_id)
         return {"owner": {"userId": drafts.channels.history.person_id(row["owner"]),
                           "name": drafts.channels.owner_name}, "participants": []}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/settings")
+async def mission_draft_settings(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        row = drafts.get(actor, mission_id)
+        return {
+            "missionId": row["id"],
+            "rules": [],
+            "stats": {"auto": 0, "asked": 0, "blocked": 0},
+            "agentDefault": {
+                "commandApproval": "always",
+                "canSet": False,
+                "ownerId": drafts.channels.history.person_id(row["owner"]),
+            },
+        }
 
     return await _mission_request(org_id, request, read)
 
@@ -3432,6 +3635,32 @@ async def _notifications_call(request: Request, org_id: str, action, *, write=Fa
         return _error(400, "invalid", str(error))
 
 
+@router.get(_ORG + "/notification-prefs")
+async def notification_preferences(org_id: str, request: Request, response: Response):
+    """Project the current account's registered notification destinations."""
+    from src.gateway import mobile_push
+    from src.gateway.mobile_devices import MobileDevices, MobileStoreError
+
+    root = _root(org_id)
+    who = _who(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        refused = _error(403, "forbidden", "读取通知设置需要已认证的空间成员")
+        refused.headers["Cache-Control"] = "no-store"
+        return refused
+
+    phones = 0
+    if who.is_owner and mobile_push.configured():
+        try:
+            phones = await asyncio.to_thread(lambda: len(MobileDevices(root).push_targets()))
+        except (MobileStoreError, OSError):
+            unavailable = _error(409, "unavailable", "无法读取手机通知登记")
+            unavailable.headers["Cache-Control"] = "no-store"
+            return unavailable
+    # 暂无按类别改变投递的能力。界面只显示服务实际提供的开关。
+    return {"categories": [], "phones": phones}
+
+
 @router.get(_INBOX)
 async def notifications(
     org_id: str,
@@ -3762,6 +3991,20 @@ async def routines(org_id: str):
     return _listing(lambda: {"routines": views.routines(root)})
 
 
+@router.get(_ORG + "/routines/{routine_id}/runs")
+async def routine_runs(org_id: str, routine_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "只有所有者能读取例行工作记录")
+    response.headers["Cache-Control"] = "no-store"
+
+    def read():
+        rows = views.routine_runs(root, routine_id)
+        return {"runs": rows} if rows is not None else _error(404, "not_found", "没有这条例行工作")
+
+    return await asyncio.to_thread(_listing, read)
+
+
 def _routine_proposal_row(item: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = item["snapshot"]
     data = snapshot["data"]
@@ -3881,10 +4124,24 @@ def _routine_schedule(root: str, trigger: Any) -> tuple:
     return info["cron"], info["rule"]["timezone"]
 
 
-def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    import uuid
+def _submit_desktop_routine(root: str, data: Dict[str, Any], reason: str, *, expected=None) -> Dict[str, Any]:
     from src.gateway.main_conversation import main_chat_key
     from src.workflow.staff.approvals import StaffApprovals
+
+    owner = main_chat_key(root)
+    if not owner:
+        raise ValueError("主要聊天还没登记，暂时不能提议例行工作")
+    proposal = StaffApprovals(root).propose(owner, "routine", data, reason, expected=expected)
+    app_prefs.remember_ui_routine_proposal(root, proposal["id"])
+    row = next((row for row in views.routines(root) if row["id"] == data["id"]), None)
+    if row is None:
+        raise ValueError("提议已保存，暂时无法读取待核对记录")
+    return row
+
+
+def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    import uuid
+
     allowed = {"name", "agentId", "prompt", "target", "trigger", "access", "report"}
     if set(body) - allowed:
         raise ValueError(f"这些选项这里还不支持：{sorted(set(body) - allowed)}")
@@ -3906,16 +4163,11 @@ def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("要写这件事要做什么")
     name = body.get("name") if isinstance(body.get("name"), str) and body["name"].strip() else prompt.strip()[:30]
     schedule, timezone = _routine_schedule(root, body.get("trigger"))
-    owner = main_chat_key(root)
-    if not owner:
-        raise ValueError("主要聊天还没登记，暂时不能提议例行工作")
     data = {"id": "routine-" + uuid.uuid4().hex[:12], "name": name.strip()[:80], "member": staff_id,
             "prompt": prompt.strip(), "schedule": schedule, "timezone": timezone,
             "delivery": "notify" if body.get("report") == "always" else "review", "enabled": True,
             "token_budget": 0, "acceptance": []}
-    proposal = StaffApprovals(root).propose(owner, "routine", data, f"主人在界面上新建例行工作「{data['name']}」")
-    app_prefs.remember_ui_routine_proposal(root, proposal["id"])
-    return next(row for row in views.routines(root) if row["id"] == data["id"])
+    return _submit_desktop_routine(root, data, f"主人在界面上新建例行工作「{data['name']}」")
 
 
 @router.post(_ORG + "/routines")
@@ -3931,6 +4183,65 @@ async def create_routine(org_id: str, body: Dict[str, Any], request: Request):
         return _error(404, "not_found", str(error))
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+
+
+class _RoutineCopyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: Optional[str] = Field(default=None, max_length=120)
+
+
+def _routine_copy_name(original: str, requested: Optional[str]) -> str:
+    original = original.strip()
+    if requested is None:
+        return original[:76].rstrip() + "（副本）"
+    name = requested.strip()
+    if 0 < len(name) <= 80:
+        return name
+    # Keep the locale's copy indicator when the client adds it to a maximum-length source name.
+    prefix, source_name, suffix = name.partition(original)
+    room = 80 - len(prefix) - len(suffix)
+    if source_name and (prefix or suffix) and room > 0:
+        return prefix + source_name[:room].rstrip() + suffix
+    raise app_schedule.ScheduleError("routine.copy_name", "副本名称须为 1～80 字符")
+
+
+def _propose_routine_copy(root: str, routine_id: str, requested_name: Optional[str]) -> Dict[str, Any]:
+    import uuid
+    from src.workflow.staff.routines import Routines
+
+    registry = Routines(root)
+    source = next((item for item in registry.list() if item["id"] == routine_id and not item["retired"]), None)
+    if source is None:
+        raise LookupError("没有这条例行工作")
+    if source.get("initiator") or source["legacy"] is not None or source["state"].get("takeover"):
+        raise ValueError("成员发起、接手或迁移的例行工作暂不支持复制")
+    registry.check_binding(source)
+    data = {key: source[key] for key in ("member", "prompt", "acceptance", "delivery", "schedule", "timezone",
+                                        "token_budget")}
+    data.update(id="routine-" + uuid.uuid4().hex[:12], name=_routine_copy_name(source["name"], requested_name),
+                enabled=False, revision=1)
+    binding = source["binding"]
+    expected = {"kind": "routine", "data": data, "previous": None, "member_snapshot": binding["member"],
+                "role_snapshot": binding["role"]}
+    reason = f"主人在界面上复制例行工作「{source['name']}」，副本默认暂停"
+    return _submit_desktop_routine(root, data, reason, expected=expected)
+
+
+@router.post(_ORG + "/routines/{routine_id}/duplicate")
+async def duplicate_routine(org_id: str, routine_id: str, body: _RoutineCopyInput, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "复制例行工作需要已认证的所有者")
+    try:
+        return await asyncio.to_thread(_propose_routine_copy, root, routine_id, body.name)
+    except app_schedule.ScheduleError as error:
+        return _error(400, error.code, str(error))
+    except LookupError as error:
+        return _error(404, "not_found", str(error))
+    except ValueError as error:
+        return _error(409, "routine.copy_unavailable", str(error))
+    except OSError:
+        return _error(409, "unavailable", "暂时无法保存例行工作副本")
 
 
 @router.get(_ORG + "/routines/proposals/review")
@@ -4427,30 +4738,117 @@ async def _artifact_read(org_id, artifact_id, request, action):
 
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):
-    from src.agents.tools.artifacts import ArtifactStore
-    from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
-
+    """Drive 中的删除保留完整版本历史，可从回收站恢复。"""
     root = _root(org_id)
-    refused = await _owner_write(request, root, "制品")
+    refused = await _artifact_trash_owner(request, root)
     if refused:
         return refused
-    include_uploads = _may_access_desktop_uploads(request, root)
-
-    def remove():
-        if include_uploads:
-            with home_maintenance(root):
-                uploads = ArtifactStore(root, desktop_uploads=True)
-                if uploads.exists(artifact_id):
-                    return uploads.delete(artifact_id, strict=True)
-        return ArtifactStore(root).delete(artifact_id)
-
     try:
-        removed = await asyncio.to_thread(remove)
+        removed = await asyncio.to_thread(_apply_to_artifact_trash, root, _trash_artifact, artifact_id)
     except HomeMaintenanceError:
-        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+        return _artifact_trash_busy()
+    except TrashConflict as error:
+        return _error(409, "conflict", str(error))
     except (OSError, ValueError):
-        return _error(503, "unavailable", "暂时无法删除制品")
+        return _error(503, "unavailable", "无法将制品移入回收站")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
+
+
+def _apply_to_artifact_trash(root: str, action, *args):
+    # Acquire the outer lease before resolving or creating state. The store takes its own inner lock.
+    with home_maintenance(root):
+        # 两个库各有各的回收站，所有者上传的私有库在前（与详情、下载同序）
+        return action((ArtifactTrash(root, desktop_uploads=True), ArtifactTrash(root)), *args)
+
+
+def _trash_artifact(stores, artifact_id: str) -> bool:
+    uploads, made = stores
+    return (uploads if uploads.exists(artifact_id) else made).move_to_trash(artifact_id)
+
+
+def _trashed_artifacts(stores):
+    rows = [(*row, store is stores[0]) for store in stores for row in store.trashed()]
+    return sorted(rows, key=lambda row: (row[1], row[0]["id"]), reverse=True)
+
+
+def _restore_trashed(stores, artifact_id: str) -> str:
+    for store in stores:
+        outcome = store.restore(artifact_id)
+        if outcome != "not_found":
+            return outcome
+    return "not_found"
+
+
+def _purge_trashed(stores, artifact_id: str) -> bool:
+    return any(store.purge(artifact_id) for store in stores)
+
+
+def _artifact_trash_busy():
+    # Drive Undo interprets 409 as expiry.
+    return _error(423, "unavailable", "工作区正在处理其他变更，请稍后重试")
+
+
+async def _artifact_trash_owner(request: Request, root: str):
+    refused = await _owner_write(request, root, "制品回收站")
+    if refused:
+        return refused
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "制品回收站需要主人令牌或同源登录")
+    return None
+
+
+@router.get(_ORG + "/artifacts-trash")
+async def list_artifact_trash(org_id: str, request: Request):
+    root = _root(org_id)
+    refused = await _artifact_trash_owner(request, root)
+    if refused:
+        return refused
+    try:
+        deleted = await asyncio.to_thread(_apply_to_artifact_trash, root, _trashed_artifacts)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "无法读取制品回收站")
+    return JSONResponse({"files": [views.trashed_artifact(root, meta, deleted_at, purge_at, desktop_upload=uploaded)
+                                   for meta, deleted_at, purge_at, uploaded in deleted]},
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.post(_ORG + "/artifacts/{artifact_id}/restore", status_code=204)
+async def restore_artifact(org_id: str, artifact_id: str, request: Request):
+    root = _root(org_id)
+    refused = await _artifact_trash_owner(request, root)
+    if refused:
+        return refused
+    try:
+        outcome = await asyncio.to_thread(_apply_to_artifact_trash, root, _restore_trashed, artifact_id)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
+    except TrashConflict as error:
+        # The Drive's Undo maps HTTP 409 to expiration; a live duplicate is a different refusal.
+        return _error(422, "artifact.restore_id_taken", str(error))
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "无法恢复这个制品")
+    if outcome == "expired":
+        return _error(409, "artifact.purged", "这个制品已超过 30 天还原期限")
+    if outcome == "purged":
+        return _error(410, "artifact.permanently_deleted", "这个制品已被永久删除")
+    return Response(status_code=204) if outcome == "restored" else _error(404, "not_found", "没有这个制品")
+
+
+@router.delete(_ORG + "/artifacts-trash/{artifact_id}", status_code=204)
+async def purge_artifact(org_id: str, artifact_id: str, request: Request):
+    root = _root(org_id)
+    refused = await _artifact_trash_owner(request, root)
+    if refused:
+        return refused
+    try:
+        removed = await asyncio.to_thread(_apply_to_artifact_trash, root, _purge_trashed, artifact_id)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "无法永久删除这个制品")
+    return Response(status_code=204) if removed else _error(404, "not_found", "没有这个已删除的制品")
 
 
 @router.get(_ORG + "/dashboards/home")

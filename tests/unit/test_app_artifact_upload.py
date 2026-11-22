@@ -142,8 +142,9 @@ def test_busy_workspace_refuses_upload_and_delete_without_changing_artifacts(hom
     with home_maintenance(root):
         busy_upload = owner.post(f"{path}/files", files=_files("next.html"))
         busy_delete = owner.delete(saved_path)
-        for response in (busy_upload, busy_delete):
-            assert response.status_code == 409, response.text
+        # 删除现在是移入回收站：忙时回 423，界面把 409 当成「撤销已过期」
+        for response, status in ((busy_upload, 409), (busy_delete, 423)):
+            assert response.status_code == status, response.text
             assert response.json()["error"]["code"] == "unavailable"
             assert root not in response.text
         assert [row["id"] for row in owner.get(path).json()["artifacts"]] == [artifact_id]

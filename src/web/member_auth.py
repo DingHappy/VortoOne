@@ -45,6 +45,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PATCH", _ORG + r"/me/sidebar"),
     ("PUT", _ORG + r"/me/status"),
+    ("GET", _ORG + r"/notification-prefs"),
+    ("PUT", _ORG + r"/me/avatar"),
+    ("DELETE", _ORG + r"/me/avatar"),
+    ("GET", _ORG + r"/people/[^/]+/avatar"),
     ("GET", _ORG + r"/me/issues-view"),
     ("PUT", _ORG + r"/me/issues-view"),
     ("GET", _ORG + r"/wiki/(?:graph|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
@@ -114,6 +118,9 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/invitations/all"),
     ("POST", _ORG + r"/invitations/batch"),
     ("PATCH", _ORG + r"/invitations/[^/]+"),
+    ("GET", _ORG + r"/join-requests/mine"),
+    ("POST", _ORG + r"/join-requests/suggest"),
+    ("DELETE", _ORG + r"/join-requests/[^/]+"),            # 只能撤回自己的建议
     ("POST", _ORG + r"/members/[^/]+/password-link"),
     # 成员和 agent：只列他用得了的 agent，私聊里只有他自己发起的事（web/app_members.py）
     ("GET", _ORG + r"/agents"),
@@ -203,6 +210,7 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/active-runs", {"runs": []}),
     (_ORG + r"/usage", {"usage": []}),
     (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
+    (_ORG + r"/artifacts-trash", {"files": []}),
     (_ORG + r"/former-agents", {"agents": []}),          # 不在团队里的 agent 是所有者的事
 )
 

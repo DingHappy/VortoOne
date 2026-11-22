@@ -2238,6 +2238,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/tasks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}/unarchive",
     "methods": [
       "POST"
@@ -2442,6 +2448,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/files",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
     "methods": [
       "GET"
@@ -2454,7 +2466,19 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/settings",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/summary",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notification-prefs",
     "methods": [
       "GET"
     ]
@@ -2511,6 +2535,24 @@
     "path": "/api/app/organizations/{org_id}/people",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/people/{person_id}/avatar",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/avatar",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/avatar",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -3068,6 +3110,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines/{routine_id}/stop",
     "methods": [
       "POST"
@@ -3544,6 +3592,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts-trash",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts-trash/{artifact_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/restore",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/audit",
     "methods": [
       "GET"
@@ -3790,6 +3856,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/join-requests",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/mine",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/suggest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
     "methods": [
       "DELETE"
@@ -3883,6 +3985,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/routines/parse-schedule",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/duplicate",
     "methods": [
       "POST"
     ]

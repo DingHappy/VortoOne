@@ -174,6 +174,57 @@ def test_accepting_needs_a_signed_in_account_and_our_own_page(home):
     assert browser.get("/api/app/me").json()["organizations"] == []
 
 
+def test_optional_invitation_mail_query_cannot_replace_account_or_invitation(home):
+    token = _invite(home)
+    another_token = _invite(home, "other@example.com")
+    url = f"/api/app/invitations/{token}/accept"
+    mail = {"mail": "p" * 43}
+    guest = TestClient(home["app"], headers=ORIGIN)
+    assert guest.get("/api/app/auth-config").json()["passwordReset"] is False
+    assert guest.post(url, params=mail, json={}).status_code == 401
+    assert home["owner"].post(url, params=mail, json={}, headers=ORIGIN).status_code == 401
+    assert guest.post("/api/auth/sign-up/email", json={"name": "另一人", "email": "other@example.com", "password": PASSWORD},
+                      headers={"x-invitation-token": another_token}).status_code == 200
+    assert guest.post(url, params=mail, json={}).status_code == 403
+    assert guest.get("/api/app/me").json()["organizations"] == []
+    assert guest.get(f"/api/app/invitations/{token}").status_code == 200
+
+    invited = TestClient(home["app"], headers=ORIGIN)
+    assert invited.post("/api/auth/sign-up/email", json={"name": "受邀人", "email": "ana@example.com", "password": PASSWORD},
+                        headers={"x-invitation-token": token}).status_code == 200
+    assert invited.post(f"/api/app/invitations/{'x' * 43}/accept", params=mail, json={}).status_code == 404
+    assert invited.post(url, params=mail, json={}, headers={"Origin": "https://other.invalid"}).status_code == 401
+    for query in (mail, {}):
+        accepted = invited.post(url, params=query, json={})
+        assert accepted.status_code == 200 and accepted.json() == {"orgId": home["org"]}
+    assert guest.get(f"/api/app/invitations/{token}").status_code == 404
+    rows = home["owner"].get(f"{home['base']}/members").json()["members"]
+    assert [row["email"] for row in rows if row["role"] == "member"] == ["ana@example.com"]
+
+
+def test_owner_identity_takes_precedence_when_both_sessions_are_present(home):
+    from src.web.auth import SESSION_COOKIE
+    from src.web.member_auth import MEMBER_COOKIE
+
+    token = _invite(home)
+    browser = TestClient(home["app"], headers=ORIGIN)
+    assert browser.post("/api/auth/sign-up/email", json={"name": "受邀人", "email": "ana@example.com", "password": PASSWORD},
+                        headers={"x-invitation-token": token}).status_code == 200
+    member_session = browser.cookies.get(MEMBER_COOKIE)
+    assert member_session
+    owner = TestClient(home["app"], headers=ORIGIN)
+    assert owner.post("/api/auth/sign-in/email", json={"password": TOKEN}).status_code == 200
+    owner_session = owner.cookies.get(SESSION_COOKIE)
+    assert owner_session
+    both = TestClient(home["app"], headers=ORIGIN,
+                      cookies={SESSION_COOKIE: owner_session, MEMBER_COOKIE: member_session})
+    assert both.get("/api/app/me").json()["organizations"][0]["role"] == "owner"
+    url = f"/api/app/invitations/{token}/accept"
+    assert both.post(url, json={}).status_code == 401
+    assert both.get(f"/api/app/invitations/{token}").status_code == 200
+    assert browser.post(url, json={}).json() == {"orgId": home["org"]}
+
+
 # ── 成员会话只在白名单上算数 ──────────────────────────────────────────────────
 
 def _fill(path, *, team_channel=False):

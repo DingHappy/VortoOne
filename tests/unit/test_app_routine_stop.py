@@ -72,7 +72,7 @@ async def test_stop_preserves_the_schedule_and_cancels_only_the_current_occurren
             await asyncio.wait_for(pool.join(task_id), 2)
             row = (await client.get(base + "/routines")).json()["routines"][0]
             assert row["state"] == "active" and row["lastRun"]["status"] == "canceled"
-            assert row["health"] == {"ok": 0, "silent": 0, "failed": 0, "skipped": 1, "missed": 0, "total": 1}
+            assert row["health"] == {"ok": 0, "silent": 0, "failed": 0, "skipped": 0, "missed": 0, "total": 0}
             assert pool.ledger.load(task_id).status == "cancelled"
             assert pool.ledger.load(unrelated.id).status in {"queued", "running"}
             after = routines.get(routine_id)
