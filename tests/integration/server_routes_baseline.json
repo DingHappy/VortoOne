@@ -2298,6 +2298,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines/proposals",
     "methods": [
       "GET"
@@ -3004,6 +3010,24 @@
   {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
     "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/describe-rule",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/parse-rule",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/parse-schedule",
+    "methods": [
+      "POST"
+    ]
   },
   {
     "path": "/api/app/organizations/{org_id}/voice/allowed",
