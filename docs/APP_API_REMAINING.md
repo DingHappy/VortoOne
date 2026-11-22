@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 239 个，剩 **392** 个：
-- **要做：320**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 242 个，剩 **389** 个：
+- **要做：317**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -812,12 +812,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/notification-prefs` | `notifications.prefs` |  |
 | ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` |  |
 
-### org/questions（2 个，要做 2）
+### org/questions（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/questions/{x}/answer` | `questions.answer` |  |
-| ☐ | POST | `ORG/questions/{x}/dismiss` | `questions.dismiss` |  |
+| ☑ | POST | `ORG/questions/{x}/answer` | `questions.answer` | 私聊里交代的事，专员用 `ask_person` 问交代的人；只有被问的人能答，答完按返工路径接着做（最多 3 轮），回答按资料交给专员 |
+| ☑ | POST | `ORG/questions/{x}/dismiss` | `questions.dismiss` | 跳过后专员按自己的判断接着做 |
 
 ### /api/app/email-undo（1 个，要做 1）
 
@@ -927,11 +927,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | POST | `ORG/right-hand-decisions/{x}/undo` | `approvals.undoRightHand` |  |
 
-### org/search（1 个，要做 1）
+### org/search（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/search` | `search.query` |  |
+| ☑ | GET | `ORG/search` | `search.query` | 团队频道消息（本人已加入的）与任务卡片（本人可见的），按子串找、新的在前。主要聊天、agent 私聊、Wiki、文件还没接；语音、提到、文件、卡片筛选没有对应标记，带上就不返回消息 |
 
 ### /api/desktop/latest（1 个，要做 1）
 

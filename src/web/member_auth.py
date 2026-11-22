@@ -51,6 +51,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/wiki/pages/[^/]+/(?:append|rename|move|lock|pin|context)"),
     ("POST", _ORG + r"/wiki/(?:bulk/delete|trash/restore)"),
     # 任务看板：处理函数按可见范围和「编辑资料」「派活」判断（web/app_board.py）
+    ("GET", _ORG + r"/search"),                           # 频道按本人已加入的、卡片按本人可见的
+
+
+    ("POST", _ORG + r"/questions/[^/]+/(answer|dismiss)"),  # 只认被问的那个人
     ("GET", _ORG + r"/issues"),
     ("POST", _ORG + r"/issues"),
     ("GET", _ORG + r"/issues/by-number/[^/]+"),
