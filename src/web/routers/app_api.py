@@ -891,8 +891,15 @@ def _member_dm(request: Request, org_id: str, channel_id: str):
     return root, staff_id, who
 
 
-async def _as_member(request: Request, org_id: str, channel_id: str, answer):
-    """成员会话走这里：answer(家, 专员, 成员) 给出回答。不是成员会话返回 None，交回原有逻辑。"""
+async def _dispatch_ready(root: str) -> None:
+    """派活要用主要聊天的会话当发起身份；新界面里还没打开过主要聊天时（直接去 agent 私聊派活）先登记上。"""
+    if not views.main_chat_key(root):
+        await main_chat_bridge(root)
+
+
+async def _as_member(request: Request, org_id: str, channel_id: str, answer, *, dispatch: bool = False):
+    """成员会话走这里：answer(家, 专员, 成员) 给出回答。不是成员会话返回 None，交回原有逻辑。
+    dispatch：answer 会把事交进执行池——执行池只能在事件循环所在的线程里登记任务，所以就地调用，不挪到工作线程。"""
     try:
         found = await asyncio.to_thread(_member_dm, request, org_id, channel_id)
     except PermissionError as error:
@@ -903,6 +910,9 @@ async def _as_member(request: Request, org_id: str, channel_id: str, answer):
         return None
     from src.workflow.members.registry import Refused
     try:
+        if dispatch:
+            await _dispatch_ready(found[0])
+            return answer(*found)
         return await asyncio.to_thread(answer, *found)
     except Refused as error:
         return _error(403, "forbidden", str(error))
@@ -1315,7 +1325,8 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     answer = await _as_member(request, org_id, channel_id,
-                              lambda root, staff, who: app_members.member_send(root, who, staff, text, client_id))
+                              lambda root, staff, who: app_members.member_send(root, who, staff, text, client_id),
+                              dispatch=True)
     if answer is not None:
         return answer
     if member:
@@ -1323,7 +1334,9 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             return _error(413, "message_too_long", "交给专员的一件事最多 4000 字")
         if not app_staff.owner_proof(request):
             return _error(403, "owner_proof_required", _NEEDS_OWNER)
-        return await asyncio.to_thread(_staff_read, lambda: app_staff.send(member[0], member[1], text, client_id))
+        # 执行池只能在事件循环线程里登记任务（见 _as_member 的 dispatch）
+        await _dispatch_ready(member[0])
+        return _staff_read(lambda: app_staff.send(member[0], member[1], text, client_id))
     try:
         from src.web.routers.computers import (
             has_computer_owner_proof, has_local_owner_browser_session, has_owner_browser_session,
@@ -2429,7 +2442,7 @@ async def voice_audio(org_id: str, clip_id: str, request: Request):
 # 规矩在 web/app_board.py：所有者全部；成员看可见范围里的、凭「编辑资料」新建和编辑、只删自己建的。
 # 交给 agent 走现有派活入口，不另起执行器。
 
-async def _board(org_id: str, request: Request, action, *, edit: bool = False):
+async def _board(org_id: str, request: Request, action, *, edit: bool = False, dispatch: bool = False):
     from src.workflow.board.store import BoardError, NotFound
     from src.workflow.members.registry import Refused
     root = _root(org_id)
@@ -2439,6 +2452,9 @@ async def _board(org_id: str, request: Request, action, *, edit: bool = False):
     if edit and not app_board.can_edit(root, who):
         return _error(403, "forbidden", "你没有编辑看板的权限")
     try:
+        if dispatch:
+            await _dispatch_ready(root)
+            return action(root, who)
         return await asyncio.to_thread(action, root, who)
     except (NotFound, LookupError) as error:
         return _error(404, "not_found", str(error))
@@ -2510,7 +2526,7 @@ async def comment_issue(org_id: str, issue_id: str, body: Dict[str, Any], reques
 async def ask_agent_on_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
     proof = app_staff.owner_proof(request)
     return await _board(org_id, request, lambda root, who: app_board.ask_agent(
-        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of), edit=True)
+        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of), edit=True, dispatch=True)
 
 
 @router.get(_ORG + "/issue-columns")
@@ -2846,7 +2862,8 @@ async def _question_reply(request: Request, org_id: str, question_id: str, answe
         carrier = views.message_id(task.id, "assistant", item["round"])
         return views.staff_question(root, member, view, item, carrier)
     try:
-        return await asyncio.to_thread(run)
+        await _dispatch_ready(root)
+        return run()          # 接着做会把事交进执行池，只能在事件循环线程里登记
     except questions.QuestionMissing as error:
         return _error(404, "not_found", str(error))
     except questions.QuestionError as error:
