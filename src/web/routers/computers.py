@@ -491,15 +491,28 @@ async def _watch_private_preview(socket: WebSocket, org_id: str, machine_id: str
                  'connector_id': machine_id, 'surface_id': preview.surface_id}
         await asyncio.to_thread(append_audit, root, event)
 
+        desktop_audit_pending = False
+
+        async def finish_desktop_audit(acquired: bool) -> None:
+            nonlocal desktop_audit_pending
+            desktop_audit_pending = False
+            await asyncio.to_thread(append_audit, root, {
+                **event, 'operation': '结束私有桌面接管', 'operation_kind': 'interact',
+                'decision': 'allowed' if acquired else 'denied',
+            }, durable=True)
+
         async def desktop_control(message: dict) -> str | None:
+            nonlocal desktop_audit_pending
             if message == {'type': 'take_control'} and not preview.controlling and await allowed():
-                result = await preview.take_desktop_control()
-                if result != 'control_ready':
-                    return result
-                recorded = await asyncio.to_thread(append_audit, root, {
+                desktop_audit_pending = await asyncio.to_thread(append_audit, root, {
                     **event, 'operation': '接管私有桌面', 'operation_kind': 'interact',
-                })
-                return result if recorded and await allowed() else None
+                }, durable=True)
+                if not desktop_audit_pending or not await allowed():
+                    return None
+                result = await preview.take_desktop_control()
+                if result == 'control_busy':
+                    await finish_desktop_audit(acquired=False)
+                return result
             if (message.get('type') == 'input' and set(message) == {'type', 'action'}
                     and preview.controlling and await allowed()):
                 return await preview.interact_desktop(message['action'])
@@ -509,11 +522,12 @@ async def _watch_private_preview(socket: WebSocket, org_id: str, machine_id: str
             await serve_viewer(socket, preview.capture, allowed,
                                on_command=desktop_control if kind == 'desktop' and preview.allow_control else None)
         finally:
-            if preview.controlling:
+            acquired = preview.controlling
+            if acquired:
                 preview.end()
-                await asyncio.to_thread(append_audit, root, {
-                    **event, 'operation': '结束私有桌面接管', 'operation_kind': 'interact',
-                })
+                preview.end_viewing()
+            if desktop_audit_pending:
+                await finish_desktop_audit(acquired)
     except (WebSocketDisconnect, ComputerDenied, Missing, RuntimeError, ValueError, KeyError, OSError, asyncio.TimeoutError):
         pass
     finally:
