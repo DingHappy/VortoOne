@@ -70,6 +70,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/me/approval-cover"),
     ("PUT", _ORG + r"/me/approval-cover"),                # 成员这边如实拒绝
     ("DELETE", _ORG + r"/approval-covers/[^/]+"),
+
+
+    ("GET", _ORG + r"/me/right-hand-approvals"),          # 关着的状态，成员也照实给
+    ("PUT", _ORG + r"/me/right-hand-approvals"),
     ("GET", _ORG + r"/issues"),
     ("POST", _ORG + r"/issues"),
     ("GET", _ORG + r"/issues/by-number/[^/]+"),
