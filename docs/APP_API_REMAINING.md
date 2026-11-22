@@ -155,7 +155,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
 | ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
-| ☐ | POST | `ORG/wiki/import` | `wiki.import` |  |
+| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 已接纯 Markdown 文件。重发相同导入号及批次内容会复用回执；Obsidian、GitHub、笔记别名和 Drive 附件待接。 |
 | ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |
 | ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
