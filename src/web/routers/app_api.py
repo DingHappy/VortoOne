@@ -775,7 +775,9 @@ async def revoke_invitation(org_id: str, invitation_id: str, request: Request):
 async def all_invitations(org_id: str, request: Request):
     root = _root(org_id)
     who = member_auth.principal(request, root)
-    return await _members_call(lambda: {"invitations": app_members.all_invitations(root, who)})
+    owner_proven = who.is_owner and app_staff.owner_proof(request)
+    return await _members_call(lambda: {"invitations": app_members.all_invitations(root, who,
+                                                                                   owner_proven=owner_proven)})
 
 
 @router.post(_ORG + "/invitations/batch")
@@ -791,6 +793,25 @@ async def update_invitation(org_id: str, invitation_id: str, body: Dict[str, Any
     root = _root(org_id)
     who = member_auth.principal(request, root)
     return await _members_call(lambda: app_members.update_invitation(root, who, invitation_id, body), write=True)
+
+
+@router.post(_ORG + "/invitations/{invitation_id}/resend")
+async def resend_invitation(org_id: str, invitation_id: str, body: Dict[str, Any], request: Request,
+                            response: Response):
+    """更换有效邮箱邀请的单次链接，由所有者复制转交。"""
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "只有已认证的所有者能更换邮箱邀请链接")
+    elif body:
+        result = _error(400, "invalid", "换链只接受空 JSON 对象")
+    else:
+        result = await _members_call(
+            lambda: app_members.resend_invitation(root, who, invitation_id, _origin(request)), write=True)
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.patch(_ORG + "/members/{user_id}", status_code=204)

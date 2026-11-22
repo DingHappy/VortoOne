@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -31,6 +32,7 @@ from src.utils.state_dir import ensure_state_gitignore, state_dir
 _FILE = "space.json"
 _MAX_BYTES = 1024 * 1024
 _LOCK = threading.RLock()
+_LOG = logging.getLogger(__name__)
 _NAME = re.compile(r"^[^\x00-\x1f\x7f]{1,64}$")
 _EMAIL = re.compile(r"^[^@\s\x00-\x1f\x7f]{1,64}@[^@\s\x00-\x1f\x7f]{1,190}$")
 _AGENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -53,6 +55,10 @@ class Damaged(ValueError):
 
 class Missing(LookupError):
     """说的那个成员、身份组或邀请不存在（或邀请已失效）。"""
+
+
+class _RegistryReplaced(OSError):
+    """新登记已原子替换，但同步目录失败。调用者须区分已经生效和未写入。"""
 
 
 def _now() -> datetime:
@@ -211,14 +217,18 @@ class MemberRegistry:
                 file.flush()
                 os.fsync(file.fileno())
             temporary.replace(path)
-            if hasattr(os, "O_DIRECTORY"):
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+        if hasattr(os, "O_DIRECTORY"):
+            try:
                 dir_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
                 try:
                     os.fsync(dir_fd)
                 finally:
                     os.close(dir_fd)
-        finally:
-            temporary.unlink(missing_ok=True)
+            except OSError as error:
+                raise _RegistryReplaced("成员登记已更新，但无法同步目录") from error
 
     @contextmanager
     def _locked_state(self) -> Iterator[Dict[str, Any]]:
@@ -544,6 +554,59 @@ class MemberRegistry:
             if not (owner or mine or rules.has("space.manage_members", held, self._posts(state))):
                 raise Refused("不能撤回别人发的邀请")
             del state["invitations"][str(invitation_id)]
+
+    @classmethod
+    def _rotatable_email_invitation(cls, state: Mapping[str, Any], invitation_id: str,
+                                   moment: datetime) -> Tuple[Dict[str, Any], List[str]]:
+        invitation = state["invitations"].get(invitation_id)
+        if invitation is None:
+            raise Missing("没有这份邀请")
+        if not isinstance(invitation, dict):
+            raise Damaged("邀请登记无效")
+        email = invitation.get("email")
+        if email == "":
+            raise Missing("没有这份邮箱邀请")
+        expires_at = invitation.get("expires")
+        try:
+            if login_name(email) != email or not isinstance(expires_at, str):
+                raise ValueError
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if expiry.tzinfo is None:
+                raise ValueError
+        except ValueError as error:
+            raise Damaged("邮箱邀请登记无效") from error
+        if expiry <= moment:
+            raise Missing("邀请已过期，请重新创建邮箱邀请")
+        digest = invitation.get("digest")
+        groups = invitation.get("groups")
+        if (not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+                or not isinstance(groups, list) or any(not isinstance(group, str) for group in groups)):
+            raise Damaged("邮箱邀请登记无效")
+        return invitation, cls._invited_groups(state, invitation)
+
+    @classmethod
+    def can_rotate_email_invitation(cls, state: Mapping[str, Any], invitation_id: str, moment: datetime) -> bool:
+        """同一份登记快照中，这份邀请是否可更换链接。调用处另核对所有者证明。"""
+        try:
+            cls._rotatable_email_invitation(state, invitation_id, moment)
+        except (Missing, Damaged):
+            return False
+        return True
+
+    def rotate_email_invitation(self, actor: Principal, invitation_id: str) -> Tuple[str, str]:
+        """所有者为仍有效的邮箱邀请换令牌。保留原邮箱、有效角色、邀请人和日期。"""
+        if not actor.is_owner:
+            raise Refused("只有所有者能更换邮箱邀请链接")
+        with self._locked_state() as state:
+            invitation, groups = self._rotatable_email_invitation(state, invitation_id, _now())
+            token = secrets.token_urlsafe(32)
+            invitation.update(digest=_digest(token), groups=groups)
+            try:
+                self._save(state)
+            except _RegistryReplaced:
+                # 文件已经换过。返回这次的新令牌，避免报告失败后主人只剩失效的旧链接。
+                _LOG.warning("邮箱邀请已换链，但成员登记目录同步失败")
+            return token, invitation["expires"]
 
     @staticmethod
     def _invited_groups(state: Mapping[str, Any], invitation: Mapping[str, Any]) -> List[str]:
