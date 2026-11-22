@@ -23,13 +23,21 @@ class ArtifactReadError(Exception):
         self.code = code
 
 
+def _store(root: str, artifact_id: str) -> tuple[ArtifactStore, bool]:
+    """这个制品在哪个库：所有者上传的私有库优先（与详情、删除同序）。调用处已核对所有者证明。"""
+    uploads = ArtifactStore(root, desktop_uploads=True)
+    if uploads.exists(artifact_id):
+        return uploads, True
+    return ArtifactStore(root), False
+
+
 def versions(root: str, artifact_id: str) -> JSONResponse:
-    store = ArtifactStore(root)
+    store, uploaded = _store(root, artifact_id)
     rows = store.versions(artifact_id)
     if not rows:
         raise ArtifactReadError(404, "not_found", "没有这个制品")
     # 旧制品只存版本、时间和大小。空角色 ID 让界面显示未知智能体。
-    author = {"type": "agent", "id": ""}
+    author = {"type": "person", "id": views.owner_id(root)} if uploaded else {"type": "agent", "id": ""}
     history = []
     for row in reversed(rows):
         version = int(row["v"])
@@ -59,7 +67,7 @@ def _signature(org_id: str, artifact_id: str, version: int, expires: int) -> str
 
 
 def download(root: str, org_id: str, artifact_id: str, supplied: int | None) -> JSONResponse:
-    store = ArtifactStore(root)
+    store, _uploaded = _store(root, artifact_id)
     version = _version(store, artifact_id, supplied)
     if not store.has_snapshot(artifact_id, version):
         raise ArtifactReadError(404, "not_found", "没有这个制品版本")
@@ -82,7 +90,7 @@ def file(root: str, org_id: str, artifact_id: str, supplied: int | None,
             raise ArtifactReadError(403, "artifact.download_expired", "下载地址已失效，请重新下载")
     if format and format != "html":
         raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始 HTML")
-    store = ArtifactStore(root)
+    store, _uploaded = _store(root, artifact_id)
     version = _version(store, artifact_id, supplied)
     content = store.html(artifact_id, version, strict=True)
     if content is None:
