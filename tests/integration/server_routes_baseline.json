@@ -3540,6 +3540,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/memories/{memory_id}/team",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/questions/{question_id}/answer",
     "methods": [
       "POST"

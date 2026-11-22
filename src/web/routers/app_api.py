@@ -1712,7 +1712,6 @@ _EMPTY: Dict[str, Any] = {
     "/credentials": {"credentials": []},
     "/mail/accounts": {"accounts": []},
     "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
-    "/team-memories": {"memories": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
@@ -3190,10 +3189,81 @@ async def agent_skills(org_id: str, agent_id: str):
 # ── 写入：记忆归档、例行工作启停与删除、技能启停 ─────────────────────────────
 # 每一项都交给现有的登记处去改，规矩（版本核对、绑定核对、范围）在那里；这里只把界面的写法对上。
 
-@router.patch(_ORG + "/memories/{memory_id}")
-async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any]):
-    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。"""
+@router.get(_ORG + "/team-memories")
+async def team_memories(org_id: str, request: Request):
+    """团队记忆：所有 agent 都读的那一份，所有者和成员都能看（内容本来就会出现在所有 agent 的回答里）。"""
+    from src.memory import team_memory
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    can_change = who.is_owner or "review_memory" in app_members.permission_keys(root, who)
+    try:
+        rows = await asyncio.to_thread(team_memory.items, root)
+    except team_memory.TeamMemoryError as error:
+        return _error(409, "unavailable", str(error))
+    return {"memories": [views.team_memory_view(root, row, can_change=can_change, owner=who.is_owner)
+                         for row in rows if not row.get("archived")]}
+
+
+@router.post(_ORG + "/memories/{memory_id}/team")
+async def share_memory(org_id: str, memory_id: str, request: Request):
+    """把所有者自己的一条记忆设成团队记忆（所有 agent 都会知道）。只有所有者能做。"""
+    from src.memory import team_memory
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "设成团队记忆需要已认证的所有者")
+
+    def run():
+        mine = next((m for m in views.memories(root, views.main_agent_id(root))
+                     if m["id"] == memory_id and not m["archived"]), None)
+        if mine is None:
+            return None
+        item = team_memory.share(root, memory_id, mine["text"], views.owner_id(root))
+        return views.team_memory_view(root, item, can_change=True, owner=True)
+    try:
+        result = await asyncio.to_thread(run)
+    except team_memory.TeamMemoryError as error:
+        return _error(409, "team_memory.unavailable", str(error))
+    return result if result is not None else _error(404, "not_found", "没有这条记忆")
+
+
+async def _patch_team_memory(request: Request, root: str, memory_id: str, body: Dict[str, Any]):
+    """团队记忆：所有者可以改文字、移除、恢复；有「审核 agent 记住的东西」权限的成员只能移除、恢复，
+    这样进系统提示的文字都出自所有者。"""
+    from src.memory import team_memory
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    if not who.is_owner and "review_memory" not in app_members.permission_keys(root, who):
+        return _error(403, "forbidden", "需要「审核 agent 记住的东西」权限")
+    if set(body) == {"archived"} and type(body["archived"]) is bool:
+        change = lambda: team_memory.set_archived(root, memory_id, body["archived"])  # noqa: E731
+    elif set(body) == {"text"} and isinstance(body["text"], str):
+        if not who.is_owner:
+            return _error(403, "forbidden", "团队记忆的文字只有所有者能改")
+        change = lambda: team_memory.edit(root, memory_id, body["text"], views.owner_id(root))  # noqa: E731
+    else:
+        return _error(400, "unsupported", "团队记忆只能改文字、移除或恢复")
+    try:
+        item = await asyncio.to_thread(change)
+    except LookupError:
+        return _error(404, "not_found", "没有这条团队记忆")
+    except team_memory.TeamMemoryError as error:
+        return _error(400, "invalid", str(error))
+    return views.team_memory_view(root, item, can_change=True, owner=who.is_owner)
+
+
+@router.patch(_ORG + "/memories/{memory_id}")
+async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any], request: Request):
+    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。团队记忆另有规矩。"""
+    root = _root(org_id)
+    if memory_id.startswith("team-"):
+        return await _patch_team_memory(request, root, memory_id, body)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "只有所有者能改自己的记忆")
     if set(body) != {"archived"} or type(body["archived"]) is not bool:
         return _error(400, "unsupported", "这里只能归档或恢复记忆")
     try:

@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 248 个，剩 **383** 个：
-- **要做：313**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 249 个，剩 **382** 个：
+- **要做：312**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -763,12 +763,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/github/access` | `githubApp.access` |  |
 | ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` |  |
 
-### org/memories（2 个，要做 2）
+### org/memories（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/memories/{x}/revert` | `memory.revert` | 界面代码里没调用 |
-| ☐ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` |  |
+| ☑ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` | 只有所有者能把自己的记忆设成团队记忆、能改文字；成员有 `review_memory` 只能移除、恢复。进所有 agent 的系统提示（对外发布的岗位除外），标明是资料不是指令 |
 
 ### org/sandbox-settings（2 个，要做 2）
 
