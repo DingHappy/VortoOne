@@ -2184,6 +2184,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/read",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}/reopen",
     "methods": [
       "POST"
