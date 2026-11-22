@@ -1,6 +1,7 @@
 import { ApiError, useAiStatus, useApi, useAuthConfig } from "@vortoone/client";
 import { errorText } from "@vortoone/client/lib/errors";
 import { formatBytes } from "@vortoone/client/lib/files";
+import { formatShortDate } from "@vortoone/client/lib/format";
 import { aiStateOf } from "@vortoone/client/lib/no-ai";
 import { rightHandOf } from "@vortoone/client/lib/right-hand";
 import {
@@ -11,12 +12,13 @@ import {
   DialogFooter,
   type Expression,
   Icon,
+  List,
   modKey,
   overLimit,
   PixelSpinner,
   Textarea,
 } from "@vortoone/ui";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -95,6 +97,52 @@ interface Added {
   id: string | null;
 }
 
+function FeedbackInbox({ orgId, onBack, onClose }: { orgId: string; onBack: () => void; onClose: () => void }) {
+  const { t, i18n } = useTranslation();
+  const api = useApi();
+  const [pages, setPages] = useState<number[]>([]);
+  const cursor = pages.at(-1);
+  const inbox = useQuery({
+    queryKey: ["local-feedback-inbox", orgId, cursor],
+    queryFn: () => api.system.feedbackInbox(orgId, cursor),
+    gcTime: 0,
+  });
+  const items = inbox.data?.items ?? [];
+  const next = inbox.data?.nextCursor;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()} title={t("feedback.inbox")} closeLabel={t("common.close")}>
+      <DialogBody>
+        {inbox.isPending && <p role="status">{t("common.loading")}</p>}
+        {inbox.isError && <p role="alert">{errorText(t, inbox.error, i18n.language)}</p>}
+        {inbox.isSuccess && items.length === 0 && <p>{t("feedback.inboxEmpty")}</p>}
+        {items.length > 0 && (
+          <List>
+            {items.map((item) => (
+              <article className="ac-list__row feedback-inbox__item" key={item.id}>
+                <p className="small muted">
+                  {t(item.author === "owner" ? "roles.owner" : "roles.member")}
+                  {" · "}
+                  <time dateTime={item.createdAt}>{formatShortDate(i18n.language, item.createdAt)}</time>
+                </p>
+                <p className="feedback-inbox__text">{item.text}</p>
+              </article>
+            ))}
+          </List>
+        )}
+      </DialogBody>
+      <DialogFooter>
+        <Button onClick={onBack}>{t("common.back")}</Button>
+        {pages.length > 0 && (
+          <Button onClick={() => setPages((current) => current.slice(0, -1))}>{t("feedback.inboxNewer")}</Button>
+        )}
+        {next != null && (
+          <Button onClick={() => setPages((current) => [...current, next])}>{t("feedback.inboxOlder")}</Button>
+        )}
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
 /**
  * The feedback form (ADR 0160): what the person writes goes by email to whoever runs this server, with what they
  * chose to show (the thing they right-clicked, pictures, a video) and what the app knows of where they are. The
@@ -110,6 +158,8 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
   const status = useAiStatus(org.id);
   const connection = useConnectionStatus();
   const config = useAuthConfig().data;
+  const local = config?.feedbackLocal === true;
+  const canReadInbox = local && org.role === "owner";
   // Read by the VortoOne team: on its own servers, and from one whose operator gave no address (pictures only).
   const relay = config?.feedbackRelay === true;
   const team = config?.cloud === true || relay;
@@ -120,6 +170,7 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
   const [text, setText] = useState("");
   const textLimit = useTextLimit(MAX);
   const [sent, setSent] = useState(false);
+  const [showInbox, setShowInbox] = useState(false);
   const [noting, setNoting] = useState(false);
   const [face, setFace] = useState<Expression>();
   // The thing reported, until the form is sent; its words, until the person takes them out.
@@ -233,17 +284,22 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
 
   const send = useMutation({
     meta: { silent: true },
-    mutationFn: () =>
-      api.system.sendFeedback({
+    mutationFn: () => {
+      const submission = {
         id: id.current,
         text: text.trim(),
         orgId: org.id,
+      };
+      if (local) return api.system.sendFeedback(submission);
+      return api.system.sendFeedback({
+        ...submission,
         where,
         app: "web",
         ...(about ? { about: { ...about.about, text: quoting ? about.about.text : undefined } } : {}),
         facts: facts(),
         files: files.flatMap((f) => (f.id ? [f.id] : [])),
-      }),
+      });
+    },
     onError: (error) => toast.show(errorText(t, error), "error"),
     onSuccess: () => {
       id.current = crypto.randomUUID();
@@ -254,7 +310,11 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
   const uploading = files.some((f) => f.id === null);
   const ready = text.trim() !== "" && !overLimit(text, textLimit) && !send.isPending && !uploading;
   const title = sent ? t("feedback.thanks") : t("feedback.ask");
-  const quote = quoting ? (about?.about.text ?? "") : "";
+  const context = local ? null : about;
+  const quote = quoting && context ? (context.about.text ?? "") : "";
+  if (showInbox && canReadInbox) {
+    return <FeedbackInbox orgId={org.id} onBack={() => setShowInbox(false)} onClose={onClose} />;
+  }
   return (
     <Dialog
       open
@@ -292,9 +352,11 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
           {title}
         </p>
         <p className="arrival-lede__text">
-          {sent
-            ? t("feedback.reply", { email: me.user.email })
-            : t(team ? "feedback.goesCloud" : "feedback.goesServer")}
+          {local
+            ? t(sent ? "feedback.localSaved" : "feedback.goesLocal")
+            : sent
+              ? t("feedback.reply", { email: me.user.email })
+              : t(team ? "feedback.goesCloud" : "feedback.goesServer")}
         </p>
       </div>
       {sent ? (
@@ -323,13 +385,13 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
           }}
         >
           <DialogBody>
-            {about && (
+            {context && (
               <div className="arrival-about">
                 <span className="arrival-about__title">
-                  {about.message && about.about.label
-                    ? t("feedback.aboutMessage", { name: about.about.label })
-                    : about.about.label
-                      ? t("feedback.aboutItem", { name: about.about.label })
+                  {context.message && context.about.label
+                    ? t("feedback.aboutMessage", { name: context.about.label })
+                    : context.about.label
+                      ? t("feedback.aboutItem", { name: context.about.label })
                       : t("feedback.aboutThis")}
                 </span>
                 {quote && <blockquote className="arrival-about__text">{quote}</blockquote>}
@@ -343,7 +405,7 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
             <Textarea
               ref={box}
               className="arrival-feedback__text"
-              rows={about ? 4 : 5}
+              rows={context ? 4 : 5}
               limit={textLimit}
               value={text}
               aria-label={t("feedback.ask")}
@@ -354,6 +416,7 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
               }}
               // A screenshot on the clipboard is added as a file.
               onPaste={(e) => {
+                if (local) return;
                 const pasted = [...e.clipboardData.files];
                 if (pasted.length === 0) return;
                 e.preventDefault();
@@ -398,34 +461,41 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
                 ))}
               </ul>
             )}
-            <div className="arrival-feedback__attach">
-              <input
-                ref={picker}
-                type="file"
-                hidden
-                multiple
-                accept={relay ? ACCEPT_PICTURES : ACCEPT}
-                onChange={(e) => {
-                  add([...(e.target.files ?? [])]);
-                  e.target.value = "";
-                }}
-              />
-              <Button type="button" variant="ghost" size="sm" icon="attach" onClick={() => picker.current?.click()}>
-                {t(relay ? "feedback.attachPhoto" : "feedback.attach")}
-              </Button>
-              <span className="arrival-feedback__limits">
-                {relay
-                  ? t("feedback.photosHint", { images: FILE_LIMITS.images, imageMb: FILE_LIMITS.imageMb })
-                  : t("feedback.filesHint", {
-                      images: FILE_LIMITS.images,
-                      imageMb: FILE_LIMITS.imageMb,
-                      videoMb: FILE_LIMITS.videoMb,
-                      days: FILE_LIMITS.days,
-                    })}
-              </span>
-            </div>
+            {!local && (
+              <div className="arrival-feedback__attach">
+                <input
+                  ref={picker}
+                  type="file"
+                  hidden
+                  multiple
+                  accept={relay ? ACCEPT_PICTURES : ACCEPT}
+                  onChange={(e) => {
+                    add([...(e.target.files ?? [])]);
+                    e.target.value = "";
+                  }}
+                />
+                <Button type="button" variant="ghost" size="sm" icon="attach" onClick={() => picker.current?.click()}>
+                  {t(relay ? "feedback.attachPhoto" : "feedback.attach")}
+                </Button>
+                <span className="arrival-feedback__limits">
+                  {relay
+                    ? t("feedback.photosHint", { images: FILE_LIMITS.images, imageMb: FILE_LIMITS.imageMb })
+                    : t("feedback.filesHint", {
+                        images: FILE_LIMITS.images,
+                        imageMb: FILE_LIMITS.imageMb,
+                        videoMb: FILE_LIMITS.videoMb,
+                        days: FILE_LIMITS.days,
+                      })}
+                </span>
+              </div>
+            )}
           </DialogBody>
           <DialogFooter>
+            {canReadInbox && (
+              <Button type="button" variant="ghost" onClick={() => setShowInbox(true)}>
+                {t("feedback.inbox")}
+              </Button>
+            )}
             <Button type="button" onClick={onClose}>
               {t("common.cancel")}
             </Button>
@@ -452,10 +522,12 @@ export function FeedbackDialog({ reported, onClose }: { reported: Reported | nul
  */
 export function FeedbackHost() {
   const { t } = useTranslation();
-  const on = useAuthConfig().data?.feedback === true;
+  const config = useAuthConfig().data;
+  const on = config?.feedback === true;
+  const contextual = on && config?.feedbackLocal !== true;
   const open = useSyncExternalStore(onFeedbackOpen, feedbackOpen, () => null);
   useEffect(() => {
-    if (!on) return;
+    if (!contextual) return;
     watchErrors();
     setMenuReporter({
       label: t("feedback.report"),
@@ -475,7 +547,7 @@ export function FeedbackHost() {
       document.removeEventListener("contextmenu", onContextMenu);
       setMenuReporter(null);
     };
-  }, [on, t]);
+  }, [contextual, t]);
   // Leaving the workspace leaves the form: it never opens by itself in the next one.
   useEffect(() => closeFeedback, []);
   if (!on || !open) return null;

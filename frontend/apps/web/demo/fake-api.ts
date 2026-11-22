@@ -1456,6 +1456,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       sendFeedback: async (input) => {
         log("system.sendFeedback", input);
       },
+      feedbackInbox: async () => ({ items: [], nextCursor: null }),
       uploadFeedbackFile: async (file) => {
         log("system.uploadFeedbackFile", file.name);
         const kind = file.type.startsWith("video/") ? "video" : "image";

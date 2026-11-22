@@ -109,6 +109,7 @@ import type {
   EndpointCheck,
   EndpointModel,
   FeedbackFile,
+  FeedbackInboxPage,
   FeedbackOffer,
   ForeignMailbox,
   FormerAgent,
@@ -583,6 +584,10 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
       telemetry: () => nullOn(404, () => request<ServerTelemetry>("/api/app/telemetry")),
       setTelemetry: (enabled) => request<ServerTelemetry>("/api/app/telemetry", { method: "PUT", json: { enabled } }),
       sendFeedback: (input) => request<void>("/api/app/feedback", { json: input }),
+      feedbackInbox: (orgId, cursor) =>
+        request<FeedbackInboxPage>("/api/app/feedback", {
+          query: { orgId, cursor: cursor === undefined ? undefined : String(cursor) },
+        }),
       uploadFeedbackFile: (file) => {
         const form = new FormData();
         form.append("file", file, file.name);
