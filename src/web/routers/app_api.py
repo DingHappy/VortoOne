@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 from contextlib import suppress
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -1549,7 +1549,6 @@ _EMPTY: Dict[str, Any] = {
     "/unread-threads": {"count": 0},
     "/notifications/count": {"unread": 0, "waiting": 0},
     "/waiting": {"items": [], "count": 0},
-    "/missions": {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}},
     "/machines/outages": {"outages": [], "targets": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
@@ -1707,6 +1706,154 @@ async def saved_task_output(org_id: str, task_id: str, request: Request, tail: i
     return JSONResponse({"taskId": task.id, "status": status, "source": "saved",
                          "lines": lines[-tail:], "truncated": len(lines) > tail},
                         headers={"Cache-Control": "no-store"})
+
+
+# ── 所有者的任务草案 ────────────────────────────────────────────────────────
+
+_MissionStatusFilter = Literal["open", "closed", "waiting_you", "proposed", "active", "paused",
+                               "awaiting_close", "done", "canceled"]
+
+
+class _NewMissionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    agentId: str = Field(min_length=1, max_length=128)
+    goal: str = Field(min_length=1, max_length=2000)
+    title: str | None = Field(None, max_length=120)
+    threadId: str | None = Field(None, min_length=1, max_length=128)
+    channelId: str | None = Field(None, min_length=1, max_length=128)
+    folder: str | None = Field(None, max_length=1024)
+    executor: str | None = Field(None, max_length=32)
+    commandApproval: str | None = Field(None, max_length=32)
+
+
+def _mission_progress():
+    return {"done": 0, "total": 0, "doing": 0, "waiting": 0}
+
+
+def _mission_view(drafts, row):
+    channels = drafts.channels
+    return {
+        "id": row["id"], "threadId": row["thread_id"], "channelId": row["channel_id"],
+        "agentId": views.member_agent_id(channels.registry.root, row["staff_id"]),
+        "ownerId": channels.history.person_id(row["owner"]),
+        "title": row["title"], "goal": row["goal"], "status": row["status"],
+        "executor": "agent", "findings": [], "openQuestion": None,
+        "repoDir": "", "resumeTasks": False, "commandApproval": "always",
+        "plan": {"version": 0, **_mission_progress(), "items": []},
+        "pending": {"decisions": 0, "provisional": 0, "reviews": 0, "suggestions": 0,
+                    "joinRequests": 0, "commands": 0, "deliveries": 0},
+        "joinRequested": False, "runningTasks": 0, "machine": None, "needsComputer": False,
+        "role": "owner", "canAct": False, "canManage": False, "createdAt": row["created"],
+        "startedAt": None, "pausedAt": None, "closedAt": None, "closeReason": None, "wikiPageId": None,
+    }
+
+
+async def _mission_request(org_id, request, action, *, status=200):
+    from src.workflow.members.mission_drafts import AgentUnavailable, DraftConflict, MissionDrafts
+    from src.workflow.members.registry import Damaged, Missing, Refused
+
+    root = _root(org_id)
+    actor = member_auth.principal(request, root)
+    if not actor.is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "访问任务草案需要已认证的所有者")
+    try:
+        value = await asyncio.to_thread(lambda: action(MissionDrafts(app_channels.channels(root)), actor))
+    except (Missing, LookupError):
+        return _error(404, "mission.not_found", "没有这个任务草案或团队频道线程")
+    except Refused:
+        return _error(403, "forbidden", "没有访问任务草案的权限")
+    except DraftConflict as error:
+        return _error(409, "mission.thread_in_use", str(error))
+    except AgentUnavailable as error:
+        return _error(409, "mission.agent_unavailable", str(error))
+    except (Damaged, OSError, ValueError):
+        return _error(409, "mission.unavailable", "读取或保存任务草案失败")
+    return value if isinstance(value, Response) else JSONResponse(value, status_code=status,
+                                                                  headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/missions")
+async def list_mission_drafts(
+    org_id: str, request: Request, status: _MissionStatusFilter = "open", q: str = Query("", max_length=200),
+    channelId: str | None = Query(None, max_length=128), agentId: str | None = Query(None, max_length=128),
+    limit: int = Query(50, ge=1, le=100),
+):
+    if not views.owner_connection():
+        # 保留无令牌开发实例启动时的空列表，不读任务草案或实际计数。
+        _root(org_id)
+        return {"missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}}
+
+    def read(drafts, actor):
+        staff_id = None if agentId is None else _staff_of(drafts.channels.registry.root, agentId) or ""
+        rows, count = drafts.listing(actor, channel_id=channelId, staff_id=staff_id, query=q.strip(), limit=limit,
+                                     include_drafts=status in ("open", "proposed"))
+        return {"missions": [_mission_view(drafts, row) for row in rows],
+                "counts": {"active": count, "waitingYou": 0, "closed": 0}}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.post(_ORG + "/missions", status_code=201)
+async def create_mission_draft(org_id: str, body: _NewMissionDraft, request: Request):
+    def create(drafts, actor):
+        root = drafts.channels.registry.root
+        if body.threadId is None:
+            return _error(400, "mission.thread_required", "请在已有团队频道线程里新建任务草案")
+        if body.channelId is not None:
+            return _error(400, "mission.invalid_location", "有线程时由服务端确定所属频道")
+        if (body.folder is not None or body.executor not in (None, "agent")
+                or body.commandApproval not in (None, "always")):
+            return _error(400, "mission.unsupported", "任务草案仅记录原生专员，不配置工作目录或自动批准")
+        goal = body.goal.strip()
+        title = " ".join(goal.split())[:120] if body.title is None else body.title.strip()
+        if not goal or not title:
+            return _error(400, "mission.invalid_text", "任务目标和标题不能为空")
+        if body.agentId == views.main_agent_id(root):
+            return _error(400, "mission.unsupported", "请选择一位已登记的原生专员")
+        staff_id = _staff_of(root, body.agentId)
+        if staff_id is None:
+            return _error(404, "mission.agent_not_found", "没有这个专员")
+        return _mission_view(drafts, drafts.create(actor, body.threadId, staff_id, title, goal))
+
+    return await _mission_request(org_id, request, create, status=201)
+
+
+@router.get(_ORG + "/missions/{mission_id}")
+async def get_mission_draft(org_id: str, mission_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor:
+                                  _mission_view(drafts, drafts.get(actor, mission_id)))
+
+
+@router.get(_ORG + "/threads/{thread_id}/mission")
+async def thread_mission_draft(org_id: str, thread_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor:
+                                  _mission_view(drafts, drafts.get(actor, thread_id, by_thread=True)))
+
+
+@router.get(_ORG + "/missions/{mission_id}/plan")
+async def mission_draft_plan(org_id: str, mission_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: {
+        "missionId": drafts.get(actor, mission_id)["id"], "current": None, "history": []})
+
+
+@router.get(_ORG + "/missions/{mission_id}/summary")
+async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        row = drafts.get(actor, mission_id)
+        return {"missionId": row["id"], "text": row["goal"], "plan": _mission_progress(),
+                "running": 0, "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/participants")
+async def mission_draft_participants(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        row = drafts.get(actor, mission_id)
+        return {"owner": {"userId": drafts.channels.history.person_id(row["owner"]),
+                          "name": drafts.channels.owner_name}, "participants": []}
+
+    return await _mission_request(org_id, request, read)
 
 
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────
