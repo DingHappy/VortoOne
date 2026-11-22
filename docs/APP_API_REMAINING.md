@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 215 个，剩 **416** 个：
-- **要做：344**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 217 个，剩 **414** 个：
+- **要做：342**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -146,7 +146,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 10）
+### org/wiki（24 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -154,14 +154,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
 | ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
 | ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
-| ☐ | GET | `ORG/wiki/graph` | `wiki.graph` |  |
+| ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
 | ☐ | POST | `ORG/wiki/import` | `wiki.import` |  |
 | ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |
 | ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
 | ☑ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
-| ☐ | POST | `ORG/wiki/pages/{x}/append` | `wiki.append` |  |
+| ☑ | POST | `ORG/wiki/pages/{x}/append` | `wiki.append` | 支持摘录已加入的公开团队频道消息。私信和受限频道来源暂不可用 |
 | ☐ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/context` | `wiki.context` | 已接入。开启时返回明确的 409，页面不会进入智能体上下文 |
 | ☑ | GET | `ORG/wiki/pages/{x}/history` | `wiki.history` |  |
