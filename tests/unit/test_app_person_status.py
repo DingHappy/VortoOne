@@ -13,6 +13,7 @@ from tests.unit.test_member_login import home  # noqa: F401 — member fixture
 def _people(client, base):
     response = client.get(f"{base}/people")
     assert response.status_code == 200, response.text
+    assert response.headers["Cache-Control"] == "no-store"
     return {row["userId"]: row for row in response.json()["people"]}
 
 
@@ -27,6 +28,7 @@ def test_members_see_a_connected_status_and_hide_it_from_others(home):
             "text": "  集中工作 👩‍💻  ", "emoji": "🎧", "until": "2099-01-01T12:00:00Z",
         }})
         assert changed.status_code == 200
+        assert changed.headers["Cache-Control"] == "no-store"
         mine = changed.json()
         assert mine["userId"] == member_id
         assert (mine["availability"], mine["presence"], mine["online"]) == ("busy", "busy", True)
@@ -112,7 +114,10 @@ def test_pending_members_and_cross_site_cookies_cannot_set_status(home):
     assert owner_cookie.put(path, json=status, headers=ORIGIN).status_code == 200
 
 
-def test_damaged_preferences_do_not_disclose_someone_as_active(home):
+@pytest.mark.parametrize("whole_file", [True, False])
+def test_damaged_preferences_do_not_disclose_someone_as_active(home, whole_file):
+    import json
+
     from src.utils.state_dir import state_dir
 
     owner, base = home["owner"], home["base"]
@@ -120,10 +125,11 @@ def test_damaged_preferences_do_not_disclose_someone_as_active(home):
     member_id = member.get("/api/app/me").json()["user"]["id"]
     path = state_dir(home["root"]) / "app_prefs.json"
     assert member.put(f"{base}/me/status", json={"availability": "hidden"}).status_code == 200
-    path.write_text("{", encoding="utf-8")
+    damaged = "{" if whole_file else json.dumps({"version": 1, "people": {member_id: "damaged"}})
+    path.write_text(damaged, encoding="utf-8")
     with member.websocket_connect(f"/api/ws?orgId={home['org']}") as socket:
         assert socket.receive_json()["userId"] == member_id
         viewed = _people(owner, base)[member_id]
         assert (viewed["presence"], viewed["status"]) == ("offline", None)
         assert member.put(f"{base}/me/status", json={"availability": "away"}).status_code == 400
-        assert path.read_text(encoding="utf-8") == "{"
+        assert path.read_text(encoding="utf-8") == damaged

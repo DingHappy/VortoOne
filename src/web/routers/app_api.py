@@ -508,22 +508,24 @@ async def members(org_id: str, request: Request):
 
 
 @router.get(_ORG + "/people")
-async def people(org_id: str, request: Request):
+async def people(org_id: str, request: Request, response: Response):
     root = _root(org_id)
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
+    response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: {"people": app_members.people(root, who)})
 
 
 @router.put(_ORG + "/me/status")
-async def set_person_status(org_id: str, body: Dict[str, Any], request: Request):
+async def set_person_status(org_id: str, body: Dict[str, Any], request: Request, response: Response):
     root = _root(org_id)
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
     if who.is_owner and views.owner_connection() and not app_staff.owner_proof(request):
         return _error(403, "forbidden", "需要所有者证明")
+    response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: app_members.set_person_status(root, who, body))
 
 

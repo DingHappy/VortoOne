@@ -113,9 +113,9 @@ def _has_control(text: str) -> bool:
     return any(category(char) in {"Cc", "Cs"} for char in text)
 
 
-def status_preferences(root: str) -> Dict[str, Dict[str, Any]]:
-    return {who: {"availability": row.get("availability"), "status": row.get("status")}
-            for who, row in _read(root)["people"].items() if isinstance(row, dict)}
+def status_preferences(root: str) -> Dict[str, Optional[Dict[str, Any]]]:
+    return {who: {"availability": row.get("availability"), "status": row.get("status")} if isinstance(row, dict) else None
+            for who, row in _read(root)["people"].items()}
 
 
 def status_line(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
