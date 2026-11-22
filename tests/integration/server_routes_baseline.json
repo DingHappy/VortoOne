@@ -2130,6 +2130,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/reactions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/reactions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/reactions",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
     "methods": [
       "GET"

@@ -17,7 +17,7 @@ import sqlite3
 from contextlib import suppress
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,7 @@ from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
+from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channels import ChannelCategoryNameConflict, is_team_channel
 from src.workflow.members.registry import MemberRegistry
 from src.workflow.wiki import Wiki, WikiError, WikiReader
@@ -1050,6 +1051,30 @@ async def mark_team_channel_read(org_id: str, channel_id: str, request: Request)
 @router.get(_ORG + "/messages/{message_id}/card")
 async def team_message_card(org_id: str, message_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, message_id))
+
+
+class _MessageReaction(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    reaction: str = Field(min_length=1, max_length=REACTION_MAX_LENGTH)
+
+
+@router.get(_ORG + "/messages/{message_id}/reactions")
+async def team_message_reactions(org_id: str, message_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+        {"reactions": service.message_reactions(actor, message_id)})
+
+
+@router.post(_ORG + "/messages/{message_id}/reactions")
+async def add_team_message_reaction(org_id: str, message_id: str, body: _MessageReaction, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+        {"reactions": service.message_reactions(actor, message_id, reaction=body.reaction)})
+
+
+@router.delete(_ORG + "/messages/{message_id}/reactions")
+async def remove_team_message_reaction(org_id: str, message_id: str, request: Request,
+                                       reaction: str = Query(min_length=1, max_length=REACTION_MAX_LENGTH)):
+    return await _team_call(request, org_id, lambda service, actor:
+        {"reactions": service.message_reactions(actor, message_id, reaction=reaction, enabled=False)})
 
 
 @router.get(_ORG + "/threads/{thread_id}")
