@@ -118,6 +118,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", _TEAM_CHANNEL),
     ("DELETE", _TEAM_CHANNEL),
     ("POST", _TEAM_CHANNEL + r"/(?:join|leave|read|unarchive|members)"),
+    ("PUT", _TEAM_CHANNEL + r"/mute"),
+    ("DELETE", _TEAM_CHANNEL + r"/mute"),
     ("DELETE", _TEAM_CHANNEL + r"/members/people/[^/]+"),
     ("GET", _TEAM_CHANNEL + r"/(?:card|roster|permissions)"),
     ("PUT", _TEAM_CHANNEL + r"/permissions"),

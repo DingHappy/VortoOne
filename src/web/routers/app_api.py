@@ -1083,6 +1083,17 @@ async def mark_team_channel_read(org_id: str, channel_id: str, request: Request)
         _team_receipt(lambda: service.read(actor, channel_id)), channel_id=channel_id))
 
 
+class _ChannelMuteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.put(_ORG + "/channels/{channel_id}/mute", status_code=204)
+@router.delete(_ORG + "/channels/{channel_id}/mute", status_code=204)
+async def mute_team_channel(org_id: str, channel_id: str, request: Request, body: _ChannelMuteBody | None = None):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.set_muted(actor, channel_id, request.method == "PUT")), channel_id=channel_id))
+
+
 @router.get(_ORG + "/messages/{message_id}/card")
 async def team_message_card(org_id: str, message_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, message_id))
