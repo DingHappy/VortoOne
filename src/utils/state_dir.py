@@ -218,6 +218,7 @@ _STATE_ENTRIES = [
     "members/",
     "session_events/",
     "artifacts/",
+    "desktop-artifacts/",
     "states/",
     "projects/",
     "ai_apps/",

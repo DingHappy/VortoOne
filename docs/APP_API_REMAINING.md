@@ -278,7 +278,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/artifacts` | `artifacts.create` | 读已接、写没接；界面代码里没调用 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 读已接、写没接 |
+| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 已接所有者私有 UTF-8 HTML 上传和 Drive 隔离预览。其它格式返回 415，频道或话题挂载返回 422。通用文件上传仍待接。 |
 | ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML 和已存历史版本 |
 | ☐ | GET | `ORG/artifacts/{x}/file${version ` | `artifacts.fileBlob` |  |
 | ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |

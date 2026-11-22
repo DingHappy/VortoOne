@@ -1213,30 +1213,57 @@ def set_main_skills(root: str, wanted: List[str], *, referenced: Optional[List[s
     return skills(root)
 
 
-def _artifact(root: str, meta: Dict[str, Any]) -> Dict[str, Any]:
-    agent = {"type": "agent", "id": main_agent_id(root)}
-    return {"id": str(meta["id"]), "kind": "html", "title": str(meta.get("title") or meta["id"]),
-            "version": int(meta.get("pinned") or meta.get("version") or 1),
-            "channelId": dm_channel_id(main_agent_id(root)), "threadId": None, "createdBy": agent,
-            "updatedBy": agent, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
-            "canEdit": False, "canDelete": owner_connection(), "canShare": False,
-            "untrusted": True,       # 制品是助理写的页面：界面按不可信内容隔离展示
-            "audience": {"kind": "workspace"}, "sharing": {"mode": "conversation", "userIds": [], "roleIds": []}}
+def _artifact(root: str, meta: Dict[str, Any], *, desktop_upload: bool = False) -> Dict[str, Any]:
+    if desktop_upload:
+        author = {"type": "person", "id": owner_id(root)}
+        channel_id = None
+    else:
+        agent_id = main_agent_id(root)
+        author = {"type": "agent", "id": agent_id}
+        channel_id = dm_channel_id(agent_id)
+    row = {"id": str(meta["id"]), "kind": "html", "title": str(meta.get("title") or meta["id"]),
+           "version": int(meta.get("pinned") or meta.get("version") or 1),
+           "channelId": channel_id, "threadId": None, "createdBy": author,
+           "updatedBy": author, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
+           "canEdit": False, "canDelete": owner_connection(), "canShare": False,
+           "untrusted": True, "audience": {"kind": "workspace"}}
+    if not desktop_upload:
+        row["sharing"] = {"mode": "conversation", "userIds": [], "roleIds": []}
+    return row
 
 
-def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None) -> Dict[str, Any]:
+def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
+              include_uploads: bool = False) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     if kinds is not None and "html" not in kinds:
         return {"artifacts": [], "nextCursor": None, "counts": {}}
     needle = query.strip().lower()
     rows = [_artifact(root, meta) for meta in ArtifactStore(root).list() if isinstance(meta, dict) and meta.get("id")]
+    if include_uploads:
+        rows.extend(_artifact(root, meta, desktop_upload=True) for meta in ArtifactStore(root, desktop_uploads=True).list()
+                    if isinstance(meta, dict) and meta.get("id"))
+        rows.sort(key=lambda row: row["updatedAt"], reverse=True)
     if needle:
         rows = [row for row in rows if needle in row["title"].lower()]
     return {"artifacts": rows, "nextCursor": None, "counts": {"html": len(rows)} if rows else {}}
 
 
-def artifact(root: str, artifact_id: str, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def _artifact_content(shown: Dict[str, Any], html: str, version: int, *, versioned: bool) -> Dict[str, Any]:
+    return {**shown, "shownVersion": version, "content": {"kind": "html", "html": html}, "versioned": versioned}
+
+
+def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
+             include_uploads: bool = False) -> Optional[Dict[str, Any]]:
     from src.agents.tools.artifacts import ArtifactStore
+    if include_uploads:
+        uploads = ArtifactStore(root, desktop_uploads=True)
+        meta = uploads.meta(artifact_id)
+        if meta is not None:
+            shown = _artifact(root, meta, desktop_upload=True)
+            if version is not None and version != shown["version"]:
+                return None
+            html = uploads.html(artifact_id)
+            return _artifact_content(shown, html, shown["version"], versioned=False) if html is not None else None
     store = ArtifactStore(root)
     meta = store.meta(artifact_id)
     if not meta:
@@ -1249,8 +1276,18 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None) -> Opti
         return None
     shown = _artifact(root, meta)
     wanted = shown["version"] if version is None else version
-    return {**shown, "shownVersion": wanted, "content": {"kind": "html", "html": html},
-            "versioned": len(known_versions) > 1}
+    return _artifact_content(shown, html, wanted, versioned=len(known_versions) > 1)
+
+
+def upload_artifact(root: str, title: str, html: str) -> Dict[str, Any]:
+    from src.agents.tools.artifacts import ArtifactStore
+    from src.utils.home_maintenance import home_maintenance
+    from src.utils.state_dir import ensure_state_gitignore
+
+    with home_maintenance(root):
+        ensure_state_gitignore(root)
+        meta = ArtifactStore(root, desktop_uploads=True).publish_new(title, html)
+    return _artifact_content(_artifact(root, meta, desktop_upload=True), html, 1, versioned=False)
 
 
 # ── 角色资料页 ────────────────────────────────────────────────────────────────
