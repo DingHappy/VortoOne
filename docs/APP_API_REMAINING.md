@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 257 个，剩 **374** 个：
-- **要做：304**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 265 个，剩 **366** 个：
+- **要做：296**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -559,14 +559,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/push/stale` | `push.stale` |  |
 | ☐ | GET | `/api/app/push/web` | `push.webKey` |  |
 
-### org/team-proposals（4 个，要做 4）
+### org/team-proposals（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/team-proposals/{x}/agents/{x}` | `agents.adjustTeamAgent` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/create` | `agents.createTeam` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` |  |
+| ☑ | PATCH | `ORG/team-proposals/{x}/agents/{x}` | `agents.adjustTeamAgent` | 批的是卡片上这一版，要改请助理重新提，回 409 |
+| ☑ | POST | `ORG/team-proposals/{x}/create` | `agents.createTeam` | 助理提的开通单（新 agent 连同岗位、例行工作）以团队卡片出现在主要聊天里；按这一版批准整张开通单 |
+| ☑ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` | 拒绝 |
+| ☑ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` | 登记了不能一键撤回，回 409 |
 
 ### org/runs（4 个，要做 3）
 
@@ -630,13 +630,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/reminders` | `reminders.create` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 界面代码里没调用 |
 
-### /api/app/me（3 个，要做 3）
+### /api/app/me（3 个，要做 2）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `/api/app/me/password` | `account.addPassword` |  |
 | ☐ | GET | `/api/app/me/unread` | `account.unread` |  |
-| ☐ | PUT | `/api/app/me/work-area` | `account.setWorkArea` |  |
+| ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
 ### org/deletion（3 个，要做 3）
 
@@ -721,12 +721,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `/api/app/device-accounts` | `account.deviceAccounts` |  |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
 
-### org/logo（2 个，要做 2）
+### org/logo（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | DELETE | `ORG/logo` | `orgs.removeLogo` |  |
-| ☐ | PUT | `ORG/logo` | `orgs.setLogo` |  |
+| ☑ | DELETE | `ORG/logo` | `orgs.removeLogo` | 所有者可删除，本机工作区恢复默认标识 |
+| ☑ | PUT | `ORG/logo` | `orgs.setLogo` | 所有者可上传 ≤768 KiB、最长边 ≤512 像素的 8 位 RGB/RGBA 非隔行 PNG |
 
 ### org/team（2 个，要做 1）
 
@@ -849,11 +849,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | — | GET | `ORG/limits` | `orgs.limits` | 不做：没有收费体系（D07 未定） |
 
-### org/members（1 个，要做 1）
+### org/members（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/members/{x}/removal` | `orgs.removal` |  |
+| ☑ | GET | `ORG/members/{x}/removal` | `orgs.removal` | 仅已认证所有者可预览在册成员。移除不转交智能体、不更改模型或暂停例行工作。成员电脑随成员身份失去访问权，预览不列出其私有登记。 |
 
 ### org/invitations（1 个，要做 1）
 

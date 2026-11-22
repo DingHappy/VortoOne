@@ -22,11 +22,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from src.gateway import app_protocol as F
+from src.web import app_artifact_upload
 from src.web import app_views as views
 from src.web import (
-    app_artifact_upload, app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox,
-    app_personal_vault,
-    app_prefs, app_schedule, app_staff, app_voice, member_auth,
+    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
@@ -381,12 +381,17 @@ async def device_sign_out(request: Request, response: Response):
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
 @router.get("/api/app/me")
-async def me(request: Request):
+async def me(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     account = getattr(request.state, "member_account", None)
     if account is None:
-        return views.me(root)
-    return await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
+        result = views.me(root)
+    else:
+        result = await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
+    if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
+        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
+    return result
 
 
 @router.patch("/api/app/me", status_code=204)
@@ -399,6 +404,25 @@ async def update_me(body: Dict[str, Any], request: Request):
         await asyncio.to_thread(app_prefs.set_locale, root, key, body)
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+    return Response(status_code=204)
+
+
+@router.put("/api/app/me/work-area", status_code=204)
+async def set_work_area(body: Dict[str, Any], request: Request):
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "forbidden", "保存工作领域需要已认证的所有者会话")
+        key = actor.id
+    else:
+        key = app_members.member_auth_key(request.state.member_account)
+    try:
+        await asyncio.to_thread(app_prefs.set_work_area, root, key, body)
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+    except OSError:
+        return _error(503, "unavailable", "暂时无法保存工作领域")
     return Response(status_code=204)
 
 
@@ -540,6 +564,50 @@ async def update_home(org_id: str, body: Dict[str, Any], request: Request):
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
+async def _change_workspace_logo(org_id: str, request: Request, *, remove: bool = False):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "工作区 Logo")
+    if refused:
+        return refused
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "更新工作区 Logo 需要所有者的同源会话")
+    try:
+        if remove:
+            await asyncio.to_thread(app_org_logo.remove_logo, root)
+            return Response(status_code=204)
+        if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+            return _error(415, "logo.invalid", "工作区 Logo 只接受 JSON 请求")
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > app_org_logo.MAX_REQUEST_BYTES:
+                return _error(413, "logo.too_large", "工作区 Logo 请求过大")
+            raw.extend(chunk)
+        try:
+            body = json.loads(raw)
+        except (ValueError, RecursionError):
+            return _error(400, "logo.invalid", "工作区 Logo 请求格式无效")
+        logo = await asyncio.to_thread(app_org_logo.set_logo, root, body)
+        return JSONResponse({"logo": logo}, headers={"Cache-Control": "no-store"})
+    except app_org_logo.LogoTooLarge as error:
+        return _error(413, "logo.too_large", str(error))
+    except app_org_logo.InvalidLogo as error:
+        return _error(400, "logo.invalid", str(error))
+    except (HomeMaintenanceError, OSError):
+        return _error(409, "logo.unavailable", "无法保存或删除工作区 Logo")
+
+
+@router.put(_ORG + "/logo")
+async def set_workspace_logo(org_id: str, request: Request):
+    return await _change_workspace_logo(org_id, request)
+
+
+@router.delete(_ORG + "/logo", status_code=204)
+async def delete_workspace_logo(org_id: str, request: Request):
+    return await _change_workspace_logo(org_id, request, remove=True)
+
+
 @router.get(_ORG + "/members")
 async def members(org_id: str, request: Request):
     root = _root(org_id)
@@ -649,6 +717,20 @@ async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any], requ
     who = member_auth.principal(request, root)
     return await _members_call(
         lambda: {"roleIds": app_members.set_member_roles(root, who, user_id, body.get("roleIds"))}, write=True)
+
+
+@router.get(_ORG + "/members/{user_id}/removal")
+async def member_removal_preview(org_id: str, user_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "移除成员预览需要已认证的所有者连接")
+    else:
+        result = await _members_call(lambda: app_members.removal_preview(root, who, user_id))
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.delete(_ORG + "/members/{user_id}", status_code=204)
@@ -3884,13 +3966,13 @@ def _agent_view(root: str, staff_id: str) -> Optional[Dict[str, Any]]:
 
 # ── 聊天里的新建 agent 提议卡片（主人 2026-11-22 定）：和审批列表是同一份提议、同一套核对 ──────────
 
-async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action):
+async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action, *, kind: str = "member"):
     root = _root(org_id)
     if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
         return _error(403, "owner_proof_required", "提议卡片只有已认证的所有者能看和决定")
 
     def run():
-        item = views.find_agent_proposal(root, message_id)
+        item = views.find_agent_proposal(root, message_id, kind=kind)
         return None if item is None else action(root, item)
     try:
         result = await asyncio.to_thread(run)
@@ -3904,7 +3986,7 @@ def _decide_card(root: str, item: Dict[str, Any], approve: bool) -> Dict[str, An
     from src.workflow.staff.owner_confirmation import owner_route
     if item["status"] != "pending":
         raise ValueError("这份提议已经处理过了")
-    if views.agent_proposal(root, item, can_decide=True)["expired"]:
+    if views.proposal_expired(item):
         raise ValueError("这份提议已经过期，请让助理重新提")
     with owner_route(root):
         StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
@@ -3948,6 +4030,33 @@ async def proposed_agent_routine(org_id: str, message_id: str, request: Request)
     def run(root, item):
         raise ValueError("这份提议没有附带例行工作；需要的话请让助理另提一份例行工作提议")
     return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/create")
+async def create_proposed_team(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准整张开通单（岗位、agent、部门、例行工作一起登记）。"""
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, True)), "noAi": []}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/deny")
+async def deny_proposed_team(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, False))}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/undo")
+async def undo_proposed_team(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("登记了就不能一键撤回；要停用这些 agent 或例行工作，请让助理提议")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
+
+
+@router.patch(_ORG + "/team-proposals/{message_id}/agents/{handle}")
+async def adjust_proposed_team_agent(org_id: str, message_id: str, handle: str, request: Request):
+    def run(root, item):
+        raise ValueError("批的是卡片上的这一版；要改内容，请让助理重新提")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
 
 
 @router.post(_ORG + "/agents")
