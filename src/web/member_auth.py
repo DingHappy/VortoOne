@@ -87,6 +87,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/members/[^/]+/password-link"),
     # 成员和 agent：只列他用得了的 agent，私聊里只有他自己发起的事（web/app_members.py）
     ("GET", _ORG + r"/agents"),
+    ("GET", _ORG + r"/team"),
     ("GET", _ORG + r"/agents/[^/]+"),
     ("GET", _ORG + r"/agents/[^/]+/(?:browser(?:/handoff)?|desktop)"),
     ("GET", _ORG + r"/agents/[^/]+/member-action-levels"),

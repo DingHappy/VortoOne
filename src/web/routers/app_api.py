@@ -728,6 +728,20 @@ async def agent_status(org_id: str, request: Request):
     return {"agents": [row for row in views.agent_statuses(root) if shown is None or row["agentId"] in shown]}
 
 
+@router.get(_ORG + "/team")
+async def agent_team_directory(org_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    owner_activity = who.is_owner and app_staff.owner_proof(request)
+    bridge = existing_bridge(root) if owner_activity else None
+    main_running = bridge is not None and any(run["status"] == "running" for run in bridge.active_runs())
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.team_directory(
+        root, who, activity=who.is_member or owner_activity, main_running=main_running))
+
+
 @router.get(_ORG + "/ai-status")
 async def ai_status(org_id: str, request: Request):
     root = _root(org_id)
