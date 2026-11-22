@@ -2232,6 +2232,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/devices",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/dms",
     "methods": [
       "GET"
@@ -3086,6 +3104,12 @@
     ]
   },
   {
+    "path": "/api/app/invitations/{token}/state",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/auth/reset-password",
     "methods": [
       "POST"
@@ -3501,6 +3525,18 @@
     "path": "/api/app/organizations/{org_id}/me/issues-view",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/questions/{question_id}/answer",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/questions/{question_id}/dismiss",
+    "methods": [
+      "POST"
     ]
   },
   {

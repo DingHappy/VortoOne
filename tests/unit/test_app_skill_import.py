@@ -24,11 +24,25 @@ def general_workspace(monkeypatch):
     monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
 
 
+_FIXED_TIME = (2026, 1, 1, 0, 0, 0)
+
+
+def _entry(path: str) -> zipfile.ZipInfo:
+    """固定时间戳：writestr(名字) 会写入当前时间，参数化的 id 随秒变，pytest-xdist 各进程收集到的用例就对不上。"""
+    info = zipfile.ZipInfo(path, date_time=_FIXED_TIME)
+    if path.endswith("/"):
+        info.external_attr = 0o40775 << 16 | 0x10
+    else:
+        info.external_attr = 0o600 << 16
+        info.compress_type = zipfile.ZIP_DEFLATED
+    return info
+
+
 def _zip(*files) -> str:
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path, content in files:
-            archive.writestr(path, content)
+            archive.writestr(path if isinstance(path, zipfile.ZipInfo) else _entry(path), content)
     return base64.b64encode(data.getvalue()).decode("ascii")
 
 

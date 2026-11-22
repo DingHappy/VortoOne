@@ -392,6 +392,17 @@ def invitation_preview(root: str, token: str) -> Optional[Dict[str, Any]]:
             "account": {"exists": exists, "password": exists, "providers": []}}
 
 
+def expired_invitation_state(root: str, token: str) -> Optional[Dict[str, Any]]:
+    """只显示同一令牌原已可见的工作区和邀请人，帮助对方联系原邀请人。"""
+    registry = MemberRegistry(root)
+    item = registry.invitation(token, expired=True)
+    if item is None:
+        return None
+    return {"state": "expired", "orgName": views.overview(root)["name"],
+            "invitedBy": _names(root, registry.snapshot()).get(str(item.get("by") or "")),
+            "at": item["expires"]}
+
+
 def password_link(root: str, actor: Principal, member_id: str, origin: str) -> Dict[str, str]:
     """给一个成员生成一次性的重置密码链接。只有管得了他的人能生成。"""
     from src.workflow.members.accounts import MemberAccounts

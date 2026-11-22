@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import uuid
 
 import pytest
@@ -206,6 +207,169 @@ def test_members_pair_independent_private_computers_with_control_only(home, monk
             ws.receive_json()
     with pytest.raises(ComputerDenied):
         home['store'].authenticate(grant['token'])
+
+
+def test_device_routes_project_native_pairing_and_only_rename(home):
+    grant = paired(home)
+    owner = browser(home, cookie=True)
+    path = home['base'] + '/devices'
+    device_path = path + '/computers/' + CONNECTOR
+    owner_id = owner.get('/api/app/me').json()['user']['id']
+    # Same-origin fetches do not need to send an Origin header with GET.
+    owner.headers.pop('Origin')
+    answer = owner.get(path)
+    owner.headers['Origin'] = ORIGIN
+    device = {
+        'id': CONNECTOR, 'machineKind': 'connected', 'name': 'My computer', 'os': 'other',
+        'arch': '', 'hostname': '', 'cpus': None, 'memoryGb': None, 'ownerUserId': owner_id,
+        'belongsToWorkspace': False, 'spill': {'own': False, 'others': False}, 'systemMode': False,
+        'audience': {'mode': 'owner', 'userIds': [], 'roleIds': []},
+        'status': {'kind': 'offline', 'lastSeenAt': None}, 'maxTasks': None, 'toolchains': {},
+        'lastSeenAt': None, 'mayUse': False, 'mayManage': True, 'phones': [],
+    }
+    assert answer.status_code == 200
+    assert answer.json() == {'devices': [device], 'requests': []}
+    assert answer.headers['cache-control'] == 'no-store'
+    for denied in (
+        {'name': 'Ignored', 'audience': {'mode': 'everyone', 'userIds': [], 'roleIds': []}},
+        {'name': 'Ignored', 'belongsToWorkspace': True},
+        {'name': 'Ignored', 'maxTasks': 2},
+        {'name': 'Ignored', 'spill': {'others': True}},
+        {'name': None},
+        {},
+    ):
+        failed = owner.patch(device_path, json=denied)
+        assert failed.status_code == 400
+        assert failed.json()['error']['code'] == 'computer_rename_only'
+        assert failed.headers['cache-control'] == 'no-store'
+        assert owner.get(path).json() == {'devices': [device], 'requests': []}
+
+    rename = owner.patch(device_path, json={'name': '  New device name  '})
+    assert rename.status_code == 200
+    assert rename.headers['cache-control'] == 'no-store'
+    device['name'] = 'New device name'
+    assert rename.json() == device
+    assert owner.get(home['base'] + '/machines').json()['machines'][0]['name'] == device['name']
+
+    with connect(socket_client(home), grant) as ws:
+        ws.send_json(hello(grant))
+        ready = ws.receive_json()
+        assert ready['type'] == 'welcome'
+        device['status'] = {'kind': 'unsupported', 'reason': 'paired_connector_only'}
+        assert owner.get(path).json() == {'devices': [device], 'requests': []}
+        removed = owner.delete(device_path)
+        assert removed.status_code == 204 and not removed.content
+        assert removed.headers['cache-control'] == 'no-store'
+        assert ws.receive_json()['credentialRevoked'] is True
+        ws.send_json({'type': 'ack', 'generation': ready['generation']})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    assert owner.get(path).json() == {'devices': [], 'requests': []}
+    assert owner.delete(device_path).status_code == 404
+    assert owner.patch(device_path, json={'name': 'Revoked'}).status_code == 404
+    with pytest.raises(ComputerDenied):
+        home['store'].authenticate(grant['token'])
+
+
+def test_device_routes_require_owner_proof_or_current_pairer(home, monkeypatch):
+    claim_native_home(home, monkeypatch)
+    owner = browser(home, cookie=True)
+    alice, alice_id = join_member(home, owner, 'device-alice@example.test')
+    bob, _ = join_member(home, owner, 'device-bob@example.test')
+    owner_grant = paired(home)
+    pairing = alice.post(home['base'] + '/computer-pairings', json={})
+    assert pairing.status_code == 201
+    alice_connector = 'c' * 32
+    paired_member = exchange(home, pairing.json(), alice_connector, 'Alice device')
+    assert paired_member.status_code == 200
+    member_grant = paired_member.json()
+    path = home['base'] + '/devices'
+    alice_path = path + '/computers/' + alice_connector
+    owner_path = path + '/computers/' + CONNECTOR
+
+    assert [r['id'] for r in owner.get(path).json()['devices']] == [CONNECTOR]
+    listed = alice.get(path)
+    assert listed.status_code == 200
+    assert listed.headers['cache-control'] == 'no-store'
+    assert [(r['id'], r['ownerUserId']) for r in listed.json()['devices']] == [(alice_connector, alice_id)]
+    assert bob.get(path).json() == {'devices': [], 'requests': []}
+    assert owner.get(path, headers={'Origin': 'https://other.test'}).status_code == 403
+    assert alice.get(path, headers={'Origin': 'https://other.test'}).status_code == 403
+    assert alice.get('/api/app/organizations/unrelated/devices').status_code == 404
+    assert owner.get('/api/app/organizations/unrelated/devices').status_code == 404
+
+    assert browser(home).get(path).status_code == 401
+    assert browser(home).patch(alice_path, json={'name': 'Hidden'}).status_code == 401
+    assert browser(home).delete(alice_path).status_code == 401
+    assert owner.patch(alice_path, json={'name': 'Hidden'}).status_code == 404
+    assert owner.delete(alice_path).status_code == 404
+    assert alice.patch(owner_path, json={'name': 'Hidden'}).status_code == 404
+    assert alice.delete(owner_path).status_code == 404
+    assert bob.patch(alice_path, json={'name': 'Hidden'}).status_code == 404
+    assert bob.delete(alice_path).status_code == 404
+    assert alice.patch(alice_path, json={'name': 'Hidden'}, headers={'Origin': 'https://other.test'}).status_code == 403
+    assert alice.delete(alice_path, headers={'Origin': 'https://other.test'}).status_code == 403
+
+    renamed = alice.patch(alice_path, json={'name': 'Alice laptop'})
+    assert renamed.status_code == 200
+    assert renamed.json()['name'] == 'Alice laptop'
+    assert renamed.json()['ownerUserId'] == alice_id
+    assert alice.delete(alice_path).status_code == 204
+    assert alice.get(path).json() == {'devices': [], 'requests': []}
+    with pytest.raises(ComputerDenied):
+        home['store'].authenticate(member_grant['token'])
+    assert home['store'].authenticate(owner_grant['token']) == {
+        key: value for key, value in owner_grant.items() if key != 'token'
+    }
+
+
+def test_device_routes_hide_stale_pairings_after_trust_change(home):
+    from src.workflow.home_identity import invalidate_computer_trust
+
+    grant = paired(home)
+    owner = browser(home, owner=True)
+    path = home['base'] + '/devices'
+    device = path + '/computers/' + CONNECTOR
+    invalidate_computer_trust(home['root'], 'test restore')
+    assert owner.get(path).json() == {'devices': [], 'requests': []}
+    assert owner.patch(device, json={'name': 'Stale'}).status_code == 404
+    assert owner.delete(device).status_code == 404
+    stale, = home['store'].list()
+    assert stale['name'] == 'My computer' and stale['revoked_at'] is None and not stale['active']
+    with pytest.raises(ComputerDenied):
+        home['store'].authenticate(grant['token'])
+
+
+def test_device_revoke_does_not_close_a_replacement_credential(home, monkeypatch):
+    from src.gateway.computer_connections import connections
+
+    grant = paired(home)
+    replacement = SimpleNamespace(binding={'credential_epoch': 'e' * 32})
+    notified = []
+    scheduled = []
+    notify = connections.revoked
+
+    def new_connection_before_notify(root, connector, *, credential_epoch=None):
+        revoked, = home['store'].list()
+        assert revoked['revoked_at'] is not None
+        assert revoked['credential_epoch'] != grant['credential_epoch']
+        notified.append(credential_epoch)
+        # A home replacement can publish a new connection between the write and this call.
+        with connections._lock:
+            connections._current[(root, connector)] = replacement
+        try:
+            notify(root, connector, credential_epoch=credential_epoch)
+        finally:
+            with connections._lock:
+                del connections._current[(root, connector)]
+
+    monkeypatch.setattr(connections, '_schedule', scheduled.append)
+    monkeypatch.setattr(connections, 'revoked', new_connection_before_notify)
+    owner = browser(home, owner=True)
+    response = owner.delete(home['base'] + '/devices/computers/' + CONNECTOR)
+    assert response.status_code == 204
+    assert notified == [grant['credential_epoch']]
+    assert scheduled == []
 
 
 def test_member_pairing_needs_a_claimed_home_and_current_connect_permission(home, monkeypatch):
