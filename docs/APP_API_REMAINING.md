@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 208 个，剩 **423** 个：
-- **要做：351**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 214 个，剩 **417** 个：
+- **要做：345**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -61,13 +61,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 40）
+### org/missions（40 个，要做 35）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/missions` | `missions.create` | 读已接、写没接 |
+| ☑ | POST | `ORG/missions` | `missions.create` | 读已接、写没接 |
 | ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
-| ☐ | GET | `ORG/missions/{x}` | `missions.get` |  |
+| ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
 | ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |
 | ☐ | GET | `ORG/missions/{x}/brain` | `missions.brain` |  |
 | ☐ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` |  |
@@ -92,16 +92,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/join-requests/{x}/{x}` | `missions.decideJoin` |  |
 | ☐ | PUT | `ORG/missions/{x}/machine` | `missions.setMachine` | 界面代码里没调用 |
 | ☐ | POST | `ORG/missions/{x}/messages` | `missions.message` | 界面代码里没调用 |
-| ☐ | GET | `ORG/missions/{x}/participants` | `missions.participants` |  |
+| ☑ | GET | `ORG/missions/{x}/participants` | `missions.participants` |  |
 | ☐ | POST | `ORG/missions/{x}/participants` | `missions.json` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/missions/{x}/participants/{x}` | `missions.removeParticipant` |  |
 | ☐ | PATCH | `ORG/missions/{x}/participants/{x}` | `missions.setParticipant` |  |
-| ☐ | GET | `ORG/missions/{x}/plan` | `missions.plan` |  |
+| ☑ | GET | `ORG/missions/{x}/plan` | `missions.plan` |  |
 | ☐ | GET | `ORG/missions/{x}/reviews` | `missions.reviews` |  |
 | ☐ | POST | `ORG/missions/{x}/reviews/{x}/{x}` | `missions.review` |  |
 | ☐ | GET | `ORG/missions/{x}/settings` | `missions.settings` |  |
 | ☐ | POST | `ORG/missions/{x}/suggestions/{x}/{x}` | `missions.suggestion` |  |
-| ☐ | GET | `ORG/missions/{x}/summary` | `missions.summary` |  |
+| ☑ | GET | `ORG/missions/{x}/summary` | `missions.summary` |  |
 | ☐ | POST | `ORG/missions/{x}/transfer` | `missions.transfer` |  |
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
@@ -276,7 +276,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
-### org/threads（10 个，要做 10）
+### org/threads（10 个，要做 9）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -286,7 +286,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PATCH | `ORG/threads/{x}` | `threads.update` | 读已接、写没接 |
 | ☐ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 界面代码里没调用 |
 | ☐ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 界面代码里没调用 |
-| ☐ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
+| ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
 | ☐ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | 界面代码里没调用 |
 | ☐ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` |  |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` |  |

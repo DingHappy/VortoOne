@@ -51,6 +51,20 @@ CREATE TABLE IF NOT EXISTS read_markers (
     created TEXT NOT NULL,
     PRIMARY KEY(channel, person)
 );
+CREATE TABLE IF NOT EXISTS mission_drafts (
+    id TEXT PRIMARY KEY NOT NULL,
+    thread_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+    owner TEXT NOT NULL CHECK(owner = 'owner'),
+    staff_id TEXT NOT NULL,
+    staff_revision INTEGER NOT NULL CHECK(staff_revision > 0),
+    role_id TEXT NOT NULL,
+    role_revision INTEGER NOT NULL CHECK(role_revision > 0),
+    title TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status = 'proposed'),
+    revision INTEGER NOT NULL CHECK(revision > 0),
+    created TEXT NOT NULL
+);
 """
 
 REACTION_MAX_LENGTH = 32

@@ -2154,6 +2154,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/mission",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/computer-setup",
     "methods": [
       "GET"
@@ -2293,6 +2299,36 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/missions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/plan",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/summary",
     "methods": [
       "GET"
     ]
