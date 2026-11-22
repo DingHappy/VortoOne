@@ -2292,6 +2292,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar",
     "methods": [
       "GET"

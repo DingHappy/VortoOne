@@ -569,6 +569,18 @@ async def set_person_status(org_id: str, body: Dict[str, Any], request: Request,
     return await _members_call(lambda: app_members.set_person_status(root, who, body))
 
 
+@router.patch(_ORG + "/me")
+async def update_person_timezone(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "保存个人时区需要已认证的同源会话")
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.update_person_timezone(root, who, body))
+
+
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
 # 规矩在登记处和内核；这里把登记处的三种拒绝对成状态码。写入只在设了主人令牌的服务上开放。
 
