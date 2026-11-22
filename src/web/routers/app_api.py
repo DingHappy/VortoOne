@@ -401,6 +401,23 @@ async def update_me(body: Dict[str, Any], request: Request):
     return Response(status_code=204)
 
 
+@router.put("/api/app/me/work-area", status_code=204)
+async def set_work_area(body: Dict[str, Any], request: Request):
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "forbidden", "保存工作领域需要已认证的所有者会话")
+        key = actor.id
+    else:
+        key = app_members.member_auth_key(request.state.member_account)
+    try:
+        await asyncio.to_thread(app_prefs.set_work_area, root, key, body)
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+    return Response(status_code=204)
+
+
 @router.get("/api/app/models")
 async def models():
     return {"models": [], "defaultModel": ""}

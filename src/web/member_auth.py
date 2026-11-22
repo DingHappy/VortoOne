@@ -36,6 +36,7 @@ _CATEGORY = _CATEGORIES + r"/" + CHANNEL_CATEGORY_ID_PATTERN
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    ("PUT", r"/api/app/me/work-area"),                    # 本人引导里的可选填写项
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),

@@ -5,7 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.unit.test_member_login import ORIGIN, TOKEN, _join
+from tests.unit.test_member_login import ORIGIN, PASSWORD, TOKEN, _invite, _join
 from tests.unit.test_member_login import home  # noqa: F401 —— 成员登录的整套夹具
 
 PERSONAL_TOOLS = ["waiting", "approvals", "proposals", "routines", "drive", "calendar", "issues", "threads", "team",
@@ -141,6 +141,80 @@ def test_the_screen_language_is_kept_per_account(home):  # noqa: F811
 def test_only_a_known_language_can_be_set(local, body):
     assert local["client"].patch("/api/app/me", json=body).status_code == 400
     assert local["client"].get("/api/app/me").json()["user"]["locale"] == "zh-Hans"
+
+
+# ── 引导中的个人工作领域 ────────────────────────────────────────────────
+
+_AREA_URL = "/api/app/me/work-area"
+
+
+def test_work_area_is_only_read_back_by_its_account(home):
+    owner = home["owner"]
+    first = _join(home, email="first@example.test")
+    second = _join(home, email="second@example.test")
+    assert owner.get("/api/app/me").json()["user"]["workArea"] is None
+
+    assert owner.put(_AREA_URL, json={"area": "ops"}).status_code == 204
+    assert first.put(_AREA_URL, json={"area": "dev"}).status_code == 204
+    assert second.put(_AREA_URL, json={"area": "skipped"}).status_code == 204
+
+    assert first.patch("/api/app/me", json={"locale": "ja"}).status_code == 204
+    assert first.get("/api/app/me").json()["user"]["workArea"] == "dev"
+    assert second.get("/api/app/me").json()["user"]["workArea"] == "skipped"
+    assert owner.get("/api/app/me").json()["user"]["workArea"] == "ops"
+    assert all("workArea" not in row for row in owner.get(home["base"] + "/members").json()["members"])
+
+
+def test_unjoined_account_keeps_area_when_it_joins(home):
+    token = _invite(home, "joining@example.test")
+    member = TestClient(home["app"], headers=ORIGIN)
+    assert member.post("/api/auth/sign-up/email", json={
+        "email": "joining@example.test", "password": PASSWORD, "name": "加入者",
+    }, headers={"x-invitation-token": token}).status_code == 200
+    assert member.get("/api/app/me").json()["organizations"] == []
+    assert member.put(_AREA_URL, json={"area": "finance"}).status_code == 204
+    assert member.post(f"/api/app/invitations/{token}/accept", json={}).status_code == 200
+    assert member.get("/api/app/me").json()["user"]["workArea"] == "finance"
+
+
+def test_work_area_rejects_untrusted_writes(local):
+    # 本地无令牌时仍可显示默认引导，账号字段写入要求认证。
+    assert local["client"].put(_AREA_URL, json={"area": "dev"}).status_code == 403
+
+
+def test_work_area_requires_authentication_and_same_origin_for_cookie_writes(home):
+    visitor = TestClient(home["app"])
+    assert visitor.put(_AREA_URL, json={"area": "dev"}).status_code == 401
+    member = _join(home)
+    foreign = {"Origin": "http://other.example"}
+    assert member.put(_AREA_URL, json={"area": "dev"}, headers=foreign).status_code == 403
+    browser = TestClient(home["app"])
+    assert browser.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    assert browser.put(_AREA_URL, json={"area": "dev"}, headers=foreign).status_code == 403
+    assert browser.put(_AREA_URL, json={"area": "dev"}, headers=ORIGIN).status_code == 204
+
+
+@pytest.mark.parametrize("body", [{}, {"area": None}, {"area": "custom"}, {"area": ["dev"]},
+                                  {"area": "dev", "userId": "another-account"}])
+def test_invalid_work_area_does_not_replace_saved_area(home, body):
+    owner = home["owner"]
+    assert owner.put(_AREA_URL, json={"area": "sales"}).status_code == 204
+    assert owner.put(_AREA_URL, json=body).status_code == 400
+    assert owner.get("/api/app/me").json()["user"]["workArea"] == "sales"
+
+
+def test_a_damaged_account_preference_stays_readable_without_overwriting_it(home):
+    from src.utils.state_dir import state_dir
+    owner = home["owner"]
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    path = state_dir(home["root"]) / "app_prefs.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    corrupt = json.dumps({"version": 1, "people": {owner_id: []}})
+    path.write_text(corrupt, encoding="utf-8")
+
+    assert owner.get("/api/app/me").json()["user"]["workArea"] is None
+    assert owner.put(_AREA_URL, json={"area": "ops"}).status_code == 400
+    assert path.read_text(encoding="utf-8") == corrupt
 
 
 # ── 空间设置：名字和时区 ──────────────────────────────────────────────────────
