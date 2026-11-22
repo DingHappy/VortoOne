@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 264 个，剩 **367** 个：
-- **要做：297**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 265 个，剩 **366** 个：
+- **要做：296**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -630,13 +630,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/reminders` | `reminders.create` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 界面代码里没调用 |
 
-### /api/app/me（3 个，要做 3）
+### /api/app/me（3 个，要做 2）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `/api/app/me/password` | `account.addPassword` |  |
 | ☐ | GET | `/api/app/me/unread` | `account.unread` |  |
-| ☐ | PUT | `/api/app/me/work-area` | `account.setWorkArea` |  |
+| ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
 ### org/deletion（3 个，要做 3）
 

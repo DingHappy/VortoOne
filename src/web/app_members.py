@@ -240,7 +240,8 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     joined = actor.id in state["members"]
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": None, **views.ui_locale(root, member_auth_key(account))},
+                 "email": str(account["email"]), "image": None,
+                 **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            "showActivity": True, "permissions": permission_keys(root, actor),
                            "memberRoutineProposals": True, "teamChannels": True,
