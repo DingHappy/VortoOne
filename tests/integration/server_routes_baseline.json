@@ -2376,6 +2376,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/removal",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/members/{user_id}/roles",
     "methods": [
       "PUT"
