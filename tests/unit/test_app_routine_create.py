@@ -37,6 +37,9 @@ def test_a_new_routine_waits_for_the_owners_review_then_runs(home):
     assert Routines(home["root"]).list() == []                              # 还没登记
     listed = home["owner"].get(f"{home['base']}/routines").json()["routines"]
     assert [r["id"] for r in listed] == [row["id"]]
+    runs = f"{home['base']}/routines/{row['id']}/runs"
+    assert home["owner"].get(runs).json() == {"runs": []}
+    assert _join(home).get(runs).status_code == 403
 
     [proposal] = _review(home)
     assert proposal["name"] == "晨报" and proposal["schedule"] == "0 9 * * *" and proposal["timezone"] == "Asia/Shanghai"

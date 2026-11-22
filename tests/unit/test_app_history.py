@@ -1,6 +1,6 @@
 """新版界面的运行记录、本月用量与例行工作历史：来自任务台账和用量账本。"""
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -74,13 +74,17 @@ def test_usage_is_summed_per_agent_from_the_ledger(home):
     assert client.get(f"{base}/agents/{home['main']}").json()["tokensThisMonth"] == 60
 
 
-async def test_routine_history_comes_from_its_tasks(home):
+async def test_routine_history_comes_from_its_tasks(home, monkeypatch):
     from src.workflow.staff.routines import Routines
     client, base, service, member, pool = (home[k] for k in ("client", "base", "service", "member", "pool"))
+    monkeypatch.setenv("VORTOONE_API_TOKEN", "routine-history-test-owner")
+    client.headers["Authorization"] = "Bearer routine-history-test-owner"
     Routines(str(home["root"])).register({"id": "routine-report", "name": "例行核对", "member": member["id"],
         "prompt": "核对公开数字", "schedule": "at 09:00", "timezone": "UTC", "delivery": "notify"})
     fresh = client.get(f"{base}/routines").json()["routines"][0]
     assert fresh["lastRun"] is None and fresh["health"]["total"] == 0
+    url = f"{base}/routines/routine-report/runs"
+    assert client.get(url).json() == {"runs": []}
 
     marker = {"id": "routine-report", "revision": 1, "slot": "2026-11-16T09:00:00+00:00", "legacy": None,
               "token_budget": 0}
@@ -94,3 +98,41 @@ async def test_routine_history_comes_from_its_tasks(home):
     assert routine["health"] == {"ok": 1, "silent": 0, "failed": 0, "skipped": 0, "missed": 0, "total": 1}
     assert routine["failuresInRow"] == 0
     assert [r["trigger"] for r in client.get(f"{base}/runs").json()["runs"] if r["id"] == ran.id] == ["routine"]
+    response = client.get(url)
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    assert response.json()["runs"] == routine["recentRuns"]
+    link = response.json()["runs"][0]["link"]
+    messages = client.get(f"{base}/channels/{link['channelId']}/messages").json()["messages"]
+    assert any(msg["id"] == link["messageId"] and msg["body"] == "逐条交回结论" for msg in messages)
+
+
+async def test_routine_runs_are_bounded_and_do_not_conflate_unrelated_tasks(home):
+    from copy import deepcopy
+    from src.workflow.staff.routines import Routines
+    from src.workflow.tasks.tasks import TaskLedger
+
+    client, base, service, member = (home[k] for k in ("client", "base", "service", "member"))
+    registry = Routines(str(home["root"]))
+    definition = {"name": "同名作业", "member": member["id"], "prompt": "同样的提示", "schedule": "at 09:00", "timezone": "UTC"}
+    for name in ("routine-one", "routine-two"):
+        registry.register({"id": name, **definition})
+    marker = {"id": "routine-one", "revision": 1, "slot": "2026-11-16T09:00:00+00:00", "legacy": None,
+              "token_budget": 0}
+    task = service.assign("sid-owner", {"member": member["id"], "prompt": definition["prompt"]}, routine=marker)
+    stopped = service.collaboration("sid-owner").abort(task.id, 1, cancelled=True)
+    ledger = TaskLedger(str(home["root"]))
+    for minute in range(31):
+        record = deepcopy(stopped)
+        record.id = f"task-test-routine-{minute:02}"
+        record.created = (datetime.fromisoformat(stopped.created) - timedelta(minutes=31 - minute)).isoformat()
+        assert ledger.save(record)
+    service.assign("sid-owner", {"member": member["id"], "prompt": definition["prompt"]})
+
+    rows = client.get(f"{base}/routines/routine-one/runs").json()["runs"]
+    assert len(rows) == 30 and rows[0]["id"] == stopped.id
+    assert [row["id"] for row in rows[1:]] == [f"task-test-routine-{n:02}" for n in range(30, 1, -1)]
+    assert all(row["status"] == "canceled" and row["finishedAt"] and row["link"] is None for row in rows)
+    assert client.get(f"{base}/routines/routine-two/runs").json() == {"runs": []}
+    assert client.get(f"{base}/routines/unknown/runs").status_code == 404
+    registry.control("routine-one", registry.get("routine-one")["revision"], retire=True)
+    assert client.get(f"{base}/routines/routine-one/runs").status_code == 404

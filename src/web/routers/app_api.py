@@ -2264,6 +2264,20 @@ async def routines(org_id: str):
     return _listing(lambda: {"routines": views.routines(root)})
 
 
+@router.get(_ORG + "/routines/{routine_id}/runs")
+async def routine_runs(org_id: str, routine_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "只有所有者能读取例行工作记录")
+    response.headers["Cache-Control"] = "no-store"
+
+    def read():
+        rows = views.routine_runs(root, routine_id)
+        return {"runs": rows} if rows is not None else _error(404, "not_found", "没有这条例行工作")
+
+    return await asyncio.to_thread(_listing, read)
+
+
 def _routine_proposal_row(item: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = item["snapshot"]
     data = snapshot["data"]
