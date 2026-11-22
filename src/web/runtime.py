@@ -58,6 +58,10 @@ async def runtime_lifespan():
     from src.web.routers.runs import get_run_manager
     from src.web.routers.terminals import get_terminal_manager
     from src.web.routers.realtime import session_actors
+    # 所有者在新界面里加的模型端点：在恢复任务、接 IM 之前登记。晚了的话，恢复的任务会找不到它点名的端点，
+    # 先建好的会话也会拿着服务配置的默认端点。
+    from src.web.app_credentials import apply as apply_credentials
+    apply_credentials(os.getcwd())
     async with host(os.getcwd(), runner=get_runner(), scheduler=scheduler_loop,
                     audit_dependencies=lambda: get_dispatch_service().audit_dependencies(),
                     make_run_manager=get_run_manager, make_terminal_manager=get_terminal_manager,
@@ -73,9 +77,6 @@ async def runtime_lifespan():
         observer = asyncio.create_task(observe_loop(stop)) if observer_enabled() else None
         # 任务上下文（ADR-014）：常驻助理开的大任务，成员交回就叫醒协调人；启动时恢复被打断的回合
         team_runner = None
-        # 所有者在新界面里加的模型端点：登记进进程环境，默认的那个换掉服务配置的默认端点
-        from src.web.app_credentials import apply as apply_credentials
-        apply_credentials(os.getcwd())
         if current_workspace_scope() == GENERAL:
             from src.scheduling.task_notices import notify_transition
             from src.scheduling.team_runner import TeamRunner, set_team_runner

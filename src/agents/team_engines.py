@@ -126,6 +126,10 @@ def opencode_config(model: str) -> Dict[str, Any]:
 def engine_env(engine: str, model: str) -> Dict[str, str]:
     if engine not in ENGINE_COMMANDS:
         raise EngineUnavailable(f"未知执行框架：{engine}")
+    from src.llm.endpoints import is_endpoint_model
+    if is_endpoint_model(model):
+        # 外部框架只拿得到默认端点：照传就是把内容发给了没被选中的一家
+        raise EngineUnavailable("外部框架还不支持「AI 密钥」里点名的端点模型；请换成自有框架，或给它选默认端点上的模型")
     base, key = relay()
     env = framework_env(engine)
     binary = resolve_binary(ENGINE_COMMANDS[engine][0])

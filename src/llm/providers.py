@@ -85,6 +85,13 @@ def providers() -> Dict[str, ProviderSpec]:
       · `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` → 自动登记成 `anthropic`（沿用既有变量名）；
       · `VORTOONE_PROVIDER_<NAME>_BASE` + `_KEY` → 登记成 `<name>`（小写），想加几家加几家。
     """
+    from src.llm import endpoints
+
+    with endpoints.LOCK:                  # 地址和 key 成对读：所有者可能正在换端点
+        return _providers()
+
+
+def _providers() -> Dict[str, ProviderSpec]:
     from src.llm.client import DEFAULT_LLM_BASE_URL
 
     default_base = _env("OPENAI_API_BASE") or DEFAULT_LLM_BASE_URL
