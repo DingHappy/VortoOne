@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 227 个，剩 **404** 个：
-- **要做：332**（其中 37 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 228 个，剩 **403** 个：
+- **要做：331**（其中 37 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -288,20 +288,20 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
-### org/threads（10 个，要做 8）
+### org/threads（10 个，要做 7）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/threads` | `threads.list` |  |
 | ☐ | POST | `ORG/threads` | `threads.create` |  |
 | ☐ | DELETE | `ORG/threads/{x}` | `threads.remove` | 读已接、写没接 |
-| ☐ | PATCH | `ORG/threads/{x}` | `threads.update` | 读已接、写没接 |
+| ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接现有团队频道话题的改名，调整选段待接 |
 | ☐ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 界面代码里没调用 |
 | ☐ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 界面代码里没调用 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
 | ☐ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | 界面代码里没调用 |
 | ☐ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` |  |
-| ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` |  |
+| ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 
 ### org/channels（10 个，要做 9）
 
