@@ -1,12 +1,12 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 243 个，剩 **388** 个：
+客户端合同里一共 631 个不重复接口，后端已接 245 个，剩 **386** 个：
 - **要做：316**（其中 34 个在界面代码里没有调用，可以往后排）
-- **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
+- **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
-表里 ☐ 是待做的，☑ 是已接入的（注明限制），— 是不做的。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办或已定不做。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
 ## 怎么核对
 
@@ -43,7 +43,7 @@
    - agent 权限页（access/brain/repositories/scopes）保持只读
    - 往 agent 系统提示里加东西，要标明「是资料不是指令」，并且同一会话内逐字不变
    - 外部内容按污点处理
-8. **不碰**：ADR-008 冻结的 `workflow/tasks` 高级模块；Codex 的连接电脑线；不新增依赖（要加就单独开 PR 刷锁文件）
+8. Codex 连接电脑线单独统计，按批次提交 PR。ADR-008 冻结的 `workflow/tasks` 高级模块继续冻结。不新增依赖（要加就单独开 PR 刷锁文件）
 9. **本地门禁**：本机 Python 3.14 下 `test_computer_connector.py::test_real_https_validates_injected_ca_and_rejects_untrusted_peer[True]` 必挂，和改动无关；CI 上的 3.10 和 3.12 是绿的
 10. **端到端验证**要带 `VORTOONE_WORKSPACE_SCOPE=general`，常驻助理和 Desktop 都以这个范围运行
 11. 在 worktree 里不要用 `git stash`：它整个仓库共用，会弹出别人的暂存
@@ -179,10 +179,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/devices` | `devices.list` | Codex 连接电脑线 |
+| ☑ | GET | `ORG/devices` | `devices.list` | 只列当前调用者配对的有效电脑，在线时说明仅支持配对能力。 |
 | — | POST | `ORG/devices/access-requests/{x}/decide` | `devices.decideAccess` | Codex 连接电脑线 |
-| — | DELETE | `ORG/devices/computers/{x}` | `devices.removeComputer` | Codex 连接电脑线 |
-| — | PATCH | `ORG/devices/computers/{x}` | `devices.updateComputer` | Codex 连接电脑线 |
+| ☑ | DELETE | `ORG/devices/computers/{x}` | `devices.removeComputer` | 由配对人撤销凭据并断开对应连接。 |
+| — | PATCH | `ORG/devices/computers/{x}` | `devices.updateComputer` | Codex 连接电脑线。配对人可改名，共享、工作区归属、任务数和溢出设置返回 400。 |
 | — | POST | `ORG/devices/computers/{x}/phone-looks` | `devices.lookForPhones` | Codex 连接电脑线 |
 | — | GET | `ORG/devices/computers/{x}/wifi-iphones` | `devices.wifiIphones` | Codex 连接电脑线 |
 | — | PUT | `ORG/devices/computers/{x}/wifi-iphones/{x}` | `devices.pickIphoneOverWifi` | Codex 连接电脑线 |
@@ -437,7 +437,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/invitations/{x}/request-new` | `invites.requestNew` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests` | `invites.ask` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` |  |
-| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` |  |
+| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 已接尚未清理的过期邮箱邀请；已接受的令牌已被消费，待有真实回执后补齐 |
 
 ### org/databases（6 个，要做 6）
 

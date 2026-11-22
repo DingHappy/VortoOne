@@ -564,17 +564,33 @@ class MemberRegistry:
                 pass
         raise Missing("邀请权限已变化，请让有权限的人重新发送")
 
-    def invitation(self, token: str, *, now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
-        """凭令牌看一份还有效的邀请（不消耗它）。没有或已过期返回 None。"""
-        stamp, digest = _iso(now or _now()), _digest(str(token or ""))
+    def invitation(self, token: str, *, now: Optional[datetime] = None,
+                   expired: bool = False) -> Optional[Dict[str, Any]]:
+        """凭令牌只读邀请。默认查有效邀请，也可查尚未清理的过期邮箱邀请。"""
+        moment = (now or _now()).astimezone(timezone.utc)
+        digest = _digest(str(token or ""))
+        stamp = _iso(moment)
         state = self.snapshot()
         for invitation_id, item in state["invitations"].items():
-            if str(item.get("expires") or "") > stamp and secrets.compare_digest(str(item.get("digest") or ""), digest):
+            if not secrets.compare_digest(str(item.get("digest") or ""), digest):
+                continue
+            ends = str(item.get("expires") or "")
+            if expired:
+                if not isinstance(item.get("email"), str) or not item["email"]:
+                    continue
                 try:
-                    groups = self._invited_groups(state, item)
-                except Missing:
-                    return None
-                return {**item, "groups": groups, "id": invitation_id}
+                    expiry = datetime.fromisoformat(ends.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if expiry.tzinfo is None or expiry > moment:
+                    continue
+            elif ends <= stamp:
+                continue
+            try:
+                groups = self._invited_groups(state, item)
+            except Missing:
+                return None
+            return {**item, "groups": groups, "id": invitation_id}
         return None
 
     def manages(self, actor: Principal, member_id: str) -> bool:
