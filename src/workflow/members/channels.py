@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from src.agents import identity_groups as rules
 from src.gateway.session_store import ChannelNameConflict, channel_metadata, normalize_channel
 from src.workflow.members import channel_threads
-from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _stamp
+from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _before, _stamp
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
 from src.workflow.members.thread_reads import ThreadReader
 
@@ -406,6 +406,32 @@ class TeamChannels:
             result = {"target": target, "allow": sorted(allowed), "deny": sorted(denied)}
             channel["overrides"] = rest + [result]
             return self._describe_override(result)
+
+    def search(self, actor, needle, *, channel_ids=None, after="", before="", oldest=False, limit=20):
+        """调用人读得到的团队频道（已加入、未归档）里含这段文字的消息。after/before 是带时区的 ISO 时间。"""
+        after, before = (_before(value) if value else "" for value in (after, before))
+        with self.registry._locked_state() as state, self.history.database() as conn:
+            MemberRegistry._actor(state, actor)
+            readable = {key: channel for key, channel in state["channels"].items()
+                        if not channel["archived"] and self._access(state, actor, channel).joined
+                        and (channel_ids is None or key in channel_ids)}
+            rows = self.history.search(conn, list(readable), needle, after=after, before=before, oldest=oldest,
+                                       limit=limit)
+            hits = []
+            for row in rows:
+                author = row["author"]
+                name = self.owner_name if author == OWNER_KEY else state["members"].get(author, {}).get("name", "")
+                title = None
+                if row["thread"]:
+                    try:
+                        root = self.history.find_by_id(conn, row["thread"])
+                    except Missing:
+                        root = None
+                    title = (root["body"].strip().splitlines() or [""])[0][:80] if root is not None else ""
+                hits.append({"message": self.history.message(row, self._actor_key(actor)),
+                             "channelName": readable[row["channel"]]["title"], "authorName": name,
+                             "threadTitle": title})
+            return hits
 
     def can_read(self, actor, channel_id):
         state = self.registry.snapshot()

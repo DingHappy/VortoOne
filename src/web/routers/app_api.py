@@ -2800,6 +2800,23 @@ async def audit(org_id: str, request: Request, actorType: str = "", actorId: str
     return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
+@router.get(_ORG + "/search")
+async def search(org_id: str, request: Request, q: str = "", kinds: str = "", limit: int | None = None):
+    """搜索：团队频道消息与任务卡片，各按调用人能看到的范围（见 app_search 的说明）。"""
+    from src.web import app_search
+    filters = {key: request.query_params.get(key, "") for key in (
+        "in", "fromUsers", "fromAgents", "mentionsUsers", "mentionsAgents", "has", "author", "pinned", "after",
+        "before", "sort")}
+    try:
+        parsed = app_search.parse(q=q, kinds=kinds, limit=limit, **filters)
+    except app_search.SearchQueryError as error:
+        return _error(400, "invalid", str(error))
+    root = _root(org_id)
+    result = await _team_call(request, org_id, lambda service, actor:
+                              {"hits": app_search.query(root, service, actor, parsed)})
+    return JSONResponse(result, headers={"Cache-Control": "no-store"}) if isinstance(result, dict) else result
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)
