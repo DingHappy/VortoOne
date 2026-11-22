@@ -115,7 +115,6 @@ def test_import_refuses_unsupported_payloads_and_checks_current_permissions(home
     good = {"title": "供导入", "body": ""}
     for batch, code in (
         (_batch(good, source={"type": "obsidian", "name": "vault"}), 409),
-        (_batch(good, source={"type": "github", "name": "org/repo"}), 409),
         (_batch(good, good | {"aliases": ["别名"]}), 409),
         (_batch(good, good | {"attachments": {"preview.png": "artifact-id"}}), 409),
         (_batch(good, good | {"folder": "../目录"}), 400),

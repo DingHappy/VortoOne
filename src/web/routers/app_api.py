@@ -2602,6 +2602,26 @@ async def import_wiki_notes(org_id: str, request: Request):
     return await _wiki_call(request, org_id, import_notes, read_body=_wiki_import_body)
 
 
+@router.get(_WIKI + "/import/github")
+async def preview_wiki_github(org_id: str, request: Request, url: str = Query(..., max_length=2048)):
+    from src.web import app_wiki_github
+
+    def plan(wiki):
+        if not wiki.reader.actor.is_owner:
+            raise WikiError(403, "forbidden", "GitHub 导入需要通过认证的工作区所有者")
+        return app_wiki_github.parse_link(url)
+
+    target = await _wiki_call(request, org_id, plan)
+    if isinstance(target, Response):
+        return target
+    try:
+        data = await app_wiki_github.fetch_notes(target)
+    except WikiError as error:
+        return _error(error.status, error.code, str(error))
+    return Response(data, media_type="application/zip",
+                    headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
 @router.post(_WIKI + "/pages", status_code=201)
 async def create_wiki_page(org_id: str, body: Dict[str, Any], request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.create(body))
