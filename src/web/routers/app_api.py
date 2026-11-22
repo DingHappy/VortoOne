@@ -2669,6 +2669,15 @@ async def vault_remove(org_id: str, item_id: str, request: Request):
     return await _vault_call(request, org_id, lambda vault, _: vault.remove(item_id))
 
 
+@router.get(_ORG + "/mail/providers")
+async def mail_providers(org_id: str, request: Request):
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    # 组织的连接目录只公布能从这里添加的服务。旧 IMAP 插件的凭据属于服务的操作系统用户。
+    return {"composio": False, "imap": False, "presets": []}
+
+
 # ── Wiki ───────────────────────────────────────────────────────────────────
 
 _WIKI = _ORG + "/wiki"

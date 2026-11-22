@@ -102,6 +102,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/voice/allowed"),
     ("GET", _ORG + r"/voice/[A-Za-z0-9_-]+/audio"),
     ("POST", _TEAM_CHANNEL + r"/voice"),
+    ("GET", _ORG + r"/mail/providers"),
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),

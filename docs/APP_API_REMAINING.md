@@ -65,7 +65,6 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 几处需要主人定的：
 - wiki 页面进 agent 上下文时，成员写的内容算不算可信
 - vault 里的密钥归谁、怎么撤销
-- 邮件能不能对外发信
 - 存储要不要接 S3（D06、D07 当时都没定）
 
 ## 清单
@@ -414,6 +413,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ### org/mail（7 个，要做 7）
 
+已定：邮件只读，保存草稿须用户确认，由用户在自己的邮件客户端发送。
+现有本机 IMAP 插件已支持这条流程。它使用操作系统用户的凭据，组织内的邮箱账户和授权仍待接入。
+组织连接目录目前明确不提供新增邮箱的入口。
+
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/mail/accounts/composio` | `mail.connectComposio` |  |
@@ -422,7 +425,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PATCH | `ORG/mail/accounts/{x}` | `mail.update` |  |
 | ☐ | GET | `ORG/mail/accounts/{x}/folders` | `mail.folders` |  |
 | ☐ | GET | `ORG/mail/accounts/{x}/suggested-addresses` | `mail.suggestedAddresses` |  |
-| ☐ | GET | `ORG/mail/providers` | `mail.providers` |  |
+| ☐ | GET | `ORG/mail/providers` | `mail.providers` | 已接能力查询，两种连接方式暂不可用；组织 IMAP 接通后再开放 |
 
 ### org/browser-profiles（7 个，要做 0）
 
