@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 302 个，剩 **329** 个：
-- **要做：254**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 308 个，剩 **323** 个：
+- **要做：248**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -459,16 +459,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/databases/{x}/databases{x}` | `databases.serverDatabases` |  |
 | ☐ | GET | `ORG/databases/{x}/tables${database ` | `databases.tables` |  |
 
-### org/join-requests（6 个，要做 6）
+### org/join-requests（6 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/join-requests` | `joinRequests.list` |  |
-| ☐ | GET | `ORG/join-requests/mine` | `joinRequests.mine` |  |
-| ☐ | POST | `ORG/join-requests/suggest` | `joinRequests.suggest` |  |
-| ☐ | DELETE | `ORG/join-requests/{x}` | `joinRequests.cancel` |  |
-| ☐ | POST | `ORG/join-requests/{x}/approve` | `joinRequests.approve` |  |
-| ☐ | POST | `ORG/join-requests/{x}/deny` | `joinRequests.deny` |  |
+| ☑ | GET | `ORG/join-requests` | `joinRequests.list` | 仅所有者查看在册成员推荐的待核对建议。 |
+| ☑ | GET | `ORG/join-requests/mine` | `joinRequests.mine` | 只看自己的待核对建议。 |
+| ☑ | POST | `ORG/join-requests/suggest` | `joinRequests.suggest` | 无邀请权限的在册成员可提交邮箱与可选备注。 |
+| ☑ | DELETE | `ORG/join-requests/{x}` | `joinRequests.cancel` | 在册成员撤回自己的建议。 |
+| ☑ | POST | `ORG/join-requests/{x}/approve` | `joinRequests.approve` | 仅所有者批准，创建默认成员的一次性邮箱邀请。链接由人发送。 |
+| ☑ | POST | `ORG/join-requests/{x}/deny` | `joinRequests.deny` | 仅所有者拒绝。当前无法转告拒绝理由，因此非空理由返回 4xx。 |
 
 ### org/calendar（6 个，要做 6）
 

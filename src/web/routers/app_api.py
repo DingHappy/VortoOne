@@ -924,6 +924,74 @@ async def resend_invitation(org_id: str, invitation_id: str, body: Dict[str, Any
     return result
 
 
+_JOIN_REQUESTS = _ORG + "/join-requests"
+
+
+async def _join_suggestion_call(org_id: str, request: Request, response: Response, action, *,
+                                owner: bool, write: bool = False, empty: bool = False):
+    from src.workflow.members.registry import JoinSuggestionConflict
+
+    root = _root(org_id)
+    who = _who(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if who is None or who.is_owner != owner or (owner and not app_staff.owner_proof(request)):
+        result = _error(403, "forbidden", "此操作需要已认证的所有者" if owner else "此操作需要已加入空间的成员")
+    else:
+        try:
+            result = await _members_call(lambda: action(root, who), write=write)
+        except JoinSuggestionConflict as error:
+            status = 400 if error.code == "join.invalid_email" else 409
+            result = _error(status, error.code, str(error))
+    if empty and result is None:
+        result = Response(status_code=204)
+    if isinstance(result, Response):
+        result.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.get(_JOIN_REQUESTS)
+async def list_join_suggestions(org_id: str, request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=True,
+                                       action=lambda root, who: {"requests": app_members.join_suggestions(root, who)})
+
+
+@router.get(_JOIN_REQUESTS + "/mine")
+async def my_join_suggestions(org_id: str, request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=False, action=lambda root, who: {
+        "suggestions": app_members.join_suggestions(root, who)})
+
+
+@router.post(_JOIN_REQUESTS + "/suggest")
+async def suggest_join(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=False, write=True,
+                                       action=lambda root, who: app_members.suggest_join(root, who, body))
+
+
+@router.delete(_JOIN_REQUESTS + "/{suggestion_id}", status_code=204)
+async def cancel_join_suggestion(org_id: str, suggestion_id: str, request: Request, response: Response):
+    from src.workflow.members.registry import MemberRegistry
+
+    return await _join_suggestion_call(org_id, request, response, owner=False, write=True, empty=True,
+                                       action=lambda root, who: MemberRegistry(root).close_join_suggestion(
+                                           who, suggestion_id))
+
+
+@router.post(_JOIN_REQUESTS + "/{suggestion_id}/approve")
+async def approve_join_suggestion(org_id: str, suggestion_id: str, body: Dict[str, Any],
+                                  request: Request, response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=True, write=True,
+                                       action=lambda root, who: app_members.approve_join_suggestion(
+                                           root, who, suggestion_id, body, _origin(request)))
+
+
+@router.post(_JOIN_REQUESTS + "/{suggestion_id}/deny", status_code=204)
+async def deny_join_suggestion(org_id: str, suggestion_id: str, body: Dict[str, Any], request: Request,
+                               response: Response):
+    return await _join_suggestion_call(org_id, request, response, owner=True, write=True, empty=True,
+                                       action=lambda root, who: app_members.deny_join_suggestion(
+                                           root, who, suggestion_id, body))
+
+
 @router.patch(_ORG + "/members/{user_id}", status_code=204)
 async def change_member_role(org_id: str, user_id: str, body: Dict[str, Any], request: Request):
     """这里的成员不分「管理员 / 普通成员」两档：权限按身份组给（PUT …/members/{id}/roles）。

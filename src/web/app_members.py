@@ -18,7 +18,7 @@ from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE
 from src.agents.principal import Principal
 from src.web import app_prefs
 from src.web import app_views as views
-from src.workflow.members.registry import MemberRegistry, Missing, Refused
+from src.workflow.members.registry import JoinSuggestionConflict, MemberRegistry, Missing, Refused
 
 # 界面的权限键 → 内核的权限项
 _KEYS: Dict[str, str] = {
@@ -253,6 +253,46 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
                            "memberRoutineProposals": True, "teamChannels": True,
                            "channelCategories": True}] if joined else [],
     }
+
+
+# ── 加入建议 ──────────────────────────────────────────────────────────────────
+
+def join_suggestions(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    pending = MemberRegistry(root).join_suggestions(actor)
+    rows = [{"id": key, "email": item["email"], "note": item["note"] or None, "createdAt": item["created"]}
+            for key, item in sorted(pending.items(), key=lambda row: row[1]["created"])]
+    if actor.is_owner:
+        for row in rows:
+            item = pending[row["id"]]
+            row.update(name=item["email"], verified=False, confirmed=False, suggestedBy=item["suggested_by"],
+                       link=None, expiresAt=item["expires"])
+    return rows
+
+
+def suggest_join(root: str, actor: Principal, body: Mapping[str, Any]) -> Dict[str, str]:
+    if set(body) - {"email", "note"}:
+        raise ValueError("加入建议只接受邮箱和备注")
+    email = body.get("email")
+    if not isinstance(email, str) or not _EMAIL.fullmatch(email.strip()):
+        raise JoinSuggestionConflict("join.invalid_email", "邮箱格式不对")
+    return {"id": MemberRegistry(root).suggest_join(actor, email, body.get("note", ""))}
+
+
+def deny_join_suggestion(root: str, actor: Principal, suggestion_id: str, body: Mapping[str, Any]) -> None:
+    if set(body) - {"reason"} or not isinstance(body.get("reason", ""), str):
+        raise ValueError("拒绝建议只接受可选文字理由")
+    if body.get("reason", "").strip():
+        raise ValueError("此处无法向对方发送文字理由，请清空理由后拒绝建议")
+    MemberRegistry(root).close_join_suggestion(actor, suggestion_id, review=True)
+
+
+def approve_join_suggestion(root: str, actor: Principal, suggestion_id: str, body: Mapping[str, Any],
+                            origin: str) -> Dict[str, Any]:
+    grants = {"roleIds", "channelIds", "agentIds"}
+    if set(body) - grants or any(body.get(field, []) != [] for field in grants):
+        raise ValueError("通过加入建议只发送默认成员邀请，请在对方加入后设置额外权限")
+    token = MemberRegistry(root).approve_join_suggestion(actor, suggestion_id)
+    return {"outcome": "invited", "url": f"{origin}/invite/{token}", "emailed": False}
 
 
 # ── 邀请 ──────────────────────────────────────────────────────────────────────

@@ -3784,6 +3784,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/join-requests",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/mine",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/suggest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}",
     "methods": [
       "DELETE"
