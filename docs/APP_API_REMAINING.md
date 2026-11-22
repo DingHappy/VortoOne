@@ -802,7 +802,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | GET | `ORG/artifacts-trash` | `artifacts.trash` | 列出所有者从 Drive 删除的助理页面，成员返回空。30 天到期即无法还原，打开回收站时清理到期文件。旧工具与旧 API 删除仍直接清除。 |
+| ☑ | GET | `ORG/artifacts-trash` | `artifacts.trash` | 列出所有者从 Drive 删除的助理页面，成员返回空。30 天到期即无法还原，打开回收站时清理到期文件。工作区维护占锁时回 `409 unavailable`。旧工具与旧 API 删除仍直接清除。 |
 | ☑ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` | 只有实际所有者可以清除回收站中的文件和所有历史版本。 |
 
 ### org/notification-prefs（2 个，要做 2）

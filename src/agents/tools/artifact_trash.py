@@ -1,6 +1,7 @@
 """Desktop's recycle bin moves existing artifact directories with their version history."""
 from __future__ import annotations
 
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
@@ -143,7 +144,9 @@ class ArtifactTrash(ArtifactStore):
             if active.exists() or active.is_symlink():
                 raise TrashConflict("当前 Drive 已有同编号的制品，回收站内容仍保留")
             payload.rename(active)
-            entry.rmdir()
+            # The move committed the restore. An empty timestamp directory is harmless.
+            with suppress(OSError):
+                entry.rmdir()
             return "restored"
 
     def purge(self, artifact_id: str) -> bool:

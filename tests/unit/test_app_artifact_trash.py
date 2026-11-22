@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from src.agents.tools import artifact_trash
 from src.agents.tools.artifact_trash import ArtifactTrash
 from src.agents.tools.artifacts import ArtifactStore
+from src.utils.home_maintenance import home_maintenance
 from src.web.auth import SESSION_COOKIE
 from tests.unit.test_member_login import ORIGIN, TOKEN, _group, _join, home  # noqa: F401
 
@@ -174,3 +175,64 @@ def test_interruption_before_the_atomic_move_does_not_mark_the_active_file_as_pu
     assert store.html("report") == "<p>v1</p>"
     assert owner.delete(f"{base}/artifacts/report").status_code == 204
     assert owner.get(f"{base}/artifacts-trash").json()["files"][0]["id"] == "report"
+
+
+def test_workspace_maintenance_blocks_trash_moves_and_expired_byte_cleanup(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    store = ArtifactStore(home["root"])
+    monkeypatch.setattr(artifact_trash, "_now", lambda: TRASHED_AT)
+    store.publish("Expiring report", "<p>expired payload</p>", "expired")
+    assert owner.delete(f"{base}/artifacts/expired").status_code == 204
+    monkeypatch.setattr(artifact_trash, "_now", lambda: TRASHED_AT + timedelta(days=30))
+    store.publish("Recent report", "<p>recent payload</p>", "recent")
+    assert owner.delete(f"{base}/artifacts/recent").status_code == 204
+    store.publish("Active report", "<p>active payload</p>", "active")
+    trash_root = store.root.parent / "artifact-trash"
+    before = {path.relative_to(trash_root): path.read_bytes() for path in trash_root.rglob("*.html")}
+    assert len(before) == 4
+
+    with home_maintenance(home["root"]):
+        responses = [
+            owner.delete(f"{base}/artifacts/active"),
+            owner.post(f"{base}/artifacts/recent/restore", json={}),
+            owner.delete(f"{base}/artifacts-trash/recent"),
+            owner.get(f"{base}/artifacts-trash"),
+        ]
+        assert [(response.status_code, response.json()["error"]["code"]) for response in responses] == [
+            (409, "unavailable"), (409, "unavailable"), (409, "unavailable"), (409, "unavailable"),
+        ]
+        assert {path.relative_to(trash_root): path.read_bytes() for path in trash_root.rglob("*.html")} == before
+        assert store.html("active") == "<p>active payload</p>"
+        assert store.html("recent") is None
+
+    listing = owner.get(f"{base}/artifacts-trash")
+    assert listing.status_code == 200
+    assert [row["id"] for row in listing.json()["files"]] == ["recent"]
+    assert not list((trash_root / "expired").rglob("*.html"))
+    assert owner.post(f"{base}/artifacts/recent/restore", json={}).status_code == 204
+    assert owner.delete(f"{base}/artifacts/active").status_code == 204
+    assert owner.delete(f"{base}/artifacts-trash/active").status_code == 204
+
+
+def test_failed_empty_directory_cleanup_does_not_fail_committed_restore(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    store = ArtifactStore(home["root"])
+    store.publish("Report", "<p>v1</p>", "report")
+    monkeypatch.setattr(artifact_trash, "_now", lambda: TRASHED_AT)
+    assert owner.delete(f"{base}/artifacts/report").status_code == 204
+    marker = store.root.parent / "artifact-trash" / "report" / str(int(TRASHED_AT.timestamp()))
+    original_rmdir = Path.rmdir
+
+    def fail_to_remove_marker(path):
+        if path == marker:
+            raise OSError("synthetic cleanup failure")
+        return original_rmdir(path)
+
+    with monkeypatch.context() as failure:
+        failure.setattr(Path, "rmdir", fail_to_remove_marker)
+        assert owner.post(f"{base}/artifacts/report/restore", json={}).status_code == 204
+    assert marker.is_dir()
+    assert store.html("report") == "<p>v1</p>"
+    assert owner.get(f"{base}/artifacts-trash").json() == {"files": []}
+    assert owner.post(f"{base}/artifacts/report/restore", json={}).status_code == 404
+    assert owner.delete(f"{base}/artifacts/report").status_code == 204

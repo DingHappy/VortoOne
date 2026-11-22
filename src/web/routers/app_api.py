@@ -21,7 +21,9 @@ from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDis
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
 from src.gateway import app_protocol as F
+from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_views as views
 from src.web import (
     app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
@@ -3823,19 +3825,29 @@ async def artifact(org_id: str, artifact_id: str, version: int | None = None):
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):
     """Drive 中的删除保留完整版本历史，可从回收站恢复。"""
-    from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
-
     root = _root(org_id)
     refused = await _artifact_trash_owner(request, root)
     if refused:
         return refused
     try:
-        removed = await asyncio.to_thread(ArtifactTrash(root).move_to_trash, artifact_id)
+        removed = await asyncio.to_thread(_apply_to_artifact_trash, root, ArtifactTrash.move_to_trash, artifact_id)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
     except TrashConflict as error:
         return _error(409, "conflict", str(error))
     except OSError:
         return _error(503, "unavailable", "无法将制品移入回收站")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
+
+
+def _apply_to_artifact_trash(root: str, action, *args):
+    # Acquire the outer lease before resolving or creating state. The store takes its own inner lock.
+    with home_maintenance(root):
+        return action(ArtifactTrash(root), *args)
+
+
+def _artifact_trash_busy():
+    return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
 
 
 async def _artifact_trash_owner(request: Request, root: str):
@@ -3849,14 +3861,14 @@ async def _artifact_trash_owner(request: Request, root: str):
 
 @router.get(_ORG + "/artifacts-trash")
 async def list_artifact_trash(org_id: str, request: Request):
-    from src.agents.tools.artifact_trash import ArtifactTrash
-
     root = _root(org_id)
     refused = await _artifact_trash_owner(request, root)
     if refused:
         return refused
     try:
-        deleted = await asyncio.to_thread(ArtifactTrash(root).trashed)
+        deleted = await asyncio.to_thread(_apply_to_artifact_trash, root, ArtifactTrash.trashed)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
     except OSError:
         return _error(503, "unavailable", "无法读取制品回收站")
     return JSONResponse({"files": [views.trashed_artifact(root, meta, deleted_at, purge_at)
@@ -3866,14 +3878,14 @@ async def list_artifact_trash(org_id: str, request: Request):
 
 @router.post(_ORG + "/artifacts/{artifact_id}/restore", status_code=204)
 async def restore_artifact(org_id: str, artifact_id: str, request: Request):
-    from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
-
     root = _root(org_id)
     refused = await _artifact_trash_owner(request, root)
     if refused:
         return refused
     try:
-        outcome = await asyncio.to_thread(ArtifactTrash(root).restore, artifact_id)
+        outcome = await asyncio.to_thread(_apply_to_artifact_trash, root, ArtifactTrash.restore, artifact_id)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
     except TrashConflict as error:
         # The Drive's Undo maps HTTP 409 to expiration; a live duplicate is a different refusal.
         return _error(422, "artifact.restore_id_taken", str(error))
@@ -3886,14 +3898,14 @@ async def restore_artifact(org_id: str, artifact_id: str, request: Request):
 
 @router.delete(_ORG + "/artifacts-trash/{artifact_id}", status_code=204)
 async def purge_artifact(org_id: str, artifact_id: str, request: Request):
-    from src.agents.tools.artifact_trash import ArtifactTrash
-
     root = _root(org_id)
     refused = await _artifact_trash_owner(request, root)
     if refused:
         return refused
     try:
-        removed = await asyncio.to_thread(ArtifactTrash(root).purge, artifact_id)
+        removed = await asyncio.to_thread(_apply_to_artifact_trash, root, ArtifactTrash.purge, artifact_id)
+    except HomeMaintenanceError:
+        return _artifact_trash_busy()
     except OSError:
         return _error(503, "unavailable", "无法永久删除这个制品")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个已删除的制品")
