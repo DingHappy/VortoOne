@@ -2538,6 +2538,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/people/{person_id}/avatar",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/avatar",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/avatar",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/status",
     "methods": [
       "PUT"

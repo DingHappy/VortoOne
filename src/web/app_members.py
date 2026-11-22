@@ -187,16 +187,22 @@ def reorder_roles(root: str, actor: Principal, ids: Any) -> None:
 
 
 def members(root: str) -> List[Dict[str, Any]]:
-    """所有者，加上在册的成员。成员没有邮箱和头像：登记处不存这些。"""
+    """所有者与在册成员，附界面使用的个人头像和时区。"""
+    from src.web import app_profile_avatar
+
     state = MemberRegistry(root).snapshot()
     owner = views.person(root)
     default_timezone = owner["timezone"]
-    timezones = app_prefs.personal_timezones(root) if views.owner_connection() else {}
+    requires_auth = views.owner_connection()
+    timezones = app_prefs.personal_timezones(root) if requires_auth else {}
     owner["timezone"] = timezones.get(owner["userId"], default_timezone)
+    org_id = views.home_id(root)
     rows = [owner]
     for member_id, member in sorted(state["members"].items(), key=lambda pair: str(pair[1].get("joined") or "")):
+        avatar = app_profile_avatar.current(root, org_id, member_id) if requires_auth else None
         rows.append({"userId": member_id, "name": str(member.get("name") or member_id),
                      "email": str(member.get("email") or ""), "image": None,
+                     "avatarUrl": avatar,
                      "role": "member", "roleIds": [group for group in member.get("groups") or []
                                                    if group in state["groups"]],
                      "joinedAt": str(member.get("joined") or ""), "handle": member_id,
@@ -242,11 +248,14 @@ def member_auth_key(account: Mapping[str, Any]) -> str:
 
 def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any]:
     """登录的成员看到的自己。账号还没加入空间（或已被移除）时没有任何空间。"""
+    from src.web import app_profile_avatar
+
     state = MemberRegistry(root).snapshot()
     joined = actor.id in state["members"]
+    avatar = app_profile_avatar.current(root, views.home_id(root), actor.id) if joined else None
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": None,
+                 "email": str(account["email"]), "image": avatar,
                  **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            "showActivity": True, "permissions": permission_keys(root, actor),
