@@ -425,9 +425,10 @@ async def settings(org_id: str):
 
 
 # 空间设置里有对应能力的：名字（主助理的名字，也就是这个家显示的名字）、默认时区（例行工作用的那个）、
-# GIF 开关和分级（团队频道里的 GIF）、语音消息开关。其余开关（团队巡视、背景信息……）没有对应能力，改了也不会生效，
+# 背景信息（进所有 agent 的系统提示，下一个会话起生效）、
+# GIF 开关和分级（团队频道里的 GIF）、语音消息开关。其余开关（团队巡视……）没有对应能力，改了也不会生效，
 # 所以拒绝而不是假装存下。
-_SETTINGS_WRITABLE = {"name", "timezone"}
+_SETTINGS_WRITABLE = {"name", "timezone", "context"}
 _HOME_SWITCHES = {"gifs", "gifRating", "voiceMessages"}
 
 
@@ -447,6 +448,9 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("名字不能为空")
         if len(" ".join(name.split())) > assistant_profile.MAX_NAME:
             raise ValueError(f"名字最多 {assistant_profile.MAX_NAME} 个字")
+    if "context" in body and (not isinstance(body["context"], str)
+                              or len(body["context"].strip()) > assistant_profile.MAX_CONTEXT):
+        raise ValueError(f"背景信息最多 {assistant_profile.MAX_CONTEXT} 个字")
     if "timezone" in body and body["timezone"] != current["timezone"]:
         zone = body["timezone"]
         if not isinstance(zone, str) or not zone:
@@ -455,6 +459,8 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
         registry.configure_timezone(zone, registry.read()["revision"])     # 时区名不对由登记处拒绝
     if "name" in body:
         assistant_profile.save_profile(root, name=body["name"])
+    if "context" in body and body["context"] != current["context"]:
+        assistant_profile.save_home_context(root, body["context"])
     if switches:
         app_prefs.set_home_settings(root, switches)
     return views.settings(root)
