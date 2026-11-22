@@ -650,6 +650,20 @@ async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any], requ
         lambda: {"roleIds": app_members.set_member_roles(root, who, user_id, body.get("roleIds"))}, write=True)
 
 
+@router.get(_ORG + "/members/{user_id}/removal")
+async def member_removal_preview(org_id: str, user_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "移除成员预览需要已认证的所有者连接")
+    else:
+        result = await _members_call(lambda: app_members.removal_preview(root, who, user_id))
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
+
+
 @router.delete(_ORG + "/members/{user_id}", status_code=204)
 async def remove_member(org_id: str, user_id: str, request: Request):
     root = _root(org_id)
