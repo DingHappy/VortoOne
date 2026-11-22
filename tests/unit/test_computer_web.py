@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import uuid
 
 import pytest
@@ -214,7 +215,10 @@ def test_device_routes_project_native_pairing_and_only_rename(home):
     path = home['base'] + '/devices'
     device_path = path + '/computers/' + CONNECTOR
     owner_id = owner.get('/api/app/me').json()['user']['id']
+    # Same-origin fetches do not need to send an Origin header with GET.
+    owner.headers.pop('Origin')
     answer = owner.get(path)
+    owner.headers['Origin'] = ORIGIN
     device = {
         'id': CONNECTOR, 'machineKind': 'connected', 'name': 'My computer', 'os': 'other',
         'arch': '', 'hostname': '', 'cpus': None, 'memoryGb': None, 'ownerUserId': owner_id,
@@ -334,6 +338,38 @@ def test_device_routes_hide_stale_pairings_after_trust_change(home):
     assert stale['name'] == 'My computer' and stale['revoked_at'] is None and not stale['active']
     with pytest.raises(ComputerDenied):
         home['store'].authenticate(grant['token'])
+
+
+def test_device_revoke_does_not_close_a_replacement_credential(home, monkeypatch):
+    from src.gateway.computer_connections import connections
+
+    grant = paired(home)
+    replacement = SimpleNamespace(binding={'credential_epoch': 'e' * 32})
+    notified = []
+    scheduled = []
+    notify = connections.revoked
+
+    def new_connection_before_notify(root, connector, *, credential_epoch=None):
+        revoked, = home['store'].list()
+        assert revoked['revoked_at'] is not None
+        assert revoked['credential_epoch'] != grant['credential_epoch']
+        notified.append(credential_epoch)
+        # A home replacement can publish a new connection between the write and this call.
+        with connections._lock:
+            connections._current[(root, connector)] = replacement
+        try:
+            notify(root, connector, credential_epoch=credential_epoch)
+        finally:
+            with connections._lock:
+                del connections._current[(root, connector)]
+
+    monkeypatch.setattr(connections, '_schedule', scheduled.append)
+    monkeypatch.setattr(connections, 'revoked', new_connection_before_notify)
+    owner = browser(home, owner=True)
+    response = owner.delete(home['base'] + '/devices/computers/' + CONNECTOR)
+    assert response.status_code == 204
+    assert notified == [grant['credential_epoch']]
+    assert scheduled == []
 
 
 def test_member_pairing_needs_a_claimed_home_and_current_connect_permission(home, monkeypatch):

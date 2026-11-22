@@ -259,13 +259,6 @@ def _device(root: str, row: dict, owner_id: str) -> dict:
     }
 
 
-async def _revoke(root, store, member_id, machine_id, *, current_only=False):
-    revoked = await _call(store.revoke, machine_id, member_id=member_id, current_only=current_only)
-    # A replacement registration never receives the old credential's revocation.
-    connections.revoked(root, machine_id, credential_epoch=revoked['credential_epoch'] if member_id else None)
-    return Response(status_code=204, headers=_PRIVATE)
-
-
 @router.get(_ORG + '/devices')
 async def devices(org_id: str, request: Request, response: Response):
     response.headers.update(_PRIVATE)
@@ -298,7 +291,10 @@ async def remove_device(org_id: str, machine_id: str, request: Request):
     root, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
-    return await _revoke(root, store, member_id, machine_id, current_only=True)
+    retired_epoch = await _call(store.revoke_current, machine_id, member_id=member_id)
+    # Notify only the connection that used the now-revoked credential.
+    connections.revoked(root, machine_id, credential_epoch=retired_epoch)
+    return Response(status_code=204, headers=_PRIVATE)
 
 
 @router.get('/api/computers/identity')
@@ -346,7 +342,10 @@ async def remove(org_id: str, machine_id: str, request: Request):
     root, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
-    return await _revoke(root, store, member_id, machine_id)
+    revoked = await _call(store.revoke, machine_id, member_id=member_id)
+    # A replacement registration never receives the old credential's revocation.
+    connections.revoked(root, machine_id, credential_epoch=revoked['credential_epoch'] if member_id else None)
+    return Response(status_code=204, headers=_PRIVATE)
 
 
 @router.post(_ORG + '/computer-pairings', status_code=201)
