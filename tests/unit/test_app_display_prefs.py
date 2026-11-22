@@ -64,3 +64,22 @@ def test_guest_and_foreign_workspace_cannot_edit_display(home, path, body):
     assert guest.put(f"{home['base']}/me/{path}", json=body).status_code == 401
     member = _join(home)
     assert member.put(f"/api/app/organizations/foreign/me/{path}", json=body).status_code == 404
+
+
+def test_a_damaged_start_choice_does_not_prevent_login(home):
+    import json
+
+    from src.utils.state_dir import state_dir
+
+    owner = home["owner"]
+    who = owner.get("/api/app/me").json()["user"]["id"]
+    directory = state_dir(home["root"])
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "app_prefs.json").write_text(json.dumps({
+        "version": 1, "people": {who: {"showActivity": False, "start": "invalid",
+                                       "chatPrefs": {"textSize": "xl"}}},
+    }))
+    membership = _membership(owner)
+    assert membership["start"] == {"page": "home", "channelId": None}
+    assert membership["showActivity"] is False
+    assert membership["chatPrefs"] == {"textSize": "xl"}

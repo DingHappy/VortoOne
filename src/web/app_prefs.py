@@ -316,8 +316,23 @@ _DEFAULT_START = {"page": "home", "channelId": None}
 
 def workspace_display(root: str, who: str) -> Dict[str, Any]:
     saved = _own(root, who)
-    return {"showActivity": saved.get("showActivity", True), "chatPrefs": saved.get("chatPrefs", {}),
-            "start": saved.get("start", dict(_DEFAULT_START))}
+    start = dict(_DEFAULT_START)
+    chosen = saved.get("start")
+    if isinstance(chosen, dict):
+        page, channel_id = chosen.get("page"), chosen.get("channelId")
+        if page == "last":
+            start["page"] = "last"
+        if page == "channel" and isinstance(channel_id, str) and channel_id:
+            start = {"page": "channel", "channelId": channel_id}
+    chat = saved.get("chatPrefs")
+    if isinstance(chat, dict):
+        chat = {
+            key: value for key, value in chat.items()
+            if key in _CHAT_CHOICES and value in _CHAT_CHOICES[key]
+        }
+    else:
+        chat = {}
+    return {"showActivity": saved.get("showActivity") is not False, "chatPrefs": chat, "start": start}
 
 
 def set_show_activity(root: str, who: str, show: bool) -> Dict[str, bool]:
@@ -337,7 +352,9 @@ def set_chat_look(root: str, who: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     with _LOCK:
         data = _read(root)
         row = data["people"].setdefault(who, {})
-        chat = dict(row.get("chatPrefs", {}))
+        chat = row.get("chatPrefs", {})
+        if not isinstance(chat, dict):
+            raise ValueError("聊天外观记录损坏，需要先修复")
         chat.update(patch)
         row["chatPrefs"] = chat
         _write(root, data)
