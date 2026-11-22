@@ -504,24 +504,87 @@ def member_owner_message(root: str, member_id: str, task: Dict[str, Any],
                            task_id=task["id"], viewer=viewer, **extra)
 
 
+def staff_question(root: str, member_id: str, task: Dict[str, Any], item: Dict[str, Any],
+                   carrier: str) -> Dict[str, Any]:
+    """专员在这件事里问的问题（界面的 AgentQuestion）。carrier：带着它的那条 agent 消息。"""
+    from src.workflow.staff.questions import state_of
+    agent = member_agent_id(root, member_id)
+    state = state_of(str(task.get("status") or ""), task.get("collaboration") or {}, item)
+    asked = item.get("askedTo") or owner_id(root)
+    view = {"id": item["id"], "agentId": agent, "channelId": dm_channel_id(agent),
+            "threadId": message_id(task["id"], "user"), "messageId": carrier, "runId": task["id"],
+            "text": item["text"], "choices": item.get("choices"), "requestedForUserId": asked,
+            "status": "open" if state == "open" else "answered", "answer": item.get("answer"),
+            "answeredByUserId": asked if state in {"answered", "dismissed"} else None,
+            "answeredAt": _iso(item["answeredAt"]) if item.get("answeredAt") else None}
+    if state == "withdrawn":
+        view["withdrawn"] = True
+    if state == "dismissed":
+        view["dismissed"] = True
+    return view
+
+
+def _round_result(status: str, result: str, error: str) -> str:
+    if status in {"done", "submitted"}:
+        return result.strip() or "已完成，没有交回文字说明。"
+    return "这件事没有完成" + (f"：{error.strip()}" if error.strip() else f"（状态：{status or '未知'}）。")
+
+
+def _earlier_rounds(root: str, member_id: str, task: Dict[str, Any], asked: Dict[int, Dict[str, Any]],
+                    viewer: Optional[str]) -> List[Dict[str, Any]]:
+    """上一轮交回的结果和接着交代的话（回答问题、返工意见），让多轮的一件事在私聊里看得全。"""
+    collaboration = task.get("collaboration") or {}
+    messages = [m for m in collaboration.get("messages") or [] if isinstance(m, dict)]
+    rows = []
+    for number in range(1, int(collaboration.get("round") or 1)):
+        ended = next((m for m in reversed(messages) if m.get("round") == number
+                      and m.get("kind") in {"submitted", "failed", "interrupted", "cancelled"}), None)
+        if ended is not None:
+            carrier = message_id(task["id"], "assistant", number)
+            extra = ({"meta": {"question": staff_question(root, member_id, task, asked[number], carrier)}}
+                     if number in asked else {})
+            rows.append(_member_message(root, member_id, carrier, from_owner=False,
+                                        body=_round_result(str(ended.get("kind")), str(ended.get("body") or ""), ""),
+                                        created=_iso(ended.get("created")), task_id=task["id"], viewer=viewer, **extra))
+        followup = next((m for m in messages if m.get("round") == number + 1 and m.get("kind") == "followup"), None)
+        if followup is not None:
+            item = asked.get(number)
+            if item is not None and item.get("status") == "answered":
+                body = str(item.get("answer") or "")
+            elif item is not None and item.get("status") == "dismissed":
+                body = "（跳过了这个问题）"
+            else:
+                body = str(followup.get("body") or "")
+            rows.append(_member_message(root, member_id, message_id(task["id"], "user", number + 1), from_owner=True,
+                                        body=body, created=_iso(followup.get("created")), task_id=task["id"],
+                                        viewer=viewer))
+    return rows
+
+
 def member_messages(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None, *,
                     before: str = "", limit: int = 100, viewer: Optional[str] = None) -> List[Dict[str, Any]]:
-    """每件事两条：交代的话；做完（或没做成）后 agent 交回的结果。进行中的只有前一条。"""
+    """每件事：交代的话；每轮交回的结果，以及接着交代的话（回答问题、返工意见）。进行中的那一轮还没有结果。
+    专员这一轮问了问题的，问题卡片跟在那一轮的结果上。"""
+    from src.workflow.staff.questions import recorded
     conversation = conversation or member_conversation(root, member_id, viewer)
     rows: List[Dict[str, Any]] = []
     for task in reversed(conversation["tasks"]):          # 台账给的是新的在前
         rows.append(member_owner_message(root, member_id, task, viewer=viewer))
+        asked = {int(item["round"]): item for item in recorded(task.get("collaboration") or {})
+                 if isinstance(item.get("round"), int)}
+        rows.extend(_earlier_rounds(root, member_id, task, asked, viewer))
         status = str(task.get("status") or "")
         if status in ACTIVE_TASK:
             continue
-        if status == "done":
-            body = str(task.get("result") or "").strip() or "已完成，没有交回文字说明。"
-        else:
-            reason = str(task.get("error") or "").strip()
-            body = "这件事没有完成" + (f"：{reason}" if reason else f"（状态：{status or '未知'}）。")
-        rows.append(_member_message(root, member_id, message_id(task["id"], "assistant"), from_owner=False,
-                                    body=body, created=_iso(task.get("updated") or task.get("created")),
-                                    task_id=task["id"], viewer=viewer))
+        carrier = message_id(task["id"], "assistant")
+        number = int((task.get("collaboration") or {}).get("round") or 1)
+        extra = ({"meta": {"question": staff_question(root, member_id, task, asked[number], carrier)}}
+                 if number in asked else {})
+        rows.append(_member_message(root, member_id, carrier, from_owner=False,
+                                    body=_round_result(status, str(task.get("result") or ""),
+                                                       str(task.get("error") or "")),
+                                    created=_iso(task.get("updated") or task.get("created")),
+                                    task_id=task["id"], viewer=viewer, **extra))
     if before:
         cutoff = _iso(before)
         rows = [row for row in rows if row["createdAt"] < cutoff]
