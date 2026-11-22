@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 from contextlib import suppress
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -24,8 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_gifs, app_members, app_notice_inbox, app_org_logo, app_personal_vault,
-    app_prefs, app_schedule, app_staff, app_voice, member_auth,
+    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
@@ -616,6 +616,18 @@ async def set_person_status(org_id: str, body: Dict[str, Any], request: Request,
         return _error(403, "forbidden", "需要所有者证明")
     response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: app_members.set_person_status(root, who, body))
+
+
+@router.patch(_ORG + "/me")
+async def update_person_timezone(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "保存个人时区需要已认证的同源会话")
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.update_person_timezone(root, who, body))
 
 
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
@@ -1325,6 +1337,8 @@ async def channel_messages(org_id: str, channel_id: str, request: Request, befor
     if threadId:
         return {"messages": []}
     messages = views.main_messages(root, before=before, limit=limit)
+    if app_staff.owner_proof(request):
+        messages = await asyncio.to_thread(views.with_proposal_cards, root, messages, latest=not before)
     bridge = existing_bridge(root)
     if bridge is not None and not before:
         messages += [views.approval_card(root, item) for item in reversed(bridge.pending_confirmations())]
@@ -1452,18 +1466,97 @@ async def cancel_run(org_id: str, run_id: str, request: Request):
 # ── 审批：内核发出的确认 ──────────────────────────────────────────────────────
 
 @router.get(_ORG + "/approvals")
-async def approvals(org_id: str, response: Response, status: str = ""):
+async def approvals(org_id: str, request: Request, response: Response, status: str = ""):
     root = _root(org_id)
     response.headers["Cache-Control"] = "no-store"
-    bridge = existing_bridge(root)
-    if bridge is None or status not in {"", "pending"}:
+    if status not in {"", "pending"}:
         return {"approvals": []}
-    return {"approvals": [views.approval(root, item) for item in bridge.pending_confirmations()]}
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    bridge = existing_bridge(root)
+    if not who.is_owner:
+        # 成员只在替所有者代批时看得到，而且只看能代批的那些
+        value = app_covers.covering(root, who)
+        if value is None or bridge is None:
+            return {"approvals": []}
+        return {"approvals": [app_covers.mark(views.approval(root, item), root, who.id)
+                              for item in app_covers.visible(root, bridge.pending_confirmations(), value,
+                                                             _needs_owner_file_proof)]}
+    live = [views.approval(root, item) for item in bridge.pending_confirmations()] if bridge else []
+    return {"approvals": live + await asyncio.to_thread(_staff_proposal_approvals, root)}
+
+
+def _needs_owner_file_proof(confirmation_id: str) -> bool:
+    from src.web.routers import realtime
+    return realtime.requires_owner_confirmation(confirmation_id)
+
+
+def _staff_proposal_approvals(root: str) -> List[Dict[str, Any]]:
+    """待批的专员提议（助理提的、旧版 Desktop 里提的）。登记处读不出来时不列，审批页照常显示实时确认。"""
+    try:
+        return [views.staff_proposal_approval(root, item) for item in views.pending_staff_proposals(root)]
+    except (ValueError, OSError):
+        return []
+
+
+def _staff_proposal(root: str, approval_id: str):
+    """（提议, 是否还是界面上看到的那一版）；不是专员提议的 id 返回 None。"""
+    if not approval_id.startswith(views.STAFF_PROPOSAL_PREFIX) or "~" not in approval_id:
+        return None
+    proposal_id, _, shown = approval_id.partition("~")
+    item = next((row for row in views.pending_staff_proposals(root) if row["id"] == proposal_id), None)
+    return (item, item is not None and item["digest"][:16] == shown)
+
+
+async def _decide_staff_proposal(root: str, approval_id: str, approve: bool, request: Request):
+    """主人在新界面批准或拒绝一条专员提议：按界面上看到的那一版（id 里的摘要前缀）核对，变了就不批。"""
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.owner_confirmation import owner_route
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "批准提议需要已认证的所有者")
+
+    def run():
+        found = _staff_proposal(root, approval_id)
+        if found is None or found[0] is None:
+            return None
+        item, current = found
+        if not current:
+            raise ValueError("这条提议的内容已经变了，请刷新后重新核对")
+        view = views.staff_proposal_approval(root, item)
+        with owner_route(root):
+            StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
+                                        round=item["round"], instance=item["instance"])
+        return {**view, "status": "approved" if approve else "refused", "canDecide": False,
+                "decidedByUserId": views.owner_id(root), "decidedAt": views.now_iso()}
+    try:
+        decided = await asyncio.to_thread(run)
+    except (ValueError, LookupError, OSError) as error:
+        return _error(409, "approval_decided", str(error) or "这条提议已经不在等待")
+    return decided if decided is not None else _error(409, "approval_decided", "这条提议已经不在等待")
 
 
 @router.get(_ORG + "/approvals/{approval_id}")
-async def approval(org_id: str, approval_id: str, response: Response):
+async def approval(org_id: str, approval_id: str, request: Request, response: Response):
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        value = app_covers.covering(root, who)
+        bridge = existing_bridge(root)
+        pending = bridge.pending(approval_id) if bridge and value else None
+        if pending is None or not app_covers.coverable(
+                pending, value, needs_owner_proof=_needs_owner_file_proof(approval_id)):
+            return _error(404, "not_found", "这个确认已经不在等待")
+        response.headers["Cache-Control"] = "no-store"
+        return app_covers.mark(views.approval(root, pending), root, who.id)
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        found = await asyncio.to_thread(_staff_proposal, root, approval_id)
+        if not found or not found[1]:
+            return _error(404, "not_found", "这条提议已经不在等待，或内容已经变了")
+        response.headers["Cache-Control"] = "no-store"
+        return views.staff_proposal_approval(root, found[0])
     bridge = existing_bridge(root)
     pending = bridge.pending(approval_id) if bridge else None
     if pending is None:
@@ -1641,10 +1734,101 @@ async def watch_approval_browser(socket: WebSocket, org_id: str, approval_id: st
             await socket.close(code=1008)
 
 
+@router.get(_ORG + "/me/approval-cover")
+async def approval_cover(org_id: str, request: Request):
+    """谁在替我批（所有者），或我在替谁批（成员）。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return await asyncio.to_thread(app_covers.covers_for, root, who)
+
+
+@router.put(_ORG + "/me/approval-cover")
+async def set_approval_cover(org_id: str, request: Request):
+    """所有者托付一个成员替自己批；body.userId 为 null 表示不再托付。成员没有要别人代批的确认。"""
+    from src.workflow.members.registry import MemberRegistry
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        return _error(409, "cover.unsupported", "成员这边没有要别人代批的确认")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    body = await _body(request)
+
+    def run():
+        if body.get("userId") is None and set(body) <= {"userId", "mode", "risky", "endsAt"}:
+            app_covers.save(root, None)
+        else:
+            members = MemberRegistry(root).snapshot()["members"]
+            app_covers.save(root, app_covers.check(body, members))
+        return app_covers.covers_for(root, who)
+    try:
+        return await asyncio.to_thread(run)
+    except app_covers.CoverError as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.delete(_ORG + "/approval-covers/{user_id}", status_code=204)
+async def end_approval_cover(org_id: str, user_id: str, request: Request):
+    """收回代批：所有者收回给某人的托付；被托付的成员自己不再代批（user_id 是所有者）。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+
+    def run():
+        value = app_covers.setting(root)
+        if value is None:
+            return False
+        mine = value["userId"] == user_id if who.is_owner else (value["userId"] == who.id
+                                                                and user_id == views.owner_id(root))
+        if mine:
+            app_covers.save(root, None)
+        return mine
+    return Response(status_code=204) if await asyncio.to_thread(run) else _error(404, "not_found", "没有这个代批")
+
+
+async def _decide_covering(root: str, who, approval_id: str, approve: bool):
+    """成员替所有者批：只在代批生效时、只批能代批的、只批这一次；每次都记进审计。"""
+    from src.gateway.audit import append_audit
+    value = app_covers.covering(root, who)
+    if value is None:
+        return _error(403, "forbidden", "你现在没有替所有者代批")
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        return _error(403, "forbidden", "专员提议要所有者本人决定")
+    bridge = existing_bridge(root)
+    pending = bridge.pending(approval_id) if bridge else None
+    if pending is None:
+        return _error(409, "approval_decided", "这个确认已经不在等待")
+    if not app_covers.coverable(pending, value, needs_owner_proof=_needs_owner_file_proof(approval_id)):
+        return _error(403, "forbidden", "这一条要所有者本人决定")
+    if not append_audit(root, {"category": "event", "event": "approval_covered", "session": "app",
+                               "data": {"approval": approval_id, "member": who.id, "approved": approve,
+                                        "operation_kind": str(pending.get("operation_kind") or "")}},
+                        durable=True):
+        return _error(409, "unavailable", "审计记录写不进去，没有代批")
+    decided = await bridge.decide(approval_id, approve)
+    if decided is None:
+        return _error(409, "approval_decided", "这个确认已经不在等待")
+    return app_covers.mark(decided, root, who.id)
+
+
 async def _decide(org_id: str, approval_id: str, approve: bool, request: Request):
     from src.gateway.paired_browser_task import PairedBrowserNotReady
     from src.web.routers.computers import has_computer_owner_proof, has_owner_browser_session
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        return await _decide_covering(root, who, approval_id, approve)
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        return await _decide_staff_proposal(root, approval_id, approve, request)
     bridge = existing_bridge(root)
     try:
         decided = await bridge.decide(
@@ -1689,11 +1873,12 @@ class _DecideMany(BaseModel):
 @router.post(_ORG + "/approvals/decide")
 async def decide_many(org_id: str, body: _DecideMany, request: Request):
     """卡片上的「全部批准 / 全部拒绝」：只处理界面列出的这几条，每条照常单独决定、只批这一次。
-    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。"""
+    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。
+    专员提议要一条条核对内容，不参加批量，也跳过。"""
     _root(org_id)
     decided, skipped = [], []
     for approval_id in dict.fromkeys(body.ids):
-        if body.only is not None:
+        if body.only is not None or approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
             skipped.append(approval_id)
             continue
         answer = await _decide(org_id, approval_id, body.decision == "approve", request)
@@ -1761,7 +1946,6 @@ _EMPTY: Dict[str, Any] = {
     "/credentials": {"credentials": []},
     "/mail/accounts": {"accounts": []},
     "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
-    "/team-memories": {"memories": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
@@ -2936,6 +3120,37 @@ async def dismiss_question(org_id: str, question_id: str, request: Request):
     return await _question_reply(request, org_id, question_id, None)
 
 
+# ── 新建 agent 页面要的几项 ───────────────────────────────────────────────────
+
+@router.get(_ORG + "/agent-setup")
+async def new_agent_setup(org_id: str):
+    """新 agent 从哪套 AI 设置开始：这里不存上一次的设置，新 agent 都用默认模型，所以是 null。"""
+    _root(org_id)
+    return {"setup": None}
+
+
+@router.post(_ORG + "/agent-setup")
+async def apply_agent_setup(org_id: str):
+    """给一批 agent 换 AI：和 agent 的「大脑」页一样，换模型要经提议核对，这里不直接改。"""
+    _root(org_id)
+    return _error(409, "agent_setup.by_proposal", "给 agent 换模型要经提议、在审批里批准，请让助理提议")
+
+
+@router.get(_ORG + "/credentials/platform")
+async def platform_key(org_id: str):
+    """平台有没有现成的模型可用（不用自己填 Key）：就是这台服务有没有接上模型。"""
+    _root(org_id)
+    return {"available": bool(views.model_connected())}
+
+
+@router.post(_ORG + "/agents/{agent_id}/audience/mail-loss")
+async def agent_mail_loss(org_id: str, agent_id: str):
+    """改 agent 服务谁时会失去哪些人的邮箱：这里 agent 不接邮箱，所以没有。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"mailboxes": []}
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)
@@ -3208,10 +3423,81 @@ async def agent_skills(org_id: str, agent_id: str):
 # ── 写入：记忆归档、例行工作启停与删除、技能启停 ─────────────────────────────
 # 每一项都交给现有的登记处去改，规矩（版本核对、绑定核对、范围）在那里；这里只把界面的写法对上。
 
-@router.patch(_ORG + "/memories/{memory_id}")
-async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any]):
-    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。"""
+@router.get(_ORG + "/team-memories")
+async def team_memories(org_id: str, request: Request):
+    """团队记忆：所有 agent 都读的那一份，所有者和成员都能看（内容本来就会出现在所有 agent 的回答里）。"""
+    from src.memory import team_memory
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    can_change = who.is_owner or "review_memory" in app_members.permission_keys(root, who)
+    try:
+        rows = await asyncio.to_thread(team_memory.items, root)
+    except team_memory.TeamMemoryError as error:
+        return _error(409, "unavailable", str(error))
+    return {"memories": [views.team_memory_view(root, row, can_change=can_change, owner=who.is_owner)
+                         for row in rows if not row.get("archived")]}
+
+
+@router.post(_ORG + "/memories/{memory_id}/team")
+async def share_memory(org_id: str, memory_id: str, request: Request):
+    """把所有者自己的一条记忆设成团队记忆（所有 agent 都会知道）。只有所有者能做。"""
+    from src.memory import team_memory
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "设成团队记忆需要已认证的所有者")
+
+    def run():
+        mine = next((m for m in views.memories(root, views.main_agent_id(root))
+                     if m["id"] == memory_id and not m["archived"]), None)
+        if mine is None:
+            return None
+        item = team_memory.share(root, memory_id, mine["text"], views.owner_id(root))
+        return views.team_memory_view(root, item, can_change=True, owner=True)
+    try:
+        result = await asyncio.to_thread(run)
+    except team_memory.TeamMemoryError as error:
+        return _error(409, "team_memory.unavailable", str(error))
+    return result if result is not None else _error(404, "not_found", "没有这条记忆")
+
+
+async def _patch_team_memory(request: Request, root: str, memory_id: str, body: Dict[str, Any]):
+    """团队记忆：所有者可以改文字、移除、恢复；有「审核 agent 记住的东西」权限的成员只能移除、恢复，
+    这样进系统提示的文字都出自所有者。"""
+    from src.memory import team_memory
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    if not who.is_owner and "review_memory" not in app_members.permission_keys(root, who):
+        return _error(403, "forbidden", "需要「审核 agent 记住的东西」权限")
+    if set(body) == {"archived"} and type(body["archived"]) is bool:
+        change = lambda: team_memory.set_archived(root, memory_id, body["archived"])  # noqa: E731
+    elif set(body) == {"text"} and isinstance(body["text"], str):
+        if not who.is_owner:
+            return _error(403, "forbidden", "团队记忆的文字只有所有者能改")
+        change = lambda: team_memory.edit(root, memory_id, body["text"], views.owner_id(root))  # noqa: E731
+    else:
+        return _error(400, "unsupported", "团队记忆只能改文字、移除或恢复")
+    try:
+        item = await asyncio.to_thread(change)
+    except LookupError:
+        return _error(404, "not_found", "没有这条团队记忆")
+    except team_memory.TeamMemoryError as error:
+        return _error(400, "invalid", str(error))
+    return views.team_memory_view(root, item, can_change=True, owner=who.is_owner)
+
+
+@router.patch(_ORG + "/memories/{memory_id}")
+async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any], request: Request):
+    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。团队记忆另有规矩。"""
+    root = _root(org_id)
+    if memory_id.startswith("team-"):
+        return await _patch_team_memory(request, root, memory_id, body)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "只有所有者能改自己的记忆")
     if set(body) != {"archived"} or type(body["archived"]) is not bool:
         return _error(400, "unsupported", "这里只能归档或恢复记忆")
     try:
@@ -3598,6 +3884,101 @@ async def _lifecycle(request: Request, action):
 
 def _agent_view(root: str, staff_id: str) -> Optional[Dict[str, Any]]:
     return next((a for a in views.agents(root) if a["handle"] == staff_id), None)
+
+
+# ── 聊天里的新建 agent 提议卡片（主人 2026-11-22 定）：和审批列表是同一份提议、同一套核对 ──────────
+
+async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action, *, kind: str = "member"):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "提议卡片只有已认证的所有者能看和决定")
+
+    def run():
+        item = views.find_agent_proposal(root, message_id, kind=kind)
+        return None if item is None else action(root, item)
+    try:
+        result = await asyncio.to_thread(run)
+    except (ValueError, LookupError, OSError) as error:
+        return _error(409, "agent_proposal.unavailable", str(error) or "这份提议已经不在等待")
+    return result if result is not None else _error(404, "not_found", "没有这份提议")
+
+
+def _decide_card(root: str, item: Dict[str, Any], approve: bool) -> Dict[str, Any]:
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.owner_confirmation import owner_route
+    if item["status"] != "pending":
+        raise ValueError("这份提议已经处理过了")
+    if views.proposal_expired(item):
+        raise ValueError("这份提议已经过期，请让助理重新提")
+    with owner_route(root):
+        StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
+                                    round=item["round"], instance=item["instance"])
+    return next(row for row in StaffApprovals(root).list() if row["id"] == item["id"])
+
+
+@router.get(_ORG + "/agent-proposals/{message_id}")
+async def agent_proposal(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id,
+                                      lambda root, item: views.agent_proposal(root, item, can_decide=True))
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/create")
+async def create_proposed_agent(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准提议，登记处照常核对岗位、实例和摘要。"""
+    def run(root, item):
+        decided = _decide_card(root, item, True)
+        card = views.agent_proposal(root, decided, can_decide=True)
+        return {"agent": _agent_view(root, item["snapshot"]["data"]["id"]), "proposal": card, "ai": "model",
+                "testChannelId": None}
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/deny")
+async def deny_proposed_agent(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: views.agent_proposal(
+        root, _decide_card(root, item, False), can_decide=True))
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/ask")
+async def ask_about_proposed_agent(org_id: str, message_id: str, request: Request):
+    """「请管理员决定」：这里只有所有者能决定，而所有者已经看得到这张卡片。"""
+    def run(root, item):
+        raise ValueError("这份提议只有所有者能决定，所有者已经看得到")
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/routine")
+async def proposed_agent_routine(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("这份提议没有附带例行工作；需要的话请让助理另提一份例行工作提议")
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/create")
+async def create_proposed_team(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准整张开通单（岗位、agent、部门、例行工作一起登记）。"""
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, True)), "noAi": []}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/deny")
+async def deny_proposed_team(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, False))}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/undo")
+async def undo_proposed_team(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("登记了就不能一键撤回；要停用这些 agent 或例行工作，请让助理提议")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
+
+
+@router.patch(_ORG + "/team-proposals/{message_id}/agents/{handle}")
+async def adjust_proposed_team_agent(org_id: str, message_id: str, handle: str, request: Request):
+    def run(root, item):
+        raise ValueError("批的是卡片上的这一版；要改内容，请让助理重新提")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
 
 
 @router.post(_ORG + "/agents")

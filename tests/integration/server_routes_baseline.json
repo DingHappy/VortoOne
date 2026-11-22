@@ -2292,6 +2292,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar",
     "methods": [
       "GET"
@@ -3310,6 +3316,48 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/routine",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-setup",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-setup",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents",
     "methods": [
       "POST"
@@ -3328,6 +3376,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/audience/mail-loss",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/unarchive",
     "methods": [
       "POST"
@@ -3337,6 +3391,12 @@
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/setup/{step}",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approval-covers/{user_id}",
+    "methods": [
+      "DELETE"
     ]
   },
   {
@@ -3367,6 +3427,12 @@
     "path": "/api/app/organizations/{org_id}/computer-pairings/{pairing_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/platform",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -3516,6 +3582,18 @@
     "methods": []
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/issues-view",
     "methods": [
       "GET"
@@ -3525,6 +3603,12 @@
     "path": "/api/app/organizations/{org_id}/me/issues-view",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/memories/{memory_id}/team",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -3561,6 +3645,30 @@
     "path": "/api/app/organizations/{org_id}/search",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/agents/{handle}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/undo",
+    "methods": [
+      "POST"
     ]
   },
   {

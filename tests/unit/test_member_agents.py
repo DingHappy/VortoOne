@@ -666,8 +666,9 @@ def test_owner_data_lists_are_empty_for_members_without_running_their_handlers(h
     def boom(_org_id):
         raise AssertionError("成员的空回答不该进处理函数")
     monkeypatch.setattr("src.web.routers.app_api._root", boom)
+    # approvals 不在这里：替所有者代批的成员要进处理函数（没在代批时是空的，见 test_approval_cover.py）
     paths = ["memories", f"agents/{home['agent']['id']}/memories", "skills", "routines", "notifications", "runs",
-             "usage", "approvals", "artifacts", "active-runs"]
+             "usage", "artifacts", "active-runs"]
     for path in paths:
         url = f"{home['base']}/{path}"
         answer = member.get(url)
