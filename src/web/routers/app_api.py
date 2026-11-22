@@ -832,7 +832,7 @@ def _staff_read(action):
         return _error(409, "staff_unavailable", str(error))
 
 
-async def _team_call(request, org_id, action, *, channel_id=None, empty_list=None):
+async def _team_call(request, org_id, action, *, channel_id=None, empty_listing=None):
     from src.gateway.session_store import ChannelNameConflict
     from src.workflow.members.registry import Damaged, Missing, Refused
 
@@ -843,8 +843,8 @@ async def _team_call(request, org_id, action, *, channel_id=None, empty_list=Non
     if actor is None:
         return _error(403, "forbidden", _NOT_MEMBER)
     if actor.is_owner and not app_staff.owner_proof(request):
-        if empty_list and not views.owner_connection():
-            return {empty_list: []}
+        if empty_listing is not None and not views.owner_connection():
+            return empty_listing
         return _error(403, "owner_proof_required", "团队频道需要已认证的同源会话")
     try:
         return await asyncio.to_thread(lambda: action(app_channels.channels(root), actor))
@@ -930,19 +930,19 @@ class _ChannelOverride(BaseModel):
 @router.get(_ORG + "/channels")
 async def list_team_channels(org_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor)},
-                            empty_list="channels")
+                            empty_listing={"channels": []})
 
 
 @router.get(_ORG + "/archived-channels")
 async def list_archived_team_channels(org_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor, archived=True)},
-                            empty_list="channels")
+                            empty_listing={"channels": []})
 
 
 @router.get(_ORG + "/channel-categories")
 async def list_channel_categories(org_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: {"categories": service.list_categories(actor)},
-                            empty_list="categories")
+                            empty_listing={"categories": []})
 
 
 @router.post(_ORG + "/channel-categories", status_code=201)
@@ -1075,6 +1075,16 @@ async def remove_team_message_reaction(org_id: str, message_id: str, request: Re
                                        reaction: str = Query(min_length=1, max_length=REACTION_MAX_LENGTH)):
     return await _team_call(request, org_id, lambda service, actor:
         {"reactions": service.message_reactions(actor, message_id, reaction=reaction, enabled=False)})
+
+
+@router.get(_ORG + "/threads")
+async def list_team_threads(org_id: str, request: Request, tab: str = "all", channelId: str = "",  # noqa: N803
+                            agentId: str = "", needsYou: bool = False, mine: bool = False,  # noqa: N803
+                            q: str = Query(default="", max_length=512),
+                            cursor: str = Query(default="", max_length=64), limit: int = 100):
+    return await _team_call(request, org_id, lambda service, actor: service.organization_threads(
+        actor, tab=tab, channel_id=channelId, agent_id=agentId, needs_you=needsYou, mine=mine, query=q, cursor=cursor,
+        limit=limit), empty_listing={"threads": [], "nextCursor": None})
 
 
 @router.get(_ORG + "/threads/{thread_id}")
