@@ -211,3 +211,31 @@ async def test_without_the_owner_proof_the_agents_conversations_stay_closed(work
             assert (await _get(owner, work, "waiting")) == {"items": [], "count": 0}
         await owner.post(f"{work.base}/approvals/{card['id']}/refuse", json={})
         await _ended(owner, work, "done")
+
+
+async def test_waiting_on_the_budget_is_neither_working_nor_waiting_on_you(work):
+    from src.workflow.tasks.tasks import TaskLedger
+    async with _client(work) as owner:
+        await _send(owner, work, "慢慢整理")
+        run = (await _task(owner, work, "running"))["runId"]
+        await _until(lambda: asyncio.sleep(0, result=work.gate.release))
+        task = TaskLedger(work.root).load(run)
+        book = work.service.collaboration(task.owner_session)
+
+        def paused(current):            # 与 StaffService 等额度时写的是同一种记录
+            current.status = "blocked"
+            current.collaboration["quota"] = {"status": "waiting"}
+        book.update_staff_action(run, task.collaboration["round"], paused)
+        [shown] = (await _get(owner, work, "task-manager"))["tasks"]
+        assert (shown["status"], shown["held"], shown["work"], shown["canStop"]) == ("waiting_input", "budget", None, True)
+        assert [item["status"] for item in (await _get(owner, work, "active-runs"))["runs"]] == ["waiting_input"]
+        assert await _get(owner, work, "waiting") == {"items": [], "count": 0}
+
+        def resumed(current):
+            current.status = "running"
+            current.collaboration["quota"]["status"] = "resumed"
+        book.update_staff_action(run, task.collaboration["round"], resumed)
+        shown = await _task(owner, work, "running")
+        assert shown.get("held") is None and shown["work"]["state"] == "working"
+        work.gate.release.set()
+        await _ended(owner, work, "done")
