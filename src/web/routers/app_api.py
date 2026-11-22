@@ -1970,7 +1970,6 @@ async def unread_team_threads(org_id: str, request: Request):
 # ── 启动时读取、目前没有对应记录的列表：返回空的合法结构 ─────────────────────────
 
 _EMPTY: Dict[str, Any] = {
-    "/agent-groups": {"groups": []},
     "/unread-tasks": {"tasks": []},
     "/waiting": {"items": [], "count": 0},
     "/machines/outages": {"outages": [], "targets": []},
@@ -3232,6 +3231,94 @@ async def set_right_hand_approvals(org_id: str, request: Request):
 async def undo_right_hand(org_id: str, decision_id: str):
     _root(org_id)
     return _error(404, "not_found", "没有这个代批决定（代批没有打开过）")
+
+
+# ── agent 详情页的几项：如实给现在的状态 ─────────────────────────────────────
+
+_GROUPS_BY_PROPOSAL = "agent 分组就是部门；部门的调整要经提议、在审批里批准，请让助理提议"
+
+
+@router.get(_ORG + "/agent-groups")
+async def agent_groups(org_id: str, request: Request):
+    """agent 分组：就是已登记的部门（只读）。"""
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    try:
+        return {"groups": await asyncio.to_thread(views.agent_groups, root)}
+    except (ValueError, OSError) as error:
+        return _error(409, "unavailable", str(error))
+
+
+@router.post(_ORG + "/agent-groups")
+async def create_agent_group(org_id: str):
+    _root(org_id)
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.patch(_ORG + "/agent-groups/{group_id}")
+async def update_agent_group(org_id: str, group_id: str):
+    _root(org_id)
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.delete(_ORG + "/agent-groups/{group_id}")
+async def remove_agent_group(org_id: str, group_id: str):
+    _root(org_id)
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.put(_ORG + "/agents/{agent_id}/group")
+async def move_agent_group(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.get(_ORG + "/agents/{agent_id}/approval-rules")
+async def approval_rules(org_id: str, agent_id: str):
+    """「以后都允许」的规则：这里每次批准都只批这一次（approve 拒绝 always），所以没有规则。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"rules": []}
+
+
+@router.delete(_ORG + "/agents/{agent_id}/approval-rules/{rule_id}", status_code=204)
+async def remove_approval_rule(org_id: str, agent_id: str, rule_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return _error(404, "not_found", "没有这条规则")
+
+
+@router.get(_ORG + "/agents/{agent_id}/learned-skills")
+async def learned_skills(org_id: str, agent_id: str):
+    """agent 自己学会的技能：这里 agent 不自己写技能（skill-settings 的 agentsImprove 固定关着），所以是空的。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"skills": []}
+
+
+_NO_AGENTS_IN_CHANNELS = "团队频道里还没有 agent：agent 现在只在私聊里回应"
+
+
+@router.get(_ORG + "/agents/{agent_id}/channels")
+async def agent_channels(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"channels": []}
+
+
+@router.put(_ORG + "/agents/{agent_id}/channels")
+async def set_agent_channels(org_id: str, agent_id: str, request: Request):
+    """只接受「一个频道都不进」；要把 agent 放进团队频道的如实拒绝。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    body = await _body(request)
+    if set(body) != {"channels"} or not isinstance(body["channels"], list):
+        return _error(400, "invalid", "要给出 agent 所在的频道列表")
+    if body["channels"]:
+        return _error(409, "agent_channels.unavailable", _NO_AGENTS_IN_CHANNELS)
+    return {"channels": []}
 
 
 @router.get(_ORG + "/usage")

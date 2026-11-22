@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 271 个，剩 **360** 个：
-- **要做：290**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 278 个，剩 **353** 个：
+- **要做：283**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -122,16 +122,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/browser/open` | `browser.open` |  |
 | ☐ | POST | `ORG/agents/{x}/browser/restart` | `browser.restart` |  |
 | ☐ | POST | `ORG/agents/{x}/browser/stop` | `browser.stop` |  |
-| ☐ | GET | `ORG/agents/{x}/channels` | `agents.channels` |  |
-| ☐ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` |  |
+| ☑ | GET | `ORG/agents/{x}/channels` | `agents.channels` | agent 还不进团队频道，是空的 |
+| ☑ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` | 只接受空列表，要放进频道回 409 |
 | ☐ | PUT | `ORG/agents/{x}/computer/target` | `sandbox.setTarget` |  |
 | ☐ | GET | `ORG/agents/{x}/databases` | `databases.agent` |  |
 | ☐ | PUT | `ORG/agents/{x}/databases/{x}` | `databases.setAgent` |  |
 | ☐ | GET | `ORG/agents/{x}/desktop/picture` | `desktop.picture` |  |
 | ☐ | GET | `ORG/agents/{x}/for-you` | `agentForYou.get` | 界面代码里没调用 |
-| ☐ | PUT | `ORG/agents/{x}/group` | `agentGroups.move` |  |
+| ☑ | PUT | `ORG/agents/{x}/group` | `agentGroups.move` | 分组就是部门，调整要经提议，回 409 |
 | ☐ | DELETE | `ORG/agents/{x}/holds/{x}` | `desktop.stopHold` |  |
-| ☐ | GET | `ORG/agents/{x}/learned-skills` | `skills.learned` |  |
+| ☑ | GET | `ORG/agents/{x}/learned-skills` | `skills.learned` | agent 不自己写技能，是空的 |
 | ☐ | GET | `ORG/agents/{x}/mail` | `mail.agent` |  |
 | ☐ | PUT | `ORG/agents/{x}/mail/{x}` | `mail.setAgent` |  |
 | ☐ | GET | `ORG/agents/{x}/merge-repositories` | `repositories.merge` |  |
@@ -654,13 +654,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PUT | `ORG/team-week` | `orgs.setTeamWeek` |  |
 | ☐ | POST | `ORG/team-week/{x}` | `orgs.actOnTeamWeek` |  |
 
-### org/agent-groups（3 个，要做 3）
+### org/agent-groups（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/agent-groups` | `agentGroups.create` | 读已接、写没接 |
-| ☐ | DELETE | `ORG/agent-groups/{x}` | `agentGroups.remove` |  |
-| ☐ | PATCH | `ORG/agent-groups/{x}` | `agentGroups.update` |  |
+| ☑ | POST | `ORG/agent-groups` | `agentGroups.create` | 列表读已登记的部门；新建、改、删部门要经提议，回 409 |
+| ☑ | DELETE | `ORG/agent-groups/{x}` | `agentGroups.remove` | 同上 |
+| ☑ | PATCH | `ORG/agent-groups/{x}` | `agentGroups.update` | 同上 |
 
 ### org/imports（3 个，要做 3）
 
