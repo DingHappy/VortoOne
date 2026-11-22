@@ -247,6 +247,45 @@ def set_home_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
     return home_settings(root)
 
 
+# ── 看板怎么看（每个人自己的）─────────────────────────────────────────────────
+
+ISSUES_VIEW_DEFAULT: Dict[str, Any] = {
+    "layout": "board", "group": "stage", "sort": "manual",
+    "fields": {"project": True, "assignee": True, "priority": True, "due": True, "criteria": True,
+               "pullRequest": True, "label": True},
+    "assignees": [], "priorities": [], "showCanceled": False}
+_VIEW_CHOICES = {"layout": ("board", "list"), "group": ("stage", "assignee", "priority"),
+                 "sort": ("manual", "priority", "due")}
+
+
+def issues_view(root: str, who: str) -> Dict[str, Any]:
+    saved = _own(root, who).get("issuesView") or {}
+    value = deepcopy(ISSUES_VIEW_DEFAULT)
+    value.update({key: item for key, item in saved.items() if key != "fields"})
+    value["fields"].update(saved.get("fields") or {})
+    return value
+
+
+def set_issues_view(root: str, who: str, view: Any) -> Dict[str, Any]:
+    if not isinstance(view, dict) or set(view) - set(ISSUES_VIEW_DEFAULT):
+        raise ValueError("看板视图里有不认识的项")
+    for key, choices in _VIEW_CHOICES.items():
+        if key in view and view[key] not in choices:
+            raise ValueError(f"{key} 只能是 {list(choices)}")
+    fields = view.get("fields", {})
+    if not isinstance(fields, dict) or set(fields) - set(ISSUES_VIEW_DEFAULT["fields"]) or any(
+            type(value) is not bool for value in fields.values()):
+        raise ValueError("fields 无效")
+    for key in ("assignees", "priorities"):
+        if key in view and (not isinstance(view[key], list) or len(view[key]) > 100
+                            or any(not isinstance(item, str) or len(item) > 140 for item in view[key])):
+            raise ValueError(f"{key} 无效")
+    if "showCanceled" in view and type(view["showCanceled"]) is not bool:
+        raise ValueError("showCanceled 要是布尔值")
+    _change(root, who, "issuesView", deepcopy(view))
+    return issues_view(root, who)
+
+
 # ── 主人在界面上新建、还在等核对的例行工作提议 ───────────────────────────────
 # 新界面的核对页只处理成员提交的和这里记下的；助理替主人提的照旧不在这里核对（#963 定的边界）。
 
