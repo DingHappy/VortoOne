@@ -237,6 +237,7 @@ _STATE_ENTRIES = [
     "profile-avatars/",
     "workspace-branding/",
     "board.sqlite3",
+    "calendar.sqlite3",
     "wiki/",
     "provider_keys.json",
     "voice/",

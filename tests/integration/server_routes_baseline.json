@@ -3050,6 +3050,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/calendar/events",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/connectors",
     "methods": [
       "GET"
@@ -3087,6 +3105,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/mail/accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/providers",
     "methods": [
       "GET"
     ]
@@ -3912,6 +3936,12 @@
     "methods": []
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/activity",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/approval-cover",
     "methods": [
       "GET"
@@ -3919,6 +3949,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/chat",
     "methods": [
       "PUT"
     ]
@@ -3943,6 +3979,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/me/right-hand-approvals",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/start",
     "methods": [
       "PUT"
     ]
