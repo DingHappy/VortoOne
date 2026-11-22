@@ -116,6 +116,54 @@ def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch
     assert browser.post(base + "/missions", json=_input(home, thread_id)).status_code == 403
 
 
+def test_archiving_a_thread_rejects_a_stale_draft_submission_until_unarchive(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "stale-mission")
+    thread_id, _ = _thread(owner, channel)
+    thread = f"{base}/threads/{thread_id}"
+    assert owner.get(thread).json()["state"] == "open"
+    stale = _input(home, thread_id)
+    assert owner.post(thread + "/archive", json={}).json()["state"] == "archived"
+    history = owner.get(channel + "/messages", params={"threadId": thread_id}).json()
+
+    with monkeypatch.context() as archived:
+        archived.setattr(home["service"], "assignment", lambda *args, **kwargs: pytest.fail("先检查话题状态"))
+        rejected = owner.post(base + "/missions", json=stale)
+    assert rejected.status_code == 409 and rejected.json()["error"]["code"] == "thread.archived"
+    assert owner.get(thread + "/mission").status_code == 404
+    assert owner.get(channel + "/messages", params={"threadId": thread_id}).json() == history
+    assert owner.post(thread + "/unarchive", json={}).json()["state"] == "open"
+    draft = _draft(home, thread_id)
+    assert draft["threadId"] == thread_id
+    assert owner.get(channel + "/messages", params={"threadId": thread_id}).json() == history
+    assert home["pool"].jobs == {} and TaskLedger(home["root"]).list() == []
+
+
+def test_archived_drafts_still_read_and_replay_only_with_source_access(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    channel = _create(home, "private-draft", visibility="private", people=[member.member_id])
+    thread_id, _ = _thread(owner, channel)
+    thread = f"{base}/threads/{thread_id}"
+    draft = _draft(home, thread_id)
+    assert owner.post(thread + "/archive", json={}).json()["state"] == "archived"
+
+    path = base + "/missions"
+    draft_path = f"{path}/{draft['id']}"
+    assert owner.get(draft_path).json() == draft
+    assert owner.get(thread + "/mission").json() == draft
+    assert _draft(home, thread_id) == draft
+    conflict = owner.post(path, json=_input(home, thread_id, goal="其他目标"))
+    assert conflict.status_code == 409 and conflict.json()["error"]["code"] == "mission.thread_in_use"
+    assert member.post(path, json=_input(home, thread_id)).status_code == 403
+    assert owner.post(channel + "/leave", json={}).status_code == 204
+    missing_source = owner.post(path, json=_input(home, thread_id))
+    missing_thread = owner.post(path, json=_input(home, "unknown-thread"))
+    assert missing_source.status_code == missing_thread.status_code == 404
+    assert missing_source.json() == missing_thread.json()
+    assert owner.get(draft_path).status_code == 404
+
+
 def test_draft_filters_count_visible_matches_before_status_and_limit(home):
     owner, base = home["owner"], home["base"]
     url = base + "/missions"
