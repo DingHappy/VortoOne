@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 from contextlib import suppress
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -1406,15 +1406,66 @@ async def cancel_run(org_id: str, run_id: str, request: Request):
 async def approvals(org_id: str, response: Response, status: str = ""):
     root = _root(org_id)
     response.headers["Cache-Control"] = "no-store"
-    bridge = existing_bridge(root)
-    if bridge is None or status not in {"", "pending"}:
+    if status not in {"", "pending"}:
         return {"approvals": []}
-    return {"approvals": [views.approval(root, item) for item in bridge.pending_confirmations()]}
+    bridge = existing_bridge(root)
+    live = [views.approval(root, item) for item in bridge.pending_confirmations()] if bridge else []
+    return {"approvals": live + await asyncio.to_thread(_staff_proposal_approvals, root)}
+
+
+def _staff_proposal_approvals(root: str) -> List[Dict[str, Any]]:
+    """待批的专员提议（助理提的、旧版 Desktop 里提的）。登记处读不出来时不列，审批页照常显示实时确认。"""
+    try:
+        return [views.staff_proposal_approval(root, item) for item in views.pending_staff_proposals(root)]
+    except (ValueError, OSError):
+        return []
+
+
+def _staff_proposal(root: str, approval_id: str):
+    """（提议, 是否还是界面上看到的那一版）；不是专员提议的 id 返回 None。"""
+    if not approval_id.startswith(views.STAFF_PROPOSAL_PREFIX) or "~" not in approval_id:
+        return None
+    proposal_id, _, shown = approval_id.partition("~")
+    item = next((row for row in views.pending_staff_proposals(root) if row["id"] == proposal_id), None)
+    return (item, item is not None and item["digest"][:16] == shown)
+
+
+async def _decide_staff_proposal(root: str, approval_id: str, approve: bool, request: Request):
+    """主人在新界面批准或拒绝一条专员提议：按界面上看到的那一版（id 里的摘要前缀）核对，变了就不批。"""
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.owner_confirmation import owner_route
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "批准提议需要已认证的所有者")
+
+    def run():
+        found = _staff_proposal(root, approval_id)
+        if found is None or found[0] is None:
+            return None
+        item, current = found
+        if not current:
+            raise ValueError("这条提议的内容已经变了，请刷新后重新核对")
+        view = views.staff_proposal_approval(root, item)
+        with owner_route(root):
+            StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
+                                        round=item["round"], instance=item["instance"])
+        return {**view, "status": "approved" if approve else "refused", "canDecide": False,
+                "decidedByUserId": views.owner_id(root), "decidedAt": views.now_iso()}
+    try:
+        decided = await asyncio.to_thread(run)
+    except (ValueError, LookupError, OSError) as error:
+        return _error(409, "approval_decided", str(error) or "这条提议已经不在等待")
+    return decided if decided is not None else _error(409, "approval_decided", "这条提议已经不在等待")
 
 
 @router.get(_ORG + "/approvals/{approval_id}")
 async def approval(org_id: str, approval_id: str, response: Response):
     root = _root(org_id)
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        found = await asyncio.to_thread(_staff_proposal, root, approval_id)
+        if not found or not found[1]:
+            return _error(404, "not_found", "这条提议已经不在等待，或内容已经变了")
+        response.headers["Cache-Control"] = "no-store"
+        return views.staff_proposal_approval(root, found[0])
     bridge = existing_bridge(root)
     pending = bridge.pending(approval_id) if bridge else None
     if pending is None:
@@ -1596,6 +1647,8 @@ async def _decide(org_id: str, approval_id: str, approve: bool, request: Request
     from src.gateway.paired_browser_task import PairedBrowserNotReady
     from src.web.routers.computers import has_computer_owner_proof, has_owner_browser_session
     root = _root(org_id)
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        return await _decide_staff_proposal(root, approval_id, approve, request)
     bridge = existing_bridge(root)
     try:
         decided = await bridge.decide(
@@ -1640,11 +1693,12 @@ class _DecideMany(BaseModel):
 @router.post(_ORG + "/approvals/decide")
 async def decide_many(org_id: str, body: _DecideMany, request: Request):
     """卡片上的「全部批准 / 全部拒绝」：只处理界面列出的这几条，每条照常单独决定、只批这一次。
-    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。"""
+    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。
+    专员提议要一条条核对内容，不参加批量，也跳过。"""
     _root(org_id)
     decided, skipped = [], []
     for approval_id in dict.fromkeys(body.ids):
-        if body.only is not None:
+        if body.only is not None or approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
             skipped.append(approval_id)
             continue
         answer = await _decide(org_id, approval_id, body.decision == "approve", request)
