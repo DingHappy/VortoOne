@@ -1,6 +1,7 @@
 """Durable human messages, pins, and read markers for team channels."""
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import uuid
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS messages (
     thread TEXT,
     reply_to TEXT,
     opened INTEGER NOT NULL DEFAULT 0,
+    media TEXT,
     UNIQUE (channel, author, client)
 );
 CREATE INDEX IF NOT EXISTS messages_in_channel ON messages(channel, sequence);
@@ -56,6 +58,28 @@ def _parse_stamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+_GIF_FIELDS = {"kind", "provider", "id", "title", "width", "height"}
+
+
+def check_media(media):
+    """消息附带的图片（目前只有 GIF）。查找和尺寸由上层向服务商核实后填好，这里只拒绝形状不对的。"""
+    if media is None:
+        return None
+    if (not isinstance(media, dict) or set(media) != _GIF_FIELDS or media["kind"] != "gif"
+            or media["provider"] != "giphy" or not isinstance(media["id"], str) or not media["id"]
+            or len(media["id"]) > 64 or not isinstance(media["title"], str) or len(media["title"]) > 300
+            or any(type(media[key]) is not int or not 0 < media[key] <= 10000 for key in ("width", "height"))):
+        raise ValueError("消息附带的图片无效")
+    return dict(media)
+
+
+def _migrate(conn) -> None:
+    """建表之前的频道记录没有 media 列：原地补上，老消息的 media 为空。"""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(messages)")}
+    if "media" not in columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN media TEXT")
+
+
 class ChannelHistory:
     def __init__(self, directory: Path, owner_id: str):
         self.path = directory / "channel-messages.sqlite3"
@@ -69,8 +93,14 @@ class ChannelHistory:
                   "author": {"type": "person", "id": self.person_id(row["author"])}, "body": row["body"],
                   "mentionedAgentIds": [], "agentRunId": None,
                   "createdAt": row["created"], "sequence": row["sequence"]}
+        meta = {}
         if row["reply_to"]:
-            result["meta"] = {"replyTo": row["reply_to"]}
+            meta["replyTo"] = row["reply_to"]
+        media = row["media"] if "media" in row.keys() else None
+        if media:
+            meta["media"] = json.loads(media)
+        if meta:
+            result["meta"] = meta
         if viewer == row["author"] and row["client"] is not None:
             result["clientId"] = row["client"]
         if "pinned" in row.keys() and row["pinned"]:
@@ -95,6 +125,7 @@ class ChannelHistory:
                 if write:
                     conn.execute("PRAGMA foreign_keys = ON")
                     conn.executescript("BEGIN;" + _SCHEMA + "COMMIT;")
+                    _migrate(conn)
                 yield conn
         except sqlite3.Error as error:
             raise Damaged("频道消息记录不可用") from error
@@ -108,14 +139,16 @@ class ChannelHistory:
             raise Missing("没有这条消息")
         return row
 
-    def append(self, channel, actor, body, client, thread, reply_to, opened):
+    def append(self, channel, actor, body, client, thread, reply_to, opened, media=None):
+        media = check_media(media)
+        stored = json.dumps(media, ensure_ascii=False, sort_keys=True) if media else None
         with self.database(write=True) as conn:
             if client is not None:
                 existing = conn.execute("SELECT * FROM messages WHERE channel = ? AND author = ? AND client = ?",
                                         (channel, actor, client)).fetchone()
                 if existing is not None:
-                    if (existing["body"], existing["thread"], existing["reply_to"], existing["opened"]) != (
-                            body, thread, reply_to, int(opened)):
+                    if (existing["body"], existing["thread"], existing["reply_to"], existing["opened"],
+                            existing["media"]) != (body, thread, reply_to, int(opened), stored):
                         raise ValueError("同一条消息的重试内容发生变化")
                     return self.message(existing, actor)
             if thread is not None and self.find(conn, channel, thread)["thread"] is not None:
@@ -129,9 +162,9 @@ class ChannelHistory:
                 now = max(now, _parse_stamp(latest[0]) + timedelta(microseconds=1))
             message_id = str(uuid.uuid4())
             conn.execute(
-                "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (message_id, channel, actor, body, _stamp(now), client, thread, reply_to, int(opened)))
+                "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened, media) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (message_id, channel, actor, body, _stamp(now), client, thread, reply_to, int(opened), stored))
             return self.message(self.find(conn, channel, message_id), actor)
 
     def messages(self, channel, viewer, *, before="", limit=100, thread=None, after=None):

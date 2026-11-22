@@ -273,10 +273,11 @@ class TeamChannels:
             return self.history.messages(channel_id, self._actor_key(actor), before=before, thread=thread, after=after,
                                          limit=min(max(limit, 1), 200))
 
-    def post(self, actor, channel_id, text, *, client_id=None, thread=None, reply_to=None, opened=False):
+    def post(self, actor, channel_id, text, *, client_id=None, thread=None, reply_to=None, opened=False, media=None):
         with self.registry._locked_state() as state:
             self._find(state, actor, channel_id, archived=False, joined=True, permission="post")
-            return self.history.append(channel_id, self._actor_key(actor), text, client_id, thread, reply_to, opened)
+            return self.history.append(channel_id, self._actor_key(actor), text, client_id, thread, reply_to, opened,
+                                       media)
 
     def message_details(self, actor, message_id, *, thread=False):
         with self.registry._locked_state() as state, self.history.database() as conn:

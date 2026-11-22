@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_channels, app_members, app_prefs, app_staff, member_auth
+from src.web import app_channels, app_gifs, app_members, app_prefs, app_staff, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channels import is_team_channel
 
@@ -424,9 +424,11 @@ async def settings(org_id: str):
     return views.settings(_root(org_id))
 
 
-# 空间设置里有对应能力的两项：名字（主助理的名字，也就是这个家显示的名字）和默认时区（例行工作用的那个）。
-# 其余开关（GIF、语音、团队巡视……）这里没有对应能力，改了也不会生效，所以拒绝而不是假装存下。
+# 空间设置里有对应能力的：名字（主助理的名字，也就是这个家显示的名字）、默认时区（例行工作用的那个）、
+# GIF 开关和分级（团队频道里的 GIF）。其余开关（语音、团队巡视……）这里没有对应能力，改了也不会生效，
+# 所以拒绝而不是假装存下。
 _SETTINGS_WRITABLE = {"name", "timezone"}
+_HOME_SWITCHES = {"gifs", "gifRating"}
 
 
 def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -434,9 +436,11 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
     from src.workflow.staff.routines import Routines
     current = views.settings(root)
     unsupported = sorted(key for key, value in body.items()
-                         if key not in _SETTINGS_WRITABLE and current.get(key, object()) != value)
+                         if key not in _SETTINGS_WRITABLE | _HOME_SWITCHES and current.get(key, object()) != value)
     if unsupported:
         raise ValueError(f"这些设置这里还不能改：{unsupported}")
+    switches = {key: body[key] for key in _HOME_SWITCHES if key in body}
+    app_prefs.check_home_settings(switches)
     if "name" in body:
         name = body["name"]
         if not isinstance(name, str) or not " ".join(name.split()):
@@ -451,6 +455,8 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
         registry.configure_timezone(zone, registry.read()["revision"])     # 时区名不对由登记处拒绝
     if "name" in body:
         assistant_profile.save_profile(root, name=body["name"])
+    if switches:
+        app_prefs.set_home_settings(root, switches)
     return views.settings(root)
 
 
@@ -1018,17 +1024,27 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
     if not team_channel and root is None and member is None:
         return _error(404, "not_found", "没有这个对话")
     text = body.body.strip()
-    if not text:
+    extra = dict(body.model_extra or {})
+    wanted_media = extra.pop("media", None)
+    if not text and not wanted_media:
         return _error(400, "empty_message", "消息不能为空")
     if len(text) > 20000:
         return _error(413, "message_too_long", "消息太长")
     client_id = (body.clientId or "")[:120] or None
+    if wanted_media and not team_channel:
+        # GIF 只在人和人的团队频道里：发给 agent 的私聊不带图片（不进模型上下文）
+        return _error(422, "message.media_off", "这里不能发 GIF")
     if team_channel:
-        if any(value for value in (body.model_extra or {}).values()):
-            return _error(400, "invalid", "团队频道目前支持文字、引用和线程回复")
+        if any(value for value in extra.values()):
+            return _error(400, "invalid", "团队频道目前支持文字、GIF、引用和线程回复")
+        media = None
+        if wanted_media:
+            media = await _gif_for_message(org_id, wanted_media)
+            if isinstance(media, JSONResponse):
+                return media
         return await _team_call(request, org_id, lambda service, actor: service.post(
             actor, channel_id, text, client_id=client_id, thread=body.threadId or None,
-            reply_to=body.replyTo or None, opened=bool(body.threadId and body.openThread)))
+            reply_to=body.replyTo or None, opened=bool(body.threadId and body.openThread), media=media))
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     answer = await _as_member(request, org_id, channel_id,
@@ -1406,6 +1422,110 @@ def _register_empty(path: str, payload: Any) -> None:
 
 for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
+
+
+# ── GIF（GIPHY）──────────────────────────────────────────────────────────────
+# 密钥只有所有者能看能改；搜索和取图给空间里所有人（成员也能在团队频道里发）。图片经本服务转发。
+
+def _gif_error(error: "app_gifs.GifError") -> JSONResponse:
+    return _error(error.status, error.code, str(error))
+
+
+async def _gif_key_owner(request: Request):
+    root = os.getcwd()
+    if not member_auth.principal(request, root).is_owner:
+        return None, _error(403, "forbidden", "只有所有者能管 GIPHY 密钥")
+    if not views.owner_connection():
+        return None, _error(403, "forbidden", "管 GIPHY 密钥需要已认证的主人连接")
+    return root, None
+
+
+@router.get("/api/app/gif-key")
+async def gif_key(request: Request):
+    root, refused = await _gif_key_owner(request)
+    return refused or app_gifs.key_view(root)
+
+
+@router.put("/api/app/gif-key")
+async def save_gif_key(body: Dict[str, Any], request: Request):
+    """先拿这个 Key 向 GIPHY 试一次，能用才存。"""
+    root, refused = await _gif_key_owner(request)
+    if refused:
+        return refused
+    if app_gifs.env_managed():
+        return _error(409, "gif.env_key", f"这台服务用环境变量 {app_gifs.ENV_KEY} 的 Key，这里不能改")
+    try:
+        key = app_gifs.check_key_shape(body.get("apiKey"))
+    except ValueError as error:
+        return _error(400, "gif.key_invalid", str(error))
+    try:
+        await app_gifs.verify_key(key)
+    except app_gifs.GifError as error:
+        return _gif_error(error)
+    await asyncio.to_thread(app_gifs.save_key, root, key)
+    return app_gifs.key_view(root)
+
+
+@router.delete("/api/app/gif-key")
+async def remove_gif_key(request: Request):
+    root, refused = await _gif_key_owner(request)
+    if refused:
+        return refused
+    if app_gifs.env_managed():
+        return _error(409, "gif.env_key", f"这台服务用环境变量 {app_gifs.ENV_KEY} 的 Key，这里不能改")
+    await asyncio.to_thread(app_gifs.remove_key, root)
+    return app_gifs.key_view(root)
+
+
+def _gifs_on(root: str) -> bool:
+    settings = views.settings(root)
+    return bool(settings["gifsAvailable"] and settings["gifs"])
+
+
+@router.get(_ORG + "/gifs")
+async def search_gifs(org_id: str, request: Request, q: str = "", category: str = "", offset: int = 0,
+                      limit: int = 24, lang: str = ""):
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not _gifs_on(root):
+        return _error(422, "gif.off", "这个空间没有开 GIF")
+    try:
+        return await app_gifs.search(root, q=q, category=category, offset=offset, limit=limit, lang=lang,
+                                     rating=views.settings(root)["gifRating"])
+    except app_gifs.GifError as error:
+        return _gif_error(error)
+
+
+@router.get(_ORG + "/gifs/{gif_id}/media")
+async def gif_media(org_id: str, gif_id: str, request: Request, size: str = "full"):
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not app_gifs.available(root):
+        return _error(422, "gif.off", "这台服务还没有设置 GIPHY 的 API Key")
+    try:
+        content, kind = await app_gifs.media(root, gif_id, size)
+    except app_gifs.GifError as error:
+        return _gif_error(error)
+    return Response(content=content, media_type=kind,
+                    headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+async def _gif_for_message(org_id: str, wanted: Any):
+    """界面只给 id；标题和尺寸重新向 GIPHY 查。GIF 关着回 422 message.media_off（合同）。"""
+    root = _root(org_id)
+    if not isinstance(wanted, dict) or wanted.get("kind") != "gif" or set(wanted) != {"kind", "id"} \
+            or not isinstance(wanted.get("id"), str):
+        return _error(422, "message.media_off", "这里只能发 GIF")
+    if not _gifs_on(root):
+        return _error(422, "message.media_off", "这个空间没有开 GIF")
+    try:
+        return await app_gifs.message_media(root, wanted["id"])
+    except app_gifs.GifError as error:
+        if error.status == 404:
+            return _error(422, "message.media_not_found", "GIPHY 上没有这个 GIF")
+        return _gif_error(error)
 
 
 # ── 每个人自己的侧栏 ──────────────────────────────────────────────────────────

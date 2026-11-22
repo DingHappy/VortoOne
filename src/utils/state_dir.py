@@ -231,6 +231,7 @@ _STATE_ENTRIES = [
     "cron_state.json",
     "followups.json",
     "app_prefs.json",
+    "provider_keys.json",
     "ops_heartbeats.json",
     "cli_session.json",
     "tui_theme",

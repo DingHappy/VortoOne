@@ -253,12 +253,22 @@ def overview(root: str) -> Dict[str, Any]:
             "budgetUsedPercent": 0, "approvalsWaitingForMe": 0, "proposalsWaitingForMe": 0}
 
 
+def _home_switches(root: str) -> Dict[str, Any]:
+    from src.web import app_prefs
+    try:
+        return app_prefs.home_settings(root)
+    except ValueError:
+        return dict(app_prefs.HOME_DEFAULTS)
+
+
 def settings(root: str) -> Dict[str, Any]:
+    from src.web import app_gifs
+    switches = _home_switches(root)
     return {"name": _profile(root)["name"], "context": "", "defaultCredentialId": None, "routerModel": None,
             "summaryModel": None, "timezone": _timezone(root), "actionCheck": True, "autoModels": {},
-            "teamWatch": False, "welcomePeople": False, "gifs": False, "gifRating": "g",
+            "teamWatch": False, "welcomePeople": False, "gifs": switches["gifs"], "gifRating": switches["gifRating"],
             "agentStickers": False, "agentMedia": "never", "voiceMessages": False, "voiceAvailable": False,
-            "gifsAvailable": False, "agentMediaAvailable": False, "mode": "personal",
+            "gifsAvailable": app_gifs.available(root), "agentMediaAvailable": False, "mode": "personal",
             "defaultAgentBudgetUsd": None}
 
 

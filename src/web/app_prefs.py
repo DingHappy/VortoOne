@@ -211,3 +211,36 @@ def set_locale(root: str, account_key: str, body: Any) -> None:
         row["locale"] = body["locale"]
         row["localeAuto"] = auto
         _write(root, data)
+
+
+# ── 整个家的界面开关（所有者在空间设置里改）─────────────────────────────────
+
+HOME_DEFAULTS: Dict[str, Any] = {"gifs": True, "gifRating": "g"}
+_HOME_CHECKS = {"gifs": lambda value: type(value) is bool, "gifRating": lambda value: value in ("g", "pg")}
+
+
+def home_settings(root: str) -> Dict[str, Any]:
+    saved = _read(root).get("home")
+    values = dict(HOME_DEFAULTS)
+    if isinstance(saved, dict):
+        values.update({key: value for key, value in saved.items() if key in HOME_DEFAULTS})
+    return values
+
+
+def check_home_settings(changes: Dict[str, Any]) -> None:
+    for key, value in changes.items():
+        if key not in _HOME_CHECKS or not _HOME_CHECKS[key](value):
+            raise ValueError(f"{key} 的值无效")
+
+
+def set_home_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+    check_home_settings(changes)
+    with _LOCK:
+        data = _read(root)
+        home = data.get("home") if isinstance(data.get("home"), dict) else {}
+        home.update(changes)
+        data["home"] = {key: value for key, value in home.items() if HOME_DEFAULTS.get(key) != value}
+        if not data["home"]:
+            data.pop("home")
+        _write(root, data)
+    return home_settings(root)

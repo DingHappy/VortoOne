@@ -2872,6 +2872,24 @@
     ]
   },
   {
+    "path": "/api/app/gif-key",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/gif-key",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/gif-key",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents",
     "methods": [
       "POST"
@@ -2911,6 +2929,18 @@
     "path": "/api/app/organizations/{org_id}/computer-pairings/{pairing_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/gifs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/gifs/{gif_id}/media",
+    "methods": [
+      "GET"
     ]
   },
   {

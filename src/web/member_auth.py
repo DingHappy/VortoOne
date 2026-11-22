@@ -38,6 +38,9 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PATCH", _ORG + r"/me/sidebar"),
+    # GIF：搜索和取图（团队频道里发 GIF 用）；密钥只有所有者能管
+    ("GET", _ORG + r"/gifs"),
+    ("GET", _ORG + r"/gifs/[A-Za-z0-9]+/media"),
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),

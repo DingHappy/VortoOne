@@ -163,7 +163,7 @@ def test_the_owner_renames_the_home_and_sets_its_timezone(home):  # noqa: F811
 def test_settings_without_backing_are_refused_not_pretended(home):  # noqa: F811
     owner, base = home["owner"], home["base"]
     before = owner.get(f"{base}/settings").json()
-    for body in ({"gifs": True}, {"context": "我们是一家咖啡店"}, {"name": "新名字", "teamWatch": True}):
+    for body in ({"voiceMessages": True}, {"context": "我们是一家咖啡店"}, {"name": "新名字", "teamWatch": True}):
         answer = owner.patch(f"{base}/settings", json=body)
         assert answer.status_code == 400, body
     assert owner.get(f"{base}/settings").json() == before                 # 一项都没改，包括同批的名字
