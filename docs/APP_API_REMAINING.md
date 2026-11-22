@@ -1,12 +1,13 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 275 个，剩 **356** 个：
-- **要做：286**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 276 个，剩 **355** 个：
+- **要做：280**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
-- **按已定决定不做：12**
+- **按已定决定不做：13**
+- **暂缓：4**（投票与选择卡，等 agent 进团队频道）
 
-表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办或已定不做。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
 ## 怎么核对
 
@@ -568,12 +569,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` | 拒绝 |
 | ☑ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` | 登记了不能一键撤回，回 409 |
 
-### org/runs（4 个，要做 3）
+### org/runs（4 个，要做 2）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/runs/{x}` | `agents.run` | 与列表同一行；没有逐步记录，`steps` 为空（进度尾部在主人可看的任务输出里） |
-| ☐ | POST | `ORG/runs/{x}/continue` | `agents.continueRun` |  |
+| — | POST | `ORG/runs/{x}/continue` | `agents.continueRun` | 不做（2026-11-22 主人定）：停下的事重新交代 |
 | ☐ | POST | `ORG/runs/{x}/device-wait` | `devices.deviceWait` |  |
 | ☐ | POST | `ORG/runs/{x}/stop-reason` | `agents.stopReason` |  |
 
@@ -784,19 +785,19 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `/api/app/machines/device/{x}` | `machines.device` | Codex 连接电脑线 |
 | — | POST | `/api/app/machines/device/{x}/deny` | `machines.denyDevice` | Codex 连接电脑线 |
 
-### org/polls（2 个，要做 2）
+### org/polls（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/polls/{x}` | `artifacts.poll` |  |
-| ☐ | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` |  |
+| — | GET | `ORG/polls/{x}` | `artifacts.poll` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| — | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
 
-### org/choices（2 个，要做 2）
+### org/choices（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/choices/{x}` | `artifacts.choices` |  |
-| ☐ | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` |  |
+| — | GET | `ORG/choices/{x}` | `artifacts.choices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| — | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
 
 ### org/artifacts-trash（2 个，要做 2）
 
@@ -951,11 +952,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | POST | `ORG/admin-asks` | `notifications.askAdmins` |  |
 
-### org/proposals${filter（1 个，要做 1）
+### org/proposals${filter（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/proposals${filter` | `proposals.list` |  |
+| ☑ | GET | `ORG/proposals${filter` | `proposals.list` | 就是已接的 `GET proposals`，带查询参数 |
 
 ### org/(空间本身)（1 个，要做 1）
 
