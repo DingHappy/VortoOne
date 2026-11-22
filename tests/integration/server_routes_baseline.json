@@ -3352,6 +3352,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/approval-covers/{user_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/approvals/decide",
     "methods": [
       "POST"
@@ -3532,6 +3538,18 @@
   {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
     "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "PUT"
+    ]
   },
   {
     "path": "/api/app/organizations/{org_id}/me/issues-view",
