@@ -2232,6 +2232,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/devices",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/dms",
     "methods": [
       "GET"

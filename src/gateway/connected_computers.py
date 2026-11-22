@@ -427,7 +427,7 @@ class ConnectedComputers:
     def _scope_rows(data, member_id):
         return data["computers"] if member_id is None else data["member_computers"]
 
-    def rename(self, connector_id, name, *, member_id=None):
+    def rename(self, connector_id, name, *, member_id=None, current_only=False):
         name = _name(name)
         if member_id is not None:
             self._require_member(member_id)
@@ -435,13 +435,13 @@ class ConnectedComputers:
             data = self._load()
             item = next((item for item in self._scope_rows(data, member_id) if item["connector_id"] == connector_id
                          and item.get("paired_member_id") == member_id), None)
-            if item is None:
+            if item is None or (current_only and not self._current(item, self.identity())):
                 raise KeyError(connector_id)
             item["name"] = name
             self._save(data)
             return self._public(item)
 
-    def revoke(self, connector_id, *, member_id=None) -> dict:
+    def revoke(self, connector_id, *, member_id=None, current_only=False) -> dict:
         if member_id is not None:
             self._require_member(member_id)
         with self._lock():
@@ -449,7 +449,7 @@ class ConnectedComputers:
             rows = self._scope_rows(data, member_id)
             item = next((item for item in rows if item["connector_id"] == connector_id
                          and item.get("paired_member_id") == member_id), None)
-            if item is None:
+            if item is None or (current_only and not self._current(item, self.identity())):
                 raise KeyError(connector_id)
             if item["revoked_at"] is None:
                 item["revoked_at"] = int(self.clock())

@@ -1,9 +1,9 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 234 个，剩 **397** 个：
+客户端合同里一共 631 个不重复接口，后端已接 236 个，剩 **395** 个：
 - **要做：325**（其中 34 个在界面代码里没有调用，可以往后排）
-- **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
+- **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
 表里 ☐ 是待做的，☑ 是已接入的（注明限制），— 是不做的。「读已接、写没接」表示后端只有 GET，界面保存会 405。
@@ -179,10 +179,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/devices` | `devices.list` | Codex 连接电脑线 |
+| ☑ | GET | `ORG/devices` | `devices.list` | 只列当前调用者配对的有效电脑，在线时说明仅支持配对能力。 |
 | — | POST | `ORG/devices/access-requests/{x}/decide` | `devices.decideAccess` | Codex 连接电脑线 |
-| — | DELETE | `ORG/devices/computers/{x}` | `devices.removeComputer` | Codex 连接电脑线 |
-| — | PATCH | `ORG/devices/computers/{x}` | `devices.updateComputer` | Codex 连接电脑线 |
+| ☑ | DELETE | `ORG/devices/computers/{x}` | `devices.removeComputer` | 由配对人撤销凭据并断开对应连接。 |
+| — | PATCH | `ORG/devices/computers/{x}` | `devices.updateComputer` | Codex 连接电脑线。配对人可改名，共享、工作区归属、任务数和溢出设置返回 400。 |
 | — | POST | `ORG/devices/computers/{x}/phone-looks` | `devices.lookForPhones` | Codex 连接电脑线 |
 | — | GET | `ORG/devices/computers/{x}/wifi-iphones` | `devices.wifiIphones` | Codex 连接电脑线 |
 | — | PUT | `ORG/devices/computers/{x}/wifi-iphones/{x}` | `devices.pickIphoneOverWifi` | Codex 连接电脑线 |

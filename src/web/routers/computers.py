@@ -16,7 +16,7 @@ from urllib.parse import quote, urlsplit
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.requests import ClientDisconnect, HTTPConnection
-from starlette.responses import StreamingResponse
+from starlette.responses import JSONResponse, StreamingResponse
 
 from src.agents.identity_groups import screen_level_allows
 from src.agents.principal import MEMBER, OWNER, Principal
@@ -240,6 +240,67 @@ def _machine(root: str, row: dict, member_id: str | None, name: str) -> dict:
     }
 
 
+def _device(root: str, row: dict, owner_id: str) -> dict:
+    connector = row['connector_id']
+    connection = connections.online_connection(root, connector)
+    online = (connection is not None
+              and connection.binding['credential_epoch'] == row['credential_epoch']
+              and connection.binding['trust_epoch'] == row['trust_epoch'])
+    # An online connector is not a shared computer that agents can be assigned to.
+    status = ({'kind': 'unsupported', 'reason': 'paired_connector_only'} if online
+              else {'kind': 'offline', 'lastSeenAt': None})
+    return {
+        'id': connector, 'machineKind': 'connected', 'name': row['name'],
+        'os': 'other', 'arch': '', 'hostname': '', 'cpus': None, 'memoryGb': None,
+        'ownerUserId': owner_id, 'belongsToWorkspace': False, 'spill': {'own': False, 'others': False},
+        'systemMode': False, 'audience': {'mode': 'owner', 'userIds': [], 'roleIds': []},
+        'status': status, 'maxTasks': None, 'toolchains': {}, 'lastSeenAt': None,
+        'mayUse': False, 'mayManage': True, 'phones': [],
+    }
+
+
+async def _revoke(root, store, member_id, machine_id, *, current_only=False):
+    revoked = await _call(store.revoke, machine_id, member_id=member_id, current_only=current_only)
+    # A replacement registration never receives the old credential's revocation.
+    connections.revoked(root, machine_id, credential_epoch=revoked['credential_epoch'] if member_id else None)
+    return Response(status_code=204, headers=_PRIVATE)
+
+
+@router.get(_ORG + '/devices')
+async def devices(org_id: str, request: Request, response: Response):
+    response.headers.update(_PRIVATE)
+    root, store, member_id, _ = _pairer(request, org_id)
+    owner_id = member_auth.principal(request, root).id
+    rows = await _call(store.list, member_id=member_id)
+    return {'devices': [_device(root, row, owner_id) for row in rows if row['active']], 'requests': []}
+
+
+@router.patch(_ORG + '/devices/computers/{machine_id}')
+async def rename_device(org_id: str, machine_id: str, request: Request, response: Response):
+    response.headers.update(_PRIVATE)
+    root, store, member_id, _ = _pairer(request, org_id)
+    if not _ID.fullmatch(machine_id):
+        raise _error(404, 'not_found')
+    try:
+        body = await _body(request, RenameBody)
+    except HTTPException as error:
+        if error.status_code != 400:
+            raise
+        return JSONResponse({'error': {'code': 'computer_rename_only',
+                                       'message': '此处只支持改名。请填写 1～80 个字符的电脑名称。'}},
+                            status_code=400, headers=_PRIVATE)
+    row = await _call(store.rename, machine_id, body.name, member_id=member_id, current_only=True)
+    return _device(root, row, member_auth.principal(request, root).id)
+
+
+@router.delete(_ORG + '/devices/computers/{machine_id}', status_code=204)
+async def remove_device(org_id: str, machine_id: str, request: Request):
+    root, store, member_id, _ = _pairer(request, org_id)
+    if not _ID.fullmatch(machine_id):
+        raise _error(404, 'not_found')
+    return await _revoke(root, store, member_id, machine_id, current_only=True)
+
+
 @router.get('/api/computers/identity')
 async def computer_identity(request: Request, response: Response):
     response.headers.update(_PRIVATE)
@@ -285,10 +346,7 @@ async def remove(org_id: str, machine_id: str, request: Request):
     root, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
-    revoked = await _call(store.revoke, machine_id, member_id=member_id)
-    # A replacement registration never receives the old credential's revocation.
-    connections.revoked(root, machine_id, credential_epoch=revoked['credential_epoch'] if member_id else None)
-    return Response(status_code=204, headers=_PRIVATE)
+    return await _revoke(root, store, member_id, machine_id)
 
 
 @router.post(_ORG + '/computer-pairings', status_code=201)
