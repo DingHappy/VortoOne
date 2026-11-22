@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 217 个，剩 **414** 个：
-- **要做：342**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 222 个，剩 **409** 个：
+- **要做：337**（其中 37 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -226,20 +226,32 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `ORG/machines/{x}/queue` | `machines.queue` | Codex 连接电脑线 |
 | — | POST | `ORG/machines/{x}/{x}` | `machines.setPause` | Codex 连接电脑线 |
 
-### org/vault（12 个，要做 12）
+### org/vault（12 个，要做 7）
+
+首批只支持个人登录和 API Key 条目。每个当前成员只访问自己的条目，所有者按同一条规则。删除后当前条目失效，
+成员离开后无法访问原个人库。API 只回条目元数据，角色和 Agent 暂不能使用个人库。
+
+部署需已有 `cryptography`，并由管理员显式设置 `VORTOONE_PERSONAL_VAULT_DIR` 指向家和家状态目录之外、
+由服务用户持有且权限为 `0700` 的 `.vortoone-personal-vault` 目录。目录需要预置同一用户的 `0600`
+普通文件 `master.key`，内容为 32 字节随机密钥。配置缺失、权限不对或库无法解密时，接口返回不可用。
+个人库数据按家、身份和信任代次使用 AES-GCM 密封，独立于家备份、搬家包和助理备份。恢复或重新认领会更换信任代次，
+新代次从空库开始，旧库仍在原处，不会被访问或覆盖。跨信任代次恢复个人库还未开放。
+接口要求有效身份，并使用 HTTPS 或本机回环连接。
+
+现有新建界面默认提交 `allAgents: true`，这个端点会拒绝。在当前界面通过「编辑智能体」关闭「所有智能体」后，可以把条目保存为仅本人可见。
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/vault` | `vault.overview` | 界面代码里没调用 |
+| ☑ | GET | `ORG/vault` | `vault.overview` | 仅调用人自己的元数据，显式启用 |
 | ☐ | POST | `ORG/vault/connections` | `vault.connect` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/vault/connections/{x}` | `vault.removeConnection` | 界面代码里没调用 |
 | ☐ | PATCH | `ORG/vault/connections/{x}` | `vault.updateConnection` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/connections/{x}/sync` | `vault.syncConnection` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/import` | `vault.importCsv` | 界面代码里没调用 |
-| ☐ | POST | `ORG/vault/items` | `vault.create` | 界面代码里没调用 |
-| ☐ | DELETE | `ORG/vault/items/{x}` | `vault.remove` | 界面代码里没调用 |
-| ☐ | GET | `ORG/vault/items/{x}` | `vault.item` | 界面代码里没调用 |
-| ☐ | PATCH | `ORG/vault/items/{x}` | `vault.update` | 界面代码里没调用 |
+| ☑ | POST | `ORG/vault/items` | `vault.create` | 仅个人登录和 Key 条目，禁止共享 |
+| ☑ | DELETE | `ORG/vault/items/{x}` | `vault.remove` | 只允许条目本人删除 |
+| ☑ | GET | `ORG/vault/items/{x}` | `vault.item` | 仅本人元数据，无原值 |
+| ☑ | PATCH | `ORG/vault/items/{x}` | `vault.update` | 只允许本人更新或换值，禁止共享 |
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 

@@ -23,7 +23,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
+from src.web import (
+    app_board, app_channels, app_gifs, app_members, app_personal_vault,
+    app_prefs, app_schedule, app_staff, app_voice, member_auth,
+)
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
@@ -1584,6 +1587,85 @@ def _register_empty(path: str, payload: Any) -> None:
 
 for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
+
+
+# ── 个人 Vault：无原值读取，不参与 Agent 工具或共享 ────────────────────────────
+
+_VAULT = _ORG + "/vault"
+_VAULT_ITEMS = _VAULT + "/items"
+_VAULT_ITEM = _VAULT_ITEMS + "/{item_id}"
+_VAULT_HEADERS = {"Cache-Control": "no-store"}
+
+
+async def _vault_body(request: Request) -> dict:
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        raise app_personal_vault.VaultError(415, "vault.invalid", "个人 Vault 只接受 JSON 请求")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > app_personal_vault.MAX_BODY:
+            raise app_personal_vault.VaultError(413, "vault.too_large", "个人 Vault 请求过大")
+        raw.extend(chunk)
+    try:
+        body = json.loads(raw)
+    except (ValueError, RecursionError):
+        body = None
+    if not isinstance(body, dict):
+        raise app_personal_vault.VaultError(422, "vault.invalid", "个人 Vault 请求格式无效")
+    return body
+
+
+async def _vault_call(request: Request, org_id: str, action, *, write_body: bool = False):
+    root = _root(org_id)
+    loopback = {"127.0.0.1", "::1"}
+    local = (request.url.scheme == "http" and request.url.hostname in loopback and request.client
+             and request.client.host in loopback and not any(header in request.headers for header in (
+                 "forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto",
+             )))
+    if request.url.scheme != "https" and not local:
+        return _error(403, "vault.secure_transport_required", "个人 Vault 需要 HTTPS 或本机回环连接")
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "个人 Vault 需要已验证的空间身份")
+    account = None if who.is_owner else request.state.member_account["id"]
+
+    def call(body):
+        if _who(request, root) != who:
+            raise app_personal_vault.VaultError(403, "forbidden", "当前身份不能使用个人 Vault")
+        return action(app_personal_vault.PersonalVault(root, who.id, member_account=account), body)
+
+    try:
+        body = await _vault_body(request) if write_body else None
+        result = await asyncio.to_thread(call, body)
+        if result is None:
+            return Response(status_code=204, headers=_VAULT_HEADERS)
+        return JSONResponse(result, headers=_VAULT_HEADERS)
+    except app_personal_vault.VaultError as error:
+        return _error(error.status, error.code, str(error))
+
+
+@router.get(_VAULT)
+async def vault_overview(org_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, _: vault.overview())
+
+
+@router.get(_VAULT_ITEM)
+async def vault_item(org_id: str, item_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, _: vault.item(item_id))
+
+
+@router.post(_VAULT_ITEMS)
+async def vault_create(org_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, body: vault.create(body), write_body=True)
+
+
+@router.patch(_VAULT_ITEM)
+async def vault_update(org_id: str, item_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, body: vault.update(item_id, body), write_body=True)
+
+
+@router.delete(_VAULT_ITEM, status_code=204)
+async def vault_remove(org_id: str, item_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, _: vault.remove(item_id))
 
 
 # ── Wiki ───────────────────────────────────────────────────────────────────

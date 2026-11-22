@@ -72,7 +72,7 @@ _SENSITIVE_NAMES = {
     "client_secret.json",
     "service-account.json",
 }
-_SENSITIVE_DIRS = {".ssh", ".aws", ".docker", ".gnupg", ".kube", "secrets"}
+_SENSITIVE_DIRS = {".ssh", ".aws", ".docker", ".gnupg", ".kube", "secrets", ".vortoone-personal-vault"}
 _SENSITIVE_STATE_DIRS = set(STATE_DIRNAMES)          # .vortoone 与改名前留下的 .vortocode 链接
 _SENSITIVE_STATE_FILES = {"cli_session.json", "sessions.db", "sessions.db-shm", "sessions.db-wal"}
 _SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".keystore"}

@@ -49,6 +49,8 @@ DEFAULT_SOURCES = [
 ]
 SKIP_NAMES = {"__pycache__", "cache", "tmp", ".lock", "runtime.lock"}
 SKIP_SUFFIXES = (".sock", ".pid", "-shm", "-wal")
+# 个人 Vault 只在本机；即使操作者的 --source 恰好覆盖其目录，也不能加入包内。
+_PERSONAL_VAULT_DIR = ".vortoone-personal-vault"
 
 
 def _crypto():
@@ -103,7 +105,8 @@ def decrypt(blob: bytes, private_pem: bytes) -> bytes:
 def _skip(path: Path, source: Path) -> bool:
     """跳过缓存、锁、套接字、SQLite 的旁路文件（快照里已含）和符号链接（不跟出备份范围）。"""
     rel = path.relative_to(source)
-    return (any(part in SKIP_NAMES for part in rel.parts) or path.name.endswith(SKIP_SUFFIXES)
+    return (any(part.casefold() == _PERSONAL_VAULT_DIR or part in SKIP_NAMES for part in rel.parts)
+            or path.name.endswith(SKIP_SUFFIXES)
             or path.is_symlink() or any(parent.is_symlink() for parent in path.parents if source in parent.parents))
 
 
@@ -112,7 +115,7 @@ def archive(sources: list[Path]) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar, tempfile.TemporaryDirectory() as scratch:
         for source in sources:
-            if not source.is_dir():
+            if not source.is_dir() or any(part.casefold() == _PERSONAL_VAULT_DIR for part in source.resolve().parts):
                 continue
             base = source.relative_to(HOME) if source.is_relative_to(HOME) else Path(source.name)
             for path in sorted(source.rglob("*")):
