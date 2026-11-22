@@ -18,7 +18,8 @@ def build_staff_proposal_tool(root, *, confirm, owner):
         async def apply():
             if is_tainted() or (owner() if callable(owner) else owner) != who:
                 raise ValueError('回合或会话已变化，未登记')
-            proposal = approvals.propose(who, args['kind'], args['data'], args['reason'], expected=snapshot)
+            proposal = approvals.propose(who, args['kind'], args['data'], args['reason'], expected=snapshot,
+                                         origin='assistant')
             if args['kind'] == 'bundle':
                 # Desktop reads the complete snapshot through the owner API.
                 # Do not feed referenced department notes back into a clean model turn.

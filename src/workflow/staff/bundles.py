@@ -32,7 +32,10 @@ def pending_bundles(registry):
         if item['snapshot'].get('kind') != 'bundle' or item.get('status') not in {'applying', 'cancelling'}:
             continue
         try:
-            original = {key: item[key] for key in ('id', 'snapshot', 'owner', 'reason', 'created_at', 'nonce', 'approval_level', 'round')}
+            keys = ('id', 'snapshot', 'owner', 'reason', 'created_at', 'nonce', 'approval_level', 'round')
+            # 与 StaffApprovals._records 同一套：可选字段在就进摘要
+            keys += tuple(key for key in ('submission_digest', 'origin') if key in item)
+            original = {key: item[key] for key in keys}
             original['status'] = 'pending'
             if digest(original) != item['digest'] or not isinstance(item['snapshot']['entries'], list):
                 raise ValueError('开通单摘要已变化，登记不可用')
