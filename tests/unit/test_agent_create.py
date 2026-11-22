@@ -49,7 +49,7 @@ def _listed(client, home):
     return {a["handle"]: a for a in client.get(f"{home['base']}/agents").json()["agents"]}
 
 
-def test_the_owner_creates_an_agent_with_the_least_it_needs(home):
+def test_the_owner_creates_an_agent_with_the_main_assistants_abilities(home):
     created = _create(home)
     assert created.status_code == 200, created.text
     agent = created.json()
@@ -65,8 +65,8 @@ def test_the_owner_creates_an_agent_with_the_least_it_needs(home):
     member = registry.member("xiaoyan")
     assert member["engine"] == "vortocode"
     grants = registry.role(member["role"])["grants"]
-    assert grants == {"operations": ["read"], "tools": ["web_search", "web_fetch"], "sees": [], "web": True,
-                      "project": False}
+    from src.workflow.staff.roles import FULL_GRANTS
+    assert grants == FULL_GRANTS        # 主人 2026-11-22 定：新建的 agent 和主助理同一套能力和规则
     from src.workflow.staff.approvals import StaffApprovals
     decided = [p for p in StaffApprovals(str(home["root"])).list() if p["status"] == "approved"]
     assert {p["snapshot"]["kind"] for p in decided} == {"role", "member"}       # 批准历史照样留下

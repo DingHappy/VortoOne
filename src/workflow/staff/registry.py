@@ -127,6 +127,9 @@ class StaffRegistry:
         if not builtin and item['id'] in {x['id'] for x in canonical_roles()}:
             raise ValueError('不能占用内置岗位的保留名称')
         grants = item.get('grants')
+        if isinstance(grants, dict) and 'full' in grants:
+            self._validate_full(item, grants, engines, builtin)
+            return self._finish_role(item, builtin)
         if not isinstance(grants, dict) or set(grants) != {'operations', 'tools', 'sees', 'web', 'project'}:
             raise ValueError('grants 必须显式声明全部权限字段')
         operations = _strings(grants['operations'], 'operations', empty=False)
@@ -172,6 +175,22 @@ class StaffRegistry:
                 raise ValueError(f'工具 {name} 缺少登记文件来源')
             if name.startswith('web_') and not grants['web']:
                 raise ValueError('联网工具缺少 web 授权')
+        return self._finish_role(item, builtin)
+
+    @staticmethod
+    def _validate_full(item, grants, engines, builtin):
+        """完整能力：工具和规则都与主助理相同（见 roles.FULL_GRANTS），登记里只认这一种写法。"""
+        from src.workflow.staff.roles import FULL_GRANTS
+        if builtin:
+            raise ValueError('内置岗位不能是完整能力')
+        if grants != FULL_GRANTS:
+            raise ValueError('完整能力的授权只能是固定的一组，不能再加减工具或私人来源')
+        if engines != ['vortocode']:
+            raise ValueError('完整能力只给自有框架：本机 CLI 和其它框架没有确认门')
+        if item.get('project_binding') or item.get('project'):
+            raise ValueError('完整能力不绑定登记项目；改项目代码仍交给开发 agent')
+
+    def _finish_role(self, item, builtin):
         item.update(builtin=builtin, enabled=item.get('enabled', True), revision=item.get('revision', 1))
         from src.workflow.staff.projects import validate
         validate(item)

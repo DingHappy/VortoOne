@@ -14,13 +14,16 @@ from __future__ import annotations
 
 import re
 import uuid
+from copy import deepcopy
 from typing import Any, Dict, Mapping, Optional
 
 from src.agents.principal import OWNER, Principal
 from src.workflow.staff.agent_profiles import SETUP_ROLES, AgentProfiles, check_look
+from src.workflow.staff.roles import FULL_GRANTS
 
-DEFAULT_GRANTS = {"operations": ["read"], "tools": ["web_search", "web_fetch"], "sees": [], "web": True,
-                  "project": False}
+# 界面里新建的 agent 默认就是完整能力：和主助理同一套工具和规则（主人 2026-11-22 定，见 roles.FULL_GRANTS）。
+# 以前建的只读研究型 agent 不自动升级。
+FULL_STEPS, FULL_TIMEOUT = 40, 1800
 MAX_NAME, MAX_TITLE, MAX_INSTRUCTIONS = 80, 80, 8000
 _HANDLE = re.compile(r"[a-z0-9][a-z0-9_-]{1,31}")
 _RESERVED = frozenset({"assistant", "owner", "everyone", "here", "all", "channel", "me", "admin"})
@@ -116,8 +119,8 @@ def create(root: str, actor: Principal, *, name: Any, handle: Any, title: Any = 
     role_id = f"agent-{handle}-{uuid.uuid4().hex[:6]}"
     with owner_route(root):
         _approve(root, "role", {"id": role_id, "title": title or name, "brief": _brief(name, title, instructions),
-                                "grants": DEFAULT_GRANTS, "engine": ["vortocode"], "max_steps": 12,
-                                "timeout_seconds": 600}, "所有者在界面里新建 agent：它自己的岗位")
+                                "grants": deepcopy(FULL_GRANTS), "engine": ["vortocode"], "max_steps": FULL_STEPS,
+                                "timeout_seconds": FULL_TIMEOUT}, "所有者在界面里新建 agent：它自己的岗位")
         _approve(root, "member", {"id": handle, "name": name, "role": role_id, "engine": "vortocode",
                                   "model": _model(model)}, "所有者在界面里新建 agent")
     AgentProfiles(root).create(handle, look=checked_look, setup=checked_setup)
