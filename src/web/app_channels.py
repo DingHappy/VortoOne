@@ -19,7 +19,7 @@ def channels(root: str) -> TeamChannels:
 
 async def subscribe(socket, service, actor, channel_id, *, session_valid, interval=1.0):
     try:
-        cursor, reaction_cursor = await asyncio.to_thread(service.subscribe, actor, channel_id)
+        cursor, reaction_cursor, thread_cursor = await asyncio.to_thread(service.subscribe, actor, channel_id)
     except (Missing, Refused):
         await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
         return None
@@ -32,12 +32,12 @@ async def subscribe(socket, service, actor, channel_id, *, session_valid, interv
         await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
         return None
     await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel_id))
-    return asyncio.create_task(watch(socket, service, actor, channel_id, cursor, reaction_cursor,
+    return asyncio.create_task(watch(socket, service, actor, channel_id, cursor, reaction_cursor, thread_cursor,
                                      session_valid=session_valid, interval=interval))
 
 
-async def watch(socket, service, actor, channel_id, after, reaction_after, *, session_valid, interval=1.0):
-    """Follow committed messages and reactions. Recheck access before each push."""
+async def watch(socket, service, actor, channel_id, after, reaction_after, thread_after, *, session_valid, interval=1.0):
+    """Follow committed messages, reactions, and thread changes. Recheck access before each push."""
     async def send(kind, **fields):
         if not session_valid():
             return False
@@ -60,6 +60,11 @@ async def watch(socket, service, actor, channel_id, after, reaction_after, *, se
                 if not await send("message.reactions", messageId=message_id, reactions=reactions):
                     return
                 reaction_after = sequence
+            changes = await asyncio.to_thread(service.thread_changes, actor, channel_id, thread_after)
+            for sequence, thread_id, change in changes:
+                if not await send("thread.updated", threadId=thread_id, change=change):
+                    return
+                thread_after = sequence
             await asyncio.sleep(interval)
     except (Missing, Refused):
         # No private data follows a lost subscription. The next REST read rechecks access too.

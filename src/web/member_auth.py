@@ -126,6 +126,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("DELETE", _ORG + r"/messages/[^/]+/reactions"),
     ("GET", _ORG + r"/threads"),
     ("GET", _ORG + r"/threads/[^/]+"),
+    ("PATCH", _ORG + r"/threads/[^/]+"),
+    ("POST", _ORG + r"/threads/[^/]+/(?:close|reopen|archive|unarchive)"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),
     # AI 应用：只列、只断开他自己的连接和个人令牌（管成员的人能看全部）；授权确认页按他本人答复

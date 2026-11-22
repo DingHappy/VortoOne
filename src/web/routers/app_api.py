@@ -29,6 +29,7 @@ from src.web import (
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
+from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MemberRegistry
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
@@ -36,6 +37,7 @@ from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 router = APIRouter(tags=["app"])
 
 _ORG = "/api/app/organizations/{org_id}"
+_THREAD = _ORG + "/threads/{thread_id}"
 _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
@@ -861,6 +863,8 @@ async def _team_call(request, org_id, action, *, channel_id=None, empty_listing=
         return _error(409, "channel.name_taken", str(error))
     except ChannelCategoryNameConflict as error:
         return _error(409, "channel_category.name_taken", str(error))
+    except ThreadArchived as error:
+        return _error(409, "thread.archived", str(error))
     except ValueError as error:
         return _error(400, "invalid", str(error))
 
@@ -1090,9 +1094,33 @@ async def list_team_threads(org_id: str, request: Request, tab: str = "all", cha
         limit=limit), empty_listing={"threads": [], "nextCursor": None})
 
 
-@router.get(_ORG + "/threads/{thread_id}")
+@router.get(_THREAD)
 async def team_thread_detail(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, thread_id, thread=True))
+
+
+class _ThreadTitle(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    title: str | None = Field(max_length=200)
+
+
+@router.patch(_THREAD)
+async def rename_team_thread(org_id: str, thread_id: str, body: _ThreadTitle, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.change_thread(actor, thread_id, "title", title=body.title))
+
+
+class _ThreadAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post(_THREAD + "/close")
+@router.post(_THREAD + "/reopen")
+@router.post(_THREAD + "/archive")
+@router.post(_THREAD + "/unarchive")
+async def act_team_thread(org_id: str, thread_id: str, request: Request, body: _ThreadAction | None = None):
+    action = request.url.path.rsplit("/", 1)[1]
+    return await _team_call(request, org_id, lambda service, actor: service.change_thread(actor, thread_id, action))
 
 
 @router.get(_ORG + "/channels/{channel_id}/members")
@@ -2197,6 +2225,11 @@ async def send_voice(org_id: str, channel_id: str, request: Request):
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     again = await asyncio.to_thread(app_voice.find_clip, root, channel=channel_id, author=who.id,
                                     client=wanted["clientId"])
+    if team and wanted["threadId"]:
+        check = await _team_call(request, org_id, lambda service, actor: service.check_thread_voice(
+            actor, channel_id, wanted["threadId"], wanted["replyTo"], wanted["clientId"], again["id"] if again else None))
+        if isinstance(check, JSONResponse):
+            return check
     if again is not None:                                   # 界面重试：已经发出去了
         return {"clipId": again["id"]}
     record = await asyncio.to_thread(app_voice.store_clip, root, upload[0], kind, channel=channel_id,
