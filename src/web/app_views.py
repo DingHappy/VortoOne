@@ -221,23 +221,29 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 def me(root: str) -> Dict[str, Any]:
     card = _owner_card(root)
+    user_id = owner_id(root)
+    requires_auth = owner_connection()
+    preferences = ui_account_preferences(root, user_id)
+    if not requires_auth:
+        # 未配置令牌的开发服务也可读 /me，个人引导答案在这种模式下不可见。
+        preferences["workArea"] = None
     return {
-        "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
-                 **ui_locale(root, owner_id(root))},
+        "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": None,
+                 **preferences},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
-                           "routineProposalReview": owner_connection(), "teamChannels": owner_connection(),
-                           "channelCategories": owner_connection()}],
+                           "routineProposalReview": requires_auth, "teamChannels": requires_auth,
+                           "channelCategories": requires_auth}],
     }
 
 
-def ui_locale(root: str, account_key: str) -> Dict[str, Any]:
+def ui_account_preferences(root: str, account_key: str) -> Dict[str, Any]:
     from src.web import app_prefs
     try:
-        return app_prefs.locale(root, account_key)
+        return app_prefs.account_preferences(root, account_key)
     except ValueError:
-        # 偏好文件坏了不挡登录：语言回到默认，改的时候再如实报错
-        return {"locale": app_prefs.DEFAULT_LOCALE, "localeAuto": False}
+        # 偏好文件坏了不挡登录，改的时候再如实报错。
+        return {"locale": app_prefs.DEFAULT_LOCALE, "localeAuto": False, "workArea": None}
 
 
 def person(root: str) -> Dict[str, Any]:

@@ -380,7 +380,8 @@ async def device_sign_out(request: Request, response: Response):
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
 @router.get("/api/app/me")
-async def me(request: Request):
+async def me(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     account = getattr(request.state, "member_account", None)
     if account is None:
@@ -398,6 +399,25 @@ async def update_me(body: Dict[str, Any], request: Request):
         await asyncio.to_thread(app_prefs.set_locale, root, key, body)
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+    return Response(status_code=204)
+
+
+@router.put("/api/app/me/work-area", status_code=204)
+async def set_work_area(body: Dict[str, Any], request: Request):
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "forbidden", "保存工作领域需要已认证的所有者会话")
+        key = actor.id
+    else:
+        key = app_members.member_auth_key(request.state.member_account)
+    try:
+        await asyncio.to_thread(app_prefs.set_work_area, root, key, body)
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+    except OSError:
+        return _error(503, "unavailable", "暂时无法保存工作领域")
     return Response(status_code=204)
 
 
