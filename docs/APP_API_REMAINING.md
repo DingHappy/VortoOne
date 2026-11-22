@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 238 个，剩 **393** 个：
-- **要做：323**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 241 个，剩 **390** 个：
+- **要做：320**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -106,7 +106,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
 
-### org/agents（35 个，要做 31）
+### org/agents（35 个，要做 30）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -115,7 +115,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | DELETE | `ORG/agents/{x}/approval-rules/{x}` | `approvals.removeRule` |  |
 | ☐ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` |  |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
-| ☐ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` |  |
+| ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |
 | ☐ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 读已接、写没接 |
 | ☐ | PUT | `ORG/agents/{x}/browser-profile` | `browserProfiles.setDefault` | 界面代码里没调用 |
 | ☐ | POST | `ORG/agents/{x}/browser-profile/request` | `browserProfiles.request` | 界面代码里没调用 |
@@ -568,11 +568,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` |  |
 | ☐ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` |  |
 
-### org/runs（4 个，要做 4）
+### org/runs（4 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/runs/{x}` | `agents.run` |  |
+| ☑ | GET | `ORG/runs/{x}` | `agents.run` | 与列表同一行；没有逐步记录，`steps` 为空（进度尾部在主人可看的任务输出里） |
 | ☐ | POST | `ORG/runs/{x}/continue` | `agents.continueRun` |  |
 | ☐ | POST | `ORG/runs/{x}/device-wait` | `devices.deviceWait` |  |
 | ☐ | POST | `ORG/runs/{x}/stop-reason` | `agents.stopReason` |  |
@@ -861,11 +861,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | POST | `ORG/invitations/{x}/resend` | `orgs.resendInvitation` |  |
 
-### org/audit（1 个，要做 1）
+### org/audit（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/audit` | `orgs.audit` |  |
+| ☑ | GET | `ORG/audit` | `orgs.audit` | 只给所有者。工具调用与确认门决定来自共享审计台账；台账不记成败与审批卡，`outcome`、`approval` 为 null，「等待中」为空 |
 
 ### org/permissions（1 个，要做 1）
 
