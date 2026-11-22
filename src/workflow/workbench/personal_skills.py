@@ -184,11 +184,13 @@ class PersonalSkills:
         with self._lock(skill_id):
             return self._save_locked(skill_id, body, raw, preview=preview)
 
-    def set_enabled(self, skill_id: str, *, enabled: bool, revision: str) -> dict:
+    def set_enabled(self, skill_id: str, *, enabled: bool, revision: str, owner_verified: bool = False) -> dict:
         if type(enabled) is not bool or not isinstance(revision, str):
             raise ValueError("需要明确的启停状态和审阅版本")
         with self._lock(skill_id):
             item = self.get(skill_id)
+            if item["source"] == "upload" and not owner_verified:
+                raise PermissionError("启停导入技能需要经过认证的所有者")
             if item["revision"] != revision:
                 raise SkillConflict("技能已变化，请刷新并重新审阅")
             self._write(skill_id, "approval.json", json.dumps({"enabled": enabled, "revision": revision}).encode())

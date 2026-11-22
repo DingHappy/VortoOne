@@ -102,10 +102,21 @@ def test_owner_cookie_needs_same_origin_and_members_cannot_upload_or_activate(ho
     assert member.get(base + "/skills").json() == {"skills": []}
     assert member.get(base + "/skills/" + accepted.json()["id"]).status_code == 403
     assert cookie.put(activation, json={"skills": []}, headers={"Origin": "http://foreign.test"}).status_code == 403
+    skill_id = accepted.json()["id"]
+    revision = PersonalSkills(home["root"]).get(skill_id)["revision"]
+    legacy = f"/api/assistant/skills/{skill_id}"
+    assert cookie.get(legacy).json()["revision"] == revision
+    assert cookie.put(legacy + "/enabled", json={"enabled": True, "revision": revision},
+                      headers={"Origin": "http://foreign.test"}).status_code == 403
     monkeypatch.delenv("VORTOONE_API_TOKEN")
     local = TestClient(home["app"], headers=ORIGIN)
     assert local.post(base + "/skills/import", json=body).status_code == 403
-    assert local.put(activation, json={"skills": []}).status_code == 403
+    assert local.get(base + "/skills/" + skill_id).status_code == 403
+    assert local.put(activation, json={"skills": [skill_id]}).status_code == 403
+    assert local.put(activation, json={"skills": [{"skillId": skill_id, "enabled": True}]}).status_code == 403
+    assert local.get(legacy).status_code == 403
+    assert local.put(legacy + "/enabled", json={"enabled": True, "revision": revision}).status_code == 403
+    assert not PersonalSkills(home["root"]).get(skill_id)["enabled"]
 
 
 def test_import_refuses_external_sources_and_does_not_replace_an_existing_skill(home):

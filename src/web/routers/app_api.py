@@ -3074,9 +3074,13 @@ async def routine_takeover_confirm(org_id: str, routine_id: str, body: Dict[str,
 
 
 @router.get(_ORG + "/skills/{skill_id}")
-async def skill(org_id: str, skill_id: str):
+async def skill(org_id: str, skill_id: str, request: Request):
     root = _root(org_id)
-    detail = await asyncio.to_thread(views.skill_detail, root, skill_id)
+    try:
+        detail = await asyncio.to_thread(views.skill_detail, root, skill_id,
+                                         owner_verified=app_staff.owner_proof(request))
+    except PermissionError as error:
+        return _error(403, "owner_proof_required", str(error))
     return detail if detail is not None else _error(404, "not_found", "没有这条技能")
 
 
@@ -3189,7 +3193,8 @@ async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], req
     """主助理启用哪些个人技能。专员按岗位装配，不在这里改。"""
     from src.workflow.workbench.personal_skills import SkillConflict
     root = _root(org_id)
-    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+    owner_verified = app_staff.owner_proof(request)
+    if not member_auth.principal(request, root).is_owner or (views.owner_connection() and not owner_verified):
         return _error(403, "owner_proof_required", "启停个人技能需要已认证的同源所有者会话")
     if agent_id != views.main_agent_id(root):
         return _error(404 if not _known_agent(org_id, agent_id) else 400, "unsupported", "专员的技能按岗位装配")
@@ -3201,6 +3206,8 @@ async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], req
         wanted = rows
     elif all(isinstance(row, dict) and set(row) == {"skillId", "enabled"}
              and isinstance(row["skillId"], str) and type(row["enabled"]) is bool for row in rows):
+        if not owner_verified:
+            return _error(403, "owner_proof_required", "启停个人技能需要已认证的同源所有者会话")
         referenced = [row["skillId"] for row in rows]
         if len(set(referenced)) != len(referenced):
             return _error(400, "invalid", "同一个技能只能指定一次")
@@ -3208,9 +3215,12 @@ async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], req
     else:
         return _error(400, "invalid", "需要技能 id 列表或技能启停状态")
     try:
-        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted, referenced=referenced)}
+        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted, referenced=referenced,
+                                                 owner_verified=owner_verified)}
     except LookupError:
         return _error(404, "not_found", "没有这条技能")
+    except PermissionError as error:
+        return _error(403, "owner_proof_required", str(error))
     except SkillConflict as error:
         return _error(409, "conflict", str(error))
     except (ValueError, OSError):

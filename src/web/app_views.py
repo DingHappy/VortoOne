@@ -721,7 +721,7 @@ def skills(root: str) -> List[Dict[str, Any]]:
     return [_skill(root, item, created) for item in store.list()["items"]]
 
 
-def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
+def skill_detail(root: str, skill_id: str, *, owner_verified: bool = False) -> Optional[Dict[str, Any]]:
     """一条技能的正文。看过正文才算核对：这里记下给界面看的是哪个版本，启用时只认它。"""
     store = _personal_skills(root)
     if store is None:
@@ -730,6 +730,8 @@ def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
         item = store.get(skill_id, preview=True)
     except (OSError, ValueError):
         return None
+    if item.get("source") == "upload" and not owner_verified:
+        raise PermissionError("审阅导入技能需要经过认证的所有者")
     _SHOWN_SKILLS[(root, skill_id)] = str(item["revision"])
     return _skill_detail(root, item)
 
@@ -816,9 +818,9 @@ def update_skill(root: str, skill_id: str, patch: Dict[str, Any]) -> Optional[Di
         current = store.get(skill_id, preview=True)
     except FileNotFoundError:
         return None
-    if "description" not in patch and "body" not in patch:
-        return skill_detail(root, skill_id)
     uploaded = current.get("source") == "upload"
+    if "description" not in patch and "body" not in patch:
+        return _skill_detail(root, current) if uploaded else skill_detail(root, skill_id)
     if uploaded:
         _SHOWN_SKILLS.pop((root, skill_id), None)
     saved = store.save(skill_id, {"name": current["name"],
@@ -843,7 +845,8 @@ def remove_skill(root: str, skill_id: str) -> bool:
     return True
 
 
-def set_main_skills(root: str, wanted: List[str], *, referenced: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def set_main_skills(root: str, wanted: List[str], *, referenced: Optional[List[str]] = None,
+                    owner_verified: bool = False) -> List[Dict[str, Any]]:
     """把主助理启用的个人技能改成 wanted。停用随时可以；启用只认主人在界面上看过正文的那个版本——
     没看过、或看过之后内容变了，都拒绝（SkillConflict），要主人重新打开核对。"""
     from src.workflow.workbench.personal_skills import SkillConflict
@@ -859,12 +862,14 @@ def set_main_skills(root: str, wanted: List[str], *, referenced: Optional[List[s
         enable = skill_id in wanted
         if enable == bool(item.get("enabled")):
             continue
+        if item.get("source") == "upload" and not owner_verified:
+            raise PermissionError("启停导入技能需要经过认证的所有者")
         revision = str(item["revision"])
         if enable and _SHOWN_SKILLS.get((root, skill_id)) != revision:
             raise SkillConflict("启用前请先打开这条技能核对正文")
         changes.append((skill_id, enable, revision))
     for skill_id, enable, revision in changes:
-        store.set_enabled(skill_id, enabled=enable, revision=revision)
+        store.set_enabled(skill_id, enabled=enable, revision=revision, owner_verified=owner_verified)
     return skills(root)
 
 
