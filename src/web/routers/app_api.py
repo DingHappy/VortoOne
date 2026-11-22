@@ -2817,6 +2817,47 @@ async def search(org_id: str, request: Request, q: str = "", kinds: str = "", li
     return JSONResponse(result, headers={"Cache-Control": "no-store"}) if isinstance(result, dict) else result
 
 
+async def _question_reply(request: Request, org_id: str, question_id: str, answer):
+    """专员问的问题：只有被问的那个人能回答或跳过；回答后按返工路径接着做下一轮。"""
+    from src.workflow.staff import questions
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+
+    def run():
+        task, item = questions.respond(root, question_id, None if who.is_owner else who.id, answer)
+        view = task.to_dict()
+        member = str(task.collaboration["dispatch"]["member"])
+        carrier = views.message_id(task.id, "assistant", item["round"])
+        return views.staff_question(root, member, view, item, carrier)
+    try:
+        return await asyncio.to_thread(run)
+    except questions.QuestionMissing as error:
+        return _error(404, "not_found", str(error))
+    except questions.QuestionError as error:
+        ended = str(error) in {"这个问题已经回答过了", "agent 已经不在等这个回答"}
+        return _error(409 if ended else 400, "question.ended" if ended else "invalid", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "staff_unavailable", str(error))
+
+
+@router.post(_ORG + "/questions/{question_id}/answer")
+async def answer_question(org_id: str, question_id: str, request: Request):
+    body = await _body(request)
+    value = body.get("choice", body.get("text")) if isinstance(body, dict) else None
+    if not isinstance(value, str):
+        return _error(400, "invalid", "回答要是文字")
+    return await _question_reply(request, org_id, question_id, value)
+
+
+@router.post(_ORG + "/questions/{question_id}/dismiss")
+async def dismiss_question(org_id: str, question_id: str, request: Request):
+    return await _question_reply(request, org_id, question_id, None)
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)
