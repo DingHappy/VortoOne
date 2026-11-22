@@ -114,10 +114,14 @@ class StaffActions:
             await asyncio.wait((future,), timeout=min(remaining, MEMBER_APPROVAL_CHECK_INTERVAL))
 
     async def request(self, task, role, member, call, budget):
-        """Only the running tool adapter supplies call metadata; model arguments cannot do so."""
+        """Only the running tool adapter supplies call metadata; model arguments cannot do so.
+
+        完整能力的岗位不列工具：它的工具来自服务按主助理装配的那一套，这里只核对操作类别。"""
+        from src.workflow.staff.roles import is_full
         self.service.check(member, role)
         if (not isinstance(call, dict) or set(call) != {'tool', 'args', 'kind', 'message'}
-                or call['tool'] not in role['grants']['tools'] or call['kind'] not in role['grants']['operations']):
+                or not (is_full(role) or call['tool'] in role['grants']['tools'])
+                or call['kind'] not in role['grants']['operations']):
             raise ValueError('审批动作不在登记岗位权限内')
         if len(json.dumps(call, ensure_ascii=False).encode()) > 32 * 1024:
             raise ValueError('审批内容过长，未执行或静默截断')
