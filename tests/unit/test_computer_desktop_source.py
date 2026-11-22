@@ -6,16 +6,21 @@ import json
 import os
 import socket
 import sys
+from unittest.mock import AsyncMock, Mock
 
 import aiohttp
 import pytest
 import uvicorn
 
 from src.agents.identity_groups import EVERYONE
+from src.gateway.computer_browser_preview import BrowserPreview
+from src.gateway.computer_browser_wire import CONTROL_READY
+from src.gateway.computer_connections import Connection
 from src.gateway.computer_desktop_source import HELPER_NAME, START, STOP
 from src.gateway.desktop_control_lease import claim_desktop, desktop_lease_file, desktop_revision
 from src.utils.state_dir import state_dir
 from src.web.member_auth import MEMBER_COOKIE
+from src.web.routers import computers
 from src.workflow.members.registry import MemberRegistry
 from tests.unit.test_computer_browser_preview import OWNER_ACTOR, _image
 from tests.unit.test_computer_browser_preview import home, private_preview  # noqa: F401 - pytest fixtures
@@ -41,9 +46,67 @@ async def test_capture_child_keeps_the_desktop_lease_after_connector_descriptor_
         assert claim_desktop(role)
 
 
+@pytest.fixture
+def pending_desktop_takeover(monkeypatch):
+    preview = BrowserPreview(Mock(spec=Connection), Mock(), "test-surface", 0,
+                             viewing=True, allow_control=True, kind="desktop")
+    monkeypatch.setattr(preview, "active", lambda: not preview.closed)
+    monkeypatch.setattr(preview, "live", AsyncMock(return_value=False))
+    return preview
+
+
+@pytest.mark.parametrize("ack", [None, CONTROL_READY], ids=["missing-ack", "lost-liveness"])
+async def test_desktop_takeover_releases_unconfirmed_control(ack, pending_desktop_takeover, monkeypatch):
+    preview = pending_desktop_takeover
+    exchange = AsyncMock(return_value=ack)
+    monkeypatch.setattr(preview, "_read", exchange)
+
+    assert await preview.take_desktop_control() is None
+
+    exchange.assert_awaited_once_with("take_control")
+    assert preview.controlling is False
+    assert preview.closed is True
+
+
+async def test_desktop_takeover_timeout_releases_unconfirmed_control(pending_desktop_takeover, monkeypatch):
+    preview = pending_desktop_takeover
+    monkeypatch.setattr(preview, "_read", AsyncMock(side_effect=asyncio.TimeoutError))
+
+    with pytest.raises(asyncio.TimeoutError):
+        await preview.take_desktop_control()
+
+    assert preview.controlling is False
+    assert preview.closed is True
+
+
 @pytest.mark.skipif(os.name != "posix", reason="the native helper uses executable files and pipes")
-async def test_desktop_share_requires_local_selection_and_checks_authority_for_each_frame(private_preview, tmp_path):
+async def test_desktop_share_requires_local_selection_and_checks_authority_for_each_frame(
+    private_preview, tmp_path, monkeypatch,
+):
     home = private_preview
+    deny_start_audit = False
+    expire_after_ack = False
+    denied_attempts = []
+    append_audit = computers.append_audit
+
+    def audit(root, event, *, durable=False):
+        if event.get("operation_kind") == "interact":
+            assert durable is True
+            if deny_start_audit and event["operation"] == "接管私有桌面":
+                denied_attempts.append(event["actor_id"])
+                return False
+        return append_audit(root, event, durable=durable)
+
+    monkeypatch.setattr(computers, "append_audit", audit)
+    read_preview = BrowserPreview._read
+
+    async def read(preview, operation, *, action=None):
+        result = await read_preview(preview, operation, action=action)
+        if expire_after_ack and operation == "take_control" and result == CONTROL_READY:
+            preview.expires_at = 0
+        return result
+
+    monkeypatch.setattr(BrowserPreview, "_read", read)
     picker = tmp_path / "picker"
     selected = tmp_path / "selected"
     captured = tmp_path / "captures"
@@ -224,6 +287,19 @@ finally:
                 async with pairer.ws_connect(desktop_url) as viewer:
                     await viewer.receive_json(timeout=3)
                     await pull(viewer)
+                    deny_start_audit = True
+                    await viewer.send_json({"type": "take_control"})
+                    assert (await viewer.receive(timeout=3)).type == aiohttp.WSMsgType.CLOSE
+                    deny_start_audit = False
+                assert denied_attempts == [home["member_id"]]
+                assert not inputs.exists()
+                with desktop_lease_file(cwd) as role:
+                    assert claim_desktop(role) and desktop_revision(role) == b""
+
+                await asyncio.sleep(0.525)
+                async with pairer.ws_connect(desktop_url) as viewer:
+                    await viewer.receive_json(timeout=3)
+                    await pull(viewer)
                     await viewer.send_json(click)
                     assert (await viewer.receive(timeout=3)).type == aiohttp.WSMsgType.CLOSE
                 assert not inputs.exists()
@@ -270,6 +346,21 @@ finally:
                 registry.change_group(OWNER_ACTOR, EVERYONE, computer="own_computer")
                 await no_view(desktop_url)
 
+                await send({"type": START, "generation": generation, "allow_control": True})
+                assert await state("sharing_with_control") == generation
+                expire_after_ack = True
+                async with pairer.ws_connect(desktop_url) as viewer:
+                    await viewer.receive_json(timeout=3)
+                    await pull(viewer)
+                    await viewer.send_json({"type": "take_control"})
+                    assert (await viewer.receive(timeout=3)).type == aiohttp.WSMsgType.CLOSE
+                assert await state("controlling") == generation
+                assert await state("idle") == generation
+                with desktop_lease_file(cwd) as role:
+                    assert claim_desktop(role)
+                expire_after_ack = False
+                await no_view(desktop_url)
+
                 for without_frame in (True, False):
                     await send({"type": START, "generation": generation, "allow_control": True})
                     assert await state("sharing_with_control") == generation
@@ -284,12 +375,17 @@ finally:
                             assert (await viewer.receive(timeout=3)).type == aiohttp.WSMsgType.CLOSE
                     assert await state("idle") == generation
                     await no_view(desktop_url)
-                assert inputs.read_bytes() == b"control\nclick\ntext\ntext\ncontrol\ncontrol\n"
+                assert inputs.read_bytes() == b"control\nclick\ntext\ntext\ncontrol\ncontrol\ncontrol\n"
 
                 audit = (state_dir(home["root"]) / "audit.log").read_text()
                 events = [event for line in audit.splitlines()
                           if (event := json.loads(line)).get("operation_kind") == "interact"]
-                assert [event["operation"] for event in events] == ["接管私有桌面", "结束私有桌面接管"] * 3
+                attempt = ("接管私有桌面", "allowed")
+                ended = [attempt, ("结束私有桌面接管", "allowed")]
+                refused = [attempt, ("结束私有桌面接管", "denied")]
+                assert [(event["operation"], event["decision"]) for event in events] == (
+                    refused + ended + refused + ended * 2
+                )
                 assert all(set(event) == {"id", "ts", "category", "decision", "decision_source", "operation",
                                           "operation_kind", "actor_id", "connector_id", "surface_id"} for event in events)
         finally:
