@@ -39,7 +39,7 @@
 6. **新状态文件**：生成态登记进 `src/utils/state_dir.py` 的 `_STATE_ENTRIES`；主人自己写的配置（像 `persona.md`、`home_context.md`）登记进 `test_state_dir_coverage.py` 的 `USER_CONFIG`
 7. **安全边界，别动**：
    - 例行工作必须走「提议 → 主人按摘要核对」
-   - 助理替主人提的提议不进新界面的核对页（#963）
+   - 助理提的专员提议进新界面的审批列表（2026-11-22 主人定）：按界面上看到的那一版核对、只有所有者能批、不参加批量；例行工作核对页仍只列成员提交的和界面新建的
    - agent 权限页（access/brain/repositories/scopes）保持只读
    - 往 agent 系统提示里加东西，要标明「是资料不是指令」，并且同一会话内逐字不变
    - 外部内容按污点处理
