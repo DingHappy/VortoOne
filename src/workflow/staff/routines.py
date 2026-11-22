@@ -115,8 +115,16 @@ class Routines:
                 'enabled': item.get('enabled', True), 'revision': item.get('revision', 1),
                 'token_budget': item.get('token_budget', 0)}, member, role
 
+    @staticmethod
+    def check_unattended(role):
+        from src.workflow.staff.roles import is_full
+        if is_full(role):
+            raise ValueError('这个 agent 是完整能力，例行工作无人值守、不用完整能力：登记了到点也不会执行。'
+                             '请交给只读或公开资料的 agent（ADR-021）')
+
     def snapshot(self, data, *, initiator=None):
         item, member, role = self.normalize(data)
+        self.check_unattended(role)        # 提议和批准时就说清，不等到点才失败
         previous = next((x for x in self.definitions() if x['id'] == item['id']), None)
         if initiator is not None:
             if previous is not None:

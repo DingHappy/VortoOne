@@ -4032,6 +4032,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/run",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/search",
     "methods": [
       "GET"
