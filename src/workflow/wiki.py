@@ -379,8 +379,9 @@ class Wiki:
         source, notes, conflict = data.get("source"), data.get("notes"), data.get("onConflict")
         if not isinstance(source, dict) or set(source) != {"type", "name"}:
             _fail("invalid", "必须提供 Markdown 文件来源类型和名称")
-        if source["type"] != "files":
-            _fail("wiki_import_unsupported", "目前仅支持导入纯 Markdown 文件", status=409)
+        source_type = source["type"]
+        if source_type not in ("files", "obsidian"):
+            _fail("wiki_import_unsupported", "目前支持 Markdown 文件和 Obsidian Markdown 笔记", status=409)
         source_name = _text(source["name"], 300, "来源名称", required=True).strip()
         if conflict not in ("keep_both", "skip") or not isinstance(notes, list) or not 1 <= len(notes) <= _IMPORT_NOTE_LIMIT:
             _fail("invalid", "请提供 1 到 200 条笔记和有效的同名处理方式")
@@ -391,7 +392,7 @@ class Wiki:
         digest = _import_digest(data)
         batch = (actor.kind, actor.id, import_id, digest)
         group_id = _import_digest([actor.kind, actor.id, import_id]) if import_id is not None else uuid.uuid4().hex
-        provenance = {"sourceType": "files", "sourceName": source_name, "importId": group_id}
+        provenance = {"sourceType": source_type, "sourceName": source_name, "importId": group_id}
         with self._database(write=True) as conn:
             previous = None if import_id is None else conn.execute(
                 "SELECT receipt FROM import_batches WHERE actor_kind = ? AND actor_id = ? AND import_id = ? AND digest = ?",
