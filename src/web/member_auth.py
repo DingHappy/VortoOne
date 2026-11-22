@@ -112,6 +112,9 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/invitations/all"),
     ("POST", _ORG + r"/invitations/batch"),
     ("PATCH", _ORG + r"/invitations/[^/]+"),
+    ("GET", _ORG + r"/join-requests/mine"),
+    ("POST", _ORG + r"/join-requests/suggest"),
+    ("DELETE", _ORG + r"/join-requests/[^/]+"),            # 只能撤回自己的建议
     ("POST", _ORG + r"/members/[^/]+/password-link"),
     # 成员和 agent：只列他用得了的 agent，私聊里只有他自己发起的事（web/app_members.py）
     ("GET", _ORG + r"/agents"),

@@ -37,6 +37,9 @@ _AGENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MEMBER_ID = re.compile(r"m_[a-f0-9]{12}")
 MAX_GROUPS, MAX_MEMBERS, MAX_INVITATIONS = 64, 500, 200
 INVITE_DAYS_DEFAULT, INVITE_DAYS_MAX = 7, 30
+_JOIN_ID = re.compile(r"j_[a-f0-9]{32}")
+_MAX_JOIN_SUGGESTIONS, _MAX_JOIN_SUGGESTIONS_PER_MEMBER = 200, 10
+_JOIN_SUGGESTION_DAYS = 7
 
 
 def is_member_id(value: object) -> bool:
@@ -53,6 +56,12 @@ class Damaged(ValueError):
 
 class Missing(LookupError):
     """说的那个成员、身份组或邀请不存在（或邀请已失效）。"""
+
+
+class JoinSuggestionConflict(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 def _now() -> datetime:
@@ -79,6 +88,7 @@ def _fresh() -> Dict[str, Any]:
         "order": [ADMINS, EVERYONE],
         "members": {},
         "invitations": {},
+        "join_suggestions": {},
         "agent_levels": {},
         "plans_shared": {},
         "agent_audiences": {},
@@ -163,6 +173,7 @@ class MemberRegistry:
         value.setdefault("agent_policies", {})
         value.setdefault("channels", {})
         value.setdefault("channel_categories", [])
+        value.setdefault("join_suggestions", {})
         if any(not isinstance(value[key], dict) for key in ("plans_shared", "agent_audiences", "agent_policies", "channels")):
             raise Damaged("成员登记文件结构无效")
         try:
@@ -188,6 +199,16 @@ class MemberRegistry:
                     or not isinstance(policy.get("autoApprove"), list)
                     or any(not isinstance(kind, str) or kind not in ALLOWABLE for kind in policy["autoApprove"])):
                 raise ValueError("智能体成员权限设置无效")
+        suggestions = state["join_suggestions"]
+        if not isinstance(suggestions, dict) or len(suggestions) > _MAX_JOIN_SUGGESTIONS:
+            raise ValueError("加入建议登记无效")
+        for suggestion_id, item in suggestions.items():
+            if (not isinstance(suggestion_id, str) or not _JOIN_ID.fullmatch(suggestion_id)
+                    or not isinstance(item, dict) or set(item) != {"email", "note", "by", "created", "expires"}
+                    or not all(isinstance(value, str) for value in item.values())
+                    or login_name(item["email"]) != item["email"] or len(item["note"]) > 200
+                    or not is_member_id(item["by"])):
+                raise ValueError("加入建议登记无效")
         from src.workflow.members.channels import check_channels
         check_channels(state)
 
@@ -463,6 +484,8 @@ class MemberRegistry:
                                                            state["order"], owner=owner):
                 raise Refused("不能移除这个成员")
             del state["members"][str(member_id)]
+            state["join_suggestions"] = {key: item for key, item in state["join_suggestions"].items()
+                                         if item["by"] != str(member_id)}
             for agent_id in list(state["agent_levels"]):
                 state["agent_levels"][agent_id].pop(str(member_id), None)
                 if not state["agent_levels"][agent_id]:
@@ -485,27 +508,111 @@ class MemberRegistry:
         address = login_name(email) if email else ""
         if type(days) is not int or not 1 <= days <= INVITE_DAYS_MAX:
             raise ValueError(f"邀请有效期是 1 到 {INVITE_DAYS_MAX} 天")
-        moment = now or _now()
         with self._change() as state:
+            return self._issue_invitation(state, actor, address, groups, days, note, now or _now())
+
+    def _issue_invitation(self, state: Dict[str, Any], actor: Principal, address: str, groups: Iterable[str],
+                          days: int, note: str, moment: datetime) -> Tuple[str, str]:
+        owner, held = self._actor(state, actor)
+        self._drop_expired(state, moment)
+        if address:
+            if any(member.get("email") == address for member in state["members"].values()):
+                raise ValueError("这个邮箱已经是成员了")
+            for stale in [key for key, item in state["invitations"].items() if item.get("email") == address]:
+                del state["invitations"][stale]
+        if len(state["invitations"]) >= MAX_INVITATIONS:
+            raise ValueError("还没用掉的邀请太多了，先撤回一些")
+        try:
+            chosen = rules.invite_posts(held, groups, self._posts(state), state["order"], owner=owner)
+        except PermissionError as error:
+            raise Refused(str(error)) from error
+        invitation_id, token = f"i_{uuid.uuid4().hex[:12]}", secrets.token_urlsafe(32)
+        state["invitations"][invitation_id] = {
+            "digest": _digest(token), "groups": chosen, "by": actor.id, "note": str(note or "")[:200],
+            "email": address, "by_kind": actor.kind,
+            "created": _iso(moment), "expires": _iso(moment + timedelta(days=days))}
+        return invitation_id, token
+
+    # ── 在册成员向所有者推荐人选 ───────────────────────────────────────────
+
+    @staticmethod
+    def _open_join_suggestions(state: Mapping[str, Any], moment: datetime) -> Dict[str, Any]:
+        stamp = _iso(moment)
+        return {key: item for key, item in state["join_suggestions"].items()
+                if item["expires"] > stamp and item["by"] in state["members"]}
+
+    def join_suggestions(self, actor: Principal) -> Dict[str, Any]:
+        state = self.snapshot()
+        owner, _ = self._actor(state, actor)
+        pending = self._open_join_suggestions(state, _now())
+        if owner:
+            for item in pending.values():
+                item["suggested_by"] = state["members"][item["by"]]["name"]
+            return pending
+        return {key: item for key, item in pending.items() if item["by"] == actor.id}
+
+    def suggest_join(self, actor: Principal, email: str, note: str) -> str:
+        try:
+            address = login_name(email)
+        except ValueError as error:
+            raise JoinSuggestionConflict("join.invalid_email", "邮箱格式不对") from error
+        if not isinstance(note, str) or len(note) > 200:
+            raise ValueError("加入建议的备注最长 200 字")
+        note = note.strip()
+        with self._locked_state() as state:
             owner, held = self._actor(state, actor)
-            self._drop_expired(state, moment)
-            if address:
-                if any(member.get("email") == address for member in state["members"].values()):
-                    raise ValueError("这个邮箱已经是成员了")
-                for stale in [key for key, item in state["invitations"].items() if item.get("email") == address]:
-                    del state["invitations"][stale]
-            if len(state["invitations"]) >= MAX_INVITATIONS:
-                raise ValueError("还没用掉的邀请太多了，先撤回一些")
-            try:
-                chosen = rules.invite_posts(held, groups, self._posts(state), state["order"], owner=owner)
-            except PermissionError as error:
-                raise Refused(str(error)) from error
-            invitation_id, token = f"i_{uuid.uuid4().hex[:12]}", secrets.token_urlsafe(32)
-            state["invitations"][invitation_id] = {
-                "digest": _digest(token), "groups": chosen, "by": actor.id, "note": str(note or "")[:200],
-                "email": address, "by_kind": actor.kind,
-                "created": _iso(moment), "expires": _iso(moment + timedelta(days=days))}
-            return invitation_id, token
+            if owner or rules.has("space.invite", held, self._posts(state)):
+                raise Refused("已有邀请权限，请直接邀请")
+            moment = _now()
+            pending = self._open_join_suggestions(state, moment)
+            mine = [(key, item) for key, item in pending.items() if item["by"] == actor.id]
+            for key, item in mine:
+                if item["email"] == address:
+                    if item["note"] == note:
+                        return key
+                    raise JoinSuggestionConflict("join.waiting", "你已为此邮箱提交建议，可先撤回原建议")
+            if len(mine) >= _MAX_JOIN_SUGGESTIONS_PER_MEMBER or len(pending) >= _MAX_JOIN_SUGGESTIONS:
+                raise JoinSuggestionConflict("join.full", "待核对的加入建议太多了")
+            suggestion_id = f"j_{uuid.uuid4().hex}"
+            pending[suggestion_id] = {"email": address, "note": note, "by": actor.id, "created": _iso(moment),
+                                      "expires": _iso(moment + timedelta(days=_JOIN_SUGGESTION_DAYS))}
+            state["join_suggestions"] = pending
+            self._save(state)
+            return suggestion_id
+
+    def close_join_suggestion(self, actor: Principal, suggestion_id: str, *, review: bool = False) -> None:
+        with self._change() as state:
+            owner, _ = self._actor(state, actor)
+            if owner != review:
+                raise Refused("只有所有者能拒绝建议，成员可撤回自己的建议")
+            pending = self._open_join_suggestions(state, _now())
+            item = pending.get(suggestion_id)
+            if owner and item is None:
+                raise JoinSuggestionConflict("join.answered", "建议已处理或过期")
+            if item is None or (not owner and item["by"] != actor.id):
+                raise Missing("没有这份建议")
+            del pending[suggestion_id]
+            state["join_suggestions"] = pending
+
+    def approve_join_suggestion(self, actor: Principal, suggestion_id: str) -> str:
+        if not actor.is_owner:
+            raise Refused("只有所有者能批准加入建议")
+        with self._change() as state:
+            moment = _now()
+            pending = self._open_join_suggestions(state, moment)
+            item = pending.get(suggestion_id)
+            if item is None:
+                raise JoinSuggestionConflict("join.answered", "建议已处理或过期")
+            address = item["email"]
+            if any(member.get("email") == address for member in state["members"].values()):
+                raise JoinSuggestionConflict("join.member", "这个邮箱已经是成员")
+            if any(invite.get("email") == address and invite.get("expires", "") > _iso(moment)
+                   for invite in state["invitations"].values()):
+                raise JoinSuggestionConflict("join.invited", "已有有效邀请，请继续使用原邀请")
+            _, token = self._issue_invitation(state, actor, address, (), INVITE_DAYS_DEFAULT, "", moment)
+            del pending[suggestion_id]
+            state["join_suggestions"] = pending
+            return token
 
     @staticmethod
     def _drop_expired(state: Dict[str, Any], moment: datetime) -> None:
