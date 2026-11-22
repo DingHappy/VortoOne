@@ -3,12 +3,17 @@
 #1027 以后界面里新建的 agent 都是完整能力，而执行时一律拒绝它跑例行工作：建得出来、批得了、到点必失败。
 """
 import asyncio
+import json
 import time
+from contextvars import copy_context
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from src.utils.state_dir import state_dir
+from src.workflow.staff.approvals import digest
+from src.workflow.staff.owner_confirmation import require_owner_route
 from src.workflow.staff.routines import Routines
 from src.workflow.staff.service import StaffService
 from src.workflow.tasks.tasks import TaskLedger, TaskRunner
@@ -42,6 +47,8 @@ def pool(home, monkeypatch):
 
     async def execute(task, work, role, member, check):
         state.runs += 1
+        state.audit_at_start = _manual_audits(home["root"])
+        state.worker_context = copy_context()
         if state.release is not None:
             await state.release.wait()
         return "做完了"
@@ -77,13 +84,48 @@ async def _act(client, pool, action):
     return await client.post(f"{pool.base}/routines/{pool.routine}/{action}", json={})
 
 
+def _manual_audits(root):
+    rows = map(json.loads, (state_dir(root) / "audit.log").read_text(encoding="utf-8").splitlines())
+    return [row for row in rows if row.get("approval_source") == "routine_manual"]
+
+
 async def test_run_now_really_runs_it(pool):
+    item = Routines(pool.root).get(pool.routine)
+    definition = {key: value for key, value in item.items() if key != "state"}
     async with _client(pool) as owner:
+        actor = (await owner.get("/api/app/me")).json()["user"]["id"]
         ran = await _act(owner, pool, "run")
         assert ran.status_code == 200, ran.text
         assert ran.json()["id"] == pool.routine
         await _until(lambda: _task(pool) is not None and _task(pool).status == "done")
-    assert pool.state.runs == 1 and _task(pool).collaboration["dispatch"]["routine"]["manual"] is True
+    reference = _task(pool).collaboration["dispatch"]["routine"]
+    assert pool.state.runs == 1 and reference["manual"] is True
+    [audit] = pool.state.audit_at_start
+    assert audit["actor"] == actor and audit["routine_id"] == pool.routine
+    assert audit["routine_revision"] == reference["revision"] and audit["slot"] == reference["slot"]
+    assert audit["action_digest"] == digest({"definition": definition, "slot": reference["slot"]})
+    assert item["prompt"] not in json.dumps(audit, ensure_ascii=False)
+    with pytest.raises(ValueError, match="已认证的主人写入路由"):
+        pool.state.worker_context.run(require_owner_route, pool.root)
+
+
+async def test_run_now_never_claims_a_task_when_the_audit_cannot_be_saved(pool, monkeypatch):
+    registry = Routines(pool.root)
+    before = registry.get(pool.routine)
+
+    def fail_audit(root, audit, *, durable):
+        assert root == pool.root and audit["routine_id"] == pool.routine and durable is True
+        assert TaskLedger(root).list() == []
+        assert registry.get(pool.routine) == before
+        return False
+
+    monkeypatch.setattr("src.gateway.audit.append_audit", fail_audit)
+    async with _client(pool) as owner:
+        refused = await _act(owner, pool, "run")
+    assert refused.status_code == 503 and refused.json()["error"]["code"] == "audit_unavailable"
+    assert registry.get(pool.routine) == before
+    assert TaskLedger(pool.root).list() == [] and pool.state.runs == 0
+    assert _manual_audits(pool.root) == []
 
 
 async def test_run_now_works_while_paused_and_leaves_it_paused(pool):
@@ -103,6 +145,7 @@ async def test_run_twice_does_not_run_two_at_once_and_runs_again_once_stopped(po
         await _until(lambda: pool.state.runs == 1)
         again = await _act(owner, pool, "run")
         assert again.status_code == 409 and again.json()["error"]["code"] == "routine.running"
+        assert len(_manual_audits(pool.root)) == 1
         assert pool.service.runner.cancel(_task(pool).id)
         await _until(lambda: _task(pool).status == "cancelled")
         pool.state.release.set()
