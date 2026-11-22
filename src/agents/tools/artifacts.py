@@ -159,8 +159,7 @@ class ArtifactStore:
         except Exception:  # noqa: BLE001
             return None
 
-    def html(self, artifact_id: str, version: Optional[int] = None) -> Optional[str]:
-        """取制品 HTML。version 给定取该版本快照（缺失则回退当前）；否则取当前(index.html)。"""
+    def _html_path(self, artifact_id: str, version: Optional[int], *, strict: bool) -> Optional[Path]:
         aid = self._safe_id(artifact_id)
         if not aid:
             return None
@@ -171,9 +170,24 @@ class ArtifactStore:
             except (TypeError, ValueError):
                 vp = None
             if vp and vp.is_file():
-                return vp.read_text(encoding="utf-8")
+                return vp
+            if strict:
+                # 只有老格式的单版本制品没有快照；名称或版本不符不能替换成最新。
+                meta = self.meta(aid)
+                if not meta or meta.get("versions") or version != int(meta.get("version", 1)):
+                    return None
         p = d / "index.html"
-        return p.read_text(encoding="utf-8") if p.is_file() else None
+        return p if p.is_file() else None
+
+    def html(self, artifact_id: str, version: Optional[int] = None, *,
+             strict: bool = False) -> Optional[str]:
+        """取制品 HTML。指定版本缺失时，旧调用回退当前，strict 调用只接受对应快照。"""
+        path = self._html_path(artifact_id, version, strict=strict)
+        return path.read_text(encoding="utf-8") if path is not None else None
+
+    def has_snapshot(self, artifact_id: str, version: int) -> bool:
+        """不用读取正文即可确认这个版本有对应文件。"""
+        return self._html_path(artifact_id, version, strict=True) is not None
 
     def versions(self, artifact_id: str) -> list[dict]:
         """版本清单 [{v, ts, bytes}]，升序。老 meta 无记录则按当前版本合成一条。"""

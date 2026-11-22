@@ -1239,13 +1239,18 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None) -> Opti
     from src.agents.tools.artifacts import ArtifactStore
     store = ArtifactStore(root)
     meta = store.meta(artifact_id)
-    html = store.html(artifact_id, version) if meta else None
-    if not meta or html is None:
+    if not meta:
+        return None
+    known_versions = {int(row["v"]) for row in store.versions(artifact_id)}
+    if version is not None and version not in known_versions:
+        return None
+    html = store.html(artifact_id, version, strict=version is not None)
+    if html is None:
         return None
     shown = _artifact(root, meta)
-    wanted = version if version in {int(v.get("v", 0)) for v in store.versions(artifact_id)} else shown["version"]
+    wanted = shown["version"] if version is None else version
     return {**shown, "shownVersion": wanted, "content": {"kind": "html", "html": html},
-            "versioned": len(store.versions(artifact_id)) > 1}
+            "versioned": len(known_versions) > 1}
 
 
 # ── 角色资料页 ────────────────────────────────────────────────────────────────
