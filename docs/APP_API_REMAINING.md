@@ -286,7 +286,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
 | ☐ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` |  |
 | ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
-| ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅所有者的原始 HTML 和已存历史版本 |
+| ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的 HTML 快照，不推断逐版作者或备注。 |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
 ### org/threads（10 个，要做 6）

@@ -29,7 +29,10 @@ def test_versions_pin_and_direct_attachment(artifact):
     assert response.headers["cache-control"] == "no-store"
     versions = response.json()["versions"]
     assert [entry["version"] for entry in versions] == [2, 1]
-    assert all(entry["author"]["type"] == "agent" and entry["note"] is None for entry in versions)
+    assert all(entry["author"] == {"type": "agent", "id": ""} and entry["note"] is None for entry in versions)
+    assert all(entry["createdAt"].endswith("Z") for entry in versions)
+    older = client.get(f"{url}?version=1").json()
+    assert (older["shownVersion"], older["content"]["html"]) == (1, "<p>初稿</p>")
 
     assert store.pin(aid, 1)["pinned"] == 1
     response = client.get(f"{url}/file")
@@ -81,7 +84,7 @@ def test_artifact_content_scope_and_member_isolation(artifact, endpoint):
 
 
 def test_legacy_single_version_and_missing_modern_snapshot(artifact):
-    home, store, aid, _url = artifact
+    home, store, aid, url = artifact
     path = store.root / "legacy"
     path.mkdir()
     (path / "meta.json").write_text(json.dumps({"id": "legacy", "version": 1, "title": "旧制品"}))
@@ -89,6 +92,13 @@ def test_legacy_single_version_and_missing_modern_snapshot(artifact):
     client = home["owner"]
     legacy = f"{home['base']}/artifacts/legacy"
     assert client.get(f"{legacy}/file?version=1").text == "<p>旧制品</p>"
+    assert client.get(f"{legacy}?version=1").json()["content"]["html"] == "<p>旧制品</p>"
+    assert [entry["version"] for entry in client.get(f"{legacy}/versions").json()["versions"]] == [1]
     assert client.get(f"{legacy}/file?version=2").status_code == 404
     (store.root / aid / "v1.html").unlink()
-    assert client.get(f"{home['base']}/artifacts/{aid}/file?version=1").status_code == 404
+    (store.root / aid / "v9.html").write_text("<p>未登记的版本</p>")
+    assert [entry["version"] for entry in client.get(f"{url}/versions").json()["versions"]] == [2]
+    assert client.get(f"{url}/file?version=1").status_code == 404
+    assert client.get(f"{url}?version=1").status_code == 404
+    assert client.get(f"{url}?version=9").status_code == 404
+    assert client.get(url).json()["content"]["html"] == "<p>新版</p>"

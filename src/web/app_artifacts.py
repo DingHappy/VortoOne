@@ -28,12 +28,16 @@ def versions(root: str, artifact_id: str) -> JSONResponse:
     rows = store.versions(artifact_id)
     if not rows:
         raise ArtifactReadError(404, "not_found", "没有这个制品")
-    author = {"type": "agent", "id": views.main_agent_id(root)}
+    # 旧制品只存版本、时间和大小。空角色 ID 让界面显示未知智能体。
+    author = {"type": "agent", "id": ""}
+    history = []
+    for row in reversed(rows):
+        version = int(row["v"])
+        if store.has_snapshot(artifact_id, version):
+            history.append({"version": version, "author": author, "note": None,
+                            "createdAt": views._iso(row.get("ts"))})
     return JSONResponse({
-        "versions": [
-            {"version": int(row["v"]), "author": author, "note": None, "createdAt": views._iso(row.get("ts"))}
-            for row in reversed(rows)
-        ],
+        "versions": history,
     }, headers=_NO_STORE)
 
 
@@ -57,7 +61,7 @@ def _signature(org_id: str, artifact_id: str, version: int, expires: int) -> str
 def download(root: str, org_id: str, artifact_id: str, supplied: int | None) -> JSONResponse:
     store = ArtifactStore(root)
     version = _version(store, artifact_id, supplied)
-    if store.html(artifact_id, version, strict=True) is None:
+    if not store.has_snapshot(artifact_id, version):
         raise ArtifactReadError(404, "not_found", "没有这个制品版本")
     expires = int(time.time()) + _DOWNLOAD_TTL_SECONDS
     signature = _signature(org_id, artifact_id, version, expires)
