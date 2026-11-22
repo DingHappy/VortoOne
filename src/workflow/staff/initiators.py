@@ -129,11 +129,16 @@ def role_for_member(registry, role: dict, level: str, *, acts_for_members: bool 
     allowed = _member_grants(role, level, acts_for_members=acts_for_members)
     if not allowed.operations:
         raise ValueError('你对这个 agent 的权限不够，不能让它办事')
+    from src.workflow.staff.roles import is_full
     tools: list[str] = []
-    grants = {'operations': [kind for kind in role['grants']['operations'] if kind in allowed.operations],
+    full = is_full(role)
+    operations = role['grants']['operations']
+    if full:        # 成员回合里没有完整能力：退回登记工具表，按成员能用的操作类别和来源逐个核对（主人 2026-11-22 定）
+        operations = [kind for kind in operations if kind not in {'deliver', 'interact', 'irreversible'}]
+    grants = {'operations': [kind for kind in operations if kind in allowed.operations],
               'tools': tools, 'sees': [], 'web': allowed.web, 'project': False}
     catalog = registry.tool_catalog()
-    for name in role['grants']['tools']:
+    for name in (sorted(catalog) if full else role['grants']['tools']):
         try:        # 岗位登记的校验就是「这组权限配不配得上这个工具」的唯一判据
             registry.validate_role({**deepcopy(role), 'grants': {**grants, 'tools': [name]}},
                                    builtin=bool(role.get('builtin')), catalog=catalog)
