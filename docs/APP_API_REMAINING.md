@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 222 个，剩 **409** 个：
-- **要做：337**（其中 37 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 227 个，剩 **404** 个：
+- **要做：332**（其中 37 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -522,15 +522,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/storage/migration` | `storage.migration` |  |
 | ☐ | POST | `ORG/storage/test` | `storage.test` |  |
 
-### org/notifications（5 个，要做 5）
+### org/notifications（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/notifications/done-all` | `notifications.doneAll` |  |
-| ☐ | POST | `ORG/notifications/read-all` | `notifications.readAll` |  |
-| ☐ | POST | `ORG/notifications/{x}/done` | `notifications.done` |  |
-| ☐ | POST | `ORG/notifications/{x}/read` | `notifications.read` |  |
-| ☐ | POST | `ORG/notifications/{x}/snooze` | `notifications.snooze` |  |
+| ☑ | POST | `ORG/notifications/done-all` | `notifications.doneAll` | 仅所有者的后台通知 |
+| ☑ | POST | `ORG/notifications/read-all` | `notifications.readAll` | 仅所有者的后台通知 |
+| ☑ | POST | `ORG/notifications/{x}/done` | `notifications.done` | 仅所有者的后台通知 |
+| ☑ | POST | `ORG/notifications/{x}/read` | `notifications.read` | 仅所有者的后台通知 |
+| ☑ | POST | `ORG/notifications/{x}/snooze` | `notifications.snooze` | 仅所有者的后台通知 |
 
 ### /api/app/feedback（4 个，要做 4）
 

@@ -19,12 +19,12 @@ from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_gifs, app_members, app_personal_vault,
+    app_board, app_channels, app_gifs, app_members, app_notice_inbox, app_personal_vault,
     app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
@@ -1560,7 +1560,6 @@ _EMPTY: Dict[str, Any] = {
     "/agent-groups": {"groups": []},
     "/unread-tasks": {"tasks": []},
     "/unread-threads": {"count": 0},
-    "/notifications/count": {"unread": 0, "waiting": 0},
     "/waiting": {"items": [], "count": 0},
     "/machines/outages": {"outages": [], "targets": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
@@ -2518,10 +2517,92 @@ async def all_memories(org_id: str):
     return _listing(lambda: {"memories": views.memories(root, views.main_agent_id(root))})
 
 
-@router.get(_ORG + "/notifications")
-async def notifications(org_id: str, filter: str = "", limit: int = 50):  # noqa: A002 —— 界面的查询参数名
+_INBOX = _ORG + "/notifications"
+
+
+class _ReadNotice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    read: StrictBool
+
+
+class _DoneNotice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    done: StrictBool
+
+
+class _SnoozeNotice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    until: str | None
+
+
+class _InboxFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filter: app_notice_inbox.NoticeFilter = "all"
+
+
+async def _notifications_call(request: Request, org_id: str, action, *, write=False):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
     root = _root(org_id)
-    return _listing(lambda: views.notifications(root, filter_name=filter, limit=limit))
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "这些通知属于所有者")
+    if write and (not views.owner_connection() or not app_staff.owner_proof(request)):
+        return _error(403, "owner_proof_required", "更新通知需要已认证的同源会话")
+    try:
+        return await asyncio.to_thread(action, root)
+    except app_notice_inbox.NoticeMissing as error:
+        return _error(404, "not_found", str(error))
+    except (app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
+        return _error(409, "unavailable", "无法读取或保存通知状态")
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.get(_INBOX)
+async def notifications(
+    org_id: str,
+    request: Request,
+    filter_name: app_notice_inbox.NoticeFilter | Literal[""] = Query("all", alias="filter"),
+    cursor: int = Query(0, ge=0),
+    limit: int = 50,
+):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.page(root, filter_name or "all", cursor, max(1, min(limit, 100))))
+
+
+@router.get(_INBOX + "/count")
+async def notifications_count(org_id: str, request: Request):
+    return await _notifications_call(request, org_id, app_notice_inbox.count)
+
+
+@router.post(_INBOX + "/{notice_id}/read")
+async def read_notice(org_id: str, notice_id: str, body: _ReadNotice, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.set_status(root, notice_id, "read", body.read), write=True)
+
+
+@router.post(_INBOX + "/{notice_id}/done")
+async def done_notice(org_id: str, notice_id: str, body: _DoneNotice, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.set_status(root, notice_id, "done", body.done), write=True)
+
+
+@router.post(_INBOX + "/{notice_id}/snooze")
+async def snooze_notice(org_id: str, notice_id: str, body: _SnoozeNotice, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.set_status(root, notice_id, "snooze", app_notice_inbox.snooze_time(body.until)), write=True)
+
+
+@router.post(_INBOX + "/read-all")
+async def read_all_notices(org_id: str, body: _InboxFilter, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.clear(root, body.filter, done=False), write=True)
+
+
+@router.post(_INBOX + "/done-all")
+async def done_all_notices(org_id: str, body: _InboxFilter, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.clear(root, body.filter, done=True), write=True)
 
 
 @router.get(_ORG + "/runs")
