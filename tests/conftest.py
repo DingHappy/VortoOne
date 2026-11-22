@@ -1,6 +1,21 @@
 """Pytest 共享夹具（全套件）。"""
 import pytest
 
+MAX_PARAM_ID = 120
+
+
+def pytest_make_parametrize_id(config, val, argname):
+    """参数化时把超大的输入换成「长度 + 摘要」当测试名，不把输入本身当名字。
+
+    有的用例拿几十万字符的输入测上限，pytest 默认把整个值拼进 nodeid（最长 56 万字符）。CI 用 ``-vv``
+    逐条打印 nodeid，2026-11-22 卡在打印一条 26 万字符的名字上，两个 worker 一起停住，20 分钟超时。
+    """
+    if not isinstance(val, (str, bytes)) or len(val) <= MAX_PARAM_ID:
+        return None                                 # 其余照 pytest 默认
+    import hashlib
+    data = val.encode("utf-8", "surrogatepass") if isinstance(val, str) else val
+    return f"{argname}-{type(val).__name__}{len(val)}-{hashlib.sha256(data).hexdigest()[:8]}"
+
 
 @pytest.fixture(autouse=True)
 def _default_prompt_protocol(monkeypatch):
