@@ -190,6 +190,16 @@ class PersonalSkills:
             self._write(skill_id, "approval.json", json.dumps({"enabled": enabled, "revision": revision}).encode())
             return self.get(skill_id)
 
+    def remove(self, skill_id: str) -> None:
+        """删掉一条技能：先撤批准再删正文，同时在读的回合看到的是「未启用」或「不存在」。锁文件留着（见 _lock）。"""
+        self.get(skill_id)  # 不存在就 FileNotFoundError，不建目录也不建锁
+        with self._lock(skill_id):
+            for leaf in ("approval.json", "SKILL.md"):
+                try:
+                    self._path(skill_id, leaf).unlink()
+                except FileNotFoundError:
+                    pass
+
     def load_instructions(self, skill_id: str) -> dict:
         # Serialize with UI mutations; each invocation rechecks approval and content.
         self.get(skill_id)  # A missing ID must not create directories or lock files.

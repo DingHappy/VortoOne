@@ -2474,6 +2474,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/memories",
     "methods": [
       "GET"
@@ -2492,9 +2498,21 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/skill-settings",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/skills",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2603,6 +2621,18 @@
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2915,6 +2945,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/setup/{step}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/decide",
     "methods": [
       "POST"
     ]
