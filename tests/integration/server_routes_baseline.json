@@ -2756,6 +2756,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/calendar/events",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/connectors",
     "methods": [
       "GET"

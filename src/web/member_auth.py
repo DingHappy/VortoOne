@@ -42,6 +42,11 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", _ORG + r"/me/sidebar"),
     ("GET", _ORG + r"/me/issues-view"),
     ("PUT", _ORG + r"/me/issues-view"),
+    # 私人日程按调用人隔离，任务截止日期沿用看板的可见范围。
+    ("GET", _ORG + r"/calendar"),
+    ("POST", _ORG + r"/calendar/events"),
+    ("PATCH", _ORG + r"/calendar/events/[^/]+"),
+    ("DELETE", _ORG + r"/calendar/events/[^/]+"),
     ("GET", _ORG + r"/wiki/pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?"),
     ("POST", _ORG + r"/wiki/pages"),
     ("PUT", _ORG + r"/wiki/pages/[^/]+"),

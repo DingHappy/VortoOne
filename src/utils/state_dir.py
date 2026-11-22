@@ -232,6 +232,7 @@ _STATE_ENTRIES = [
     "followups.json",
     "app_prefs.json",
     "board.sqlite3",
+    "calendar.sqlite3",
     "wiki/",
     "provider_keys.json",
     "voice/",
