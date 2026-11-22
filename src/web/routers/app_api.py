@@ -4029,10 +4029,24 @@ def _routine_schedule(root: str, trigger: Any) -> tuple:
     return info["cron"], info["rule"]["timezone"]
 
 
-def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    import uuid
+def _submit_desktop_routine(root: str, data: Dict[str, Any], reason: str, *, expected=None) -> Dict[str, Any]:
     from src.gateway.main_conversation import main_chat_key
     from src.workflow.staff.approvals import StaffApprovals
+
+    owner = main_chat_key(root)
+    if not owner:
+        raise ValueError("主要聊天还没登记，暂时不能提议例行工作")
+    proposal = StaffApprovals(root).propose(owner, "routine", data, reason, expected=expected)
+    app_prefs.remember_ui_routine_proposal(root, proposal["id"])
+    row = next((row for row in views.routines(root) if row["id"] == data["id"]), None)
+    if row is None:
+        raise ValueError("提议已保存，暂时无法读取待核对记录")
+    return row
+
+
+def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    import uuid
+
     allowed = {"name", "agentId", "prompt", "target", "trigger", "access", "report"}
     if set(body) - allowed:
         raise ValueError(f"这些选项这里还不支持：{sorted(set(body) - allowed)}")
@@ -4054,16 +4068,11 @@ def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("要写这件事要做什么")
     name = body.get("name") if isinstance(body.get("name"), str) and body["name"].strip() else prompt.strip()[:30]
     schedule, timezone = _routine_schedule(root, body.get("trigger"))
-    owner = main_chat_key(root)
-    if not owner:
-        raise ValueError("主要聊天还没登记，暂时不能提议例行工作")
     data = {"id": "routine-" + uuid.uuid4().hex[:12], "name": name.strip()[:80], "member": staff_id,
             "prompt": prompt.strip(), "schedule": schedule, "timezone": timezone,
             "delivery": "notify" if body.get("report") == "always" else "review", "enabled": True,
             "token_budget": 0, "acceptance": []}
-    proposal = StaffApprovals(root).propose(owner, "routine", data, f"主人在界面上新建例行工作「{data['name']}」")
-    app_prefs.remember_ui_routine_proposal(root, proposal["id"])
-    return next(row for row in views.routines(root) if row["id"] == data["id"])
+    return _submit_desktop_routine(root, data, f"主人在界面上新建例行工作「{data['name']}」")
 
 
 @router.post(_ORG + "/routines")
@@ -4079,6 +4088,65 @@ async def create_routine(org_id: str, body: Dict[str, Any], request: Request):
         return _error(404, "not_found", str(error))
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+
+
+class _RoutineCopyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: Optional[str] = Field(default=None, max_length=120)
+
+
+def _routine_copy_name(original: str, requested: Optional[str]) -> str:
+    original = original.strip()
+    if requested is None:
+        return original[:76].rstrip() + "（副本）"
+    name = requested.strip()
+    if 0 < len(name) <= 80:
+        return name
+    # Keep the locale's copy indicator when the client adds it to a maximum-length source name.
+    prefix, source_name, suffix = name.partition(original)
+    room = 80 - len(prefix) - len(suffix)
+    if source_name and (prefix or suffix) and room > 0:
+        return prefix + source_name[:room].rstrip() + suffix
+    raise app_schedule.ScheduleError("routine.copy_name", "副本名称须为 1～80 字符")
+
+
+def _propose_routine_copy(root: str, routine_id: str, requested_name: Optional[str]) -> Dict[str, Any]:
+    import uuid
+    from src.workflow.staff.routines import Routines
+
+    registry = Routines(root)
+    source = next((item for item in registry.list() if item["id"] == routine_id and not item["retired"]), None)
+    if source is None:
+        raise LookupError("没有这条例行工作")
+    if source.get("initiator") or source["legacy"] is not None or source["state"].get("takeover"):
+        raise ValueError("成员发起、接手或迁移的例行工作暂不支持复制")
+    registry.check_binding(source)
+    data = {key: source[key] for key in ("member", "prompt", "acceptance", "delivery", "schedule", "timezone",
+                                        "token_budget")}
+    data.update(id="routine-" + uuid.uuid4().hex[:12], name=_routine_copy_name(source["name"], requested_name),
+                enabled=False, revision=1)
+    binding = source["binding"]
+    expected = {"kind": "routine", "data": data, "previous": None, "member_snapshot": binding["member"],
+                "role_snapshot": binding["role"]}
+    reason = f"主人在界面上复制例行工作「{source['name']}」，副本默认暂停"
+    return _submit_desktop_routine(root, data, reason, expected=expected)
+
+
+@router.post(_ORG + "/routines/{routine_id}/duplicate")
+async def duplicate_routine(org_id: str, routine_id: str, body: _RoutineCopyInput, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "复制例行工作需要已认证的所有者")
+    try:
+        return await asyncio.to_thread(_propose_routine_copy, root, routine_id, body.name)
+    except app_schedule.ScheduleError as error:
+        return _error(400, error.code, str(error))
+    except LookupError as error:
+        return _error(404, "not_found", str(error))
+    except ValueError as error:
+        return _error(409, "routine.copy_unavailable", str(error))
+    except OSError:
+        return _error(409, "unavailable", "暂时无法保存例行工作副本")
 
 
 @router.get(_ORG + "/routines/proposals/review")
