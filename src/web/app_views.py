@@ -933,6 +933,23 @@ def runs(root: str, *, agent_id: str = "", limit: int = 50) -> List[Dict[str, An
     return rows[:max(1, min(int(limit), 200))]
 
 
+def running_staff(root: str, viewer: Optional[str]) -> Set[str]:
+    """团队页只显示调用人自己发起、此刻在执行的专员任务。"""
+    from src.workflow.staff.initiators import initiator_of
+
+    running = set()
+    for task in _staff_tasks(root):
+        if task.kind != "delegation" or task.status != "running":
+            continue
+        try:
+            initiator = initiator_of(task)
+        except ValueError:
+            continue
+        if (initiator.id if initiator else None) == viewer:
+            running.add(task.collaboration["dispatch"]["member"])
+    return running
+
+
 def _month_days() -> List[Any]:
     from datetime import date, timedelta
     today = date.today()          # 与用量账本记账用的同一个「今天」（本机日期）

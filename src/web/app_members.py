@@ -537,6 +537,24 @@ def people(root: str) -> List[Dict[str, Any]]:
              "status": None, "lastSeenAt": now if row["role"] == "owner" else None} for row in members(root)]
 
 
+def team_directory(root: str, actor: Principal, *, activity: bool, main_running: bool) -> Dict[str, Any]:
+    """团队页沿用人员和可见 agent 名册，只投影团队列表需要的字段。"""
+    agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
+    running = views.running_staff(root, None if actor.is_owner else actor.id) if activity else set()
+    main = views.main_agent_id(root)
+    return {
+        "agents": [
+            {**{key: agent[key] for key in ("id", "name", "handle", "role", "ownerUserId", "canTalk", "seesDetails")},
+             "appearance": agent.get("appearance"), "capabilities": [],
+             "busy": main_running if agent["id"] == main else agent["handle"] in running}
+            for agent in agents
+        ],
+        "people": [{"id": row["userId"], "name": row["name"], "image": row["image"]} for row in members(root)],
+        # 当前没有在这个家内登记发给其他 agent 的咨询，也没有频道或汇报关系。
+        "consultations": [],
+    }
+
+
 def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:
     """成员在私聊里交给 agent 一件事。记下发起人；执行时按他的级别收窄，读以外的每一步都要所有者批准。"""
     task = member_send_task(root, actor, staff_id, text)
