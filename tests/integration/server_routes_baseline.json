@@ -2412,6 +2412,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/tasks/{task_id}/output",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/unread-tasks",
     "methods": [
       "GET"

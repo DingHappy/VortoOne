@@ -1679,6 +1679,36 @@ async def purge_wiki_pages(org_id: str, body: Dict[str, Any], request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.purge(body))
 
 
+# ── 后台任务已保存的输出 ──────────────────────────────────────────────────────
+
+_TASK_OUTPUT_STATUS = {
+    "queued": "queued", "running": "running", "done": "done", "failed": "failed",
+    "cancelled": "canceled", "interrupted": "interrupted",
+    # 暂停和阻塞都没有继续执行；界面的输出合同没有这两个更细的状态。
+    "paused": "interrupted", "blocked": "interrupted",
+}
+
+
+@router.get(_ORG + "/tasks/{task_id}/output")
+async def saved_task_output(org_id: str, task_id: str, request: Request, tail: int = Query(100, ge=1, le=200)):
+    """主人可以读任务台账保留的进度尾部；成员私聊只显示交付结果。"""
+    from src.workflow.tasks.tasks import MAX_SCAN_RECORD_BYTES, TaskLedger
+
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "查看后台任务输出需要已认证的所有者")
+    task = await asyncio.to_thread(TaskLedger(root).load, task_id, max_bytes=MAX_SCAN_RECORD_BYTES)
+    if task is None:
+        return _error(404, "task.not_found", "没有这个任务的已保存输出")
+    status = _TASK_OUTPUT_STATUS.get(task.status) if isinstance(task.status, str) else None
+    if status is None or not isinstance(task.log, list) or not all(isinstance(entry, str) for entry in task.log):
+        return _error(409, "task.output_unavailable", "无法读取任务的已保存输出")
+    lines = [line for entry in task.log for line in entry.splitlines()]
+    return JSONResponse({"taskId": task.id, "status": status, "source": "saved",
+                         "lines": lines[-tail:], "truncated": len(lines) > tail},
+                        headers={"Cache-Control": "no-store"})
+
+
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────
 # 密钥只有所有者能看能改；搜索和取图给空间里所有人（成员也能在团队频道里发）。图片经本服务转发。
 
