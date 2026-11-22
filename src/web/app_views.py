@@ -226,7 +226,8 @@ def me(root: str) -> Dict[str, Any]:
                  **ui_locale(root, owner_id(root))},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
-                           "routineProposalReview": owner_connection(), "teamChannels": owner_connection()}],
+                           "routineProposalReview": owner_connection(), "teamChannels": owner_connection(),
+                           "channelCategories": owner_connection()}],
     }
 
 

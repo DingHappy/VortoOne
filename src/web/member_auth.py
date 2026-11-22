@@ -23,12 +23,14 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from src.agents.principal import MEMBER, OWNER, Principal
-from src.workflow.members.channels import TEAM_CHANNEL_ID_PATTERN
+from src.workflow.members.channels import CHANNEL_CATEGORY_ID_PATTERN, TEAM_CHANNEL_ID_PATTERN
 
 MEMBER_COOKIE = "vortoone_member"
 _MAX_AGE = 30 * 24 * 3600
 _ORG = r"/api/app/organizations/[^/]+"
 _TEAM_CHANNEL = _ORG + r"/channels/" + TEAM_CHANNEL_ID_PATTERN
+_CATEGORIES = _ORG + r"/channel-categories"
+_CATEGORY = _CATEGORIES + r"/" + CHANNEL_CATEGORY_ID_PATTERN
 
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
@@ -100,6 +102,12 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/channels"),
     ("POST", _ORG + r"/channels"),
     ("GET", _ORG + r"/archived-channels"),
+    ("GET", _CATEGORIES),
+    ("POST", _CATEGORIES),
+    ("PATCH", _CATEGORY),
+    ("DELETE", _CATEGORY),
+    ("PUT", _CATEGORY + r"/place"),
+    ("PUT", _TEAM_CHANNEL + r"/place"),
     ("PATCH", _TEAM_CHANNEL),
     ("DELETE", _TEAM_CHANNEL),
     ("POST", _TEAM_CHANNEL + r"/(?:join|leave|read|unarchive|members)"),

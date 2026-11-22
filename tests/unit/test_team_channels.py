@@ -1,9 +1,11 @@
 """Channel policy through authenticated HTTP and realtime, with the personal history kept separate."""
+import json
+
 from fastapi.testclient import TestClient
 
 from src.agents.principal import OWNER, Principal
 from src.workflow.members.registry import MemberRegistry
-from tests.unit.test_member_agents import ORIGIN, OWNER_P, _join, home  # noqa: F401 - pytest fixture
+from tests.unit.test_member_agents import ORIGIN, OWNER_P, TOKEN, _join, home  # noqa: F401 - pytest fixture
 
 
 def _create(home, name, *, visibility="public", roles=(), people=()):
@@ -25,6 +27,176 @@ def _override(client, url, kind, target, *, allow=(), deny=()):
     return client.put(f"{url}/permissions", json={
         "target": {"type": kind, "id": target}, "allow": list(allow), "deny": list(deny),
     })
+
+
+def _categories(client, url):
+    response = client.get(url)
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    return response.json()["categories"]
+
+
+def test_channel_categories_create_rename_reorder_and_keep_history_on_delete(home):
+    owner = TestClient(home["app"], headers=ORIGIN)
+    assert owner.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    categories = f"{home['base']}/channel-categories"
+    assert _categories(owner, categories) == []
+
+    existing = _create(home, "existing-room")
+    existing_id = existing.rsplit("/", 1)[1]
+    sent = owner.post(f"{existing}/messages", json={"body": "分类调整不能清除这条消息"})
+    assert sent.status_code == 200, sent.text
+    sent_message = sent.json()
+    first = owner.post(categories, json={"name": "工作", "channelIds": [existing_id]})
+    assert first.status_code == 201, first.text
+    second = owner.post(categories, json={"name": "1"})
+    assert second.status_code == 201, second.text
+    first, second = first.json(), second.json()
+    first_id, second_id = first["id"], second["id"]
+    assert [category["name"] for category in _categories(owner, categories)] == ["工作", "1"]
+    assert first["position"] < second["position"]
+    assert _list(home, owner)[existing_id]["categoryId"] == first_id
+
+    renamed = owner.patch(f"{categories}/{first_id}", json={"name": "Project"})
+    assert renamed.status_code == 200, renamed.text
+    assert (renamed.json()["id"], renamed.json()["name"]) == (first_id, "Project")
+    duplicate = owner.post(categories, json={"name": " project "})
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "channel_category.name_taken"
+    taken = owner.patch(f"{categories}/{second_id}", json={"name": "PROJECT"})
+    assert taken.status_code == 409
+    assert taken.json()["error"]["code"] == "channel_category.name_taken"
+    assert owner.put(f"{categories}/{second_id}/place", json={"beforeCategoryId": first_id}).status_code == 204
+    assert [category["id"] for category in _categories(owner, categories)] == [second_id, first_id]
+    assert owner.put(f"{categories}/{second_id}/place", json={"beforeCategoryId": None}).status_code == 204
+    assert [category["id"] for category in _categories(owner, categories)] == [first_id, second_id]
+
+    made = owner.post(f"{home['base']}/channels", json={"name": "new-room", "categoryId": first_id})
+    assert made.status_code == 201, made.text
+    made = made.json()
+    assert made["categoryId"] == first_id
+    place = f"{home['base']}/channels/{made['id']}/place"
+    moved = owner.put(place, json={"categoryId": first_id, "beforeChannelId": existing_id})
+    assert moved.status_code == 204, moved.text
+    siblings = [row for row in _list(home, owner).values() if row["categoryId"] == first_id]
+    assert [row["id"] for row in siblings] == [made["id"], existing_id]
+    assert siblings[0]["position"] < siblings[1]["position"]
+    assert owner.put(place, json={"categoryId": second_id}).status_code == 204
+    assert _list(home, owner)[made["id"]]["categoryId"] == second_id
+    assert owner.put(place, json={"categoryId": None}).status_code == 204
+    assert _list(home, owner)[made["id"]]["categoryId"] is None
+
+    archived = owner.post(f"{home['base']}/channels", json={"name": "archived-room", "categoryId": first_id})
+    assert archived.status_code == 201, archived.text
+    archived_url = f"{home['base']}/channels/{archived.json()['id']}"
+    assert owner.delete(archived_url).status_code == 204
+
+    assert owner.delete(f"{categories}/{first_id}").status_code == 204
+    assert [category["id"] for category in _categories(owner, categories)] == [second_id]
+    assert _list(home, owner)[existing_id]["categoryId"] is None
+    assert owner.post(f"{archived_url}/unarchive").status_code == 204
+    assert _list(home, owner)[archived.json()["id"]]["categoryId"] is None
+    history = owner.get(f"{existing}/messages").json()["messages"]
+    assert [(message["id"], message["body"]) for message in history] == [(sent_message["id"], sent_message["body"])]
+
+
+def test_channel_category_writes_require_permission_and_invalid_attachment_is_atomic(home):
+    owner, member = home["owner"], _join(home)
+    categories = f"{home['base']}/channel-categories"
+    existing = _create(home, "managed-room")
+    existing_id = existing.rsplit("/", 1)[1]
+    created = owner.post(categories, json={"name": "保留", "channelIds": [existing_id]})
+    assert created.status_code == 201, created.text
+    category_id = created.json()["id"]
+    category = f"{categories}/{category_id}"
+    private = _create(home, "private-room", visibility="private")
+    hidden = owner.post(categories, json={"name": "私有", "channelIds": [private.rsplit("/", 1)[1]]})
+    assert hidden.status_code == 201, hidden.text
+    prior = _categories(owner, categories)
+    assert _categories(member, categories) == [created.json()]
+    assert TestClient(home["app"]).get(categories).status_code == 401
+
+    allowed = member.post(f"{home['base']}/channels", json={"name": "member-room", "categoryId": category_id})
+    assert allowed.status_code == 201, allowed.text
+    assert allowed.json()["categoryId"] == category_id
+    member_place = f"{home['base']}/channels/{allowed.json()['id']}/place"
+    assert member.put(member_place, json={"categoryId": None}).status_code == 204
+    assert member.put(member_place, json={"categoryId": hidden.json()["id"]}).status_code == 404
+    assert member.put(member_place, json={"categoryId": category_id, "beforeChannelId": existing_id}).status_code == 204
+    bad_reference = member.put(member_place, json={"categoryId": None, "beforeChannelId": existing_id})
+    assert bad_reference.status_code == 400
+    assert _list(home, member)[allowed.json()["id"]]["categoryId"] == category_id
+
+    refused = member.post(f"{home['base']}/channels", json={"name": "hidden-room", "categoryId": hidden.json()["id"]})
+    assert refused.status_code == 404, refused.text
+
+    assert member.post(categories, json={"name": "无权新建"}).status_code == 403
+    assert member.patch(category, json={"name": "无权改名"}).status_code == 403
+    assert member.delete(category).status_code == 403
+    assert member.put(f"{category}/place", json={"beforeCategoryId": None}).status_code == 403
+    assert member.put(f"{existing}/place", json={"categoryId": None}).status_code == 403
+    assert _categories(owner, categories) == prior
+
+    missing_id = "ch_" + "0" * 32
+    invalid = owner.post(categories, json={"name": "不能部分保存", "channelIds": [existing_id, missing_id]})
+    assert invalid.status_code == 404, invalid.text
+    assert _categories(owner, categories) == prior
+    assert _list(home, owner)[existing_id]["categoryId"] == category_id
+
+
+def test_channel_category_manager_needs_same_origin_and_channel_access(home):
+    manager = _join(home)
+    registry = MemberRegistry(home["root"])
+    group = registry.create_group(OWNER_P, "频道维护", items=["chat.manage_channels"])
+    registry.set_member_groups(OWNER_P, manager.member_id, [group])
+
+    owner = TestClient(home["app"], headers=ORIGIN)
+    assert owner.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    categories = f"{home['base']}/channel-categories"
+    existing = _create(home, "manager-room")
+    hidden = _create(home, "manager-private-room", visibility="private")
+    for browser in (manager, owner):
+        assert browser.get(categories, headers={"Origin": "https://other.example"}).status_code == 403
+        assert browser.post(categories, json={"name": "跨站"}, headers={"Origin": "https://other.example"}).status_code == 403
+    assert manager.get("/api/app/organizations/other-space/channel-categories").status_code == 404
+
+    existing_id = existing.rsplit("/", 1)[1]
+    hidden_id = hidden.rsplit("/", 1)[1]
+    payload = {"name": "团队", "channelIds": [existing_id, hidden_id]}
+    assert manager.post(categories, json=payload).status_code == 404
+    assert _categories(manager, categories) == []
+    assert _list(home, owner)[existing_id]["categoryId"] is None
+    assert _override(owner, existing, "person", manager.member_id, deny=["manage_channels"]).status_code == 200
+    assert manager.post(categories, json={"name": "团队", "channelIds": [existing_id]}).status_code == 403
+    assert manager.put(f"{existing}/place", json={"categoryId": None}).status_code == 403
+
+    made = manager.post(categories, json={"name": "团队"})
+    assert made.status_code == 201, made.text
+    category = f"{categories}/{made.json()['id']}"
+    assert _categories(manager, categories) == [made.json()]
+    assert manager.patch(category, json={"name": "团队项目"}).json()["name"] == "团队项目"
+    assert manager.put(f"{category}/place", json={"beforeCategoryId": "cat_" + "0" * 32}).status_code == 404
+    assert manager.put(f"{category}/place", json={"beforeCategoryId": None}).status_code == 204
+    assert manager.delete(category).status_code == 204
+    assert _categories(owner, categories) == []
+
+
+def test_channel_category_reads_legacy_registry_without_rewriting_it(home):
+    owner = home["owner"]
+    channel = _create(home, "legacy-room").rsplit("/", 1)[1]
+    path = MemberRegistry(home["root"]).directory / "space.json"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state.pop("channel_categories")
+    state["channels"][channel].pop("category_id")
+    legacy = json.dumps(state, ensure_ascii=False).encode("utf-8")
+    path.write_bytes(legacy)
+
+    categories = f"{home['base']}/channel-categories"
+    assert _categories(owner, categories) == []
+    row = _list(home, owner)[channel]
+    assert row["categoryId"] is None and row["position"] == 0
+    assert path.read_bytes() == legacy
+    assert owner.post(categories, json={"name": "新分组", "channelIds": [channel]}).status_code == 201
 
 
 def test_public_channel_join_post_retry_pagination_replies_pins_and_archive(home):
