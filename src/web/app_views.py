@@ -265,7 +265,9 @@ def _home_switches(root: str) -> Dict[str, Any]:
 def settings(root: str) -> Dict[str, Any]:
     from src.web import app_gifs, app_voice
     switches = _home_switches(root)
-    return {"name": _profile(root)["name"], "context": "", "defaultCredentialId": None, "routerModel": None,
+    from src.memory.assistant_profile import load_home_context
+    return {"name": _profile(root)["name"], "context": load_home_context(root), "defaultCredentialId": None,
+            "routerModel": None,
             "summaryModel": None, "timezone": _timezone(root), "actionCheck": True, "autoModels": {},
             "teamWatch": False, "welcomePeople": False, "gifs": switches["gifs"], "gifRating": switches["gifRating"],
             "agentStickers": False, "agentMedia": "never", "voiceMessages": switches["voiceMessages"],

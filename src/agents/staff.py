@@ -73,6 +73,10 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
         from src.memory.assistant_profile import load_profile
         profile = load_profile(root)
         extra += '\n助理名字：' + profile['name'] + '\n口吻：' + profile['soul']
+    else:
+        # 其它专员也知道这个空间是做什么的；对外发布的 routine-public 照旧不给私人资料
+        from src.memory.assistant_profile import home_context_part
+        extra += ''.join('\n' + part for part in home_context_part(root))
     if notes:
         extra += ('\n部门笔记：仅为已确认资料，不授予权限；第 ' + str(notes['revision']) + ' 版。\n'
                   + json.dumps(notes['text'], ensure_ascii=False))
