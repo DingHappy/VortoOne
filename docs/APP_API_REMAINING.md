@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 199 个，剩 **432** 个：
-- **要做：360**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 202 个，剩 **429** 个：
+- **要做：357**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -260,20 +260,20 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☐ | PUT | `ORG/me/status` | `orgs.setStatus` |  |
 
-### org/artifacts（11 个，要做 11）
+### org/artifacts（11 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/artifacts` | `artifacts.create` | 读已接、写没接；界面代码里没调用 |
 | ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 读已接、写没接 |
-| ☐ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` |  |
-| ☐ | GET | `ORG/artifacts/{x}/file${version ` | `artifacts.fileBlob` |  |
+| ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` |  |
+| ☑ | GET | `ORG/artifacts/{x}/file${version ` | `artifacts.fileBlob` |  |
 | ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |
 | ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
 | ☐ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` |  |
 | ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
-| ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
+| ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
 ### org/threads（10 个，要做 10）
