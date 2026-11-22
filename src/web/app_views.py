@@ -431,6 +431,84 @@ def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
             "canDecide": status == "pending", **({"websiteLogin": website} if website else {})}
 
 
+STAFF_PROPOSAL_PREFIX = "staff-proposal-"
+_PROPOSAL_KINDS = {"member": "新建 agent", "role": "岗位", "routine": "例行工作", "department": "部门",
+                   "bundle": "开通单", "routine_migration": "例行工作迁移"}
+_OPERATION_WORDS = {"read": "读", "own_data": "改主人自己的资料", "draft": "起草", "write": "写",
+                    "execute": "执行命令", "interact": "操作界面"}
+
+
+def _grants_text(grants: Dict[str, Any]) -> str:
+    grants = grants if isinstance(grants, dict) else {}
+    operations = "、".join(_OPERATION_WORDS.get(str(op), str(op)) for op in grants.get("operations") or []) or "无"
+    tools = "、".join(str(tool) for tool in grants.get("tools") or []) or "无"
+    return (f"能做：{operations}；工具：{tools}；联网：{'是' if grants.get('web') else '否'}；"
+            f"看主人的私人资料：{'是' if grants.get('sees') else '否'}")
+
+
+def _proposal_text(snapshot: Dict[str, Any]) -> tuple[str, str]:
+    """（标题，正文）。正文列出批准后会登记的全部要点；完整内容仍以摘要核对为准。"""
+    import json as _json
+    kind, data = snapshot.get("kind"), snapshot.get("data") or {}
+    previous = snapshot.get("previous")
+    if kind == "member":
+        role = snapshot.get("role_snapshot") or {}
+        title = f"新建 agent「{data.get('name') or data.get('id')}」" if not previous else \
+            f"修改 agent「{data.get('name') or data.get('id')}」"
+        body = (f"岗位：{role.get('title') or data.get('role')}\n执行框架：{data.get('engine') or '默认'}"
+                f"\n模型：{data.get('model') or '默认'}\n{_grants_text(role.get('grants'))}")
+    elif kind == "role":
+        title = f"{'修改' if previous else '新建'}岗位「{data.get('title') or data.get('id')}」"
+        body = _grants_text(data.get("grants"))
+        if previous:
+            body = f"改成：{body}\n原来：{_grants_text((previous.get('data') or previous).get('grants'))}"
+        if data.get("brief"):
+            body += f"\n岗位说明：{str(data['brief'])[:600]}"
+    elif kind == "routine":
+        title = f"{'修改' if previous else '新建'}例行工作「{data.get('name') or data.get('id')}」"
+        body = (f"交给：{data.get('member')}\n时间：{data.get('schedule')}（{data.get('timezone') or ''}）"
+                f"\n要做的事：{str(data.get('prompt') or '')[:1200]}")
+    else:
+        title = _PROPOSAL_KINDS.get(str(kind), "提议")
+        body = _json.dumps(data, ensure_ascii=False)[:1500]
+    return title, body
+
+
+def staff_proposal_approval(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """一条待批的专员提议，整理成界面的审批。id 带着摘要前缀：内容变了，旧 id 就批不了。"""
+    from datetime import timedelta
+    title, body = _proposal_text(item["snapshot"])
+    origin = "助理在主要聊天里提的。" if item.get("origin") == "assistant" else ""
+    detail = (f"{origin}{body}\n\n理由：{item.get('reason') or ''}"
+              "\n\n批准后才会登记；按这里列出的内容核对，有不对的地方就拒绝。")
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=30)
+    agent = main_agent_id(root)
+    return {"id": f"{item['id']}~{item['digest'][:16]}", "runId": None, "agentId": agent,
+            "channelId": dm_channel_id(agent), "threadId": None, "messageId": None,
+            "tool": "staff_propose", "scope": str(item["snapshot"].get("kind") or ""),
+            "title": ("助理提议：" if origin else "待批准：") + title, "detail": detail, "params": {},
+            "status": "pending", "expiresAt": _iso(expires.timestamp()), "createdAt": created,
+            "decidedByUserId": None, "decidedAt": None, "reason": None, "canDecide": True, "routine": False}
+
+
+def pending_staff_proposals(root: str) -> List[Dict[str, Any]]:
+    """新界面要批的专员提议：除了已经有自己核对页的（成员提交的例行工作、主人在新界面新建的例行工作）。"""
+    from src.web import app_prefs
+    from src.workflow.staff.approvals import StaffApprovals
+    approvals = StaffApprovals(root)
+    from_ui = app_prefs.ui_routine_proposals(root)
+    rows = []
+    for item in approvals.list():
+        snapshot = item["snapshot"]
+        if item.get("status") != "pending" or item["id"] in from_ui:
+            continue
+        if snapshot.get("kind") == "routine" and snapshot.get("initiator"):
+            continue
+        rows.append(item)
+    return rows
+
+
 def main_dm(root: str) -> Dict[str, Any]:
     agent = agents(root)[0]
     messages = main_messages(root, limit=1)

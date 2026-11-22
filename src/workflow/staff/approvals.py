@@ -17,6 +17,9 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+
+ORIGINS = frozenset({'assistant'})
+
 class StaffApprovals:
     def __init__(self, root, *, clock=None):
         self.registry = StaffRegistry(root)
@@ -116,6 +119,10 @@ class StaffApprovals:
                     keys = ('id', 'snapshot', 'owner', 'reason', 'created_at', 'nonce')
                     if 'submission_digest' in record:
                         keys += ('submission_digest',)
+                    if 'origin' in record:
+                        if record['origin'] not in ORIGINS:
+                            raise ValueError('提议来源无效')
+                        keys += ('origin',)
                     level = self.approval_level(record['snapshot'])
                     if 'requires_desktop_key' in record:
                         # Preserve the original digest and receipt; the retired key file is never read.
@@ -178,7 +185,10 @@ class StaffApprovals:
                 raise LookupError('没有这个成员例行工作提议')
             return self.decide(proposal_id, approve, expected_digest, nonce=nonce, round=round, instance=instance)
 
-    def propose(self, owner, kind, data, reason, *, expected=None, initiator=None):
+    def propose(self, owner, kind, data, reason, *, expected=None, initiator=None, origin=None):
+        """origin：'assistant' 表示助理在主要聊天里提的（摘要覆盖它，改不了）；其它入口不写。"""
+        if origin is not None and origin not in ORIGINS:
+            raise ValueError('提议来源无效')
         if not isinstance(owner, str) or not owner or not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
             raise ValueError('提议需要发起会话和明确理由')
         with TASK_STATE_LOCK:
@@ -210,6 +220,8 @@ class StaffApprovals:
                     'round': snapshot['previous']['revision'] + 1 if snapshot['previous'] else 1}
             if submission_digest is not None:
                 item['submission_digest'] = submission_digest
+            if origin is not None:
+                item['origin'] = origin
             item['digest'] = digest(item)
             self.registry._write('proposals.json', {'version': 1, 'proposals': [item, *entries]})
             return self._view(item)
