@@ -284,3 +284,19 @@ def set_issues_view(root: str, who: str, view: Any) -> Dict[str, Any]:
         raise ValueError("showCanceled 要是布尔值")
     _change(root, who, "issuesView", deepcopy(view))
     return issues_view(root, who)
+
+
+# ── 主人在界面上新建、还在等核对的例行工作提议 ───────────────────────────────
+# 新界面的核对页只处理成员提交的和这里记下的；助理替主人提的照旧不在这里核对（#963 定的边界）。
+
+def ui_routine_proposals(root: str) -> set:
+    saved = _read(root).get("routineProposals")
+    return {item for item in saved if isinstance(item, str)} if isinstance(saved, list) else set()
+
+
+def remember_ui_routine_proposal(root: str, proposal_id: str) -> None:
+    with _LOCK:
+        data = _read(root)
+        saved = [item for item in data.get("routineProposals") or [] if isinstance(item, str)]
+        data["routineProposals"] = (saved + [proposal_id])[-200:]
+        _write(root, data)
