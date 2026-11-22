@@ -1856,6 +1856,12 @@
     ]
   },
   {
+    "path": "/api/app/me/unread",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/me/work-area",
     "methods": [
       "PUT"

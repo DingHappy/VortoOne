@@ -393,6 +393,36 @@ async def me(request: Request, response: Response):
     return result
 
 
+@router.get("/api/app/me/unread")
+async def workspace_unread(request: Request, response: Response):
+    """Aggregate only the unread activity this session can already see."""
+    from src.utils.home_maintenance import HomeMaintenanceError
+    from src.workflow.members.registry import Damaged, Refused
+
+    response.headers["Cache-Control"] = "no-store"
+    root = os.getcwd()
+    who = _who(request, root)
+    if who is None:
+        return {"organizations": []}
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取工作区未读数需要已认证的同源会话")
+
+    def counts():
+        service = app_channels.channels(root)
+        unread = sum(row.get("unreadCount", 0) for row in service.list(who) if not row.get("muted"))
+        unread += service.unread_thread_count(who)
+        notices = app_notice_inbox.count(root) if who.is_owner else {"unread": 0, "waiting": 0}
+        return {"organizations": [{"orgId": views.home_id(root), "unread": unread + notices["unread"],
+                                  "waiting": notices["waiting"]}]}
+
+    try:
+        return await asyncio.to_thread(counts)
+    except Refused:
+        return {"organizations": []}
+    except (Damaged, app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
+        return _error(409, "unavailable", "暂时无法读取工作区未读数")
+
+
 @router.patch("/api/app/me", status_code=204)
 async def update_me(body: Dict[str, Any], request: Request):
     """界面语言。只存给调用人自己（所有者或成员各一份），不碰名字、邮箱这些账号资料。"""
