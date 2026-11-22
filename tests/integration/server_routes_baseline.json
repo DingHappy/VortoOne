@@ -3092,6 +3092,12 @@
     ]
   },
   {
+    "path": "/api/app/invitations/{token}/state",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/auth/reset-password",
     "methods": [
       "POST"
