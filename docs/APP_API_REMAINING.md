@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 233 个，剩 **398** 个：
-- **要做：326**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 234 个，剩 **397** 个：
+- **要做：325**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -376,11 +376,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PATCH | `ORG/connectors/{x}` | `connectors.rename` | 读已接、写没接 |
 | ☐ | POST | `ORG/connectors/{x}/oauth/start` | `connectors.startOAuth` |  |
 
-### org/skills（9 个，要做 9）
+### org/skills（9 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/skills/import` | `skills.import` | 读已接、写没接 |
+| ☑ | POST | `ORG/skills/import` | `skills.import` | 所有者可导入只含单个 SKILL.md 的个人 ZIP，需审阅后启用；链接和附件待接 |
 | ☐ | POST | `ORG/skills/{x}/reimport` | `skills.reimport` |  |
 | ☐ | POST | `ORG/skills/{x}/restore` | `skills.restore` |  |
 | ☐ | POST | `ORG/skills/{x}/revert` | `skills.revert` |  |

@@ -120,6 +120,7 @@ class PersonalSkills:
         item = {"id": skill_id, "name": safe(metadata.name, 80),
                 "description": safe(metadata.description, 300), "revision": revision,
                 "enabled": enabled, "source_scope": "personal", "status": "enabled" if enabled else "needs_review",
+                "source": "upload" if fields.get("vortoone-source") == "upload" else "manual",
                 "capabilities": [safe(value, 60) for value in metadata.capabilities[:20]],
                 "model_invocable": not metadata.disable_model_invocation,
                 "detail": "仅加载指令；不执行 Hook 或脚本，不增加工具权限。"}
@@ -144,7 +145,7 @@ class PersonalSkills:
                 "issues": list(dict.fromkeys(issues)), "truncated": len(paths) > MAX_SKILLS}
 
     @staticmethod
-    def encode(body: dict) -> bytes:
+    def encode(body: dict, *, uploaded: bool = False) -> bytes:
         if set(body) - {"name", "description", "instructions", "revision"}:
             raise ValueError("不支持的技能字段")
         values = {}
@@ -155,13 +156,16 @@ class PersonalSkills:
             values[field] = value.strip()
         if not values["name"] or not values["instructions"]:
             raise ValueError("技能名称和正文不能为空")
-        header = yaml.safe_dump({"name": values["name"], "description": values["description"]}, allow_unicode=True, sort_keys=False)
+        metadata = {"name": values["name"], "description": values["description"]}
+        if uploaded:
+            metadata["vortoone-source"] = "upload"
+        header = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False)
         raw = f"---\n{header}---\n\n{values['instructions']}\n".encode("utf-8")
         if len(raw) > MAX_BYTES:
             raise ValueError("技能文件不能超过 64 KiB")
         return raw
 
-    def _save_locked(self, skill_id: str, body: dict, raw: bytes) -> dict:
+    def _save_locked(self, skill_id: str, body: dict, raw: bytes, *, preview: bool = False) -> dict:
         try:
             current = hashlib.sha256(self._read(skill_id)).hexdigest()
         except FileNotFoundError:
@@ -173,18 +177,20 @@ class PersonalSkills:
         # Even saving identical content requires fresh approval; disable first.
         self._write(skill_id, "approval.json", b'{"enabled": false}')
         self._write(skill_id, "SKILL.md", raw)
-        return self.get(skill_id)
+        return self.get(skill_id, preview=preview)
 
-    def save(self, skill_id: str, body: dict) -> dict:
-        raw = self.encode(body)
+    def save(self, skill_id: str, body: dict, *, uploaded: bool = False, preview: bool = False) -> dict:
+        raw = self.encode(body, uploaded=uploaded)
         with self._lock(skill_id):
-            return self._save_locked(skill_id, body, raw)
+            return self._save_locked(skill_id, body, raw, preview=preview)
 
-    def set_enabled(self, skill_id: str, *, enabled: bool, revision: str) -> dict:
+    def set_enabled(self, skill_id: str, *, enabled: bool, revision: str, owner_verified: bool = False) -> dict:
         if type(enabled) is not bool or not isinstance(revision, str):
             raise ValueError("需要明确的启停状态和审阅版本")
         with self._lock(skill_id):
             item = self.get(skill_id)
+            if item["source"] == "upload" and not owner_verified:
+                raise PermissionError("启停导入技能需要经过认证的所有者")
             if item["revision"] != revision:
                 raise SkillConflict("技能已变化，请刷新并重新审阅")
             self._write(skill_id, "approval.json", json.dumps({"enabled": enabled, "revision": revision}).encode())
