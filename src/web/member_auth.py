@@ -153,6 +153,9 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/dashboards/home"),
     ("GET", _ORG + r"/computer-setup"),
     # 电脑只在配对人的会话里可见。传输和本机自动配对仍使用各自的验权入口。
+    ("GET", _ORG + r"/devices"),
+    ("PATCH", _ORG + r"/devices/computers/[^/]+"),
+    ("DELETE", _ORG + r"/devices/computers/[^/]+"),
     ("GET", _ORG + r"/machines"),
     ("PATCH", _ORG + r"/machines/[^/]+"),
     ("DELETE", _ORG + r"/machines/[^/]+"),
