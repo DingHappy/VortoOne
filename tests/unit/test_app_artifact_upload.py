@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from src.agents.tools.artifacts import ArtifactStore
+from src.utils.home_maintenance import home_maintenance
 from tests.unit.test_member_login import ORIGIN, TOKEN, _join
 from tests.unit.test_member_login import home  # noqa: F401
 
@@ -127,3 +128,27 @@ def test_failed_upload_does_not_publish_a_partial_file(home, monkeypatch):
     uploads = ArtifactStore(home["root"], desktop_uploads=True)
     assert list(uploads.root.iterdir()) == []
     assert home["owner"].get(path).json()["artifacts"] == []
+
+
+def test_busy_workspace_refuses_upload_and_delete_without_changing_artifacts(home):
+    owner, root = home["owner"], home["root"]
+    path = f"{home['base']}/artifacts"
+    saved = owner.post(f"{path}/files", files=_files())
+    assert saved.status_code == 201, saved.text
+    artifact_id = saved.json()["id"]
+    saved_path = f"{path}/{artifact_id}"
+    uploads = ArtifactStore(root, desktop_uploads=True)
+
+    with home_maintenance(root):
+        busy_upload = owner.post(f"{path}/files", files=_files("next.html"))
+        busy_delete = owner.delete(saved_path)
+        for response in (busy_upload, busy_delete):
+            assert response.status_code == 409, response.text
+            assert response.json()["error"]["code"] == "unavailable"
+            assert root not in response.text
+        assert [row["id"] for row in owner.get(path).json()["artifacts"]] == [artifact_id]
+        assert uploads.html(artifact_id) == HTML
+
+    assert owner.post(f"{path}/files", files=_files("next.html")).status_code == 201
+    assert owner.delete(saved_path).status_code == 204
+    assert owner.get(saved_path).status_code == 404

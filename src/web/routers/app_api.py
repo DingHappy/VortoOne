@@ -3776,6 +3776,8 @@ async def artifacts(org_id: str, request: Request, response: Response, q: str = 
 
 @router.post(_ORG + "/artifacts/files", status_code=201)
 async def upload_artifact(org_id: str, request: Request, response: Response):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
     root = _root(org_id)
     if not _may_access_desktop_uploads(request, root):
         return _error(403, "owner_proof_required", "上传 HTML 制品需要已认证的所有者")
@@ -3784,6 +3786,8 @@ async def upload_artifact(org_id: str, request: Request, response: Response):
         artifact = await asyncio.to_thread(views.upload_artifact, root, title, html)
     except app_artifact_upload.UploadError as error:
         return _error(error.status, error.code, str(error))
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
     except (OSError, ValueError):
         return _error(503, "unavailable", "暂时无法保存 HTML 制品")
     response.headers["Cache-Control"] = "no-store"
@@ -3806,7 +3810,7 @@ async def artifact(org_id: str, artifact_id: str, request: Request, response: Re
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):
     from src.agents.tools.artifacts import ArtifactStore
-    from src.utils.home_maintenance import home_maintenance
+    from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 
     root = _root(org_id)
     refused = await _owner_write(request, root, "制品")
@@ -3824,6 +3828,8 @@ async def delete_artifact(org_id: str, artifact_id: str, request: Request):
 
     try:
         removed = await asyncio.to_thread(remove)
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
     except (OSError, ValueError):
         return _error(503, "unavailable", "暂时无法删除制品")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
