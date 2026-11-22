@@ -56,6 +56,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
 
 
     ("POST", _ORG + r"/questions/[^/]+/(answer|dismiss)"),  # 只认被问的那个人
+
+
+    ("GET", _ORG + r"/team-memories"),                    # 所有 agent 都读的那一份
+    ("PATCH", _ORG + r"/memories/[^/]+"),                 # 只有团队记忆，处理函数里按权限核对
     ("GET", _ORG + r"/issues"),
     ("POST", _ORG + r"/issues"),
     ("GET", _ORG + r"/issues/by-number/[^/]+"),

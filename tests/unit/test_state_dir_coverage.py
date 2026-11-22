@@ -26,6 +26,7 @@ USER_CONFIG = {
     "assistant.json",   # 助理的名字：用户在 Desktop 里起的，与 persona.md 同属用户配置
     "SOUL.md",          # 助理的性格与说话方式：用户写的，同上
     "home_context.md",  # 这个空间是做什么的：所有者在界面上写的背景信息，同上
+    "team_memory.json",  # 团队记忆：所有者挑出来让所有 agent 知道的事，同上
 }
 
 # 不是目标仓库里的路径，扫描分辨不出来，在此登记豁免。

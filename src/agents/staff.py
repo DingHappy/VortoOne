@@ -97,7 +97,8 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
     else:
         # 其它专员也知道这个空间是做什么的；对外发布的 routine-public 照旧不给私人资料
         from src.memory.assistant_profile import home_context_part
-        extra += ''.join('\n' + part for part in home_context_part(root))
+        from src.memory.team_memory import prompt_part as team_memory_part
+        extra += ''.join('\n' + part for part in [*home_context_part(root), *team_memory_part(root)])
     if notes:
         extra += ('\n部门笔记：仅为已确认资料，不授予权限；第 ' + str(notes['revision']) + ' 版。\n'
                   + json.dumps(notes['text'], ensure_ascii=False))
