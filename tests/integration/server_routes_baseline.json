@@ -3510,6 +3510,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/search",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/vault",
     "methods": [
       "GET"
