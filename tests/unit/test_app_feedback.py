@@ -84,7 +84,7 @@ def test_feedback_needs_authenticated_owner_or_active_same_origin_member(home, m
     member = _join(home)
     assert member.post(PATH, json=_body(home), headers={"Origin": "https://other.example"}).status_code == 403
     assert owner.delete(f"{home['base']}/members/{member.member_id}").status_code == 204
-    assert member.post(PATH, json=_body(home)).status_code in {401, 403}
+    assert member.post(PATH, json=_body(home)).status_code == 401
     assert len(_inbox(owner, home).json()["items"]) == 1
 
     monkeypatch.delenv("VORTOONE_API_TOKEN")
@@ -125,3 +125,11 @@ def test_wrong_workspace_oversized_or_corrupt_store_fail_truthfully(home):
     assert _inbox(owner, home).status_code == 503
     assert owner.post(PATH, json=body).status_code == 503
     assert storage.read_bytes() == initial
+
+
+def test_escaped_unicode_at_character_limit_round_trips(home):
+    report = _body(home, "😀" * app_feedback.MAX_TEXT)
+    owner = home["owner"]
+    result = owner.post(PATH, content=json.dumps(report), headers={"Content-Type": "application/json"})
+    assert result.status_code == 204
+    assert _inbox(owner, home).json()["items"][0]["text"] == report["text"]

@@ -145,9 +145,7 @@ async def submit_feedback(request: Request):
         if who.is_owner:
             app_feedback.submit(root, identifier, feedback, who)
             return
-        registry = MemberRegistry(root)
-        with registry._locked_state() as state:
-            registry._actor(state, who)
+        with MemberRegistry(root).while_member_active(who):
             app_feedback.submit(root, identifier, feedback, who)
 
     try:

@@ -10,7 +10,8 @@ from uuid import UUID
 from src.utils.state_dir import ensure_state_gitignore, state_dir
 
 MAX_TEXT = 4000
-MAX_BODY = MAX_TEXT * 6 + 1024
+# A non-BMP character may use two six-byte JSON escape sequences.
+MAX_BODY = MAX_TEXT * 12 + 1024
 
 _SCHEMA = """CREATE TABLE IF NOT EXISTS feedback (
     seq INTEGER PRIMARY KEY,
