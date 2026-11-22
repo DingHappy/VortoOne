@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_gifs, app_members, app_notice_inbox, app_personal_vault,
+    app_artifact_upload, app_board, app_channels, app_gifs, app_members, app_notice_inbox, app_personal_vault,
     app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
@@ -3492,28 +3492,72 @@ async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], req
         return _error(409, "unavailable", "个人技能无法处理，请检查格式、版本和存储权限")
 
 
+def _may_access_desktop_uploads(request: Request, root: str) -> bool:
+    return member_auth.principal(request, root).is_owner and app_staff.owner_proof(request)
+
+
 @router.get(_ORG + "/artifacts")
-async def artifacts(org_id: str, q: str = "", kind: str = "", kinds: str = ""):
+async def artifacts(org_id: str, request: Request, response: Response, q: str = "", kind: str = "", kinds: str = ""):
     root = _root(org_id)
     wanted = {value for value in [kind, *kinds.split(",")] if value} or None
-    return _listing(lambda: views.artifacts(root, query=q, kinds=wanted))
+    include_uploads = _may_access_desktop_uploads(request, root)
+    if include_uploads:
+        response.headers["Cache-Control"] = "no-store"
+    return _listing(lambda: views.artifacts(root, query=q, kinds=wanted, include_uploads=include_uploads))
+
+
+@router.post(_ORG + "/artifacts/files", status_code=201)
+async def upload_artifact(org_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    if not _may_access_desktop_uploads(request, root):
+        return _error(403, "owner_proof_required", "上传 HTML 制品需要已认证的所有者")
+    try:
+        title, html = await app_artifact_upload.read_form(request)
+        artifact = await asyncio.to_thread(views.upload_artifact, root, title, html)
+    except app_artifact_upload.UploadError as error:
+        return _error(error.status, error.code, str(error))
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "暂时无法保存 HTML 制品")
+    response.headers["Cache-Control"] = "no-store"
+    return artifact
 
 
 @router.get(_ORG + "/artifacts/{artifact_id}")
-async def artifact(org_id: str, artifact_id: str, version: int | None = None):
-    found = views.artifact(_root(org_id), artifact_id, version)
+async def artifact(org_id: str, artifact_id: str, request: Request, response: Response, version: int | None = None):
+    root = _root(org_id)
+    include_uploads = _may_access_desktop_uploads(request, root)
+    if include_uploads:
+        response.headers["Cache-Control"] = "no-store"
+    try:
+        found = views.artifact(root, artifact_id, version, include_uploads=include_uploads)
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "暂时无法读取制品")
     return found if found is not None else _error(404, "not_found", "没有这个制品")
 
 
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):
-    """删掉助理做的一个页面（和旧接口 DELETE /api/artifacts/{id} 同一个登记处）。"""
     from src.agents.tools.artifacts import ArtifactStore
+    from src.utils.home_maintenance import home_maintenance
+
     root = _root(org_id)
     refused = await _owner_write(request, root, "制品")
     if refused:
         return refused
-    removed = await asyncio.to_thread(ArtifactStore(root).delete, artifact_id)
+    include_uploads = _may_access_desktop_uploads(request, root)
+
+    def remove():
+        if include_uploads:
+            with home_maintenance(root):
+                uploads = ArtifactStore(root, desktop_uploads=True)
+                if uploads.exists(artifact_id):
+                    return uploads.delete(artifact_id, strict=True)
+        return ArtifactStore(root).delete(artifact_id)
+
+    try:
+        removed = await asyncio.to_thread(remove)
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "暂时无法删除制品")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
 
 
