@@ -2214,6 +2214,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/activity",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/start",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/chat",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar",
     "methods": [
       "GET"

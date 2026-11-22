@@ -220,15 +220,29 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 
 def me(root: str) -> Dict[str, Any]:
+    from src.agents.principal import OWNER, Principal
     card = _owner_card(root)
+    display = workspace_display(root, Principal(OWNER, owner_id(root), root))
     return {
         "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
                  **ui_locale(root, owner_id(root))},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
-                           "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
+                           **display, "permissions": list(OWNER_PERMISSIONS),
                            "routineProposalReview": owner_connection(), "teamChannels": owner_connection(),
                            "channelCategories": owner_connection()}],
     }
+
+
+def workspace_display(root: str, actor) -> Dict[str, Any]:
+    from src.web import app_channels, app_prefs
+    try:
+        display = app_prefs.workspace_display(root, actor.id)
+        start = display["start"]
+        if start["page"] == "channel" and not app_channels.channels(root).can_read(actor, start["channelId"]):
+            display["start"] = {"page": "home", "channelId": None}
+        return display
+    except (ValueError, OSError):
+        return {"showActivity": True, "chatPrefs": {}, "start": {"page": "home", "channelId": None}}
 
 
 def ui_locale(root: str, account_key: str) -> Dict[str, Any]:

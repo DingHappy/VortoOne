@@ -37,6 +37,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", r"/api/app/me"),
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
+    ("PUT", _ORG + r"/me/(?:activity|start|chat)"),
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PATCH", _ORG + r"/me/sidebar"),

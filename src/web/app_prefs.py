@@ -300,3 +300,45 @@ def remember_ui_routine_proposal(root: str, proposal_id: str) -> None:
         saved = [item for item in data.get("routineProposals") or [] if isinstance(item, str)]
         data["routineProposals"] = (saved + [proposal_id])[-200:]
         _write(root, data)
+
+
+# ── 每个人在这个空间的显示方式 ──────────────────────────────────────────────────
+
+_CHAT_STYLES = ("comfortable", "left", "bubbles", "compact")
+_CHAT_TONES = ("light", "strong")
+_CHAT_CHOICES = {
+    "channelStyle": _CHAT_STYLES, "dmStyle": _CHAT_STYLES,
+    "channelTone": _CHAT_TONES, "dmTone": _CHAT_TONES,
+    "openAt": ("latest", "read"), "textSize": ("xs", "sm", "md", "lg", "xl"),
+}
+_DEFAULT_START = {"page": "home", "channelId": None}
+
+
+def workspace_display(root: str, who: str) -> Dict[str, Any]:
+    saved = _own(root, who)
+    return {"showActivity": saved.get("showActivity", True), "chatPrefs": saved.get("chatPrefs", {}),
+            "start": saved.get("start", dict(_DEFAULT_START))}
+
+
+def set_show_activity(root: str, who: str, show: bool) -> Dict[str, bool]:
+    _change(root, who, "showActivity", None if show else False)
+    return {"show": show}
+
+
+def set_start(root: str, who: str, page: str, channel: str | None) -> Dict[str, Any]:
+    start = {"page": page, "channelId": channel}
+    _change(root, who, "start", None if start == _DEFAULT_START else start)
+    return start
+
+
+def set_chat_look(root: str, who: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+    if not patch or any(key not in _CHAT_CHOICES or val not in _CHAT_CHOICES[key] for key, val in patch.items()):
+        raise ValueError("请选择支持的聊天外观设置")
+    with _LOCK:
+        data = _read(root)
+        row = data["people"].setdefault(who, {})
+        chat = dict(row.get("chatPrefs", {}))
+        chat.update(patch)
+        row["chatPrefs"] = chat
+        _write(root, data)
+    return chat

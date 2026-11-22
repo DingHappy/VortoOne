@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 from contextlib import suppress
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -2125,6 +2125,65 @@ async def _sidebar(org_id: str, request: Request, change):
         return await asyncio.to_thread(change, root, who.id)
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+
+
+
+class _MyActivity(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    show: bool
+
+
+class _MyStart(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    page: Literal["home", "last", "channel"]
+    channelId: str | None = Field(default=None, max_length=128)
+
+
+async def _change_my_display(org_id, request, action):
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "请登录后更改界面偏好")
+
+    def update():
+        if actor.is_member and actor.id not in MemberRegistry(root).snapshot()["members"]:
+            return _error(403, "forbidden", _NOT_MEMBER)
+        return action(root, actor)
+
+    try:
+        return await asyncio.to_thread(update)
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.put(_ORG + "/me/activity")
+async def set_my_activity(org_id: str, body: _MyActivity, request: Request):
+    return await _change_my_display(org_id, request, lambda root, actor:
+                                    app_prefs.set_show_activity(root, actor.id, body.show))
+
+
+@router.put(_ORG + "/me/start")
+async def set_my_start(org_id: str, body: _MyStart, request: Request):
+    if (body.page == "channel") != bool(body.channelId) or body.channelId == "":
+        return _error(400, "invalid", "只有频道启动页需要填写频道")
+    def change(root, actor):
+        if body.channelId and not app_channels.channels(root).can_read(actor, body.channelId):
+            return _error(404, "not_found", "没有你能打开的这个频道")
+        return app_prefs.set_start(root, actor.id, body.page, body.channelId)
+
+    return await _change_my_display(org_id, request, change)
+
+
+@router.put(_ORG + "/me/chat")
+async def set_my_chat_look(org_id: str, body: Dict[str, Any], request: Request):
+    def change(root, actor):
+        if "feedbackAuto" in body:
+            return _error(409, "unavailable", "自动发送反馈暂不可用")
+        return app_prefs.set_chat_look(root, actor.id, body)
+
+    return await _change_my_display(org_id, request, change)
 
 
 @router.get(_ORG + "/me/sidebar")
