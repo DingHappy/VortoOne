@@ -96,3 +96,18 @@ def test_origin_is_covered_by_the_digest(home):
         StaffApprovals(home["root"]).list()
     with pytest.raises(ValueError):
         StaffApprovals(home["root"]).propose("sid-owner", "member", dict(NEW), "x", origin="someone")
+
+
+def test_an_assistant_bundle_can_be_approved_and_applied(home):
+    """开通单登记时自己重算摘要，要带上 origin，否则助理提的开通单批了也登记不了。"""
+    from src.workflow.staff.routines import Routines
+    owner, base = home["owner"], home["base"]
+    StaffApprovals(home["root"]).propose("sid-owner", "bundle", {
+        "member": {"id": "staff-brief", "name": "晨报员", "role": "reader", "engine": "vortocode"},
+        "routines": [{"id": "routine-morning", "name": "晨报", "member": "staff-brief", "prompt": "整理进展",
+                      "schedule": "0 9 * * *", "timezone": "UTC"}]}, "主人要晨报", origin="assistant")
+    card, = _approvals(owner, home)
+    approved = owner.post(f"{base}/approvals/{card['id']}/approve", json={})
+    assert approved.status_code == 200, approved.text
+    assert StaffRegistry(home["root"]).member("staff-brief")["name"] == "晨报员"
+    assert [r["id"] for r in Routines(home["root"]).list()] == ["routine-morning"]
