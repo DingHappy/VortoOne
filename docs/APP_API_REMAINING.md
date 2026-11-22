@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 252 个，剩 **379** 个：
-- **要做：309**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 257 个，剩 **374** 个：
+- **要做：304**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -492,15 +492,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/account/deletion/code` | `account.deletionCode` |  |
 | ☐ | POST | `/api/app/account/email` | `account.changeEmail` |  |
 
-### org/agent-proposals（5 个，要做 5）
+### org/agent-proposals（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/agent-proposals/{x}` | `agents.proposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/ask` | `agents.askProposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/create` | `agents.createProposed` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` |  |
+| ☑ | GET | `ORG/agent-proposals/{x}` | `agents.proposal` | 助理在主要聊天里提的新建 agent 以卡片出现在对话里（和审批列表是同一份提议）；只有所有者能看 |
+| ☑ | POST | `ORG/agent-proposals/{x}/ask` | `agents.askProposal` | 只有所有者能决定，回 409 |
+| ☑ | POST | `ORG/agent-proposals/{x}/create` | `agents.createProposed` | 按卡片上这一版批准，登记处照常核对 |
+| ☑ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` | 拒绝 |
+| ☑ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` | 提议不附带例行工作，回 409 |
 
 ### org/invite-links（5 个，要做 5）
 

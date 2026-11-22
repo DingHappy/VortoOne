@@ -3304,6 +3304,36 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/routine",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-setup",
     "methods": [
       "GET"

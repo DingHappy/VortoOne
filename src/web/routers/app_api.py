@@ -1288,6 +1288,8 @@ async def channel_messages(org_id: str, channel_id: str, request: Request, befor
     if threadId:
         return {"messages": []}
     messages = views.main_messages(root, before=before, limit=limit)
+    if app_staff.owner_proof(request):
+        messages = await asyncio.to_thread(views.with_proposal_cards, root, messages, latest=not before)
     bridge = existing_bridge(root)
     if bridge is not None and not before:
         messages += [views.approval_card(root, item) for item in reversed(bridge.pending_confirmations())]
@@ -3833,6 +3835,74 @@ async def _lifecycle(request: Request, action):
 
 def _agent_view(root: str, staff_id: str) -> Optional[Dict[str, Any]]:
     return next((a for a in views.agents(root) if a["handle"] == staff_id), None)
+
+
+# ── 聊天里的新建 agent 提议卡片（主人 2026-11-22 定）：和审批列表是同一份提议、同一套核对 ──────────
+
+async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "提议卡片只有已认证的所有者能看和决定")
+
+    def run():
+        item = views.find_agent_proposal(root, message_id)
+        return None if item is None else action(root, item)
+    try:
+        result = await asyncio.to_thread(run)
+    except (ValueError, LookupError, OSError) as error:
+        return _error(409, "agent_proposal.unavailable", str(error) or "这份提议已经不在等待")
+    return result if result is not None else _error(404, "not_found", "没有这份提议")
+
+
+def _decide_card(root: str, item: Dict[str, Any], approve: bool) -> Dict[str, Any]:
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.owner_confirmation import owner_route
+    if item["status"] != "pending":
+        raise ValueError("这份提议已经处理过了")
+    if views.agent_proposal(root, item, can_decide=True)["expired"]:
+        raise ValueError("这份提议已经过期，请让助理重新提")
+    with owner_route(root):
+        StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
+                                    round=item["round"], instance=item["instance"])
+    return next(row for row in StaffApprovals(root).list() if row["id"] == item["id"])
+
+
+@router.get(_ORG + "/agent-proposals/{message_id}")
+async def agent_proposal(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id,
+                                      lambda root, item: views.agent_proposal(root, item, can_decide=True))
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/create")
+async def create_proposed_agent(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准提议，登记处照常核对岗位、实例和摘要。"""
+    def run(root, item):
+        decided = _decide_card(root, item, True)
+        card = views.agent_proposal(root, decided, can_decide=True)
+        return {"agent": _agent_view(root, item["snapshot"]["data"]["id"]), "proposal": card, "ai": "model",
+                "testChannelId": None}
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/deny")
+async def deny_proposed_agent(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: views.agent_proposal(
+        root, _decide_card(root, item, False), can_decide=True))
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/ask")
+async def ask_about_proposed_agent(org_id: str, message_id: str, request: Request):
+    """「请管理员决定」：这里只有所有者能决定，而所有者已经看得到这张卡片。"""
+    def run(root, item):
+        raise ValueError("这份提议只有所有者能决定，所有者已经看得到")
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/routine")
+async def proposed_agent_routine(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("这份提议没有附带例行工作；需要的话请让助理另提一份例行工作提议")
+    return await _agent_proposal_call(request, org_id, message_id, run)
 
 
 @router.post(_ORG + "/agents")
