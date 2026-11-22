@@ -2978,6 +2978,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/credentials",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/mail/accounts",
     "methods": [
       "GET"
@@ -3496,9 +3502,51 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/credentials/endpoint-models",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/credentials/platform",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/check",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/make-default",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/models",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/remove-copies",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/rotate",
+    "methods": [
+      "POST"
     ]
   },
   {
