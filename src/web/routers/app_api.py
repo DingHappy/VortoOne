@@ -1723,6 +1723,8 @@ async def vault_remove(org_id: str, item_id: str, request: Request):
 # ── Wiki ───────────────────────────────────────────────────────────────────
 
 _WIKI = _ORG + "/wiki"
+# The client's 8 Mi UTF-16-code-unit batch budget can take three times as many UTF-8 bytes.
+_MAX_WIKI_IMPORT_BYTES = 24 * 1024 * 1024 + 64 * 1024
 
 
 class _WikiMessageSource(BaseModel):
@@ -1738,7 +1740,7 @@ class _WikiAppend(BaseModel):
     source: _WikiMessageSource
 
 
-async def _wiki_call(request, org_id, action, *, listing=False, source=None):
+async def _wiki_call(request, org_id, action, *, listing=False, source=None, read_body=None):
     from src.workflow.members.registry import Damaged, Missing, Refused
 
     root = _root(org_id)
@@ -1761,13 +1763,15 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None):
 
     def execute():
         if source is None:
-            return action(wiki_for_reader())
+            wiki = wiki_for_reader()
+            return action(wiki, raw) if read_body is not None else action(wiki)
         if not is_team_channel(source.channelId):
             return _error(409, "wiki_source_unsupported", "目前只能从加入的公开团队频道摘录消息")
         with app_channels.channels(root).public_message(actor, source.channelId, source.messageId) as message:
             return action(wiki_for_reader(), message)
 
     try:
+        raw = await read_body(request) if read_body is not None else None
         return await asyncio.to_thread(execute)
     except WikiError as error:
         return _error(error.status, error.code, str(error))
@@ -1787,6 +1791,31 @@ async def wiki_pages(org_id: str, request: Request, deleted: bool = False):
 @router.get(_WIKI + "/graph")
 async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
+
+
+async def _wiki_import_body(request: Request) -> bytearray:
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        raise WikiError(415, "invalid", "Markdown 导入只接受 JSON 请求")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > _MAX_WIKI_IMPORT_BYTES:
+            raise WikiError(413, "wiki_import_too_large", "Markdown 导入批次太大")
+        raw.extend(chunk)
+    return raw
+
+
+@router.post(_WIKI + "/import")
+async def import_wiki_notes(org_id: str, request: Request):
+    def import_notes(wiki, raw):
+        try:
+            data = json.loads(raw)
+        except (ValueError, RecursionError):
+            data = None
+        if not isinstance(data, dict):
+            raise WikiError(422, "invalid", "Markdown 导入请求格式无效")
+        return wiki.import_notes(data)
+
+    return await _wiki_call(request, org_id, import_notes, read_body=_wiki_import_body)
 
 
 @router.post(_WIKI + "/pages", status_code=201)

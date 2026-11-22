@@ -45,10 +45,20 @@ CREATE TABLE IF NOT EXISTS message_sources (
     at TEXT NOT NULL,
     PRIMARY KEY (page_id, channel_id, message_id, content_hash)
 );
+CREATE TABLE IF NOT EXISTS import_batches (
+    actor_kind TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    import_id TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    receipt TEXT NOT NULL,
+    PRIMARY KEY (actor_kind, actor_id, import_id, digest)
+);
 """
 _TRASH_WINDOW = timedelta(days=30)
 _PAGE_LINK = re.compile(r"(?<!!)\[\[([^\[\]\n]+)\]\]")
 MAX_BODY = 262144
+_IMPORT_NOTE_LIMIT = 200
+_IMPORT_BODY_LIMIT = 200_000
 
 
 class WikiError(ValueError):
@@ -168,6 +178,33 @@ def _audience(choice: Any, reader: WikiReader) -> dict | None:
 def _fields(data: dict, allowed: set[str]) -> None:
     if data.keys() - allowed:
         _fail("invalid", "不认识的 Wiki 字段")
+
+
+def _import_digest(value: Any) -> str:
+    try:
+        canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    except ValueError:
+        _fail("invalid", "Markdown 导入包含无效字符")
+
+
+def _import_note(note: Any, folder: str) -> dict | str:
+    if not isinstance(note, dict):
+        _fail("invalid", "每条 Markdown 笔记必须是对象")
+    _fields(note, {"title", "folder", "body", "tags", "aliases", "attachments"})
+    if note.get("aliases", []) != [] or note.get("attachments", {}) != {}:
+        _fail("wiki_import_unsupported", "Markdown 导入暂不支持笔记别名或 Drive 附件", status=409)
+    if not isinstance(note.get("title"), str) or not isinstance(note.get("body"), str):
+        _fail("invalid", "Markdown 笔记必须提供标题和正文")
+    destination = _folder("/".join(filter(None, (folder, _folder(note.get("folder", ""))))))
+    tags = _tags(note.get("tags", []))
+    try:
+        title = _title(note["title"])
+    except WikiError:
+        return "title"
+    if len(note["body"]) > _IMPORT_BODY_LIMIT:
+        return "too_long"
+    return {"title": title, "folder": destination, "tags": tags, "body": _text(note["body"], MAX_BODY, "正文")}
 
 
 class Wiki:
@@ -309,21 +346,97 @@ class Wiki:
         with self._database() as conn:
             return self._detail(conn, self._page(conn, slug))
 
+    def _insert(
+        self, conn, *, title: str, folder: str, tags: list[str], body: str,
+        audience: dict | None = None, provenance: dict | None = None,
+    ) -> dict:
+        page_id = uuid.uuid4().hex
+        page = {"id": page_id, "title": title, "folder": folder, "tags": tags, "body": body,
+                "audience": audience, "locked": False, "pinned": False,
+                "version": 0, "createdAt": _now(), "createdBy": self.reader.author, "deletedAt": None}
+        page["slug"] = _page_slug(page)
+        if provenance is not None:
+            page.update(provenance)
+            # The returned URL must not depend on slugs held by hidden or trashed pages.
+            page["slug"] = f"{page['slug']}-{page_id}"
+        conn.execute("INSERT INTO pages VALUES (?, ?)", (page_id, "{}"))
+        self._save(conn, page)
+        return page
+
     def create(self, data: dict) -> dict:
         self._require_writer()
         _fields(data, {"title", "folder", "tags", "body", "audience"})
-        page_id = uuid.uuid4().hex
-        title = _title(data.get("title"))
-        page = {"id": page_id, "title": title,
-                "folder": _folder(data.get("folder", "")), "tags": _tags(data.get("tags", [])),
-                "body": _text(data.get("body"), MAX_BODY, "正文"),
-                "audience": _audience(data.get("audience"), self.reader), "locked": False, "pinned": False,
-                "version": 0, "createdAt": _now(), "createdBy": self.reader.author, "deletedAt": None}
-        page["slug"] = _page_slug(page)
+        fields = {"title": _title(data.get("title")), "folder": _folder(data.get("folder", "")),
+                  "tags": _tags(data.get("tags", [])), "body": _text(data.get("body"), MAX_BODY, "正文"),
+                  "audience": _audience(data.get("audience"), self.reader)}
         with self._database(write=True) as conn:
-            conn.execute("INSERT INTO pages VALUES (?, ?)", (page_id, "{}"))
-            self._save(conn, page)
-            return self._detail(conn, page)
+            return self._detail(conn, self._insert(conn, **fields))
+
+    def import_notes(self, data: dict) -> dict:
+        """Import only Markdown values already read by the caller, without fetching resources."""
+        self._require_writer()
+        _fields(data, {"source", "notes", "folder", "onConflict", "importId"})
+        source, notes, conflict = data.get("source"), data.get("notes"), data.get("onConflict")
+        if not isinstance(source, dict) or set(source) != {"type", "name"}:
+            _fail("invalid", "必须提供 Markdown 文件来源类型和名称")
+        if source["type"] != "files":
+            _fail("wiki_import_unsupported", "目前仅支持导入纯 Markdown 文件", status=409)
+        source_name = _text(source["name"], 300, "来源名称", required=True).strip()
+        if conflict not in ("keep_both", "skip") or not isinstance(notes, list) or not 1 <= len(notes) <= _IMPORT_NOTE_LIMIT:
+            _fail("invalid", "请提供 1 到 200 条笔记和有效的同名处理方式")
+        import_id = _text(data["importId"], 128, "导入编号", required=True) if "importId" in data else None
+        folder = _folder(data.get("folder", ""))
+        prepared = [_import_note(note, folder) for note in notes]
+        actor = self.reader.actor
+        digest = _import_digest(data)
+        batch = (actor.kind, actor.id, import_id, digest)
+        group_id = _import_digest([actor.kind, actor.id, import_id]) if import_id is not None else uuid.uuid4().hex
+        provenance = {"sourceType": "files", "sourceName": source_name, "importId": group_id}
+        with self._database(write=True) as conn:
+            previous = None if import_id is None else conn.execute(
+                "SELECT receipt FROM import_batches WHERE actor_kind = ? AND actor_id = ? AND import_id = ? AND digest = ?",
+                batch,
+            ).fetchone()
+            if previous is None:
+                receipt = self._import_batch(conn, prepared, conflict, provenance)
+                if import_id is not None:
+                    conn.execute("INSERT INTO import_batches VALUES (?, ?, ?, ?, ?)", (*batch, json.dumps(receipt)))
+            else:
+                receipt = json.loads(previous["receipt"])
+            return self._import_result(conn, notes, receipt)
+
+    def _import_batch(self, conn, notes, conflict, provenance):
+        pages = (json.loads(row["snapshot"]) for row in conn.execute("SELECT snapshot FROM pages"))
+        visible = {_fold(page["title"]) for page in pages
+                   if not page.get("deletedAt") and self.reader.sees(page)}
+        receipt = {"created": [], "skipped": [], "failed": []}
+        for index, note in enumerate(notes):
+            if isinstance(note, str):
+                receipt["failed"].append((index, note))
+                continue
+            title = note["title"]
+            if _fold(title) in visible and conflict == "skip":
+                receipt["skipped"].append(index)
+                continue
+            count = 1
+            while _fold(note["title"]) in visible:
+                count += 1
+                suffix = f" ({count})"
+                note["title"] = title[:200 - len(suffix)].rstrip() + suffix
+            visible.add(_fold(note["title"]))
+            receipt["created"].append(self._insert(conn, **note, provenance=provenance)["id"])
+        return receipt
+
+    def _import_result(self, conn, notes, receipt):
+        created = []
+        for page_id in receipt["created"]:
+            row = conn.execute("SELECT snapshot FROM pages WHERE id = ?", (page_id,)).fetchone()
+            if row is not None:
+                page = json.loads(row["snapshot"])
+                if not page.get("deletedAt") and self.reader.sees(page):
+                    created.append(self._summary(page))
+        return {"created": created, "skipped": [notes[index]["title"] for index in receipt["skipped"]],
+                "failed": [{"title": notes[index]["title"], "reason": reason} for index, reason in receipt["failed"]]}
 
     def update(self, slug: str, data: dict) -> dict:
         _fields(data, {"body", "baseVersion", "title", "folder", "tags", "note"})
