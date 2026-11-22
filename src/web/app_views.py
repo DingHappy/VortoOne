@@ -679,6 +679,16 @@ def channel_members(root: str) -> List[Dict[str, str]]:
     return [{"type": "person", "id": owner_id(root)}, {"type": "agent", "id": main_agent_id(root)}]
 
 
+def agent_groups(root: str) -> List[Dict[str, Any]]:
+    """agent 分组：已登记、没退役的部门，成员换成界面上的 agent id。部门登记读不出来就抛 ValueError。"""
+    from src.workflow.staff.departments import Departments
+    from src.workflow.staff.registry import StaffRegistry
+    return [{"id": item["id"], "name": item["name"],
+             "agentIds": [member_agent_id(root, str(member)) for member in item.get("members") or []],
+             "leadUserId": None, "backupUserId": None}
+            for item in Departments(StaffRegistry(root)).list() if item.get("status") != "retired"]
+
+
 def agent_detail(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
     """角色资料页。本月的 token 与件数来自账本和台账；预算比例没有对应的月度预算，固定为 0。"""
     return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
