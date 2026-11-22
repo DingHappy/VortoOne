@@ -255,7 +255,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 12）
+### org/me（12 个，要做 11）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -270,7 +270,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/me/right-hand-approvals` | `approvals.rightHand` |  |
 | ☐ | PUT | `ORG/me/right-hand-approvals` | `approvals.setRightHand` |  |
 | ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
-| ☐ | PUT | `ORG/me/status` | `orgs.setStatus` |  |
+| ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
 ### org/artifacts（11 个，要做 11）
 
