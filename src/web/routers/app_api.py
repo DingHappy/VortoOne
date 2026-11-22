@@ -2763,6 +2763,43 @@ async def runs(org_id: str, agentId: str = "", limit: int = 50):  # noqa: N803 �
     return _listing(lambda: {"runs": views.runs(root, agent_id=agentId, limit=limit)})
 
 
+@router.get(_ORG + "/runs/{run_id}")
+async def run_detail(org_id: str, run_id: str):
+    """一件事的详情。专员的过程只留在任务台账的进度尾部（主人在「输出」里看），这里没有逐步记录，``steps`` 为空。"""
+    root = _root(org_id)
+
+    def read():
+        row = next((item for item in views.runs(root, limit=200) if item["id"] == run_id), None)
+        return None if row is None else {"run": row, "steps": []}
+    result = await asyncio.to_thread(read)
+    return result if result is not None else _error(404, "not_found", "没有这件事")
+
+
+@router.get(_ORG + "/audit")
+async def audit(org_id: str, request: Request, actorType: str = "", actorId: str = "",  # noqa: N803 —— 界面的查询参数名
+                via: str = "", outcome: str = "", waiting: str = "", kind: str = "", before: str = "",
+                limit: int | None = None):
+    """审计页：共享审计台账的投影，只给所有者（参数里有主人对话里的路径和命令）。"""
+    from src.web import app_audit
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "查看审计记录需要已认证的所有者")
+
+    def read():
+        me = views.me(root)["user"]
+        main = views.main_agent_id(root)
+        agent = next((item for item in views.agents(root) if item["id"] == main), {})
+        return app_audit.page(root, owner={"id": me["id"], "name": me["name"]},
+                              agent={"id": main, "name": agent.get("name")}, actor_type=actorType,
+                              actor_id=actorId, via=via, outcome=outcome, waiting=waiting == "true", kind=kind,
+                              before=before, limit=limit)
+    try:
+        result = await asyncio.to_thread(read)
+    except app_audit.AuditQueryError as error:
+        return _error(400, "invalid", str(error))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)
