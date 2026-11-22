@@ -336,6 +336,47 @@ class Routines:
                 item['state']['task'] = None
             self.registry._write('routines.json', value)
 
+    def run_now(self, routine_id, owner):
+        """Run one reviewed, enabled owner routine through its usual dispatch path."""
+        from src.gateway.audit import append_audit
+        from src.gateway.main_conversation import main_chat_key
+        from src.scheduling.staff_runner import get_staff_service
+        from src.workflow.staff.approvals import digest
+        from src.workflow.staff.owner_confirmation import require_owner_route, without_owner_route
+
+        require_owner_route(self.root)
+        with TASK_STATE_LOCK:
+            value = self.read()
+            item = next((row for row in value['routines'] if row['id'] == routine_id and not row['retired']), None)
+            if item is None:
+                raise LookupError('没有这条例行工作')
+            if item.get('initiator') is not None or item['owner'] != main_chat_key(self.root):
+                raise ValueError('只能手动运行由当前所有者负责的例行工作')
+            if not item['enabled'] or self.awaiting_takeover_resume(item):
+                raise ValueError('这条例行工作暂未启用')
+            if RoutineSchedule(item['schedule'], item['timezone']).once is not None:
+                raise ValueError('一次性例行工作仍按批准的时间运行')
+            if item['state'].get('task') or item['state'].get('error'):
+                raise ValueError('请先完成当前执行或核对例行工作状态')
+            if any(row['status'] == 'applying' and routine_id in row['routines'] for row in value['migrations']):
+                raise ValueError('例行工作仍在迁移，未手动运行')
+            self.check_binding(item)
+            staff = get_staff_service(self.root)
+            now = instant(self.clock())
+            definition = {key: field for key, field in item.items() if key != 'state'}
+            if not append_audit(self.root, {
+                'category': 'decision', 'operation': '主人手动运行例行工作', 'operation_kind': 'execute',
+                'decision': 'allowed', 'decision_source': 'user', 'approval_scope': 'once',
+                'approval_source': 'routine', 'routine_id': routine_id, 'actor': owner,
+                'action_digest': digest({'definition': definition, 'slot': now.isoformat()}),
+            }, durable=True):
+                raise OSError('手动运行的审计未能保存，未派发')
+            with without_owner_route():
+                started = self.dispatch(staff, now, only=routine_id, manual=True)
+            if not started:
+                raise ValueError('后台未接到这次例行工作，请核对状态')
+            return started[0]
+
     def dispatch(self, staff, now, *, only=None, manual=False):
         started = []
         with TASK_STATE_LOCK:

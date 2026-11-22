@@ -4558,6 +4558,36 @@ def _routine_write(root: str, routine_id: str, **change):
         return _error(409, "conflict", str(error))
 
 
+class _RunRoutineNow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post(_ORG + "/routines/{routine_id}/run")
+async def run_routine_now(org_id: str, routine_id: str, body: _RunRoutineNow, request: Request):
+    from src.workflow.staff.owner_confirmation import owner_route
+    from src.workflow.staff.routines import Routines
+
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    if not who.is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "手动运行例行工作需要已认证的所有者")
+    try:
+        with owner_route(root):
+            task_id = Routines(root).run_now(routine_id, who.id)
+        rows = await asyncio.to_thread(views.routines, root)
+    except LookupError as error:
+        return _error(404, "not_found", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "conflict", str(error))
+    row = next((row for row in rows if row["id"] == routine_id), None)
+    if row is None:
+        return _error(404, "not_found", "没有这条例行工作")
+    last = row["lastRun"]
+    if last and last["id"] == task_id and last["finishedAt"] is None:
+        row["state"] = "running"
+    return row
+
+
 @router.patch(_ORG + "/routines/{routine_id}")
 async def patch_routine(org_id: str, routine_id: str, body: Dict[str, Any]):
     """只接启用与停用。改名、改排期、改交代的话要经主助理提议、主人批准，不能从这里直接改。"""

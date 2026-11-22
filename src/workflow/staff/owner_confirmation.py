@@ -26,6 +26,16 @@ def owner_route(root):
         _OWNER_ROOT.reset(token)
 
 
+@contextmanager
+def without_owner_route():
+    """A newly scheduled worker must not inherit an HTTP owner's approval authority."""
+    token = _OWNER_ROOT.set(None)
+    try:
+        yield
+    finally:
+        _OWNER_ROOT.reset(token)
+
+
 def require_owner_route(root):
     if _OWNER_ROOT.get() != str(Path(root).resolve()):
         raise ValueError('批准或拒绝只能来自已认证的主人写入路由')
