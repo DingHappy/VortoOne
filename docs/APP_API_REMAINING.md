@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 265 个，剩 **366** 个：
-- **要做：296**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 268 个，剩 **363** 个：
+- **要做：293**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -272,7 +272,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
-### org/artifacts（11 个，要做 11）
+### org/artifacts（11 个，要做 10）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -283,7 +283,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |
 | ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
-| ☐ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` |  |
+| ☑ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` | 所有者可还原 Drive 删除的助理页面及历史版本；到期或已清除回 `409 artifact.purged`。 |
 | ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
 | ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
@@ -798,12 +798,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/choices/{x}` | `artifacts.choices` |  |
 | ☐ | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` |  |
 
-### org/artifacts-trash（2 个，要做 2）
+### org/artifacts-trash（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/artifacts-trash` | `artifacts.trash` |  |
-| ☐ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` |  |
+| ☑ | GET | `ORG/artifacts-trash` | `artifacts.trash` | 列出所有者从 Drive 删除的助理页面，成员返回空。30 天到期即无法还原，打开回收站时清理到期文件。旧工具与旧 API 删除仍直接清除。 |
+| ☑ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` | 只有实际所有者可以清除回收站中的文件和所有历史版本。 |
 
 ### org/notification-prefs（2 个，要做 2）
 

@@ -1184,6 +1184,10 @@ def _artifact(root: str, meta: Dict[str, Any]) -> Dict[str, Any]:
             "audience": {"kind": "workspace"}, "sharing": {"mode": "conversation", "userIds": [], "roleIds": []}}
 
 
+def trashed_artifact(root: str, meta: Dict[str, Any], deleted_at: datetime, purge_at: datetime) -> Dict[str, Any]:
+    return {**_artifact(root, meta), "deletedAt": deleted_at.isoformat(), "purgeAt": purge_at.isoformat()}
+
+
 def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     if kinds is not None and "html" not in kinds:

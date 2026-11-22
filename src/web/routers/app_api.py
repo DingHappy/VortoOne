@@ -3774,14 +3774,80 @@ async def artifact(org_id: str, artifact_id: str, version: int | None = None):
 
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):
-    """删掉助理做的一个页面（和旧接口 DELETE /api/artifacts/{id} 同一个登记处）。"""
-    from src.agents.tools.artifacts import ArtifactStore
+    """Drive 中的删除保留完整版本历史，可从回收站恢复。"""
+    from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
+
     root = _root(org_id)
-    refused = await _owner_write(request, root, "制品")
+    refused = await _artifact_trash_owner(request, root)
     if refused:
         return refused
-    removed = await asyncio.to_thread(ArtifactStore(root).delete, artifact_id)
+    try:
+        removed = await asyncio.to_thread(ArtifactTrash(root).move_to_trash, artifact_id)
+    except TrashConflict as error:
+        return _error(409, "conflict", str(error))
+    except OSError:
+        return _error(503, "unavailable", "无法将制品移入回收站")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
+
+
+async def _artifact_trash_owner(request: Request, root: str):
+    refused = await _owner_write(request, root, "制品回收站")
+    if refused:
+        return refused
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "制品回收站需要主人令牌或同源登录")
+    return None
+
+
+@router.get(_ORG + "/artifacts-trash")
+async def list_artifact_trash(org_id: str, request: Request):
+    from src.agents.tools.artifact_trash import ArtifactTrash
+
+    root = _root(org_id)
+    refused = await _artifact_trash_owner(request, root)
+    if refused:
+        return refused
+    try:
+        deleted = await asyncio.to_thread(ArtifactTrash(root).trashed)
+    except OSError:
+        return _error(503, "unavailable", "无法读取制品回收站")
+    return JSONResponse({"files": [views.trashed_artifact(root, meta, deleted_at, purge_at)
+                                   for meta, deleted_at, purge_at in deleted]},
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.post(_ORG + "/artifacts/{artifact_id}/restore", status_code=204)
+async def restore_artifact(org_id: str, artifact_id: str, request: Request):
+    from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
+
+    root = _root(org_id)
+    refused = await _artifact_trash_owner(request, root)
+    if refused:
+        return refused
+    try:
+        outcome = await asyncio.to_thread(ArtifactTrash(root).restore, artifact_id)
+    except TrashConflict as error:
+        return _error(409, "conflict", str(error))
+    except OSError:
+        return _error(503, "unavailable", "无法恢复这个制品")
+    if outcome == "purged":
+        return _error(409, "artifact.purged", "这个制品已被永久删除")
+    return Response(status_code=204) if outcome == "restored" else _error(404, "not_found", "没有这个制品")
+
+
+@router.delete(_ORG + "/artifacts-trash/{artifact_id}", status_code=204)
+async def purge_artifact(org_id: str, artifact_id: str, request: Request):
+    from src.agents.tools.artifact_trash import ArtifactTrash
+
+    root = _root(org_id)
+    refused = await _artifact_trash_owner(request, root)
+    if refused:
+        return refused
+    try:
+        removed = await asyncio.to_thread(ArtifactTrash(root).purge, artifact_id)
+    except OSError:
+        return _error(503, "unavailable", "无法永久删除这个制品")
+    return Response(status_code=204) if removed else _error(404, "not_found", "没有这个已删除的制品")
 
 
 @router.get(_ORG + "/dashboards/home")

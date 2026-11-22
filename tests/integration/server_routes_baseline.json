@@ -2864,6 +2864,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/restore",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts-trash",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts-trash/{artifact_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/memories",
     "methods": [
       "GET"
