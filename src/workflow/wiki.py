@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -34,8 +35,20 @@ CREATE TABLE IF NOT EXISTS revisions (
     note TEXT,
     PRIMARY KEY (page_id, version)
 );
+CREATE TABLE IF NOT EXISTS message_sources (
+    page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    block TEXT NOT NULL,
+    excerpt TEXT NOT NULL,
+    at TEXT NOT NULL,
+    PRIMARY KEY (page_id, channel_id, message_id, content_hash)
+);
 """
 _TRASH_WINDOW = timedelta(days=30)
+_PAGE_LINK = re.compile(r"(?<!!)\[\[([^\[\]\n]+)\]\]")
+MAX_BODY = 262144
 
 
 class WikiError(ValueError):
@@ -51,6 +64,7 @@ class WikiReader:
     known_people: frozenset[str]
     can_write: bool
     can_manage: bool
+    source_names: dict[str, str]
 
     @property
     def author(self) -> dict[str, str]:
@@ -107,11 +121,14 @@ def _tags(value: Any) -> list[str]:
     return list(dict.fromkeys(_text(tag, 80, "标签", required=True).strip() for tag in value))
 
 
+def _fold(title: str) -> str:
+    return "".join(char for char in unicodedata.normalize("NFD", title.lower())
+                   if unicodedata.category(char) != "Mn").strip()
+
+
 def _slug(title: str, page_id: str) -> str:
     leaf = title.rsplit("/", 1)[-1].strip() or title
-    folded = "".join(char for char in unicodedata.normalize("NFD", leaf.lower())
-                     if unicodedata.category(char) != "Mn")
-    slug = re.sub(r"[^\w]+", "-", folded.replace("_", "-")).strip("-")
+    slug = re.sub(r"[^\w]+", "-", _fold(leaf).replace("_", "-")).strip("-")
     return slug or f"page-{page_id}"
 
 
@@ -209,17 +226,20 @@ class Wiki:
         authors = list(dict.fromkeys(row["author"] for row in conn.execute(
             "SELECT author FROM revisions WHERE page_id = ? ORDER BY version DESC", (page["id"],)
         )))
-        slugs = {row["slug"] for row in conn.execute("SELECT slug FROM slugs WHERE page_id = ?", (page["id"],))}
-        title_slug = _slug(page["title"], page["id"])
-        backlinks = []
-        for linked in self._all(conn):
-            if linked["id"] == page["id"] or linked.get("deletedAt") or not self.reader.sees(linked):
-                continue
-            # Only Wiki-page links, and only back to pages that this reader can already open.
-            targets = {_slug(re.split(r"[|#]", title, maxsplit=1)[0], "") for title in
-                       re.findall(r"\[\[([^\[\]\n]{1,300})\]\]", linked["body"])}
-            if targets.intersection(slugs | {title_slug}):
-                backlinks.append({"kind": "page", "slug": linked["slug"], "title": linked["title"]})
+        pages = self._visible_pages(conn)
+        titles = {visible["slug"]: visible["title"] for visible in pages}
+        backlinks = [{"kind": "page", "slug": source, "title": titles[source]}
+                     for source, target in self._links(conn, pages) if target == page["slug"]]
+        for source in conn.execute(
+            "SELECT DISTINCT channel_id, message_id, excerpt, at FROM message_sources"
+            " WHERE page_id = ? AND instr(?, block) > 0 ORDER BY at DESC, message_id",
+            (page["id"], page["body"]),
+        ):
+            if source["channel_id"] in self.reader.source_names:
+                backlinks.append({"kind": "message", "channelId": source["channel_id"],
+                                  "messageId": source["message_id"],
+                                  "channelName": self.reader.source_names[source["channel_id"]],
+                                  "excerpt": source["excerpt"], "at": source["at"]})
         return {**self._summary(page), "body": page["body"], "createdAt": page["createdAt"],
                 "createdBy": page["createdBy"], "authors": [json.loads(author) for author in authors],
                 "backlinks": backlinks, "canEdit": self.reader.edits(page)}
@@ -249,6 +269,42 @@ class Wiki:
         sort_key = "deletedAt" if deleted else "updatedAt"
         return {"pages": sorted(pages, key=lambda page: page[sort_key], reverse=True)}
 
+    def _visible_pages(self, conn) -> list[dict]:
+        pages = (page for page in self._all(conn) if not page.get("deletedAt") and self.reader.sees(page))
+        return sorted(pages, key=lambda page: page["updatedAt"], reverse=True)
+
+    @staticmethod
+    def _links(conn, pages):
+        """Resolve page links against the same visible pages for the graph and backlinks."""
+        by_id = {page["id"]: page["slug"] for page in pages}
+        aliases = {row["slug"]: by_id[row["page_id"]] for row in conn.execute("SELECT slug, page_id FROM slugs")
+                   if row["page_id"] in by_id}
+        titles, paths = {}, {}
+        for page in pages:
+            title, folder, slug = page["title"], page["folder"], page["slug"]
+            titles.setdefault(_fold(title), slug)
+            if folder:
+                paths.setdefault(_fold(f"{folder}/{title}"), slug)
+
+        for page in pages:
+            source = page["slug"]
+            targets = set()
+            for match in _PAGE_LINK.finditer(page["body"]):
+                title = re.split(r"[|#]", match[1], maxsplit=1)[0].strip()
+                key = _fold(title)
+                target = titles.get(key) or paths.get(key) or aliases.get(_slug(title, ""))
+                if target is not None and target != source and target not in targets:
+                    targets.add(target)
+                    yield source, target
+
+    def graph(self) -> dict:
+        with self._database() as conn:
+            pages = self._visible_pages(conn)
+            return {
+                "nodes": [{key: page[key] for key in ("slug", "title", "folder", "tags")} for page in pages],
+                "edges": [{"from": source, "to": target} for source, target in self._links(conn, pages)],
+            }
+
     def get(self, slug: str) -> dict:
         with self._database() as conn:
             return self._detail(conn, self._page(conn, slug))
@@ -260,7 +316,7 @@ class Wiki:
         title = _title(data.get("title"))
         page = {"id": page_id, "title": title,
                 "folder": _folder(data.get("folder", "")), "tags": _tags(data.get("tags", [])),
-                "body": _text(data.get("body"), 262144, "正文"),
+                "body": _text(data.get("body"), MAX_BODY, "正文"),
                 "audience": _audience(data.get("audience"), self.reader), "locked": False, "pinned": False,
                 "version": 0, "createdAt": _now(), "createdBy": self.reader.author, "deletedAt": None}
         page["slug"] = _page_slug(page)
@@ -279,8 +335,32 @@ class Wiki:
             page = self._page(conn, slug, edit=True)
             if page["version"] != version:
                 _fail("version_conflict", "页面已经更新，请重新读取后编辑", status=409)
-            page["body"] = _text(data.get("body"), 262144, "正文")
+            page["body"] = _text(data.get("body"), MAX_BODY, "正文")
             return self._change(conn, page, data, note)
+
+    def append(self, slug: str, text: str, source: dict) -> dict:
+        """Append one attributed selection and its revision in a single page transaction."""
+        block = _text(text, MAX_BODY, "摘录", required=True).rstrip("\n") + "\n"
+        digest = hashlib.sha256(block.encode("utf-8")).hexdigest()
+        with self._database(write=True) as conn:
+            page = self._page(conn, slug, edit=True)
+            key = (page["id"], source["channelId"], source["messageId"], digest)
+            recorded = conn.execute(
+                "SELECT 1 FROM message_sources"
+                " WHERE page_id = ? AND channel_id = ? AND message_id = ? AND content_hash = ?", key
+            ).fetchone()
+            body = page["body"]
+            if recorded is not None and block in body:
+                return self._detail(conn, page)
+            if body and not body.endswith("\n\n"):
+                body += "\n" if body.endswith("\n") else "\n\n"
+            page["body"] = _text(body + block, MAX_BODY, "正文")
+            conn.execute(
+                "INSERT OR IGNORE INTO message_sources VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (*key, block, source["excerpt"], source["at"]),
+            )
+            self._save(conn, page)
+            return self._detail(conn, page)
 
     def _change(self, conn, page: dict, data: dict, note: str | None = None) -> dict:
         if "title" in data:

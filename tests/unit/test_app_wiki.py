@@ -1,9 +1,13 @@
 """Wiki authorization, wire shapes, and revisions through Desktop HTTP."""
 
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 from src.workflow.members.registry import MemberRegistry
+from src.workflow.wiki import MAX_BODY
 from tests.unit.test_member_agents import ORIGIN, OWNER_P, TOKEN, _join, home  # noqa: F401 - fixture
+from tests.unit.test_team_channels import _create
 
 
 def _page(client, base, **fields):
@@ -71,6 +75,141 @@ def test_wiki_private_notes_never_appear_in_outsider_lists_links_or_versions(hom
     assert member.post(root, json={"title": "排除自己", "body": "", "audience": {
         "mode": "people", "userIds": [outsider.member_id],
     }}).status_code == 403
+
+
+def test_wiki_graph_uses_visible_pages_and_current_slugs_for_both_directions(home):
+    owner, member, base = home["owner"], _join(home), home["base"]
+    wiki = f"{base}/wiki"
+    target = _page(owner, base, title="Déploy Guide", folder="Ops", tags=["release"])
+    embedded = _page(owner, base, title="照片")
+    removed = _page(owner, base, title="旧说明")
+    private = _page(owner, base, title="私有页", body="[[Deploy Guide]]",
+                    audience={"mode": "people", "userIds": [owner.get("/api/app/me").json()["user"]["id"]]})
+    referring = _page(owner, base, title="入口", body=(
+        "[[OPs/Deploy Guide#步骤|发布]] [[Déploy Guide]] [[入口]] "
+        "![[照片]] [[旧说明]] [[私有页]] [[不存在]]"
+    ))
+    assert owner.delete(f"{wiki}/pages/{removed['slug']}").status_code == 204
+
+    member_graph = member.get(f"{wiki}/graph")
+    assert member_graph.status_code == 200 and member_graph.headers["cache-control"] == "no-store"
+    graph = member_graph.json()
+    assert {node["slug"] for node in graph["nodes"]} == {target["slug"], embedded["slug"], referring["slug"]}
+    assert next(node for node in graph["nodes"] if node["slug"] == target["slug"]) == {
+        "slug": target["slug"], "title": "Déploy Guide", "folder": "Ops", "tags": ["release"]}
+    assert graph["edges"] == [{"from": referring["slug"], "to": target["slug"]}]
+    assert {(edge["from"], edge["to"]) for edge in owner.get(f"{wiki}/graph").json()["edges"]} == {
+        (referring["slug"], target["slug"]), (referring["slug"], private["slug"]),
+        (private["slug"], target["slug"]),
+    }
+
+    current = owner.post(f"{wiki}/pages/{target['slug']}/rename", json={"title": "发布指南"}).json()
+    assert member.get(f"{wiki}/graph").json()["edges"] == [{"from": referring["slug"], "to": current["slug"]}]
+    assert member.get(f"{wiki}/pages/{current['slug']}").json()["backlinks"] == [
+        {"kind": "page", "slug": referring["slug"], "title": referring["title"]}]
+    assert TestClient(home["app"]).get(f"{wiki}/graph").status_code == 401
+    assert owner.get("/api/app/organizations/other/wiki/graph").status_code == 404
+
+
+def _quote(client, channel, body):
+    result = client.post(f"{channel}/messages", json={"body": body})
+    assert result.status_code == 200, result.text
+    return {"text": f"> {body}\n\n_来自频道消息_", "source": {
+        "kind": "message", "channelId": channel.rsplit("/", 1)[-1], "messageId": result.json()["id"],
+    }}
+
+
+def test_append_public_message_keeps_history_and_filters_source_on_current_access(home):
+    owner, member, outsider = home["owner"], _join(home), _join(home, "outside@example.com", "外部成员")
+    base = home["base"]
+    channel = _create(home, "wiki来源")
+    assert member.post(f"{channel}/join").status_code == 204
+    entry = _quote(owner, channel, "公开摘录")
+    [original] = owner.get(f"{channel}/messages").json()["messages"]
+    page = _page(member, base, body="旧正文  \n\n")
+    url = f"{base}/wiki/pages/{page['slug']}"
+
+    appended = member.post(f"{url}/append", json=entry)
+    assert appended.status_code == 200, appended.text
+    result = appended.json()
+    assert result["body"] == page["body"] + entry["text"] + "\n"
+    assert result["version"] == 2 and result["updatedBy"] == {"type": "person", "id": member.member_id}
+    [reference] = result["backlinks"]
+    assert reference == {
+        **entry["source"], "channelName": "wiki来源", "excerpt": "公开摘录", "at": original["createdAt"],
+    }
+    assert member.post(f"{url}/append", json=entry).json() == result
+    assert owner.get(f"{url}/versions/1").json() == {"version": 1, "body": page["body"]}
+    assert outsider.get(url).json()["backlinks"] == []
+    assert outsider.get(url).json()["body"] == result["body"]
+    assert outsider.post(f"{channel}/join").status_code == 204
+    assert outsider.get(url).json()["backlinks"] == [reference]
+
+    assert owner.delete(channel).status_code == 204
+    assert member.get(url).json()["backlinks"] == []
+    assert member.post(f"{url}/append", json=entry).status_code == 404
+    assert member.get(url).json()["body"] == result["body"]
+    assert owner.post(f"{channel}/unarchive").status_code == 204
+    assert member.get(url).json()["backlinks"] == [reference]
+    assert member.put(url, json={"body": "删除摘录", "baseVersion": 2}).json()["backlinks"] == []
+
+
+def test_append_checks_both_source_and_page_permissions_and_payload_bounds(home):
+    owner, member, base = home["owner"], _join(home), home["base"]
+    public = _create(home, "append-public")
+    other = _create(home, "append-other")
+    private = _create(home, "append-hidden", visibility="private")
+    secure = _page(owner, base, title="限制页", audience={
+        "mode": "people", "userIds": [owner.get("/api/app/me").json()["user"]["id"]],
+    })
+    page = _page(owner, base, title="已存在页面")
+    url = f"{base}/wiki/pages/{page['slug']}"
+    entry = _quote(owner, public, "allow")
+    hidden = _quote(owner, private, "private")
+    assert owner.post(f"{url}/append", json=hidden).status_code == 409
+    assert member.post(f"{url}/append", json=hidden).status_code == 404
+    assert member.post(f"{url}/append", json=entry).status_code == 404
+    assert member.post(f"{public}/join").status_code == 204
+    assert owner.post(f"{url}/append", json=entry | {
+        "source": entry["source"] | {"channelId": other.rsplit("/", 1)[-1]},
+    }).status_code == 404
+    assert owner.post(f"{url}/append", json=entry | {
+        "source": entry["source"] | {"channelId": home["channel"]},
+    }).status_code == 409
+    assert member.post(f"{base}/wiki/pages/{secure['slug']}/append", json=entry).status_code == 404
+    assert member.post(f"{url}/append", json=entry, headers={"Origin": "https://outside.test"}).status_code == 403
+    assert TestClient(home["app"]).post(f"{url}/append", json=entry).status_code == 401
+    assert owner.post(f"{url}/append", json=entry | {"text": "x" * MAX_BODY}).status_code == 400
+    assert owner.post(f"{url}/append", json=entry | {"text": "x" * (MAX_BODY + 1)}).status_code == 422
+    assert owner.post(f"{url}/append", json=entry | {"text": " \n "}).status_code == 400
+    assert owner.post(f"{url}/append", json=entry | {"source": entry["source"] | {"channelName": "伪造"}}).status_code == 422
+    assert owner.post(f"{url}/lock", json={"locked": True}).status_code == 200
+    assert member.post(f"{url}/append", json=entry).status_code == 403
+    assert owner.post(f"{url}/lock", json={"locked": False}).status_code == 200
+    MemberRegistry(home["root"]).change_group(OWNER_P, "everyone", items=[])
+    assert member.post(f"{url}/append", json=entry).status_code == 403
+    assert owner.get(url).json()["body"] == page["body"]
+
+
+def test_concurrent_appends_preserve_each_distinct_quote_once(home):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "wiki并发")
+    first, second = _quote(owner, channel, "第一"), _quote(owner, channel, "第二")
+    page = _page(owner, base, body="")
+    url = f"{base}/wiki/pages/{page['slug']}"
+
+    def submit(body):
+        client = TestClient(home["app"], headers={"Authorization": f"Bearer {TOKEN}"})
+        return client.post(f"{url}/append", json=body)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(submit, (first, second, first, second)))
+    assert [response.status_code for response in responses] == [200] * 4
+    current = owner.get(url).json()
+    assert current["version"] == 3
+    assert current["body"].count(first["text"]) == current["body"].count(second["text"]) == 1
+    assert {backlink["messageId"] for backlink in current["backlinks"]} == {
+        first["source"]["messageId"], second["source"]["messageId"]}
 
 
 def test_wiki_lock_and_context_keep_editing_and_agent_permissions_separate(home):

@@ -2490,6 +2490,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/graph",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/pages",
     "methods": [
       "GET"
@@ -2517,6 +2523,12 @@
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/append",
+    "methods": [
+      "POST"
     ]
   },
   {

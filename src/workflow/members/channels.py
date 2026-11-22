@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -410,6 +411,28 @@ class TeamChannels:
         except (Missing, Refused):
             return False
         return True
+
+    @staticmethod
+    def readable_public_names(state, actor):
+        """Current channel names a Wiki reader can follow from saved public messages."""
+        return {key: channel["title"] for key, channel in state["channels"].items()
+                if channel["kind"] == "public" and not channel["archived"]
+                and TeamChannels._access(state, actor, channel).joined}
+
+    @contextmanager
+    def public_message(self, actor, channel_id, message_id):
+        """Verify a shareable source and keep channel access stable through the caller's save."""
+        with self.registry._locked_state() as state:
+            try:
+                channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
+            except Refused as error:
+                raise Missing("没有这个来源消息") from error
+            if channel["kind"] != "public":
+                raise Refused("目前只能从加入的公开团队频道摘录消息")
+            with self.history.database() as conn:
+                message = self.history.find(conn, channel_id, message_id)
+                yield {"channelId": channel_id, "messageId": message["id"],
+                       "excerpt": " ".join(message["body"].split())[:200], "at": message["created"]}
 
     def subscribe(self, actor, channel_id):
         with self.registry._locked_state() as state, self.history.database() as conn:
