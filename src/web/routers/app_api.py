@@ -22,16 +22,18 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from src.gateway import app_protocol as F
+from src.web import app_artifact_upload
+from src.web import app_artifacts
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_board, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox, app_org_logo,
     app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
-from src.workflow.members.registry import MemberRegistry
+from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
 router = APIRouter(tags=["app"])
@@ -97,8 +99,66 @@ def _claim_waiting() -> bool:
 
 @router.get("/api/app/auth-config")
 async def auth_config():
+    local_feedback = views.owner_connection()
     return {"socialProviders": {"google": False, "github": False}, "signupOpen": False, "firstRun": False,
-            "ownerClaim": _claim_waiting(), "passwordReset": False, "feedback": False}
+            "ownerClaim": _claim_waiting(), "passwordReset": False,
+            "feedback": local_feedback, "feedbackLocal": local_feedback}
+
+
+_FEEDBACK = "/api/app/feedback"
+_FEEDBACK_HEADERS = {"Cache-Control": "no-store"}
+
+
+@router.get(_FEEDBACK)
+async def feedback_inbox(request: Request, orgId: str, cursor: int | None = Query(None, ge=1, le=2**63 - 1),
+                         limit: int = Query(50, ge=1, le=100)):
+    root = _root(orgId)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "只有已认证的所有者能查看本地反馈")
+    try:
+        listing = await asyncio.to_thread(app_feedback.listing, root, cursor, limit)
+    except (sqlite3.Error, OSError):
+        return _error(503, "feedback.unavailable", "本地反馈暂时不可读")
+    return JSONResponse(listing, headers=_FEEDBACK_HEADERS)
+
+
+@router.post(_FEEDBACK, status_code=204)
+async def submit_feedback(request: Request):
+    from src.workflow.members.registry import Damaged, Refused
+
+    root = os.getcwd()
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "反馈需要已认证的所有者或在册成员")
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        return _error(415, "feedback.invalid", "本地反馈只接受 JSON 请求")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > app_feedback.MAX_BODY:
+            return _error(413, "feedback.too_large", "反馈请求过大")
+        raw.extend(chunk)
+    try:
+        identifier, org_id, feedback = app_feedback.parse_submission(json.loads(raw))
+    except (ValueError, RecursionError):
+        return _error(400, "feedback.invalid", "反馈只接受有效的工作区编号、请求编号及 1 至 4000 字符的文字")
+    _root(org_id)
+
+    def save():
+        if who.is_owner:
+            app_feedback.submit(root, identifier, feedback, who)
+            return
+        with MemberRegistry(root).while_member_active(who):
+            app_feedback.submit(root, identifier, feedback, who)
+
+    try:
+        await asyncio.to_thread(save)
+    except Refused:
+        return _error(403, "forbidden", "只有在册成员能提交反馈")
+    except app_feedback.FeedbackConflict as error:
+        return _error(409, "feedback.conflict", str(error))
+    except (Damaged, sqlite3.Error, OSError):
+        return _error(503, "feedback.unavailable", "本地反馈暂时无法保存")
+    return Response(status_code=204, headers=_FEEDBACK_HEADERS)
 
 
 class _SignIn(BaseModel):
@@ -391,6 +451,36 @@ async def me(request: Request, response: Response):
     if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
         result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
     return result
+
+
+@router.get("/api/app/me/unread")
+async def workspace_unread(request: Request, response: Response):
+    """Aggregate only the unread activity this session can already see."""
+    from src.utils.home_maintenance import HomeMaintenanceError
+    from src.workflow.members.registry import Damaged, Refused
+
+    response.headers["Cache-Control"] = "no-store"
+    root = os.getcwd()
+    who = _who(request, root)
+    if who is None:
+        return {"organizations": []}
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取工作区未读数需要已认证的同源会话")
+
+    def counts():
+        service = app_channels.channels(root)
+        unread = sum(row.get("unreadCount", 0) for row in service.list(who) if not row.get("muted"))
+        unread += service.unread_thread_count(who)
+        notices = app_notice_inbox.count(root) if who.is_owner else {"unread": 0, "waiting": 0}
+        return {"organizations": [{"orgId": views.home_id(root), "unread": unread + notices["unread"],
+                                  "waiting": notices["waiting"]}]}
+
+    try:
+        return await asyncio.to_thread(counts)
+    except Refused:
+        return {"organizations": []}
+    except (Damaged, app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
+        return _error(409, "unavailable", "暂时无法读取工作区未读数")
 
 
 @router.patch("/api/app/me", status_code=204)
@@ -712,6 +802,26 @@ async def delete_role(org_id: str, role_id: str, request: Request):
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
+class _RoleMembersPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    userIds: List[str] = Field(max_length=MAX_MEMBERS)
+
+
+@router.post(_ORG + "/roles/{role_id}/members/preview")
+async def preview_role_members(org_id: str, role_id: str, body: _RoleMembersPreview, request: Request,
+                               response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "预查授予身份组需要已认证的所有者连接")
+    else:
+        result = await _members_call(lambda: app_members.role_mail_loss(root, who, role_id, body.userIds))
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
+
+
 @router.put(_ORG + "/members/{user_id}/roles")
 async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
@@ -775,7 +885,9 @@ async def revoke_invitation(org_id: str, invitation_id: str, request: Request):
 async def all_invitations(org_id: str, request: Request):
     root = _root(org_id)
     who = member_auth.principal(request, root)
-    return await _members_call(lambda: {"invitations": app_members.all_invitations(root, who)})
+    owner_proven = who.is_owner and app_staff.owner_proof(request)
+    return await _members_call(lambda: {"invitations": app_members.all_invitations(root, who,
+                                                                                   owner_proven=owner_proven)})
 
 
 @router.post(_ORG + "/invitations/batch")
@@ -791,6 +903,25 @@ async def update_invitation(org_id: str, invitation_id: str, body: Dict[str, Any
     root = _root(org_id)
     who = member_auth.principal(request, root)
     return await _members_call(lambda: app_members.update_invitation(root, who, invitation_id, body), write=True)
+
+
+@router.post(_ORG + "/invitations/{invitation_id}/resend")
+async def resend_invitation(org_id: str, invitation_id: str, body: Dict[str, Any], request: Request,
+                            response: Response):
+    """更换有效邮箱邀请的单次链接，由所有者复制转交。"""
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "只有已认证的所有者能更换邮箱邀请链接")
+    elif body:
+        result = _error(400, "invalid", "换链只接受空 JSON 对象")
+    else:
+        result = await _members_call(
+            lambda: app_members.resend_invitation(root, who, invitation_id, _origin(request)), write=True)
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.patch(_ORG + "/members/{user_id}", status_code=204)
@@ -4194,28 +4325,110 @@ async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], req
         return _error(409, "unavailable", "个人技能无法处理，请检查格式、版本和存储权限")
 
 
+def _may_access_desktop_uploads(request: Request, root: str) -> bool:
+    return member_auth.principal(request, root).is_owner and app_staff.owner_proof(request)
+
+
 @router.get(_ORG + "/artifacts")
-async def artifacts(org_id: str, q: str = "", kind: str = "", kinds: str = ""):
+async def artifacts(org_id: str, request: Request, response: Response, q: str = "", kind: str = "", kinds: str = ""):
     root = _root(org_id)
     wanted = {value for value in [kind, *kinds.split(",")] if value} or None
-    return _listing(lambda: views.artifacts(root, query=q, kinds=wanted))
+    include_uploads = _may_access_desktop_uploads(request, root)
+    if include_uploads:
+        response.headers["Cache-Control"] = "no-store"
+    return _listing(lambda: views.artifacts(root, query=q, kinds=wanted, include_uploads=include_uploads))
+
+
+@router.post(_ORG + "/artifacts/files", status_code=201)
+async def upload_artifact(org_id: str, request: Request, response: Response):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    if not _may_access_desktop_uploads(request, root):
+        return _error(403, "owner_proof_required", "上传 HTML 制品需要已认证的所有者")
+    try:
+        title, html = await app_artifact_upload.read_form(request)
+        artifact = await asyncio.to_thread(views.upload_artifact, root, title, html)
+    except app_artifact_upload.UploadError as error:
+        return _error(error.status, error.code, str(error))
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "暂时无法保存 HTML 制品")
+    response.headers["Cache-Control"] = "no-store"
+    return artifact
 
 
 @router.get(_ORG + "/artifacts/{artifact_id}")
-async def artifact(org_id: str, artifact_id: str, version: int | None = None):
-    found = views.artifact(_root(org_id), artifact_id, version)
+async def artifact(org_id: str, artifact_id: str, request: Request, response: Response, version: int | None = None):
+    root = _root(org_id)
+    include_uploads = _may_access_desktop_uploads(request, root)
+    if include_uploads:
+        response.headers["Cache-Control"] = "no-store"
+    try:
+        found = views.artifact(root, artifact_id, version, include_uploads=include_uploads)
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "暂时无法读取制品")
     return found if found is not None else _error(404, "not_found", "没有这个制品")
 
 
+
+@router.get(_ORG + "/artifacts/{artifact_id}/versions")
+async def desktop_artifact_versions(org_id: str, artifact_id: str, request: Request):
+    return await _artifact_read(org_id, artifact_id, request, app_artifacts.versions)
+
+
+@router.get(_ORG + "/artifacts/{artifact_id}/download")
+async def desktop_artifact_download(org_id: str, artifact_id: str, request: Request, version: int | None = None):
+    return await _artifact_read(org_id, artifact_id, request,
+                                lambda root, aid: app_artifacts.download(root, org_id, aid, version))
+
+
+@router.get(_ORG + "/artifacts/{artifact_id}/file")
+async def desktop_artifact_file(org_id: str, artifact_id: str, request: Request, version: int | None = None,
+                                format: str = "", expires: int | None = None, signature: str = ""):
+    return await _artifact_read(
+        org_id, artifact_id, request,
+        lambda root, aid: app_artifacts.file(root, org_id, aid, version, format, expires, signature),
+    )
+
+
+async def _artifact_read(org_id, artifact_id, request, action):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "查看制品文件和历史需要已认证的所有者")
+    try:
+        return await asyncio.to_thread(action, root, artifact_id)
+    except app_artifacts.ArtifactReadError as error:
+        return _error(error.status, error.code, str(error))
+    except (OSError, ValueError, TypeError):
+        return _error(409, "artifact.unavailable", "无法读取已保存的制品")
+
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):
-    """删掉助理做的一个页面（和旧接口 DELETE /api/artifacts/{id} 同一个登记处）。"""
     from src.agents.tools.artifacts import ArtifactStore
+    from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
+
     root = _root(org_id)
     refused = await _owner_write(request, root, "制品")
     if refused:
         return refused
-    removed = await asyncio.to_thread(ArtifactStore(root).delete, artifact_id)
+    include_uploads = _may_access_desktop_uploads(request, root)
+
+    def remove():
+        if include_uploads:
+            with home_maintenance(root):
+                uploads = ArtifactStore(root, desktop_uploads=True)
+                if uploads.exists(artifact_id):
+                    return uploads.delete(artifact_id, strict=True)
+        return ArtifactStore(root).delete(artifact_id)
+
+    try:
+        removed = await asyncio.to_thread(remove)
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "暂时无法删除制品")
     return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
 
 

@@ -915,6 +915,14 @@ html:not([data-pointer]) .arrival-have__link:focus-visible {
 }
 
 /* ---------- feedback ---------- */
+.feedback-inbox__item {
+  display: block;
+}
+.feedback-inbox__text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .arrival-feedback .arrival-hero {
   height: 132px;
 }

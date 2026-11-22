@@ -1,12 +1,13 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 295 个，剩 **336** 个：
-- **要做：261**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 302 个，剩 **329** 个：
+- **要做：254**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
-- **按已定决定不做：12**
+- **按已定决定不做：13**
+- **暂缓：4**（投票与选择卡，等智能体进团队频道）
 
-表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办或已定不做。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
 > **「已接」不等于「能用」（2026-11-22 查出）**：「已接」只按路由登记算，里面至少三十来个是固定回答：
 > `app_api.py` 的 `_EMPTY` 表回固定的空，另一些回固定值或一律拒绝。多数是如实的「没有这个功能」，但数据明明存在却回空的是缺陷：
@@ -114,7 +115,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
 
-### org/agents（35 个，要做 29）
+### org/agents（35 个，要做 23）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -263,7 +264,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 9）
+### org/me（12 个，要做 7）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -280,20 +281,20 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
-### org/artifacts（11 个，要做 11）
+### org/artifacts（11 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/artifacts` | `artifacts.create` | 读已接、写没接；界面代码里没调用 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 读已接、写没接 |
-| ☐ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` |  |
-| ☐ | GET | `ORG/artifacts/{x}/file${version ` | `artifacts.fileBlob` |  |
+| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 已接所有者私有 UTF-8 HTML 上传和 Drive 隔离预览。其它格式返回 415，频道或话题挂载返回 422。通用文件上传仍待接。 |
+| ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML 和已存历史版本 |
+| ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者：助理制品和上传文件的原始 HTML、已存历史版本 |
 | ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |
 | ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
 | ☐ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` |  |
 | ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
-| ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
+| ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的 HTML 快照，不推断逐版作者或备注。 |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
 ### org/threads（10 个，要做 6）
@@ -540,11 +541,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/notifications/{x}/read` | `notifications.read` | 仅所有者的后台通知 |
 | ☑ | POST | `ORG/notifications/{x}/snooze` | `notifications.snooze` | 仅所有者的后台通知 |
 
-### /api/app/feedback（4 个，要做 4）
+### /api/app/feedback（4 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/feedback` | `system.sendFeedback` |  |
+| ☑ | POST | `/api/app/feedback` | `system.sendFeedback` | 已认证成员或所有者提交本地文字反馈，另有仅所有者可读的本地收件箱 |
 | ☐ | POST | `/api/app/feedback/files` | `system.uploadFeedbackFile` |  |
 | ☐ | DELETE | `/api/app/feedback/files/{x}` | `system.dropFeedbackFile` |  |
 | ☐ | POST | `/api/app/feedback/offers/{x}` | `system.decideFeedbackOffer` |  |
@@ -638,12 +639,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/reminders` | `reminders.create` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 界面代码里没调用 |
 
-### /api/app/me（3 个，要做 2）
+### /api/app/me（3 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `/api/app/me/password` | `account.addPassword` |  |
-| ☐ | GET | `/api/app/me/unread` | `account.unread` |  |
+| ☑ | GET | `/api/app/me/unread` | `account.unread` | 按当前账号汇总未静音频道的新消息和已关注话题。所有者另外计入自己的通知；等待数沿用通知收件箱口径。 |
 | ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
 ### org/deletion（3 个，要做 3）
@@ -863,11 +864,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | GET | `ORG/members/{x}/removal` | `orgs.removal` | 仅已认证所有者可预览在册成员。移除不转交智能体、不更改模型或暂停例行工作。成员电脑随成员身份失去访问权，预览不列出其私有登记。 |
 
-### org/invitations（1 个，要做 1）
+### org/invitations（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/invitations/{x}/resend` | `orgs.resendInvitation` |  |
+| ☑ | POST | `ORG/invitations/{x}/resend` | `orgs.resendInvitation` | 所有者可为有效的一次性邮箱邀请更换链接，保留原到期时间和权限；新链接当次返回，由人转交。 |
 
 ### org/audit（1 个，要做 0）
 
@@ -881,11 +882,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | PUT | `ORG/permissions/{x}` | `roles.setRow` |  |
 
-### org/roles（1 个，要做 1）
+### org/roles（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/roles/{x}/members/preview` | `roles.mailLoss` |  |
+| ☑ | POST | `ORG/roles/{x}/members/preview` | `roles.mailLoss` | 所有者在授予身份组前预查在册成员与授权。工作区无智能体邮箱绑定，预查不写入。 |
 
 ### org/agent-lines（1 个，要做 1）
 

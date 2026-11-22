@@ -210,6 +210,12 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
     return MemberRegistry(root).set_member_groups(actor, member_id, role_ids)
 
 
+def role_mail_loss(root: str, actor: Principal, role_id: str, member_ids: List[str]) -> Dict[str, Any]:
+    MemberRegistry(root).check_group_grants(actor, role_id, member_ids)
+    # 工作区没有 agent 邮箱绑定。本机 IMAP 是独立能力，授予身份组不会撤掉它的访问。
+    return {"mailboxes": []}
+
+
 def removal_preview(root: str, actor: Principal, member_id: str) -> Dict[str, Any]:
     """读已在册成员的移除预览，实际移除仍要重新核对权限。"""
     if not MemberRegistry(root).manages(actor, member_id):
@@ -300,18 +306,21 @@ def invite(root: str, actor: Principal, body: Mapping[str, Any], origin: str) ->
     return {"invitation": invitation, "url": invitation["url"]}
 
 
-def all_invitations(root: str, actor: Principal) -> List[Dict[str, Any]]:
+def all_invitations(root: str, actor: Principal, *, owner_proven: bool = False) -> List[Dict[str, Any]]:
     """没用掉的邀请，过期的也列出来（status=expired），直到登记处下次清理。"""
     from datetime import datetime, timezone
     state = MemberRegistry(root).snapshot()
     if not _may_see_invitations(state, actor):
         raise Refused("没有查看邀请的权限")
-    names, stamp = _names(root, state), datetime.now(timezone.utc).isoformat(timespec="seconds")
+    names, moment = _names(root, state), datetime.now(timezone.utc)
+    stamp = moment.isoformat(timespec="seconds")
     rows = []
     for invitation_id, item in state["invitations"].items():
         row = _invitation(invitation_id, item, names)
         row.pop("url", None)
         row["status"] = "pending" if str(item.get("expires") or "") > stamp else "expired"
+        row["canRegenerateLink"] = bool(owner_proven and actor.is_owner and row["status"] == "pending"
+                                        and MemberRegistry.can_rotate_email_invitation(state, invitation_id, moment))
         rows.append(row)
     return sorted(rows, key=lambda row: row["createdAt"], reverse=True)
 
@@ -381,6 +390,11 @@ def update_invitation(root: str, actor: Principal, invitation_id: str, body: Map
             raise LookupError("没有这份邀请")
         groups = list(found.get("groups") or [])
     return {"roleIds": groups, "channelIds": [], "agentIds": []}
+
+
+def resend_invitation(root: str, actor: Principal, invitation_id: str, origin: str) -> Dict[str, str]:
+    token, expires_at = MemberRegistry(root).rotate_email_invitation(actor, invitation_id)
+    return {"url": f"{origin}/invite/{token}", "expiresAt": expires_at}
 
 
 def revoke_invitation(root: str, actor: Principal, invitation_id: str) -> None:

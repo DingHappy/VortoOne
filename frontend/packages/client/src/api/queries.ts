@@ -2981,6 +2981,7 @@ export function useResendInvitation(orgId: string) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: (invitationId: string) => api.orgs.resendInvitation(orgId, invitationId),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.invitations(orgId) }),
   });

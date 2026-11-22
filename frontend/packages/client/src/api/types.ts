@@ -105,6 +105,11 @@ export interface FeedbackInput {
   files?: string[];
 }
 
+export interface FeedbackInboxPage {
+  items: { id: string; text: string; createdAt: string; author: "owner" | "member" }[];
+  nextCursor: number | null;
+}
+
 /**
  * `message.meta.feedbackOffer` (server-made): a report about the app the agent offered on its own, under its reply.
  * Only `forUserId` sees its row and decides it (`decideFeedbackOffer`); `auto`: it went with the reply, because they
@@ -154,6 +159,8 @@ export interface AuthConfig {
   supportEmail?: string | null;
   /** The server takes feedback (`POST /api/app/feedback`): the apps show the form; absent: a server too old to. */
   feedback?: boolean;
+  /** Text feedback stays in this workspace and can be read by its owner. */
+  feedbackLocal?: boolean;
   /** It goes to the VortoOne team, not to whoever runs this server: the form says so and takes pictures only. */
   feedbackRelay?: boolean;
   /** Every workspace gets a computer of its own (the Cloud); absent: a server too old to say. */
@@ -2812,6 +2819,8 @@ export interface InvitationWithStatus {
   invitedBy?: string | null;
   /** Its link, the same as the email's, to copy at any time (ADR 0090); null for one sent before that. */
   url?: string | null;
+  /** A manual one-use link can be regenerated now; absent on servers with the original resend flow. */
+  canRegenerateLink?: boolean;
 }
 
 /** What the invite dialog sends (ADR 0090, 0184): the addresses, and the cargos, channels, agents and note for all. */

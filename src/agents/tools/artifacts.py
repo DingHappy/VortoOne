@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -75,8 +76,10 @@ class ArtifactStore:
 
     _ID_RE = re.compile(r"[A-Za-z0-9_-]{1,80}")
 
-    def __init__(self, repo_root: str) -> None:
-        self.root = state_dir(repo_root) / "artifacts"
+    def __init__(self, repo_root: str, *, desktop_uploads: bool = False) -> None:
+        self.root = state_dir(repo_root) / ("desktop-artifacts" if desktop_uploads else "artifacts")
+        if desktop_uploads and self.root.is_symlink():
+            raise ValueError("桌面制品目录不可用")
 
     @classmethod
     def _safe_id(cls, artifact_id: str) -> Optional[str]:
@@ -97,16 +100,29 @@ class ArtifactStore:
 
         超过体积上限（见 max_bytes，默认 16 MiB）抛 ValueError —— 对齐 CC 的大小约束。
         """
+        aid = self._safe_id(artifact_id) if artifact_id else None
+        if not aid:
+            aid = f"{_slugify(title)}-{uuid.uuid4().hex[:6]}"
+        return self._publish_at(self._dir(aid), aid, title, html, kind)
+
+    def publish_new(self, title: str, html: str) -> dict:
+        """Publish a new HTML artifact only once all initial files are present."""
+        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        aid = f"upload-{uuid.uuid4().hex}"
+        with tempfile.TemporaryDirectory(prefix=".upload-", dir=self.root) as temporary:
+            destination = Path(temporary) / aid
+            meta = self._publish_at(destination, aid, title, html, "html")
+            destination.rename(self._dir(aid))
+        return meta
+
+    @staticmethod
+    def _publish_at(d: Path, aid: str, title: str, html: str, kind: str) -> dict:
         data = (html or "").encode("utf-8")
         cap = max_bytes()
         if len(data) > cap:
             raise ValueError(f"制品体积 {len(data)} 字节超过上限 {cap} 字节"
                              f"（{cap // (1024 * 1024)} MiB）")
         now = datetime.now().isoformat(timespec="seconds")
-        aid = self._safe_id(artifact_id) if artifact_id else None
-        if not aid:
-            aid = f"{_slugify(title)}-{uuid.uuid4().hex[:6]}"
-        d = self._dir(aid)
         d.mkdir(parents=True, exist_ok=True)
         meta_path = d / "meta.json"
         version, created, versions = 1, now, []
@@ -135,7 +151,7 @@ class ArtifactStore:
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         return meta
 
-    def delete(self, artifact_id: str) -> bool:
+    def delete(self, artifact_id: str, *, strict: bool = False) -> bool:
         """删除一个制品（整目录）。成功 True；id 非法或不存在 False。"""
         aid = self._safe_id(artifact_id)
         if not aid:
@@ -144,7 +160,7 @@ class ArtifactStore:
         if not d.is_dir():
             return False
         import shutil
-        shutil.rmtree(d, ignore_errors=True)
+        shutil.rmtree(d, ignore_errors=not strict)
         return True
 
     def meta(self, artifact_id: str) -> Optional[dict]:
@@ -159,8 +175,7 @@ class ArtifactStore:
         except Exception:  # noqa: BLE001
             return None
 
-    def html(self, artifact_id: str, version: Optional[int] = None) -> Optional[str]:
-        """取制品 HTML。version 给定取该版本快照（缺失则回退当前）；否则取当前(index.html)。"""
+    def _html_path(self, artifact_id: str, version: Optional[int], *, strict: bool) -> Optional[Path]:
         aid = self._safe_id(artifact_id)
         if not aid:
             return None
@@ -171,9 +186,24 @@ class ArtifactStore:
             except (TypeError, ValueError):
                 vp = None
             if vp and vp.is_file():
-                return vp.read_text(encoding="utf-8")
+                return vp
+            if strict:
+                # 只有老格式的单版本制品没有快照；名称或版本不符不能替换成最新。
+                meta = self.meta(aid)
+                if not meta or meta.get("versions") or version != int(meta.get("version", 1)):
+                    return None
         p = d / "index.html"
-        return p.read_text(encoding="utf-8") if p.is_file() else None
+        return p if p.is_file() else None
+
+    def html(self, artifact_id: str, version: Optional[int] = None, *,
+             strict: bool = False) -> Optional[str]:
+        """取制品 HTML。指定版本缺失时，旧调用回退当前，strict 调用只接受对应快照。"""
+        path = self._html_path(artifact_id, version, strict=strict)
+        return path.read_text(encoding="utf-8") if path is not None else None
+
+    def has_snapshot(self, artifact_id: str, version: int) -> bool:
+        """不用读取正文即可确认这个版本有对应文件。"""
+        return self._html_path(artifact_id, version, strict=True) is not None
 
     def versions(self, artifact_id: str) -> list[dict]:
         """版本清单 [{v, ts, bytes}]，升序。老 meta 无记录则按当前版本合成一条。"""
