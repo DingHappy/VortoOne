@@ -81,6 +81,10 @@ async def runtime_lifespan():
             set_team_runner(team_runner)
             from src.scheduling.staff_runner import set_staff_service
             set_staff_service(root, get_runner(), on_update=lambda task: notify_transition(root, task))
+            # 完整能力的 agent 用主助理那一套工具（装配在会话层，下层不反向导入）
+            from src.agents.staff import set_full_toolset
+            from src.web.agent_toolset import main_assistant_toolset
+            set_full_toolset(main_assistant_toolset)
             try:
                 await team_runner.recover()
             except Exception:  # noqa: BLE001 —— 恢复失败不挡住服务启动；坏掉的任务在列表里可见
@@ -93,6 +97,8 @@ async def runtime_lifespan():
                 set_team_runner(None)
                 from src.scheduling.staff_runner import set_staff_service
                 set_staff_service(os.getcwd())
+                from src.agents.staff import set_full_toolset
+                set_full_toolset(None)
                 await team_runner.close()
             stop.set()
             for task in (watch, observer):

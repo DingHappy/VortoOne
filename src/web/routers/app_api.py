@@ -1610,7 +1610,63 @@ async def approvals(org_id: str, request: Request, response: Response, status: s
                               for item in app_covers.visible(root, bridge.pending_confirmations(), value,
                                                              _needs_owner_file_proof)]}
     live = [views.approval(root, item) for item in bridge.pending_confirmations()] if bridge else []
-    return {"approvals": live + await asyncio.to_thread(_staff_proposal_approvals, root)}
+    return {"approvals": live + [views.staff_action_approval(root, task, card) for task, card in _staff_actions(root)]
+            + await asyncio.to_thread(_staff_proposal_approvals, root)}
+
+
+def _staff_actions(root: str) -> List[Any]:
+    """agent 在后台等批准的那一步：（任务, 审批卡）。执行池没连上或台账读不出来时不列。
+    只列这个进程里真的还有人在等的卡（重启前的卡显示为中断，批了也没人接着做）。"""
+    from src.scheduling.staff_runner import get_staff_service
+    from src.workflow.tasks.tasks import TaskLedger
+    try:
+        actions = get_staff_service(root).actions
+        rows = []
+        for task in TaskLedger(root).list(limit=500):
+            card = (task.collaboration or {}).get("approval") or {}
+            if task.status != "blocked" or card.get("status") != "pending":
+                continue
+            card = actions.view(task.id)
+            if card["status"] == "pending":
+                rows.append((task, card))
+        return rows
+    except (ValueError, OSError):
+        return []
+
+
+def _staff_action(root: str, approval_id: str):
+    """（任务, 审批卡, 是否还是界面上看到的那一版）；找不到返回 None。"""
+    action_id, _, shown = approval_id.partition("~")
+    for task, card in _staff_actions(root):
+        if card["payload"]["id"] == action_id:
+            return task, card, card["digest"][:16] == shown
+    return None
+
+
+async def _decide_staff_action(root: str, approval_id: str, approve: bool, request: Request, reason: str = ""):
+    """主人在新界面批准或拒绝 agent 的一步：按界面上看到的那一版核对，变了就不批。
+    决定要在事件循环线程里做：它会叫醒正在等这一步的 agent。"""
+    from src.scheduling.staff_runner import get_staff_service
+    from src.workflow.staff.owner_confirmation import owner_route
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "批准 agent 的操作需要已认证的所有者")
+    found = _staff_action(root, approval_id)
+    if found is None:
+        return _error(409, "approval_decided", "这一步已经不在等待")
+    task, card, current = found
+    if not current:
+        return _error(409, "approval_changed", "这一步的内容已经变了，请刷新后重新核对")
+    p = card["payload"]
+    try:
+        with owner_route(root):
+            get_staff_service(root).actions.decide(
+                task.id, p["id"], approve=approve, expected_digest=card["digest"],
+                # 拒绝要给 agent 一个理由；界面上没写就如实告诉它是主人拒的
+                reason=str(reason or "").strip()[:500] or ("" if approve else "主人在审批里拒绝了这一步"),
+                nonce=p["nonce"], round=p["round"], instance=p["instance"], runtime=p["runtime"])
+    except (ValueError, OSError) as error:
+        return _error(409, "approval_decided", str(error))
+    return views.staff_action_approval(root, task, card, status="approved" if approve else "denied")
 
 
 def _needs_owner_file_proof(confirmation_id: str) -> bool:
@@ -1683,6 +1739,12 @@ async def approval(org_id: str, approval_id: str, request: Request, response: Re
             return _error(404, "not_found", "这条提议已经不在等待，或内容已经变了")
         response.headers["Cache-Control"] = "no-store"
         return views.staff_proposal_approval(root, found[0])
+    if approval_id.startswith(views.STAFF_ACTION_PREFIX):
+        action = _staff_action(root, approval_id)
+        if action is None or not action[2]:
+            return _error(404, "not_found", "这一步已经不在等待，或内容已经变了")
+        response.headers["Cache-Control"] = "no-store"
+        return views.staff_action_approval(root, action[0], action[1])
     bridge = existing_bridge(root)
     pending = bridge.pending(approval_id) if bridge else None
     if pending is None:
@@ -1925,8 +1987,8 @@ async def _decide_covering(root: str, who, approval_id: str, approve: bool):
     value = app_covers.covering(root, who)
     if value is None:
         return _error(403, "forbidden", "你现在没有替所有者代批")
-    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
-        return _error(403, "forbidden", "专员提议要所有者本人决定")
+    if approval_id.startswith((views.STAFF_PROPOSAL_PREFIX, views.STAFF_ACTION_PREFIX)):
+        return _error(403, "forbidden", "专员提议和 agent 的操作要所有者本人决定")
     bridge = existing_bridge(root)
     pending = bridge.pending(approval_id) if bridge else None
     if pending is None:
@@ -1944,7 +2006,7 @@ async def _decide_covering(root: str, who, approval_id: str, approve: bool):
     return app_covers.mark(decided, root, who.id)
 
 
-async def _decide(org_id: str, approval_id: str, approve: bool, request: Request):
+async def _decide(org_id: str, approval_id: str, approve: bool, request: Request, reason: str = ""):
     from src.gateway.paired_browser_task import PairedBrowserNotReady
     from src.web.routers.computers import has_computer_owner_proof, has_owner_browser_session
     root = _root(org_id)
@@ -1955,6 +2017,8 @@ async def _decide(org_id: str, approval_id: str, approve: bool, request: Request
         return await _decide_covering(root, who, approval_id, approve)
     if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
         return await _decide_staff_proposal(root, approval_id, approve, request)
+    if approval_id.startswith(views.STAFF_ACTION_PREFIX):
+        return await _decide_staff_action(root, approval_id, approve, request, reason)
     bridge = existing_bridge(root)
     try:
         decided = await bridge.decide(
@@ -1984,7 +2048,7 @@ async def approve(org_id: str, approval_id: str, body: _Approve, request: Reques
 
 @router.post(_ORG + "/approvals/{approval_id}/refuse")
 async def refuse(org_id: str, approval_id: str, body: _Approve, request: Request):
-    return await _decide(org_id, approval_id, False, request)
+    return await _decide(org_id, approval_id, False, request, body.reason or "")
 
 
 class _DecideMany(BaseModel):
@@ -2000,11 +2064,11 @@ class _DecideMany(BaseModel):
 async def decide_many(org_id: str, body: _DecideMany, request: Request):
     """卡片上的「全部批准 / 全部拒绝」：只处理界面列出的这几条，每条照常单独决定、只批这一次。
     「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。
-    专员提议要一条条核对内容，不参加批量，也跳过。"""
+    专员提议和 agent 的操作要一条条核对内容，不参加批量，也跳过。"""
     _root(org_id)
     decided, skipped = [], []
     for approval_id in dict.fromkeys(body.ids):
-        if body.only is not None or approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        if body.only is not None or approval_id.startswith((views.STAFF_PROPOSAL_PREFIX, views.STAFF_ACTION_PREFIX)):
             skipped.append(approval_id)
             continue
         answer = await _decide(org_id, approval_id, body.decision == "approve", request)
