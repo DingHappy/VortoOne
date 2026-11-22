@@ -165,14 +165,15 @@ class MainChatBridge:
     # ── 界面 → 会话 ───────────────────────────────────────────────────────────
 
     async def post(self, body: str, client_id: Optional[str], *, file_owner: bool = False,
-                   local_browser: bool = False, paired_browser: bool = False) -> Dict[str, Any]:
+                   local_browser: bool = False, paired_browser: bool = False,
+                   rid: Optional[str] = None) -> Dict[str, Any]:
         from src.gateway.computer_browser_preview import browser_previews
         from src.gateway.computer_file_authority import OwnerTurn
         from src.gateway.task_browser import task_browser_grant
         from src.web.routers import realtime
         if not views.model_connected():
             raise NoModel()
-        rid = uuid.uuid4().hex
+        rid = rid or uuid.uuid4().hex          # 语音消息事先定好回合号，好把语音条记到这条消息上
         if client_id:
             self.client_ids[rid] = client_id
         message = views.owner_message(self.root, rid, body, client_id=client_id)

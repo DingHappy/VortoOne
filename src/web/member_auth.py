@@ -33,6 +33,18 @@ _TEAM_CHANNEL = _ORG + r"/channels/" + TEAM_CHANNEL_ID_PATTERN
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
+    ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
+    ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
+    ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
+    ("PATCH", _ORG + r"/me/sidebar"),
+    # GIF：搜索和取图（团队频道里发 GIF 用）；密钥只有所有者能管
+    ("GET", _ORG + r"/gifs"),
+    ("GET", _ORG + r"/gifs/[A-Za-z0-9]+/media"),
+    # 语音消息：问能不能发、听录音（看得到那个对话才行）、在团队频道里发；服务商和 Key 只有所有者能管
+    ("GET", _ORG + r"/voice/allowed"),
+    ("GET", _ORG + r"/voice/[A-Za-z0-9_-]+/audio"),
+    ("POST", _TEAM_CHANNEL + r"/voice"),
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
