@@ -13,7 +13,7 @@ from fastapi import WebSocketDisconnect
 
 from src.agents.principal import MEMBER, Principal
 from src.gateway import app_protocol as F
-from src.web import app_channels, app_members, app_staff, app_views as views, member_auth
+from src.web import app_channels, app_members, app_presence, app_staff, app_views as views, member_auth
 from src.workflow.members.channels import is_team_channel
 
 
@@ -54,9 +54,10 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
             await socket.send_json(F.make_app_frame(F.EVENT, channelId=frame["channelId"], event=frame["event"]))
 
     await socket.accept()
-    await socket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=bound[0]))
     watches = {}
+    presence = app_presence.connected(root, actor.id)
     try:
+        await socket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=bound[0]))
         while True:
             if not session_valid() or any(not permitted(channel) for channel in watches if not is_team_channel(channel)):
                 await socket.close(code=1008)
@@ -106,6 +107,7 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
     except WebSocketDisconnect:
         pass
     finally:
+        app_presence.disconnected(presence)
         for task in watches.values():
             task.cancel()
         for task in watches.values():

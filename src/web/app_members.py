@@ -530,11 +530,49 @@ def member_overview(root: str, actor: Principal) -> Dict[str, Any]:
             "proposalsWaitingForMe": 0}
 
 
-def people(root: str) -> List[Dict[str, Any]]:
-    """空间里的人。在线状态没有记录，所有者按在线（服务在跑就是他的），成员按离线。"""
-    now = views.now_iso()
-    return [{**row, "online": row["role"] == "owner", "presence": "online" if row["role"] == "owner" else "offline",
-             "status": None, "lastSeenAt": now if row["role"] == "owner" else None} for row in members(root)]
+def _person_status(row: Dict[str, Any], prefs: Optional[Dict[str, Any]], *, own: bool,
+                   connected: bool) -> Dict[str, Any]:
+    from src.web import app_prefs
+
+    availability = (prefs or {}).get("availability")
+    if availability not in app_prefs.AVAILABILITIES:
+        availability = "auto"
+    if not own and (prefs is None or availability == "hidden"):
+        presence, status = "offline", None
+    else:
+        status = app_prefs.status_line(prefs or {})
+        presence = ("online" if availability == "auto" else availability) if own or connected else "offline"
+    view = {**row, "online": presence in {"online", "away", "busy"}, "presence": presence,
+            "status": status, "lastSeenAt": None}
+    if own:
+        view["availability"] = availability
+    return view
+
+
+def people(root: str, viewer: Principal) -> List[Dict[str, Any]]:
+    """给在册成员看状态。隐身者的可用状态和文字仅本人可见。"""
+    from src.web import app_prefs, app_presence
+
+    connected = app_presence.active_people(root)
+    try:
+        saved = app_prefs.status_preferences(root)
+    except ValueError:
+        # 文件损坏时不能确认谁设了隐身。登录照常，公开状态从严。
+        saved = None
+    return [_person_status(row, saved.get(row["userId"], {}) if saved is not None else None,
+                           own=row["userId"] == viewer.id, connected=row["userId"] in connected)
+            for row in members(root)]
+
+
+def set_person_status(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
+    from src.web import app_prefs
+
+    row = views.person(root) if actor.is_owner else next(
+        (person for person in members(root) if person["userId"] == actor.id), None)
+    if row is None:
+        raise Refused("还不是这个空间的成员")
+    saved = app_prefs.set_status(root, actor.id, body)
+    return _person_status(row, saved, own=True, connected=True)
 
 
 def team_directory(root: str, actor: Principal, *, activity: bool, main_running: bool) -> Dict[str, Any]:

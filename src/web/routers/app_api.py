@@ -508,11 +508,25 @@ async def members(org_id: str, request: Request):
 
 
 @router.get(_ORG + "/people")
-async def people(org_id: str, request: Request):
+async def people(org_id: str, request: Request, response: Response):
     root = _root(org_id)
-    if _who(request, root) is None:
+    who = _who(request, root)
+    if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    return await _members_call(lambda: {"people": app_members.people(root)})
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: {"people": app_members.people(root, who)})
+
+
+@router.put(_ORG + "/me/status")
+async def set_person_status(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and views.owner_connection() and not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "需要所有者证明")
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.set_person_status(root, who, body))
 
 
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
@@ -3560,7 +3574,7 @@ async def app_socket(websocket: WebSocket):
     """每个空间一条连接。订阅与主助理的私聊后，经桥收到这段会话的消息、运行状态和审批事件；
     实时只是尽力而为，界面在重连和订阅确认后会重新读取，内容以读取为准。"""
     from src.web.auth import ws_token_ok
-    from src.web import app_member_realtime
+    from src.web import app_member_realtime, app_presence
     from src.agents.principal import OWNER, Principal
     root = os.getcwd()
     owner = ws_token_ok(websocket)
@@ -3572,7 +3586,6 @@ async def app_socket(websocket: WebSocket):
         await app_member_realtime.serve(websocket, root, member)
         return
     await websocket.accept()
-    await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=views.owner_id(root)))
     bridge = None
     watches: Dict[str, asyncio.Task] = {}
     actor = Principal(OWNER, views.owner_id(root), root)
@@ -3580,7 +3593,9 @@ async def app_socket(websocket: WebSocket):
     def team_session_valid():
         return app_staff.owner_proof(websocket)
 
+    presence = app_presence.connected(root, actor.id) if team_session_valid() or not views.owner_connection() else None
     try:
+        await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=actor.id))
         while True:
             try:
                 frame = json.loads(await websocket.receive_text())
@@ -3626,6 +3641,8 @@ async def app_socket(websocket: WebSocket):
     except WebSocketDisconnect:
         return
     finally:
+        if presence is not None:
+            app_presence.disconnected(presence)
         for watch in watches.values():
             watch.cancel()
         await asyncio.gather(*watches.values(), return_exceptions=True)
