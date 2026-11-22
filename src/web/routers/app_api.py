@@ -3230,9 +3230,11 @@ async def audit(org_id: str, request: Request, actorType: str = "", actorId: str
     def read():
         me = views.me(root)["user"]
         main = views.main_agent_id(root)
-        agent = next((item for item in views.agents(root) if item["id"] == main), {})
+        everyone = views.agents(root)
+        agent = next((item for item in everyone if item["id"] == main), {})
         return app_audit.page(root, owner={"id": me["id"], "name": me["name"]},
                               agent={"id": main, "name": agent.get("name")}, actor_type=actorType,
+                              agents={item["handle"]: {"id": item["id"], "name": item["name"]} for item in everyone},
                               actor_id=actorId, via=via, outcome=outcome, waiting=waiting == "true", kind=kind,
                               before=before, limit=limit)
     try:
