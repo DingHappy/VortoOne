@@ -2894,6 +2894,26 @@ async def thread_mission_draft(org_id: str, thread_id: str, request: Request):
                                   _mission_view(drafts, drafts.get(actor, thread_id, by_thread=True)))
 
 
+@router.get(_ORG + "/threads/{thread_id}/tasks")
+async def mission_draft_thread_tasks(org_id: str, thread_id: str, request: Request):
+    def read(drafts, actor):
+        drafts.get(actor, thread_id, by_thread=True)
+        # 草案不会派活，也没有关联的运行会话。其它任务台账与这个话题无关。
+        return {"tasks": []}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/files")
+async def mission_draft_files(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        drafts.get(actor, mission_id)
+        # 草案存于频道数据库，尚未创建隔离目录或任何 Mission 文件。
+        return {"files": [], "editedOnMachine": []}
+
+    return await _mission_request(org_id, request, read)
+
+
 @router.get(_ORG + "/missions/{mission_id}/plan")
 async def mission_draft_plan(org_id: str, mission_id: str, request: Request):
     return await _mission_request(org_id, request, lambda drafts, actor: {
@@ -2916,6 +2936,24 @@ async def mission_draft_participants(org_id: str, mission_id: str, request: Requ
         row = drafts.get(actor, mission_id)
         return {"owner": {"userId": drafts.channels.history.person_id(row["owner"]),
                           "name": drafts.channels.owner_name}, "participants": []}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/settings")
+async def mission_draft_settings(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        row = drafts.get(actor, mission_id)
+        return {
+            "missionId": row["id"],
+            "rules": [],
+            "stats": {"auto": 0, "asked": 0, "blocked": 0},
+            "agentDefault": {
+                "commandApproval": "always",
+                "canSet": False,
+                "ownerId": drafts.channels.history.person_id(row["owner"]),
+            },
+        }
 
     return await _mission_request(org_id, request, read)
 
