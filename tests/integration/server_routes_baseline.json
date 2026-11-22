@@ -2744,6 +2744,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/mail/providers",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/memories/{memory_id}",
     "methods": [
       "PATCH"
