@@ -2040,7 +2040,6 @@ _EMPTY: Dict[str, Any] = {
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
-    "/connectors/custom": {"servers": []},
     "/mail/accounts": {"accounts": []},
     "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
     "/skill-settings": {"agentsImprove": False},
@@ -2143,6 +2142,117 @@ async def remove_credential(org_id: str, credential_id: str, request: Request, p
         app_credentials.remove(root, credential_id, purge=purge == "true", release=release == "true")
         return None
     return await _credential_call(request, org_id, run, sync=True)
+
+
+# ── 连接器：所有者接的自定义 MCP 服务（见 workflow/workbench/custom_connectors）──
+
+async def _connector_call(request: Request, org_id: str, action, *, read: bool = False):
+    """只有所有者：地址和工具能看，改要带所有者证明。"""
+    from src.workflow.workbench import custom_connectors
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "连接器只有所有者能看和改")
+    if not read and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "改连接器需要已认证的所有者")
+    try:
+        result = await action(root)
+    except custom_connectors.ConnectorError as error:
+        return _error(error.status, error.code, str(error))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"}) if result is not None \
+        else Response(status_code=204)
+
+
+@router.get(_ORG + "/connectors/custom")
+async def custom_connector_list(org_id: str, request: Request):
+    from src.web import app_connectors
+    from src.workflow.workbench import custom_connectors
+
+    async def run(root):
+        return await asyncio.to_thread(
+            lambda: {"servers": [app_connectors.server(item) for item in custom_connectors.servers(root)]})
+    return await _connector_call(request, org_id, run, read=True)
+
+
+@router.post(_ORG + "/connectors/custom")
+async def custom_connector_connect(org_id: str, request: Request):
+    from src.web import app_connectors
+    from src.workflow.workbench import custom_connectors
+    body = await _body(request)
+
+    async def run(root):
+        result = await custom_connectors.connect(root, body)
+        if "server" in result:
+            result = {**result, "server": app_connectors.server(result["server"])}
+        return result
+    return await _connector_call(request, org_id, run)
+
+
+@router.post(_ORG + "/connectors/custom/{server_id}/refresh")
+async def custom_connector_refresh(org_id: str, server_id: str, request: Request):
+    from src.web import app_connectors
+    from src.workflow.workbench import custom_connectors
+
+    async def run(root):
+        return app_connectors.server(await custom_connectors.refresh(root, server_id))
+    return await _connector_call(request, org_id, run)
+
+
+@router.put(_ORG + "/connectors/custom/{server_id}/tools")
+async def custom_connector_tools(org_id: str, server_id: str, request: Request):
+    from src.web import app_connectors
+    from src.workflow.workbench import custom_connectors
+    body = await _body(request)
+
+    async def run(root):
+        return app_connectors.server(await asyncio.to_thread(custom_connectors.save_tools, root, server_id, body))
+    return await _connector_call(request, org_id, run)
+
+
+@router.delete(_ORG + "/connectors/custom/{server_id}", status_code=204)
+@router.delete(_ORG + "/connectors/{server_id}", status_code=204)
+async def connector_disconnect(org_id: str, server_id: str, request: Request):
+    from src.workflow.workbench import custom_connectors
+
+    async def run(root):
+        await asyncio.to_thread(custom_connectors.disconnect, root, server_id)
+    return await _connector_call(request, org_id, run)
+
+
+@router.patch(_ORG + "/connectors/{server_id}")
+async def connector_rename(org_id: str, server_id: str, request: Request):
+    from src.web import app_connectors
+    from src.workflow.workbench import custom_connectors
+    body = await _body(request)
+
+    async def run(root):
+        label = body.get("label") if isinstance(body, dict) else None
+        return app_connectors.connection(await asyncio.to_thread(custom_connectors.rename, root, server_id, label))
+    return await _connector_call(request, org_id, run)
+
+
+async def _connector_unsupported(request: Request, org_id: str):
+    from src.web import app_connectors
+    from src.workflow.workbench import custom_connectors
+
+    async def run(_root_path):
+        raise custom_connectors.ConnectorError("connector.unsupported", app_connectors.UNSUPPORTED, 409)
+    return await _connector_call(request, org_id, run)
+
+
+@router.post(_ORG + "/connectors")
+async def connector_with_key(org_id: str, request: Request):
+    """官方目录是空的：不存一份用不上的连接。"""
+    return await _connector_unsupported(request, org_id)
+
+
+@router.post(_ORG + "/connectors/oauth/complete")
+async def connector_oauth_complete(org_id: str, request: Request):
+    return await _connector_unsupported(request, org_id)
+
+
+@router.post(_ORG + "/connectors/{connector}/oauth/start")
+async def connector_oauth_start(org_id: str, connector: str, request: Request):
+    return await _connector_unsupported(request, org_id)
 
 
 # ── 个人 Vault：无原值读取，不参与 Agent 工具或共享 ────────────────────────────

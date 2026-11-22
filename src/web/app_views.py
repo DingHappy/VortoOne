@@ -455,10 +455,15 @@ def staff_action_approval(root: str, task: Any, card: Dict[str, Any], *, status:
     if p.get("tainted"):
         detail = "⚠️ 这件事读取过外部内容（网页、搜索或外部工具），请确认这一步确实是你要它做的。\n\n" + detail
     detail += f"\n\n这件事：{str(task.prompt or '')[:300]}"
+    name, tool = p.get("member_name") or "agent", str(p.get("tool") or "")
+    from src.agents.tools.custom_connectors import PREFIX
+    title = f"{name} 要{_OPERATION_WORDS.get(kind, kind)}：{tool}"
+    if tool.startswith(PREFIX):         # 连接器工具给模型的名字带哈希，人看不懂：用确认文案里的连接器名和工具名
+        title = f"{name}：{str(p.get('message') or '').strip().splitlines()[0] if p.get('message') else tool}"
     return {"id": f"{p['id']}~{card['digest'][:16]}", "runId": task.id, "agentId": agent,
             "channelId": dm_channel_id(agent), "threadId": message_id(task.id, "user"), "messageId": None,
             "tool": str(p.get("tool") or ""), "scope": kind,
-            "title": f"{p.get('member_name') or 'agent'} 要{_OPERATION_WORDS.get(kind, kind)}：{p.get('tool') or ''}"[:120],
+            "title": title[:120],
             "detail": detail, "params": {}, "status": status,
             "expiresAt": _iso(p.get("expires_at")), "createdAt": _iso(p.get("created")),
             "decidedByUserId": owner_id(root) if status != "pending" else None,
