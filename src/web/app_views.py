@@ -437,6 +437,225 @@ def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
             "canDecide": status == "pending", **({"websiteLogin": website} if website else {})}
 
 
+STAFF_PROPOSAL_PREFIX = "staff-proposal-"
+_PROPOSAL_KINDS = {"member": "新建 agent", "role": "岗位", "routine": "例行工作", "department": "部门",
+                   "bundle": "开通单", "routine_migration": "例行工作迁移"}
+_OPERATION_WORDS = {"read": "读", "own_data": "改主人自己的资料", "draft": "起草", "write": "写",
+                    "execute": "执行命令", "interact": "操作界面"}
+
+
+def _grants_text(grants: Dict[str, Any]) -> str:
+    grants = grants if isinstance(grants, dict) else {}
+    operations = "、".join(_OPERATION_WORDS.get(str(op), str(op)) for op in grants.get("operations") or []) or "无"
+    tools = "、".join(str(tool) for tool in grants.get("tools") or []) or "无"
+    return (f"能做：{operations}；工具：{tools}；联网：{'是' if grants.get('web') else '否'}；"
+            f"看主人的私人资料：{'是' if grants.get('sees') else '否'}")
+
+
+def _proposal_text(snapshot: Dict[str, Any]) -> tuple[str, str]:
+    """（标题，正文）。正文列出批准后会登记的全部要点；完整内容仍以摘要核对为准。"""
+    import json as _json
+    kind, data = snapshot.get("kind"), snapshot.get("data") or {}
+    previous = snapshot.get("previous")
+    if kind == "member":
+        role = snapshot.get("role_snapshot") or {}
+        title = f"新建 agent「{data.get('name') or data.get('id')}」" if not previous else \
+            f"修改 agent「{data.get('name') or data.get('id')}」"
+        body = (f"岗位：{role.get('title') or data.get('role')}\n执行框架：{data.get('engine') or '默认'}"
+                f"\n模型：{data.get('model') or '默认'}\n{_grants_text(role.get('grants'))}")
+    elif kind == "role":
+        title = f"{'修改' if previous else '新建'}岗位「{data.get('title') or data.get('id')}」"
+        body = _grants_text(data.get("grants"))
+        if previous:
+            body = f"改成：{body}\n原来：{_grants_text((previous.get('data') or previous).get('grants'))}"
+        if data.get("brief"):
+            body += f"\n岗位说明：{str(data['brief'])[:600]}"
+    elif kind == "routine":
+        title = f"{'修改' if previous else '新建'}例行工作「{data.get('name') or data.get('id')}」"
+        body = (f"交给：{data.get('member')}\n时间：{data.get('schedule')}（{data.get('timezone') or ''}）"
+                f"\n要做的事：{str(data.get('prompt') or '')[:1200]}")
+    else:
+        title = _PROPOSAL_KINDS.get(str(kind), "提议")
+        body = _json.dumps(data, ensure_ascii=False)[:1500]
+    return title, body
+
+
+def staff_proposal_approval(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """一条待批的专员提议，整理成界面的审批。id 带着摘要前缀：内容变了，旧 id 就批不了。"""
+    from datetime import timedelta
+    title, body = _proposal_text(item["snapshot"])
+    origin = "助理在主要聊天里提的。" if item.get("origin") == "assistant" else ""
+    detail = (f"{origin}{body}\n\n理由：{item.get('reason') or ''}"
+              "\n\n批准后才会登记；按这里列出的内容核对，有不对的地方就拒绝。")
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=30)
+    agent = main_agent_id(root)
+    return {"id": f"{item['id']}~{item['digest'][:16]}", "runId": None, "agentId": agent,
+            "channelId": dm_channel_id(agent), "threadId": None, "messageId": None,
+            "tool": "staff_propose", "scope": str(item["snapshot"].get("kind") or ""),
+            "title": ("助理提议：" if origin else "待批准：") + title, "detail": detail, "params": {},
+            "status": "pending", "expiresAt": _iso(expires.timestamp()), "createdAt": created,
+            "decidedByUserId": None, "decidedAt": None, "reason": None, "canDecide": True, "routine": False}
+
+
+_CARD_STATE = {"pending": "pending", "applying": "creating", "approved": "created", "rejected": "denied"}
+PROPOSAL_CARD_DAYS = 30
+
+
+def agent_proposal_card_id(proposal_id: str) -> str:
+    return _id("agent-proposal-card", proposal_id)
+
+
+def _assistant_member_proposals(root: str) -> List[Dict[str, Any]]:
+    """助理在主要聊天里提的、会出卡片的：新建 agent（kind=member、没有前一版），
+    和带新 agent 的开通单（kind=bundle、含 member）。"""
+    from src.workflow.staff.approvals import StaffApprovals
+    rows = []
+    for item in StaffApprovals(root).list():
+        snapshot = item["snapshot"]
+        if item.get("origin") != "assistant" or item.get("status") not in _CARD_STATE:
+            continue
+        if (snapshot.get("kind") == "member" and not snapshot.get("previous")) or \
+                (snapshot.get("kind") == "bundle" and (snapshot.get("data") or {}).get("member")):
+            rows.append(item)
+    return rows
+
+
+def team_proposal_card_id(proposal_id: str) -> str:
+    return _id("team-proposal-card", proposal_id)
+
+
+def _proposed_routine(row: Dict[str, Any]) -> Dict[str, Any]:
+    schedule = str(row.get("schedule") or "")
+    return {"name": str(row.get("name") or row.get("id") or ""), "prompt": str(row.get("prompt") or ""),
+            "schedule": schedule, "rule": None, "cron": schedule if len(schedule.split()) == 5 else "",
+            "timezone": str(row.get("timezone") or ""), "description": schedule, "report": "always",
+            "access": "read", "reportsIn": None}
+
+
+def team_proposal(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """界面的 TeamProposalCard：开通单里的新 agent、它的岗位和例行工作。「创建」就是按这一版批准整张开通单。"""
+    from datetime import timedelta
+    data = item["snapshot"]["data"]
+    member, role = data["member"], data.get("role") or {}
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    state = _CARD_STATE[item["status"]]
+    agent = {"name": member.get("name") or member["id"], "handle": member["id"],
+             "role": role.get("title") or member.get("role") or "", "line": str(role.get("brief") or "")[:120],
+             "instructions": str(role.get("brief") or ""), "appearance": None, "channel": "",
+             "routines": [_proposed_routine(row) for row in data.get("routines") or []], "firstTask": None}
+    card = {"kind": "team_proposal", "forUserId": owner_id(root),
+            "params": {"lead": member["id"], "agents": [agent], "newChannels": [], "skills": [], "weekly": None,
+                       "approvals": "", "invite": []},
+            "state": state, "decidedByUserId": owner_id(root) if state in {"created", "denied"} else None,
+            "decidedAt": None, "expiresAt": _iso(expires.timestamp()), "error": None}
+    if state == "created":
+        card["created"] = {"agentIds": [member_agent_id(root, member["id"])], "channelIds": [],
+                           "routineIds": [str(row.get("id")) for row in data.get("routines") or []],
+                           "skillIds": [], "skipped": [], "noAi": []}
+    return card
+
+
+def proposal_expired(item: Dict[str, Any]) -> bool:
+    from datetime import timedelta
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    return item.get("status") == "pending" and expires <= datetime.now(timezone.utc)
+
+
+def agent_proposal(root: str, item: Dict[str, Any], *, can_decide: bool) -> Dict[str, Any]:
+    """界面的 AgentProposal：聊天卡片上的新建 agent 提议。「创建」就是按这一版批准，「不要」就是拒绝。"""
+    from datetime import timedelta
+    snapshot = item["snapshot"]
+    data, role = snapshot["data"], snapshot.get("role_snapshot") or {}
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    state = _CARD_STATE[item["status"]]
+    expired = state == "pending" and expires <= datetime.now(timezone.utc)
+    agent = main_agent_id(root)
+    return {"kind": "agent_proposal", "forUserId": owner_id(root),
+            "params": {"draft": {"name": data.get("name") or data["id"], "handle": data["id"],
+                                 "role": role.get("title") or data.get("role") or "",
+                                 "instructions": str(role.get("brief") or ""), "appearance": None,
+                                 "channelIds": [], "access": [], "routine": None, "ai": {"kind": "model"}},
+                       "why": item.get("reason") or ""},
+            "state": state, "agentId": member_agent_id(root, data["id"]) if state == "created" else None,
+            "decidedByUserId": owner_id(root) if state in {"created", "denied"} else None, "decidedAt": None,
+            "expiresAt": _iso(expires.timestamp()),
+            "messageId": agent_proposal_card_id(item["id"]), "channelId": dm_channel_id(agent), "threadId": None,
+            "proposedByAgentId": agent, "expired": expired,
+            "canDecide": can_decide and state == "pending" and not expired}
+
+
+_CARD_FIELDS = ("kind", "forUserId", "params", "state", "agentId", "decidedByUserId", "decidedAt", "expiresAt")
+
+
+def with_proposal_cards(root: str, rows: List[Dict[str, Any]], *, latest: bool) -> List[Dict[str, Any]]:
+    """把助理的新建 agent 提议当一条 agent 消息插进主要聊天（按提的时间）。正文说一句，卡片在 meta.actionCard。
+    latest：这一页是最新的一页（晚于最后一条的卡片也接在后面）。"""
+    try:
+        items = _assistant_member_proposals(root)
+    except (ValueError, OSError):
+        return rows
+    if not items or (not rows and not latest):
+        return rows
+    first = rows[0]["createdAt"] if rows else ""
+    last = rows[-1]["createdAt"] if rows else ""
+    cards = []
+    for item in items:
+        created = _iso(item.get("created_at"))
+        if created < first or (created > last and not latest):
+            continue
+        if item["snapshot"]["kind"] == "bundle":
+            card = team_proposal(root, item)
+            name = card["params"]["agents"][0]["name"]
+            routines = len(card["params"]["agents"][0]["routines"])
+            body = f"我提议开通「{name}」" + (f"，连同 {routines} 项例行工作。" if routines else "。")
+            cards.append(_message(root, team_proposal_card_id(item["id"]), from_owner=False, body=body,
+                                  created=created, meta={"actionCard": card}))
+            continue
+        card = agent_proposal(root, item, can_decide=True)
+        name = card["params"]["draft"]["name"]
+        cards.append(_message(root, card["messageId"], from_owner=False, body=f"我提议新建 agent「{name}」。",
+                              created=created, meta={"actionCard": {key: card[key] for key in _CARD_FIELDS}}))
+    if not cards:
+        return rows
+    merged = sorted([*rows, *cards], key=lambda row: row["createdAt"])
+    for index, row in enumerate(merged):
+        if row.get("sequence") is None:
+            row["sequence"] = merged[index - 1].get("sequence") or 0 if index else 0
+    return merged
+
+
+def find_agent_proposal(root: str, message_id_value: str, *, kind: str = "member") -> Optional[Dict[str, Any]]:
+    """kind：member 找新建 agent 卡片，bundle 找开通单（团队）卡片。"""
+    try:
+        items = _assistant_member_proposals(root)
+    except (ValueError, OSError):
+        return None
+    card_id = agent_proposal_card_id if kind == "member" else team_proposal_card_id
+    return next((item for item in items if item["snapshot"]["kind"] == kind
+                 and card_id(item["id"]) == message_id_value), None)
+
+
+def pending_staff_proposals(root: str) -> List[Dict[str, Any]]:
+    """新界面要批的专员提议：除了已经有自己核对页的（成员提交的例行工作、主人在新界面新建的例行工作）。"""
+    from src.web import app_prefs
+    from src.workflow.staff.approvals import StaffApprovals
+    approvals = StaffApprovals(root)
+    from_ui = app_prefs.ui_routine_proposals(root)
+    rows = []
+    for item in approvals.list():
+        snapshot = item["snapshot"]
+        if item.get("status") != "pending" or item["id"] in from_ui:
+            continue
+        if snapshot.get("kind") == "routine" and snapshot.get("initiator"):
+            continue
+        rows.append(item)
+    return rows
+
+
 def main_dm(root: str) -> Dict[str, Any]:
     agent = agents(root)[0]
     messages = main_messages(root, limit=1)
@@ -616,6 +835,18 @@ def member_dm(root: str, member_id: str) -> Dict[str, Any]:
 
 
 # ── 记忆、例行工作、技能、制品：现有记录的只读整理 ─────────────────────────────
+
+def team_memory_view(root: str, item: Dict[str, Any], *, can_change: bool, owner: bool) -> Dict[str, Any]:
+    """团队记忆（界面的 Memory）。归在主助理名下展示；文字都出自所有者。"""
+    card = _owner_card(root)
+    return {"id": item["id"], "agentId": main_agent_id(root), "kind": "fact", "text": item["text"],
+            "source": "", "origin": {"by": "person", "name": card["name"], "channel": None,
+                                     "at": _iso(item["createdAt"])},
+            "uses": 0, "lastUsedAt": None, "pinned": False, "archived": bool(item.get("archived")),
+            "lowTrust": False, "verified": True, "supersedes": item.get("supersedes"),
+            "editedByUserId": item.get("editedBy"), "updatedAt": _iso(item["updatedAt"]),
+            "removable": can_change}
+
 
 def _memory(agent_id: str, row: Dict[str, Any], archived: bool) -> Dict[str, Any]:
     created = _iso(row.get("created_at"))

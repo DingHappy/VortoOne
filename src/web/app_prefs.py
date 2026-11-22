@@ -1,7 +1,7 @@
-"""新版界面里每个人自己的显示偏好：侧栏怎么排、界面用什么语言。
+"""新版界面里每个人自己的显示偏好：侧栏、界面语言和个人时区。
 
 只是界面的摆放，不涉及权限、不进模型上下文。所有者和成员各存各的，键是调用人的身份
-（``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏跟着「这个人在这个家里」走。
+（``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏和时区跟着「这个人在这个家里」走。
 存在 ``.vortoone/app_prefs.json``，坏了就如实报错（ValueError），不悄悄换成默认值覆盖掉。
 
 字段和取值按界面合同（frontend/packages/client/src/api/types.ts 的 SidebarItem / SidebarPlace /
@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unicodedata import category
 
+from src.scheduling.routine_schedule import zone
 from src.utils.state_dir import state_dir
 
 _FILE = "app_prefs.json"
@@ -77,7 +78,7 @@ def _change(root: str, who: str, key: str, value: Any) -> None:
         data = _read(root)
         row = data["people"].setdefault(who, {})
         if not isinstance(row, dict):
-            raise ValueError("界面偏好记录损坏，需要先修复")
+            raise ValueError("个人偏好记录损坏，需要先修复")
         if value is None:
             row.pop(key, None)
         else:
@@ -85,6 +86,15 @@ def _change(root: str, who: str, key: str, value: Any) -> None:
         if not row:
             data["people"].pop(who, None)
         _write(root, data)
+
+
+def person_value(root: str, who: str, key: str) -> Any:
+    """一个人的一项偏好（没有就是 None）。"""
+    return _own(root, who).get(key)
+
+
+def set_person_value(root: str, who: str, key: str, value: Any) -> None:
+    _change(root, who, key, value)
 
 
 def _status_line(value: Any) -> Optional[Dict[str, Any]]:
@@ -290,6 +300,28 @@ def set_locale(root: str, account_key: str, body: Any) -> None:
         row["locale"] = body["locale"]
         row["localeAuto"] = auto
         _write(root, data)
+
+
+# ── 个人时区 ────────────────────────────────────────────────────────────────
+
+def personal_timezones(root: str) -> Dict[str, str]:
+    try:
+        people = _read(root)["people"]
+    except ValueError:
+        # 名册仍能读到工作区默认时区；保存时报告文件损坏。
+        return {}
+    return {who: row["timezone"] for who, row in people.items()
+            if isinstance(row, dict) and isinstance(row.get("timezone"), str) and row["timezone"]}
+
+
+def set_personal_timezone(root: str, who: str, value: Any) -> Optional[str]:
+    if value is not None:
+        try:
+            zone(value)
+        except ValueError as error:
+            raise ValueError("个人时区须使用有效的 IANA 名称，例如 Asia/Shanghai") from error
+    _change(root, who, "timezone", value)
+    return value
 
 
 # ── 整个家的界面开关（所有者在空间设置里改）─────────────────────────────────

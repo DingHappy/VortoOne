@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 245 个，剩 **386** 个：
-- **要做：316**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 262 个，剩 **369** 个：
+- **要做：299**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -39,7 +39,7 @@
 6. **新状态文件**：生成态登记进 `src/utils/state_dir.py` 的 `_STATE_ENTRIES`；主人自己写的配置（像 `persona.md`、`home_context.md`）登记进 `test_state_dir_coverage.py` 的 `USER_CONFIG`
 7. **安全边界，别动**：
    - 例行工作必须走「提议 → 主人按摘要核对」
-   - 助理替主人提的提议不进新界面的核对页（#963）
+   - 助理提的专员提议进新界面的审批列表（2026-11-22 主人定）：按界面上看到的那一版核对、只有所有者能批、不参加批量；例行工作核对页仍只列成员提交的和界面新建的
    - agent 权限页（access/brain/repositories/scopes）保持只读
    - 往 agent 系统提示里加东西，要标明「是资料不是指令」，并且同一会话内逐字不变
    - 外部内容按污点处理
@@ -106,14 +106,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
 
-### org/agents（35 个，要做 30）
+### org/agents（35 个，要做 29）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | — | PUT | `ORG/agents/{x}/access` | `access.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☐ | GET | `ORG/agents/{x}/approval-rules` | `approvals.rules` |  |
 | ☐ | DELETE | `ORG/agents/{x}/approval-rules/{x}` | `approvals.removeRule` |  |
-| ☐ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` |  |
+| ☑ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` | agent 不接邮箱，回空列表 |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |
 | ☐ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 读已接、写没接 |
@@ -255,15 +255,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 11）
+### org/me（12 个，要做 9）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/me` | `orgs.updateMe` |  |
+| ☐ | PATCH | `ORG/me` | `orgs.updateMe` | 已接个人时区（清空后跟随空间默认）；用户名仍待接，接受原样传回。 |
 | ☐ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
 | ☐ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` |  |
-| ☐ | GET | `ORG/me/approval-cover` | `approvals.covers` |  |
-| ☐ | PUT | `ORG/me/approval-cover` | `approvals.setCover` |  |
+| ☑ | GET | `ORG/me/approval-cover` | `approvals.covers` | 所有者托付一个成员替自己批主要聊天里的确认：一直或外出时，可设到期；默认只代批低风险的。读过外部内容的、网页登录、文件传输、设备钥匙、专员提议永远留给所有者；每次代批进审计 |
+| ☑ | PUT | `ORG/me/approval-cover` | `approvals.setCover` | 只有所有者能设；成员回 409 |
 | ☐ | DELETE | `ORG/me/avatar` | `orgs.removeAvatar` |  |
 | ☐ | PUT | `ORG/me/avatar` | `orgs.setAvatar` |  |
 | ☐ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
@@ -348,13 +348,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/routines/{x}/runs` | `routines.runs` |  |
 | ☐ | POST | `ORG/routines/{x}/stop` | `routines.stop` |  |
 
-### org/credentials（9 个，要做 9）
+### org/credentials（9 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/credentials` | `agents.addCredential` | 读已接、写没接 |
 | ☐ | POST | `ORG/credentials/endpoint-models` | `agents.endpointModels` |  |
-| ☐ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` |  |
+| ☑ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` | 服务有没有接上模型 |
 | ☐ | DELETE | `ORG/credentials/{x}` | `agents.removeCredential` |  |
 | ☐ | POST | `ORG/credentials/{x}/check` | `agents.checkCredential` |  |
 | ☐ | POST | `ORG/credentials/{x}/make-default` | `agents.makeDefaultCredential` |  |
@@ -492,15 +492,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/account/deletion/code` | `account.deletionCode` |  |
 | ☐ | POST | `/api/app/account/email` | `account.changeEmail` |  |
 
-### org/agent-proposals（5 个，要做 5）
+### org/agent-proposals（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/agent-proposals/{x}` | `agents.proposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/ask` | `agents.askProposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/create` | `agents.createProposed` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` |  |
+| ☑ | GET | `ORG/agent-proposals/{x}` | `agents.proposal` | 助理在主要聊天里提的新建 agent 以卡片出现在对话里（和审批列表是同一份提议）；只有所有者能看 |
+| ☑ | POST | `ORG/agent-proposals/{x}/ask` | `agents.askProposal` | 只有所有者能决定，回 409 |
+| ☑ | POST | `ORG/agent-proposals/{x}/create` | `agents.createProposed` | 按卡片上这一版批准，登记处照常核对 |
+| ☑ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` | 拒绝 |
+| ☑ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` | 提议不附带例行工作，回 409 |
 
 ### org/invite-links（5 个，要做 5）
 
@@ -559,14 +559,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/push/stale` | `push.stale` |  |
 | ☐ | GET | `/api/app/push/web` | `push.webKey` |  |
 
-### org/team-proposals（4 个，要做 4）
+### org/team-proposals（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/team-proposals/{x}/agents/{x}` | `agents.adjustTeamAgent` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/create` | `agents.createTeam` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` |  |
-| ☐ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` |  |
+| ☑ | PATCH | `ORG/team-proposals/{x}/agents/{x}` | `agents.adjustTeamAgent` | 批的是卡片上这一版，要改请助理重新提，回 409 |
+| ☑ | POST | `ORG/team-proposals/{x}/create` | `agents.createTeam` | 助理提的开通单（新 agent 连同岗位、例行工作）以团队卡片出现在主要聊天里；按这一版批准整张开通单 |
+| ☑ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` | 拒绝 |
+| ☑ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` | 登记了不能一键撤回，回 409 |
 
 ### org/runs（4 个，要做 3）
 
@@ -742,12 +742,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/team-templates` | `agents.teamTemplates` |  |
 | ☐ | POST | `ORG/team-templates/{x}/use` | `agents.applyTeamTemplate` |  |
 
-### org/agent-setup（2 个，要做 2）
+### org/agent-setup（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/agent-setup` | `agents.newAgentSetup` |  |
-| ☐ | POST | `ORG/agent-setup` | `agents.applySetup` |  |
+| ☑ | GET | `ORG/agent-setup` | `agents.newAgentSetup` | 不存上一次的设置，新 agent 用默认模型，回 null |
+| ☑ | POST | `ORG/agent-setup` | `agents.applySetup` | 换模型要经提议，回 409 |
 
 ### /api/app/github-app（2 个，要做 2）
 
@@ -763,12 +763,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/github/access` | `githubApp.access` |  |
 | ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` |  |
 
-### org/memories（2 个，要做 2）
+### org/memories（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/memories/{x}/revert` | `memory.revert` | 界面代码里没调用 |
-| ☐ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` |  |
+| ☑ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` | 只有所有者能把自己的记忆设成团队记忆、能改文字；成员有 `review_memory` 只能移除、恢复。进所有 agent 的系统提示（对外发布的岗位除外），标明是资料不是指令 |
 
 ### org/sandbox-settings（2 个，要做 2）
 
@@ -915,11 +915,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | POST | `ORG/approvals/{x}/cancel` | `approvals.cancel` |  |
 
-### org/approval-covers（1 个，要做 1）
+### org/approval-covers（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | DELETE | `ORG/approval-covers/{x}` | `approvals.endCover` |  |
+| ☑ | DELETE | `ORG/approval-covers/{x}` | `approvals.endCover` | 所有者收回，或被托付的成员自己不再代批 |
 
 ### org/right-hand-decisions（1 个，要做 1）
 
