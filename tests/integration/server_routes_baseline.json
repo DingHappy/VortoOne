@@ -1886,6 +1886,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-groups",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-status",
     "methods": [
       "GET"
@@ -3334,6 +3340,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-groups/{group_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-groups/{group_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}",
     "methods": [
       "GET"
@@ -3394,9 +3412,45 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/approval-rules",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/approval-rules/{rule_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/audience/mail-loss",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/channels",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/channels",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/group",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/learned-skills",
+    "methods": [
+      "GET"
     ]
   },
   {
