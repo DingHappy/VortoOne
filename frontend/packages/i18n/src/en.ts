@@ -7732,6 +7732,7 @@ export const en = {
       regenerateLink: "Regenerate link",
       regenerateLinkHint: "The old link stops working when you regenerate it.",
       copyManually: "Select the link and copy it manually.",
+      expiredWithoutRenewal: "This invitation has expired. Create a new invitation if they still need one.",
       copied: "Link to {{email}}'s invitation copied. It's the same as in the email.",
       copiedNoEmail: "Link to {{email}}'s invitation copied.",
       resent: "Sent to {{email}} again. The link is the same and works until {{date}}.",

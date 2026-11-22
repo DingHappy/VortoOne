@@ -188,7 +188,7 @@ export function EditInvitationDialog({
       <Locked when={save.isPending}>
         <DialogBody className="invite-dialog">
           {off ? (
-            <p>{t("invites.invitationExpired")}</p>
+            <p>{t(onRenew ? "invites.invitationExpired" : "members.invitations.expiredWithoutRenewal")}</p>
           ) : (
             <FormStack>
               <RoleField choices={choices} id="edit-invitation-role" />
