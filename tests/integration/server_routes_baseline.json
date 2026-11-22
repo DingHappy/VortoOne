@@ -3636,6 +3636,30 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/agents/{handle}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/undo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/vault",
     "methods": [
       "GET"

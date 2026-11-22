@@ -501,11 +501,61 @@ def agent_proposal_card_id(proposal_id: str) -> str:
 
 
 def _assistant_member_proposals(root: str) -> List[Dict[str, Any]]:
-    """助理在主要聊天里提的新建 agent（kind=member、没有前一版）。"""
+    """助理在主要聊天里提的、会出卡片的：新建 agent（kind=member、没有前一版），
+    和带新 agent 的开通单（kind=bundle、含 member）。"""
     from src.workflow.staff.approvals import StaffApprovals
-    return [item for item in StaffApprovals(root).list()
-            if item.get("origin") == "assistant" and item["snapshot"].get("kind") == "member"
-            and not item["snapshot"].get("previous") and item.get("status") in _CARD_STATE]
+    rows = []
+    for item in StaffApprovals(root).list():
+        snapshot = item["snapshot"]
+        if item.get("origin") != "assistant" or item.get("status") not in _CARD_STATE:
+            continue
+        if (snapshot.get("kind") == "member" and not snapshot.get("previous")) or \
+                (snapshot.get("kind") == "bundle" and (snapshot.get("data") or {}).get("member")):
+            rows.append(item)
+    return rows
+
+
+def team_proposal_card_id(proposal_id: str) -> str:
+    return _id("team-proposal-card", proposal_id)
+
+
+def _proposed_routine(row: Dict[str, Any]) -> Dict[str, Any]:
+    schedule = str(row.get("schedule") or "")
+    return {"name": str(row.get("name") or row.get("id") or ""), "prompt": str(row.get("prompt") or ""),
+            "schedule": schedule, "rule": None, "cron": schedule if len(schedule.split()) == 5 else "",
+            "timezone": str(row.get("timezone") or ""), "description": schedule, "report": "always",
+            "access": "read", "reportsIn": None}
+
+
+def team_proposal(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """界面的 TeamProposalCard：开通单里的新 agent、它的岗位和例行工作。「创建」就是按这一版批准整张开通单。"""
+    from datetime import timedelta
+    data = item["snapshot"]["data"]
+    member, role = data["member"], data.get("role") or {}
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    state = _CARD_STATE[item["status"]]
+    agent = {"name": member.get("name") or member["id"], "handle": member["id"],
+             "role": role.get("title") or member.get("role") or "", "line": str(role.get("brief") or "")[:120],
+             "instructions": str(role.get("brief") or ""), "appearance": None, "channel": "",
+             "routines": [_proposed_routine(row) for row in data.get("routines") or []], "firstTask": None}
+    card = {"kind": "team_proposal", "forUserId": owner_id(root),
+            "params": {"lead": member["id"], "agents": [agent], "newChannels": [], "skills": [], "weekly": None,
+                       "approvals": "", "invite": []},
+            "state": state, "decidedByUserId": owner_id(root) if state in {"created", "denied"} else None,
+            "decidedAt": None, "expiresAt": _iso(expires.timestamp()), "error": None}
+    if state == "created":
+        card["created"] = {"agentIds": [member_agent_id(root, member["id"])], "channelIds": [],
+                           "routineIds": [str(row.get("id")) for row in data.get("routines") or []],
+                           "skillIds": [], "skipped": [], "noAi": []}
+    return card
+
+
+def proposal_expired(item: Dict[str, Any]) -> bool:
+    from datetime import timedelta
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    return item.get("status") == "pending" and expires <= datetime.now(timezone.utc)
 
 
 def agent_proposal(root: str, item: Dict[str, Any], *, can_decide: bool) -> Dict[str, Any]:
@@ -548,10 +598,18 @@ def with_proposal_cards(root: str, rows: List[Dict[str, Any]], *, latest: bool) 
     last = rows[-1]["createdAt"] if rows else ""
     cards = []
     for item in items:
-        card = agent_proposal(root, item, can_decide=True)
         created = _iso(item.get("created_at"))
         if created < first or (created > last and not latest):
             continue
+        if item["snapshot"]["kind"] == "bundle":
+            card = team_proposal(root, item)
+            name = card["params"]["agents"][0]["name"]
+            routines = len(card["params"]["agents"][0]["routines"])
+            body = f"我提议开通「{name}」" + (f"，连同 {routines} 项例行工作。" if routines else "。")
+            cards.append(_message(root, team_proposal_card_id(item["id"]), from_owner=False, body=body,
+                                  created=created, meta={"actionCard": card}))
+            continue
+        card = agent_proposal(root, item, can_decide=True)
         name = card["params"]["draft"]["name"]
         cards.append(_message(root, card["messageId"], from_owner=False, body=f"我提议新建 agent「{name}」。",
                               created=created, meta={"actionCard": {key: card[key] for key in _CARD_FIELDS}}))
@@ -564,12 +622,15 @@ def with_proposal_cards(root: str, rows: List[Dict[str, Any]], *, latest: bool) 
     return merged
 
 
-def find_agent_proposal(root: str, message_id_value: str) -> Optional[Dict[str, Any]]:
+def find_agent_proposal(root: str, message_id_value: str, *, kind: str = "member") -> Optional[Dict[str, Any]]:
+    """kind：member 找新建 agent 卡片，bundle 找开通单（团队）卡片。"""
     try:
         items = _assistant_member_proposals(root)
     except (ValueError, OSError):
         return None
-    return next((item for item in items if agent_proposal_card_id(item["id"]) == message_id_value), None)
+    card_id = agent_proposal_card_id if kind == "member" else team_proposal_card_id
+    return next((item for item in items if item["snapshot"]["kind"] == kind
+                 and card_id(item["id"]) == message_id_value), None)
 
 
 def pending_staff_proposals(root: str) -> List[Dict[str, Any]]:
