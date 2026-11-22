@@ -44,6 +44,7 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | 变量 | 默认 | 作用 | 读取位置 |
 | --- | --- | --- | --- |
 | `VORTOONE_PROVIDER_<NAME>_BASE` / `_KEY` | — | 登记一个 OpenAI 兼容供应商 `<name>`（小写），之后可以用 `供应商:模型` 点名。想登记几家就设几组。 | `llm/providers.py` |
+| `VORTOONE_PROVIDER_CRED_<ID>_BASE` / `_KEY` | — | 不用手设：所有者在新版界面「AI 密钥」里加的端点，服务启动和每次改动时写进进程环境（`custom:<密钥>:<模型>` 走它）；子进程照样剥掉 `_KEY`。 | `web/app_credentials.py` |
 | `VORTOONE_MODEL_ROLES` | — | 按角色指定模型，如 `review=provider:model`。 | `llm/providers.py` |
 | `VORTOONE_MODEL_CONTEXT_WINDOW` | 按模型目录 | 全局覆盖模型的上下文窗口（token）。 | `llm/client.py` |
 | `VORTOONE_MODEL_CONTEXT_WINDOWS` | — | 按模型名前缀分别指定窗口，优先于全局值。 | `llm/client.py` |

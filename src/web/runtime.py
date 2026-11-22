@@ -73,6 +73,9 @@ async def runtime_lifespan():
         observer = asyncio.create_task(observe_loop(stop)) if observer_enabled() else None
         # 任务上下文（ADR-014）：常驻助理开的大任务，成员交回就叫醒协调人；启动时恢复被打断的回合
         team_runner = None
+        # 所有者在新界面里加的模型端点：登记进进程环境，默认的那个换掉服务配置的默认端点
+        from src.web.app_credentials import apply as apply_credentials
+        apply_credentials(os.getcwd())
         if current_workspace_scope() == GENERAL:
             from src.scheduling.task_notices import notify_transition
             from src.scheduling.team_runner import TeamRunner, set_team_runner

@@ -427,7 +427,9 @@ async def set_work_area(body: Dict[str, Any], request: Request):
 
 @router.get("/api/app/models")
 async def models():
-    return {"models": [], "defaultModel": ""}
+    """所有者加的模型端点上的模型（见 app_credentials.models）；没加过就是空的，agent 用服务配置的默认模型。"""
+    from src.web import app_credentials
+    return await asyncio.to_thread(app_credentials.models, os.getcwd())
 
 
 def _who(request: Request, root: str):
@@ -2039,7 +2041,6 @@ _EMPTY: Dict[str, Any] = {
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
     "/connectors/custom": {"servers": []},
-    "/credentials": {"credentials": []},
     "/mail/accounts": {"accounts": []},
     "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
     "/skill-settings": {"agentsImprove": False},
@@ -2058,6 +2059,90 @@ def _register_empty(path: str, payload: Any) -> None:
 
 for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
+
+
+# ── AI 密钥：所有者自己加的模型端点（见 app_credentials）──────────────────────
+
+async def _credential_call(request: Request, org_id: str, action, *, sync: bool = False, read: bool = False):
+    """只有所有者能看（只回末 4 位和地址）；改要带所有者证明。拒绝如实说明，密钥从不回给界面。"""
+    from src.web import app_credentials
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "AI 密钥只有所有者能看和改")
+    if not read and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "改 AI 密钥需要已认证的所有者")
+    try:
+        result = await asyncio.to_thread(action, root) if sync else await action(root)
+    except app_credentials.CredentialError as error:
+        return _error(error.status, error.code, str(error))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"}) if result is not None \
+        else Response(status_code=204)
+
+
+@router.get(_ORG + "/credentials")
+async def credentials(org_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: {"credentials": app_credentials.listing(root)},
+                                  sync=True, read=True)
+
+
+@router.post(_ORG + "/credentials")
+async def add_credential(org_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.add(root, body))
+
+
+@router.post(_ORG + "/credentials/endpoint-models")
+async def credential_endpoint_models(org_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda _root: app_credentials.endpoint_models(body or {}))
+
+
+@router.put(_ORG + "/credentials/{credential_id}/models")
+async def credential_models(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.set_models(
+        root, credential_id, (body or {}).get("models")))
+
+
+@router.post(_ORG + "/credentials/{credential_id}/rotate")
+async def rotate_credential(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.rotate(root, credential_id, body or {}))
+
+
+@router.post(_ORG + "/credentials/{credential_id}/check")
+async def check_credential(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: app_credentials.check(root, credential_id))
+
+
+@router.post(_ORG + "/credentials/{credential_id}/make-default")
+async def default_credential(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: app_credentials.make_default(root, credential_id),
+                                  sync=True)
+
+
+@router.post(_ORG + "/credentials/{credential_id}/remove-copies")
+async def credential_copies(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: app_credentials.remove_copies(root, credential_id),
+                                  sync=True)
+
+
+@router.delete(_ORG + "/credentials/{credential_id}", status_code=204)
+async def remove_credential(org_id: str, credential_id: str, request: Request, purge: str = "", release: str = ""):
+    from src.web import app_credentials
+
+    def run(root):
+        app_credentials.remove(root, credential_id, purge=purge == "true", release=release == "true")
+        return None
+    return await _credential_call(request, org_id, run, sync=True)
 
 
 # ── 个人 Vault：无原值读取，不参与 Agent 工具或共享 ────────────────────────────

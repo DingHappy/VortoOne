@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 278 个，剩 **353** 个：
-- **要做：278**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 286 个，剩 **345** 个：
+- **要做：270**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -348,19 +348,19 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/routines/{x}/runs` | `routines.runs` |  |
 | ☐ | POST | `ORG/routines/{x}/stop` | `routines.stop` |  |
 
-### org/credentials（9 个，要做 8）
+### org/credentials（9 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/credentials` | `agents.addCredential` | 读已接、写没接 |
-| ☐ | POST | `ORG/credentials/endpoint-models` | `agents.endpointModels` |  |
+| ☑ | POST | `ORG/credentials` | `agents.addCredential` | 只接 OpenAI 兼容的自定义端点；逐个模型真调一次，全失败不存；同一把 key 同一个地址更新原来那个 |
+| ☑ | POST | `ORG/credentials/endpoint-models` | `agents.endpointModels` | 读端点的模型列表，不保存 |
 | ☑ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` | 服务有没有接上模型 |
-| ☐ | DELETE | `ORG/credentials/{x}` | `agents.removeCredential` |  |
-| ☐ | POST | `ORG/credentials/{x}/check` | `agents.checkCredential` |  |
-| ☐ | POST | `ORG/credentials/{x}/make-default` | `agents.makeDefaultCredential` |  |
-| ☐ | PUT | `ORG/credentials/{x}/models` | `agents.setEndpointModels` |  |
-| ☐ | POST | `ORG/credentials/{x}/remove-copies` | `agents.removeCredentialCopies` |  |
-| ☐ | POST | `ORG/credentials/{x}/rotate` | `agents.rotateCredential` |  |
+| ☑ | DELETE | `ORG/credentials/{x}` | `agents.removeCredential` | 停用或 purge 删掉；是默认的或有 agent 在用要 release |
+| ☑ | POST | `ORG/credentials/{x}/check` | `agents.checkCredential` | 用存的 key 真调一次 |
+| ☑ | POST | `ORG/credentials/{x}/make-default` | `agents.makeDefaultCredential` | 换掉这个家默认的模型端点；对 server 那一行就是换回服务配置 |
+| ☑ | PUT | `ORG/credentials/{x}/models` | `agents.setEndpointModels` | 改模型和价格，逐个再测 |
+| ☑ | POST | `ORG/credentials/{x}/remove-copies` | `agents.removeCredentialCopies` | 保存时就合并同一把 key，没有副本，回 0 |
+| ☑ | POST | `ORG/credentials/{x}/rotate` | `agents.rotateCredential` | 先用新 key 真调一次，通过才换 |
 
 ### org/connectors（9 个，要做 9）
 
