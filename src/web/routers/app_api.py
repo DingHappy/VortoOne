@@ -28,7 +28,8 @@ from src.web import app_artifact_upload
 from src.web import app_artifacts
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_board, app_calendar, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox,
+    app_org_logo,
     app_personal_vault, app_prefs, app_profile_avatar, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
@@ -36,6 +37,7 @@ from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
+from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
 router = APIRouter(tags=["app"])
@@ -2376,7 +2378,6 @@ _EMPTY: Dict[str, Any] = {
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
     "/mail/accounts": {"accounts": []},
-    "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
@@ -2676,6 +2677,67 @@ async def mail_providers(org_id: str, request: Request):
         return _error(403, "forbidden", _NOT_MEMBER)
     # 组织的连接目录只公布能从这里添加的服务。旧 IMAP 插件的凭据属于服务的操作系统用户。
     return {"composio": False, "imap": False, "presets": []}
+
+
+# ── 私人日历 ──────────────────────────────────────────────────────────────
+
+_CALENDAR = _ORG + "/calendar"
+
+
+async def _calendar_call(org_id, request, action, *, listing=False, create=False):
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        if listing and not views.owner_connection():
+            return app_calendar.calendar_range()
+        return _error(403, "owner_proof_required", "私人日历需要已认证的同源会话")
+
+    def execute():
+        if actor.is_member:
+            permissions = app_members.permission_keys(root, actor)
+            if not permissions:
+                return _error(403, "forbidden", _NOT_MEMBER)
+            if create and "post" not in permissions:
+                return _error(403, "forbidden", "你没有创建日程的权限")
+        return action(PrivateCalendar(root, actor), actor)
+
+    try:
+        return await asyncio.to_thread(execute)
+    except CalendarError as error:
+        return _error(error.status, error.code, str(error))
+    except (OSError, sqlite3.Error):
+        return _error(409, "calendar.unavailable", "无法读取或保存日历记录")
+    except OverflowError:
+        return _error(400, "calendar.invalid", "日程日期超出范围")
+    except ValueError as error:
+        return _error(400, "calendar.invalid", str(error))
+
+
+@router.get(_CALENDAR)
+async def calendar_list(org_id: str, request: Request, start: Optional[str] = Query(None, alias="from"),
+                        to: Optional[str] = None):
+    return await _calendar_call(org_id, request, lambda calendar, actor: app_calendar.listing(
+        calendar, actor, *date_range(start, to), app_calendar.workspace_timezone(calendar.root)), listing=True)
+
+
+@router.post(_CALENDAR + "/events", status_code=201)
+async def calendar_create(org_id: str, request: Request, body: Dict[str, Any]):
+    return await _calendar_call(org_id, request, lambda calendar, _actor: calendar.create(
+        body, app_calendar.workspace_timezone(calendar.root)), create=True)
+
+
+@router.patch(_CALENDAR + "/events/{event_id}")
+async def calendar_update(org_id: str, event_id: str, request: Request, body: Dict[str, Any]):
+    return await _calendar_call(org_id, request, lambda calendar, _actor: calendar.update(event_id, body))
+
+
+@router.delete(_CALENDAR + "/events/{event_id}")
+async def calendar_delete(org_id: str, event_id: str, request: Request):
+    series = "scope" in request.query_params or "occurrenceStart" in request.query_params
+    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(event_id, series=series))
+    return result if isinstance(result, Response) else Response(status_code=204)
 
 
 # ── Wiki ───────────────────────────────────────────────────────────────────
