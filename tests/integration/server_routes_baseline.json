@@ -2226,6 +2226,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/members/{user_id}/roles",
     "methods": [
       "PUT"
@@ -2660,6 +2666,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/members/{user_id}/password-link",
     "methods": [
       "POST"
@@ -2983,6 +2995,18 @@
     "path": "/api/app/organizations/{org_id}/gifs/{gif_id}/media",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/all",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/batch",
+    "methods": [
+      "POST"
     ]
   },
   {

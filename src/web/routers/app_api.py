@@ -606,6 +606,40 @@ async def revoke_invitation(org_id: str, invitation_id: str, request: Request):
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
+@router.get(_ORG + "/invitations/all")
+async def all_invitations(org_id: str, request: Request):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    return await _members_call(lambda: {"invitations": app_members.all_invitations(root, who)})
+
+
+@router.post(_ORG + "/invitations/batch")
+async def invite_many(org_id: str, body: Dict[str, Any], request: Request):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    return await _members_call(lambda: {"results": app_members.invite_many(root, who, body, _origin(request))},
+                               write=True)
+
+
+@router.patch(_ORG + "/invitations/{invitation_id}")
+async def update_invitation(org_id: str, invitation_id: str, body: Dict[str, Any], request: Request):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    return await _members_call(lambda: app_members.update_invitation(root, who, invitation_id, body), write=True)
+
+
+@router.patch(_ORG + "/members/{user_id}", status_code=204)
+async def change_member_role(org_id: str, user_id: str, body: Dict[str, Any], request: Request):
+    """这里的成员不分「管理员 / 普通成员」两档：权限按身份组给（PUT …/members/{id}/roles）。
+    只接受「成员」这一档（不变），其它的如实拒绝，不悄悄换成身份组。"""
+    root = _root(org_id)
+    if body != {"role": "member"}:
+        return _error(400, "unsupported", "成员的权限按身份组给，请在成员资料里改身份组")
+    if user_id not in {row["userId"] for row in app_members.members(root)} or user_id == views.owner_id(root):
+        return _error(404, "not_found", "没有这个成员")
+    return Response(status_code=204)
+
+
 @router.post(_ORG + "/members/{user_id}/password-link")
 async def password_link(org_id: str, user_id: str, request: Request):
     root = _root(org_id)

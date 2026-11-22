@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Mapping, Optional
 
 from src.agents import identity_groups as rules
@@ -282,6 +283,89 @@ def invite(root: str, actor: Principal, body: Mapping[str, Any], origin: str) ->
     invitation = _invitation(invitation_id, state["invitations"][invitation_id], _names(root, state),
                              f"{origin}/invite/{token}")
     return {"invitation": invitation, "url": invitation["url"]}
+
+
+def all_invitations(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    """没用掉的邀请，过期的也列出来（status=expired），直到登记处下次清理。"""
+    from datetime import datetime, timezone
+    state = MemberRegistry(root).snapshot()
+    if not _may_see_invitations(state, actor):
+        raise Refused("没有查看邀请的权限")
+    names, stamp = _names(root, state), datetime.now(timezone.utc).isoformat(timespec="seconds")
+    rows = []
+    for invitation_id, item in state["invitations"].items():
+        row = _invitation(invitation_id, item, names)
+        row.pop("url", None)
+        row["status"] = "pending" if str(item.get("expires") or "") > stamp else "expired"
+        rows.append(row)
+    return sorted(rows, key=lambda row: row["createdAt"], reverse=True)
+
+
+_EMAIL = re.compile(r"\A[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{1,63}\Z")
+MAX_BATCH = 50
+
+
+def invite_many(root: str, actor: Principal, body: Mapping[str, Any], origin: str) -> List[Dict[str, Any]]:
+    """一次邀请几个人：每一份照单发邀请的规矩来。加进频道、预先给 agent 这里没有对应能力，拒绝。"""
+    if set(body) - {"emails", "invites", "roleIds", "channelIds", "agentIds", "note"}:
+        raise ValueError("不认识的字段")
+    if body.get("channelIds") or body.get("agentIds"):
+        raise ValueError("邀请时加进频道、预先给 agent 这里还不支持；对方加入后再加")
+    shared = body.get("roleIds") or []
+    wanted: List[tuple] = [(email, shared) for email in body.get("emails") or []]
+    for item in body.get("invites") or []:
+        if not isinstance(item, Mapping) or set(item) - {"email", "roleIds"}:
+            raise ValueError("invites 的每一项只能有 email 和 roleIds")
+        wanted.append((item.get("email"), item.get("roleIds") or shared))
+    if not wanted:
+        raise ValueError("要写至少一个邮箱")
+    if len(wanted) > MAX_BATCH:
+        raise ValueError(f"一次最多邀请 {MAX_BATCH} 人")
+    members = {str(member.get("email") or "") for member in MemberRegistry(root).snapshot()["members"].values()}
+    results, seen = [], set()
+    for email, role_ids in wanted:
+        address = email.strip().lower() if isinstance(email, str) else ""
+        if not _EMAIL.match(address):
+            results.append({"email": str(email or ""), "status": "invalid_email"})
+            continue
+        if address in seen:                                # 同一批里写了两次
+            results.append({"email": address, "status": "already_invited"})
+            continue
+        seen.add(address)
+        if address in members:
+            results.append({"email": address, "status": "already_member"})
+            continue
+        try:
+            made = invite(root, actor, {"email": address, "roleIds": role_ids}, origin)
+        except Refused:
+            raise
+        except ValueError as error:
+            if "已经是成员" in str(error):
+                results.append({"email": address, "status": "already_member"})
+                continue
+            raise
+        results.append({"email": address, "status": "invited", "invitationId": made["invitation"]["id"],
+                        "url": made["url"]})
+    return results
+
+
+def update_invitation(root: str, actor: Principal, invitation_id: str, body: Mapping[str, Any]) -> Dict[str, Any]:
+    if set(body) - {"roleIds", "channelIds", "agentIds"}:
+        raise ValueError("不认识的字段")
+    if body.get("channelIds") or body.get("agentIds"):
+        raise ValueError("邀请时加进频道、预先给 agent 这里还不支持；对方加入后再加")
+    registry = MemberRegistry(root)
+    if "roleIds" in body:
+        role_ids = body["roleIds"]
+        if not isinstance(role_ids, list) or any(not isinstance(item, str) for item in role_ids):
+            raise ValueError("roleIds 必须是字符串列表")
+        groups = registry.update_invitation(actor, invitation_id, role_ids)
+    else:
+        found = registry.snapshot()["invitations"].get(invitation_id)
+        if found is None:
+            raise LookupError("没有这份邀请")
+        groups = list(found.get("groups") or [])
+    return {"roleIds": groups, "channelIds": [], "agentIds": []}
 
 
 def revoke_invitation(root: str, actor: Principal, invitation_id: str) -> None:

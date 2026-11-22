@@ -513,6 +513,25 @@ class MemberRegistry:
                               if str(item.get("expires") or "") <= stamp]:
             del state["invitations"][invitation_id]
 
+    def update_invitation(self, actor: Principal, invitation_id: str, groups: Iterable[str]) -> List[str]:
+        """改一份还没用掉的邀请给的身份组：同一个链接，不重发。谁能改和撤回一样（发的人自己，或有「管理成员」的人）；
+        给哪些身份组照发邀请时的规矩核对（不能给超过自己的）。"""
+        with self._change() as state:
+            owner, held = self._actor(state, actor)
+            self._drop_expired(state, _now())
+            invitation = state["invitations"].get(str(invitation_id))
+            if invitation is None:
+                raise Missing("没有这份邀请")
+            mine = actor.is_member and invitation.get("by") == actor.id
+            if not (owner or mine or rules.has("space.manage_members", held, self._posts(state))):
+                raise Refused("不能改别人发的邀请")
+            try:
+                chosen = rules.invite_posts(held, groups, self._posts(state), state["order"], owner=owner)
+            except PermissionError as error:
+                raise Refused(str(error)) from error
+            invitation["groups"] = chosen
+            return list(chosen)
+
     def revoke_invitation(self, actor: Principal, invitation_id: str) -> None:
         """撤回邀请：发出的人自己，或有「管理成员」的人。"""
         with self._change() as state:
