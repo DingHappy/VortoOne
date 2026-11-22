@@ -437,12 +437,29 @@ class MemberRegistry:
             posts = self._posts(state)
             wanted = list(dict.fromkeys(str(group) for group in groups if group != EVERYONE))
             current = [group for group in member.get("groups") or [] if group in posts]
-            for group in set(wanted) ^ set(current):
-                if not rules.may_grant(held, group, posts, state["order"], target_held=current, owner=owner):
-                    raise Refused(f"不能授予或收回身份组 {group}")
+            self._check_member_group_changes(owner, held, posts, state["order"], current, wanted)
             member["groups"] = wanted
             self._prune_department_membership(state, str(member_id))
             return wanted
+
+    @staticmethod
+    def _check_member_group_changes(owner, held, posts, order, current, wanted) -> None:
+        for group in set(wanted) ^ set(current):
+            if not rules.may_grant(held, group, posts, order, target_held=current, owner=owner):
+                raise Refused(f"不能授予或收回身份组 {group}")
+
+    def check_group_grants(self, actor: Principal, group_id: str, member_ids: Iterable[str]) -> None:
+        """按同一份登记预查给这些成员授予身份组，实际保存时仍重新核对。"""
+        state = self.snapshot()
+        owner, held = self._actor(state, actor)
+        posts = self._posts(state)
+        if group_id not in posts:
+            raise Missing("没有这个身份组")
+        for member_id in dict.fromkeys(member_ids):
+            member = self._member(state, member_id)
+            current = [group for group in member.get("groups") or [] if group in posts]
+            wanted = current if group_id == EVERYONE else [*current, group_id]
+            self._check_member_group_changes(owner, held, posts, state["order"], current, wanted)
 
     @classmethod
     def _prune_department_membership(cls, state, member_id):

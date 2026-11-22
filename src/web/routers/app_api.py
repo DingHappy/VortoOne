@@ -31,7 +31,7 @@ from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
-from src.workflow.members.registry import MemberRegistry
+from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
 router = APIRouter(tags=["app"])
@@ -710,6 +710,26 @@ async def delete_role(org_id: str, role_id: str, request: Request):
     who = member_auth.principal(request, root)
     result = await _members_call(lambda: app_members.delete_role(root, who, role_id), write=True)
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
+
+
+class _RoleMembersPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    userIds: List[str] = Field(max_length=MAX_MEMBERS)
+
+
+@router.post(_ORG + "/roles/{role_id}/members/preview")
+async def preview_role_members(org_id: str, role_id: str, body: _RoleMembersPreview, request: Request,
+                               response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "预查授予身份组需要已认证的所有者连接")
+    else:
+        result = await _members_call(lambda: app_members.role_mail_loss(root, who, role_id, body.userIds))
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.put(_ORG + "/members/{user_id}/roles")
