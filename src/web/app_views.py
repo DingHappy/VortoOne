@@ -262,13 +262,13 @@ def _home_switches(root: str) -> Dict[str, Any]:
 
 
 def settings(root: str) -> Dict[str, Any]:
-    from src.web import app_gifs
+    from src.web import app_gifs, app_voice
     switches = _home_switches(root)
     return {"name": _profile(root)["name"], "context": "", "defaultCredentialId": None, "routerModel": None,
             "summaryModel": None, "timezone": _timezone(root), "actionCheck": True, "autoModels": {},
             "teamWatch": False, "welcomePeople": False, "gifs": switches["gifs"], "gifRating": switches["gifRating"],
-            "agentStickers": False, "agentMedia": "never", "voiceMessages": False, "voiceAvailable": False,
-            "gifsAvailable": app_gifs.available(root), "agentMediaAvailable": False, "mode": "personal",
+            "agentStickers": False, "agentMedia": "never", "voiceMessages": switches["voiceMessages"],
+            "voiceAvailable": app_voice.available(root), "gifsAvailable": app_gifs.available(root), "agentMediaAvailable": False, "mode": "personal",
             "defaultAgentBudgetUsd": None}
 
 
@@ -332,7 +332,9 @@ def _message(root: str, message_id_value: str, *, from_owner: bool, body: str, c
 def owner_message(root: str, rid: str, body: str, *, client_id: Optional[str] = None) -> Dict[str, Any]:
     """主人刚发出的一条：回合还没开始记录时先用它应答，id 与之后记录里读到的一致。"""
     extra = {"clientId": client_id} if client_id else {}
-    return _message(root, message_id(rid, "user"), from_owner=True, body=body, created=now_iso(), **extra)
+    row = _message(root, message_id(rid, "user"), from_owner=True, body=body, created=now_iso(), **extra)
+    from src.web import app_voice
+    return app_voice.attach_main_voices(root, [row])[0]
 
 
 def main_messages(root: str, *, before: str = "", limit: int = 100) -> List[Dict[str, Any]]:
@@ -354,7 +356,8 @@ def main_messages(root: str, *, before: str = "", limit: int = 100) -> List[Dict
     if before:
         cutoff = _iso(before)
         rows = [row for row in rows if row["createdAt"] < cutoff]
-    return rows[-max(1, min(int(limit), 400)):]
+    from src.web import app_voice
+    return app_voice.attach_main_voices(root, rows[-max(1, min(int(limit), 400)):])
 
 
 # ── 确认 → 审批 ───────────────────────────────────────────────────────────────

@@ -12,21 +12,17 @@ GIF 的标题是外部内容，只当纯文本展示；GIF 消息不进任何 ag
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
-from src.utils.state_dir import state_dir
+from src.web import provider_keys
 
 API = "https://api.giphy.com/v1/gifs"
 ENV_KEY = "GIPHY_API_KEY"
-_FILE = "provider_keys.json"
-_LOCK = threading.Lock()
 _ID = re.compile(r"[A-Za-z0-9]{1,64}")
 _KEY = re.compile(r"[A-Za-z0-9]{16,64}")
 MAX_MEDIA_BYTES = 15 * 1024 * 1024
@@ -50,18 +46,15 @@ class GifError(Exception):
 # ── 密钥 ──────────────────────────────────────────────────────────────────────
 
 def _path(root: str) -> Path:
-    return state_dir(root) / _FILE
+    return provider_keys.path(root)
 
 
 def _saved(root: str) -> Tuple[Optional[str], bool]:
     """存下的密钥，以及记录是否能读。"""
-    try:
-        data = json.loads(_path(root).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None, True
-    except (OSError, ValueError):
+    data, readable = provider_keys.read(root)
+    if not readable:
         return None, False
-    key = data.get("giphy") if isinstance(data, dict) else None
+    key = data.get("giphy")
     if key is None:
         return None, True
     return (key, True) if isinstance(key, str) and _KEY.fullmatch(key) else (None, False)
@@ -88,37 +81,16 @@ def key_view(root: str) -> Dict[str, Any]:
     return {"source": "settings", "hint": key[-4:], "state": "ok"}
 
 
-def _write_keys(root: str, change) -> None:
-    path = _path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with _LOCK:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                data = {}
-        except FileNotFoundError:
-            data = {}
-        except (OSError, ValueError):
-            data = {}                      # 读不出来的旧记录：这次写入整个换掉（里面没有能用的密钥）
-        change(data)
-        tmp = path.with_name(path.name + ".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(data, handle)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-
-
 def env_managed() -> bool:
     return bool(os.getenv(ENV_KEY, "").strip())
 
 
 def save_key(root: str, key: str) -> None:
-    _write_keys(root, lambda data: data.__setitem__("giphy", key))
+    provider_keys.update(root, lambda data: data.__setitem__("giphy", key))
 
 
 def remove_key(root: str) -> None:
-    _write_keys(root, lambda data: data.pop("giphy", None))
+    provider_keys.update(root, lambda data: data.pop("giphy", None))
 
 
 def available(root: str) -> bool:

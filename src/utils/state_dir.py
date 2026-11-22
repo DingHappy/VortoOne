@@ -232,6 +232,7 @@ _STATE_ENTRIES = [
     "followups.json",
     "app_prefs.json",
     "provider_keys.json",
+    "voice/",
     "ops_heartbeats.json",
     "cli_session.json",
     "tui_theme",

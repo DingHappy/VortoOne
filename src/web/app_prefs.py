@@ -215,8 +215,9 @@ def set_locale(root: str, account_key: str, body: Any) -> None:
 
 # ── 整个家的界面开关（所有者在空间设置里改）─────────────────────────────────
 
-HOME_DEFAULTS: Dict[str, Any] = {"gifs": True, "gifRating": "g"}
-_HOME_CHECKS = {"gifs": lambda value: type(value) is bool, "gifRating": lambda value: value in ("g", "pg")}
+HOME_DEFAULTS: Dict[str, Any] = {"gifs": True, "gifRating": "g", "voiceMessages": True}
+_HOME_CHECKS = {"gifs": lambda value: type(value) is bool, "gifRating": lambda value: value in ("g", "pg"),
+                "voiceMessages": lambda value: type(value) is bool}
 
 
 def home_settings(root: str) -> Dict[str, Any]:

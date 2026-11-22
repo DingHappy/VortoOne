@@ -2920,6 +2920,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/voice",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/computer-pairings",
     "methods": [
       "POST"
@@ -2962,6 +2968,36 @@
   {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
     "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/voice/allowed",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/voice/{clip_id}/audio",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/speech-key",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/speech-key",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/speech-key",
+    "methods": [
+      "PUT"
+    ]
   },
   {
     "path": "/api/computers/browser-preview",

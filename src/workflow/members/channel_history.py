@@ -61,10 +61,26 @@ def _parse_stamp(value: str) -> datetime:
 _GIF_FIELDS = {"kind", "provider", "id", "title", "width", "height"}
 
 
+_VOICE_FIELDS = {"kind", "clipId", "durationMs", "peaks", "expiresAt"}
+
+
+def _check_voice(media):
+    if (not _VOICE_FIELDS <= set(media) <= _VOICE_FIELDS | {"noWords"}
+            or not isinstance(media["clipId"], str) or not 0 < len(media["clipId"]) <= 64
+            or type(media["durationMs"]) is not int or not 0 < media["durationMs"] <= 10 * 60_000
+            or not isinstance(media["peaks"], list) or len(media["peaks"]) > 64
+            or any(type(p) not in (int, float) or not 0 <= p <= 1 for p in media["peaks"])
+            or not isinstance(media["expiresAt"], str) or media.get("noWords", True) is not True):
+        raise ValueError("消息附带的录音无效")
+    return dict(media)
+
+
 def check_media(media):
-    """消息附带的图片（目前只有 GIF）。查找和尺寸由上层向服务商核实后填好，这里只拒绝形状不对的。"""
+    """消息附带的 GIF 或录音。GIF 的尺寸、录音的存放由上层核实后填好，这里只拒绝形状不对的。"""
     if media is None:
         return None
+    if isinstance(media, dict) and media.get("kind") == "voice":
+        return _check_voice(media)
     if (not isinstance(media, dict) or set(media) != _GIF_FIELDS or media["kind"] != "gif"
             or media["provider"] != "giphy" or not isinstance(media["id"], str) or not media["id"]
             or len(media["id"]) > 64 or not isinstance(media["title"], str) or len(media["title"]) > 300
@@ -98,7 +114,11 @@ class ChannelHistory:
             meta["replyTo"] = row["reply_to"]
         media = row["media"] if "media" in row.keys() else None
         if media:
-            meta["media"] = json.loads(media)
+            media = json.loads(media)
+            if media.get("kind") == "voice":
+                meta["voice"] = {key: value for key, value in media.items() if key != "kind"}
+            else:
+                meta["media"] = media
         if meta:
             result["meta"] = meta
         if viewer == row["author"] and row["client"] is not None:

@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_channels, app_gifs, app_members, app_prefs, app_staff, member_auth
+from src.web import app_channels, app_gifs, app_members, app_prefs, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channels import is_team_channel
 
@@ -425,10 +425,10 @@ async def settings(org_id: str):
 
 
 # 空间设置里有对应能力的：名字（主助理的名字，也就是这个家显示的名字）、默认时区（例行工作用的那个）、
-# GIF 开关和分级（团队频道里的 GIF）。其余开关（语音、团队巡视……）这里没有对应能力，改了也不会生效，
+# GIF 开关和分级（团队频道里的 GIF）、语音消息开关。其余开关（团队巡视、背景信息……）没有对应能力，改了也不会生效，
 # 所以拒绝而不是假装存下。
 _SETTINGS_WRITABLE = {"name", "timezone"}
-_HOME_SWITCHES = {"gifs", "gifRating"}
+_HOME_SWITCHES = {"gifs", "gifRating", "voiceMessages"}
 
 
 def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -1432,11 +1432,12 @@ def _gif_error(error: "app_gifs.GifError") -> JSONResponse:
 
 
 async def _gif_key_owner(request: Request):
+    """第三方服务的 Key（GIPHY、语音）只有所有者能看能改，且要已认证的主人连接。"""
     root = os.getcwd()
     if not member_auth.principal(request, root).is_owner:
-        return None, _error(403, "forbidden", "只有所有者能管 GIPHY 密钥")
+        return None, _error(403, "forbidden", "只有所有者能管第三方服务的 Key")
     if not views.owner_connection():
-        return None, _error(403, "forbidden", "管 GIPHY 密钥需要已认证的主人连接")
+        return None, _error(403, "forbidden", "管第三方服务的 Key 需要已认证的主人连接")
     return root, None
 
 
@@ -1526,6 +1527,176 @@ async def _gif_for_message(org_id: str, wanted: Any):
         if error.status == 404:
             return _error(422, "message.media_not_found", "GIPHY 上没有这个 GIF")
         return _gif_error(error)
+
+
+# ── 语音消息 ──────────────────────────────────────────────────────────────────
+# 服务商和 Key 只有所有者能管。录音转成文字作为消息正文（给 agent 看），人看到的是语音条。
+# 主助理私聊只有所有者能发（和发文字一样）；团队频道里所有能发言的人都能发。
+
+_MAX_VOICE_BODY = app_voice.MAX_UPLOAD_BYTES + 64 * 1024
+
+
+def _voice_error(error: "app_voice.VoiceError") -> JSONResponse:
+    return _error(error.status, error.code, str(error))
+
+
+@router.get("/api/app/speech-key")
+async def speech_key(request: Request):
+    root, refused = await _gif_key_owner(request)
+    return refused or app_voice.key_view(root)
+
+
+@router.put("/api/app/speech-key")
+async def save_speech_key(body: Dict[str, Any], request: Request):
+    """先拿这个 Key 向服务商试一次（不花钱的查询），能用才存。"""
+    root, refused = await _gif_key_owner(request)
+    if refused:
+        return refused
+    try:
+        record = app_voice.check_input(body)
+        await app_voice.verify(record)
+    except app_voice.VoiceError as error:
+        return _voice_error(error)
+    await asyncio.to_thread(app_voice.save, root, record)
+    return app_voice.key_view(root)
+
+
+@router.delete("/api/app/speech-key")
+async def remove_speech_key(request: Request):
+    root, refused = await _gif_key_owner(request)
+    if refused:
+        return refused
+    await asyncio.to_thread(app_voice.remove, root)
+    return app_voice.key_view(root)
+
+
+def _voice_on(root: str) -> bool:
+    settings = views.settings(root)
+    return bool(settings["voiceAvailable"] and settings["voiceMessages"])
+
+
+@router.get(_ORG + "/voice/allowed")
+async def voice_allowed(org_id: str, request: Request):
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return {"allowed": _voice_on(root)}
+
+
+async def _upload_body(request: Request) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > _MAX_VOICE_BODY:
+        raise app_voice.VoiceError(413, "voice.too_large", "录音太大了")
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > _MAX_VOICE_BODY:
+            raise app_voice.VoiceError(413, "voice.too_large", "录音太大了")
+    return body
+
+
+async def _can_read_team(root: str, who, channel_id: str) -> bool:
+    return await asyncio.to_thread(lambda: app_channels.channels(root).can_read(who, channel_id))
+
+
+@router.post(_ORG + "/channels/{channel_id}/voice")
+async def send_voice(org_id: str, channel_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not _voice_on(root):
+        return _error(422, "voice.off", "这个空间没有开语音消息")
+    team = is_team_channel(channel_id)
+    main = not team and _main_channel(org_id, channel_id) is not None
+    if not team and not main:
+        return _error(422, "voice.off_here", "这里不能发语音")
+    if main:
+        if not who.is_owner:
+            return _error(403, "forbidden", "只有所有者能和主助理说话")
+        if not views.model_connected():
+            return _error(409, "no_ai", "还没有连接模型，没法回复")
+    else:
+        if who.is_owner and not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", "团队频道需要已认证的同源会话")
+        if not await _can_read_team(root, who, channel_id):
+            return _error(404, "not_found", "没有这个频道")
+    try:
+        fields, upload = app_voice.parse_form(request.headers.get("content-type", ""), await _upload_body(request))
+        wanted = app_voice.check_fields(fields)
+        if upload is None or not upload[0]:
+            raise app_voice.VoiceError(400, "invalid", "没有录音文件")
+        kind = app_voice.sniff(upload[0])
+        if kind is None:
+            raise app_voice.VoiceError(400, "voice.format", "认不出这个录音的格式")
+    except app_voice.VoiceError as error:
+        return _voice_error(error)
+    if main and wanted["threadId"]:
+        return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
+    again = await asyncio.to_thread(app_voice.find_clip, root, channel=channel_id, author=who.id,
+                                    client=wanted["clientId"])
+    if again is not None:                                   # 界面重试：已经发出去了
+        return {"clipId": again["id"]}
+    record = await asyncio.to_thread(app_voice.store_clip, root, upload[0], kind, channel=channel_id,
+                                     scope="team" if team else "main", author=who.id, client=wanted["clientId"])
+    no_words = False
+    try:
+        text = await app_voice.transcribe(root, upload[0], kind, wanted["language"])
+    except app_voice.VoiceError as error:
+        if not team:                                        # 主助理听不到就没法回答：如实告诉发的人
+            await asyncio.to_thread(app_voice.drop_clip, root, record["id"])
+            return _voice_error(error)
+        text, no_words = "", True                           # 团队频道里的人照样能听
+    if not text and not no_words:
+        await asyncio.to_thread(app_voice.drop_clip, root, record["id"])
+        return _error(422, "voice.silent", "没听到说话")
+    meta = app_voice.voice_meta(record, wanted, no_words=no_words)
+    if team:
+        answer = await _team_call(request, org_id, lambda service, actor: service.post(
+            actor, channel_id, text, client_id=wanted["clientId"], thread=wanted["threadId"],
+            reply_to=wanted["replyTo"], media={"kind": "voice", **meta}))
+        if isinstance(answer, JSONResponse):
+            await asyncio.to_thread(app_voice.drop_clip, root, record["id"])
+            return answer
+        return {"clipId": record["id"]}
+    import uuid
+    rid = uuid.uuid4().hex
+    await asyncio.to_thread(app_voice.remember_main_voice, root, views.message_id(rid, "user"), meta)
+    try:
+        from src.web.routers.computers import (
+            has_computer_owner_proof, has_local_owner_browser_session, has_owner_browser_session,
+        )
+        await (await main_chat_bridge(root)).post(
+            text, wanted["clientId"], rid=rid, file_owner=has_computer_owner_proof(request),
+            local_browser=has_local_owner_browser_session(request),
+            paired_browser=has_owner_browser_session(request))
+    except NoModel:
+        return _error(409, "no_ai", "还没有连接模型，没法回复")
+    return {"clipId": record["id"]}
+
+
+@router.get(_ORG + "/voice/{clip_id}/audio")
+async def voice_audio(org_id: str, clip_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    record = await asyncio.to_thread(app_voice.clip, root, clip_id)
+    if record is None:
+        return _error(404, "not_found", "没有这段录音")
+    if record.get("scope") == "main":
+        allowed = who.is_owner
+    else:
+        allowed = await _can_read_team(root, who, str(record.get("channel") or ""))
+    if not allowed:
+        return _error(404, "not_found", "没有这段录音")
+    if app_voice.expired(record):
+        return _error(410, "voice.expired", "这段录音已经过期")
+    content = await asyncio.to_thread(app_voice.audio, root, record)
+    if content is None:
+        return _error(410, "voice.expired", "这段录音已经不在了")
+    return Response(content=content, media_type=record["contentType"],
+                    headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
 
 
 # ── 每个人自己的侧栏 ──────────────────────────────────────────────────────────
