@@ -159,9 +159,10 @@ def test_work_area_is_only_read_back_by_its_account(home):
     assert second.put(_AREA_URL, json={"area": "skipped"}).status_code == 204
 
     assert first.patch("/api/app/me", json={"locale": "ja"}).status_code == 204
-    assert first.get("/api/app/me").json()["user"]["workArea"] == "dev"
-    assert second.get("/api/app/me").json()["user"]["workArea"] == "skipped"
-    assert owner.get("/api/app/me").json()["user"]["workArea"] == "ops"
+    for browser, area in ((first, "dev"), (second, "skipped"), (owner, "ops")):
+        response = browser.get("/api/app/me")
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["user"]["workArea"] == area
     assert all("workArea" not in row for row in owner.get(home["base"] + "/members").json()["members"])
 
 
@@ -201,6 +202,24 @@ def test_invalid_work_area_does_not_replace_saved_area(home, body):
     assert owner.put(_AREA_URL, json={"area": "sales"}).status_code == 204
     assert owner.put(_AREA_URL, json=body).status_code == 400
     assert owner.get("/api/app/me").json()["user"]["workArea"] == "sales"
+
+
+def test_work_area_disk_error_keeps_server_paths_private(home, monkeypatch):
+    from src.web import app_prefs
+
+    member = _join(home)
+    assert member.put(_AREA_URL, json={"area": "dev"}).status_code == 204
+
+    def writing_failed(*_args):
+        raise OSError("fixture-private-file-path")
+
+    monkeypatch.setattr(app_prefs, "_write", writing_failed)
+    response = member.put(_AREA_URL, json={"area": "ops"})
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "unavailable"
+    assert "fixture-private-file-path" not in response.text
+    assert member.get("/api/app/me").json()["user"]["workArea"] == "dev"
 
 
 def test_a_damaged_account_preference_stays_readable_without_overwriting_it(home):

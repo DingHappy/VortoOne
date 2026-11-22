@@ -380,7 +380,8 @@ async def device_sign_out(request: Request, response: Response):
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
 @router.get("/api/app/me")
-async def me(request: Request):
+async def me(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     account = getattr(request.state, "member_account", None)
     if account is None:
@@ -413,8 +414,10 @@ async def set_work_area(body: Dict[str, Any], request: Request):
         key = app_members.member_auth_key(request.state.member_account)
     try:
         await asyncio.to_thread(app_prefs.set_work_area, root, key, body)
-    except (ValueError, OSError) as error:
+    except ValueError as error:
         return _error(400, "invalid", str(error))
+    except OSError:
+        return _error(503, "unavailable", "暂时无法保存工作领域")
     return Response(status_code=204)
 
 
