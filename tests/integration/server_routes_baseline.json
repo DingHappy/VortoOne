@@ -2292,6 +2292,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar",
     "methods": [
       "GET"
@@ -3301,6 +3307,36 @@
     "path": "/api/app/gif-key",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/routine",
+    "methods": [
+      "POST"
     ]
   },
   {
