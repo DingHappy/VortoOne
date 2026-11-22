@@ -1,7 +1,6 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 242 个，剩 **389** 个：
 客户端合同里一共 631 个不重复接口，后端已接 244 个，剩 **387** 个：
 - **要做：317**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
@@ -438,7 +437,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/invitations/{x}/request-new` | `invites.requestNew` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests` | `invites.ask` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` |  |
-| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` |  |
+| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 已接尚未清理的过期邮箱邀请；已接受的令牌已被消费，待有真实回执后补齐 |
 
 ### org/databases（6 个，要做 6）
 

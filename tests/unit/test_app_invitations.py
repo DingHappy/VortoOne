@@ -1,8 +1,11 @@
 """成员邀请：全部列表（含过期）、批量邀请、改邀请给的身份组、成员「换角色」。规矩在成员登记处。"""
 
-import pytest
+from datetime import datetime, timedelta, timezone
 
-from tests.unit.test_member_login import ORIGIN, _group, _invite, _join
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.unit.test_member_login import ORIGIN, PASSWORD, _group, _invite, _join
 from tests.unit.test_member_login import home  # noqa: F401 —— 成员登录的整套夹具
 
 
@@ -70,6 +73,90 @@ def test_the_full_list_includes_expired_invitations(home, monkeypatch):
     assert plain.get(f"{base}/invitations/all").status_code == 403
 
 
+def test_expired_invitation_state_only_returns_known_preview_metadata(home, monkeypatch):
+    from src.workflow.members import registry
+
+    now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(registry, "_now", lambda: now)
+    role = _group(home, "内部资料", ["view_usage"])
+    token = _invite(home, "private-address@example.com", roleIds=[role])
+    guest = TestClient(home["app"])
+    path = f"/api/app/invitations/{token}"
+    current = guest.get(path)
+    assert current.status_code == 200
+    invited = TestClient(home["app"], headers=ORIGIN)
+    login = invited.post("/api/auth/sign-up/email",
+                         json={"name": "迟到的受邀人", "email": "private-address@example.com", "password": PASSWORD},
+                         headers={"x-invitation-token": token})
+    assert login.status_code == 200
+    before = registry.MemberRegistry(home["root"]).snapshot()
+    assert guest.get(path + "/state").status_code == 404
+
+    now += timedelta(days=registry.INVITE_DAYS_DEFAULT)
+    assert guest.get(path).status_code == 404
+    gone = guest.get(path + "/state")
+    assert gone.status_code == 200 and gone.headers["cache-control"] == "no-store"
+    assert gone.json() == {"state": "expired", "orgName": current.json()["orgName"],
+                           "invitedBy": current.json()["invitedBy"], "at": current.json()["expiresAt"]}
+    assert registry.MemberRegistry(home["root"]).snapshot() == before
+    missing = guest.get("/api/app/invitations/unknown-token/state")
+    assert missing.status_code == 404 and missing.headers["cache-control"] == "no-store"
+    assert guest.post(path + "/accept", json={}).status_code == 401
+    assert invited.post(path + "/accept", json={}).status_code == 404
+    assert invited.get("/api/app/me").json()["organizations"] == []
+
+    _invite(home, "another@example.com")
+    assert guest.get(path + "/state").status_code == 404   # 过期记录已被旧流程清理
+
+
+def test_expired_state_does_not_reconstruct_completed_or_revoked_invitations(home, monkeypatch):
+    from src.agents.principal import OWNER, Principal
+    from src.workflow.members import registry
+
+    removed = _invite(home, "removed@example.com")
+    row, = home["owner"].get(f"{home['base']}/invitations").json()["invitations"]
+    assert home["owner"].delete(f"{home['base']}/invitations/{row['id']}", headers=ORIGIN).status_code == 204
+
+    accepted = _invite(home, "accepted@example.com")
+    browser = TestClient(home["app"], headers=ORIGIN)
+    login = browser.post("/api/auth/sign-up/email",
+                         json={"name": "已经加入", "email": "accepted@example.com", "password": PASSWORD},
+                         headers={"x-invitation-token": accepted})
+    assert login.status_code == 200
+    assert browser.post(f"/api/app/invitations/{accepted}/accept", json={}).status_code == 200
+
+    # 没有邮箱绑定的旧入口也不能在这里作为邮箱邀请显示。
+    store = registry.MemberRegistry(home["root"])
+    now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    issuer = Principal(OWNER, "owner")
+    _, general = store.invite(issuer, days=1, now=now)
+    monkeypatch.setattr(registry, "_now", lambda: now + timedelta(days=2))
+    guest = TestClient(home["app"])
+    for token in (removed, accepted, general):
+        result = guest.get(f"/api/app/invitations/{token}/state")
+        assert result.status_code == 404
+        assert "accepted@example.com" not in result.text
+
+
+def test_expired_state_does_not_revive_a_former_inviters_authority(home, monkeypatch):
+    from src.workflow.members import registry
+
+    role = _group(home, "招募", ["invite_people"])
+    member = _join(home, email="host@example.com", name="邀请人", roleIds=[role])
+    identity = member.get("/api/app/me").json()["user"]["id"]
+    now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(registry, "_now", lambda: now)
+    invited = member.post(f"{home['base']}/invitations", json={"email": "late@example.com"})
+    assert invited.status_code == 200
+    token = invited.json()["url"].rsplit("/", 1)[1]
+    path = f"/api/app/invitations/{token}/state"
+    guest = TestClient(home["app"])
+    now += timedelta(days=registry.INVITE_DAYS_DEFAULT)
+    assert guest.get(path).json()["invitedBy"] == "邀请人"
+    assert home["owner"].put(f"{home['base']}/members/{identity}/roles", json={"roleIds": []}).status_code == 200
+    assert guest.get(path).status_code == 404
+
+
 def test_changing_what_an_invitation_gives(home):
     owner, base = home["owner"], home["base"]
     group = _group(home, "财务", ["view_usage"])
@@ -79,8 +166,6 @@ def test_changing_what_an_invitation_gives(home):
     assert changed.status_code == 200 and changed.json() == {"roleIds": [group], "channelIds": [], "agentIds": []}
     assert owner.get(f"{base}/invitations").json()["invitations"][0]["roleIds"] == [group]
     # 同一个链接照样能用，加入后带着新的身份组
-    from tests.unit.test_member_login import PASSWORD
-    from fastapi.testclient import TestClient
     browser = TestClient(home["app"], headers=ORIGIN)
     browser.post("/api/auth/sign-up/email", json={"name": "小王", "email": "a@example.com", "password": PASSWORD},
                  headers={"x-invitation-token": token})
