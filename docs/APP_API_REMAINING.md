@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 323 个，剩 **308** 个：
-- **要做：233**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 326 个，剩 **305** 个：
+- **要做：230**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -263,21 +263,21 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 5）
+### org/me（12 个，要做 2）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | PATCH | `ORG/me` | `orgs.updateMe` | 已接个人时区（清空后跟随空间默认）；用户名仍待接，接受原样传回。 |
-| ☐ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
+| ☑ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
 | ☐ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` |  |
 | ☑ | GET | `ORG/me/approval-cover` | `approvals.covers` | 所有者托付一个成员替自己批主要聊天里的确认：一直或外出时，可设到期；默认只代批低风险的。读过外部内容的、网页登录、文件传输、设备钥匙、专员提议永远留给所有者；每次代批进审计 |
 | ☑ | PUT | `ORG/me/approval-cover` | `approvals.setCover` | 只有所有者能设；成员回 409 |
 | ☑ | DELETE | `ORG/me/avatar` | `orgs.removeAvatar` | 仅移除本人头像。 |
 | ☑ | PUT | `ORG/me/avatar` | `orgs.setAvatar` | 本人上传正方形 PNG 或 JPEG，支持头像绘制配方。仅当前空间的在册成员能读取，安全拒绝其他格式。 |
-| ☐ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
+| ☑ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
 | ☑ | GET | `ORG/me/right-hand-approvals` | `approvals.rightHand` | 如实是关着的：会提议的只有助理自己，代批等于自己批自己的提议；打开回 409。等专员也能提议再接 |
 | ☑ | PUT | `ORG/me/right-hand-approvals` | `approvals.setRightHand` | 只接受保持关着，要打开回 409 |
-| ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
+| ☑ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
 ### org/artifacts（11 个，要做 7）
