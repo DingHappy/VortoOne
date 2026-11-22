@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 286 个，剩 **345** 个：
-- **要做：270**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 287 个，剩 **344** 个：
+- **要做：269**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -532,11 +532,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/notifications/{x}/read` | `notifications.read` | 仅所有者的后台通知 |
 | ☑ | POST | `ORG/notifications/{x}/snooze` | `notifications.snooze` | 仅所有者的后台通知 |
 
-### /api/app/feedback（4 个，要做 4）
+### /api/app/feedback（4 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/feedback` | `system.sendFeedback` |  |
+| ☑ | POST | `/api/app/feedback` | `system.sendFeedback` | 已认证成员或所有者提交本地文字反馈，另有仅所有者可读的本地收件箱 |
 | ☐ | POST | `/api/app/feedback/files` | `system.uploadFeedbackFile` |  |
 | ☐ | DELETE | `/api/app/feedback/files/{x}` | `system.dropFeedbackFile` |  |
 | ☐ | POST | `/api/app/feedback/offers/{x}` | `system.decideFeedbackOffer` |  |

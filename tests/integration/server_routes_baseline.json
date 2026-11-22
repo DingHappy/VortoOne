@@ -1844,6 +1844,18 @@
     ]
   },
   {
+    "path": "/api/app/feedback",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/feedback",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/me",
     "methods": [
       "GET"

@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_board, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox, app_org_logo,
     app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
@@ -97,8 +97,68 @@ def _claim_waiting() -> bool:
 
 @router.get("/api/app/auth-config")
 async def auth_config():
+    local_feedback = views.owner_connection()
     return {"socialProviders": {"google": False, "github": False}, "signupOpen": False, "firstRun": False,
-            "ownerClaim": _claim_waiting(), "passwordReset": False, "feedback": False}
+            "ownerClaim": _claim_waiting(), "passwordReset": False,
+            "feedback": local_feedback, "feedbackLocal": local_feedback}
+
+
+_FEEDBACK = "/api/app/feedback"
+_FEEDBACK_HEADERS = {"Cache-Control": "no-store"}
+
+
+@router.get(_FEEDBACK)
+async def feedback_inbox(request: Request, orgId: str, cursor: int | None = Query(None, ge=1, le=2**63 - 1),
+                         limit: int = Query(50, ge=1, le=100)):
+    root = _root(orgId)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "只有已认证的所有者能查看本地反馈")
+    try:
+        listing = await asyncio.to_thread(app_feedback.listing, root, cursor, limit)
+    except (sqlite3.Error, OSError):
+        return _error(503, "feedback.unavailable", "本地反馈暂时不可读")
+    return JSONResponse(listing, headers=_FEEDBACK_HEADERS)
+
+
+@router.post(_FEEDBACK, status_code=204)
+async def submit_feedback(request: Request):
+    from src.workflow.members.registry import Damaged, Refused
+
+    root = os.getcwd()
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "反馈需要已认证的所有者或在册成员")
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        return _error(415, "feedback.invalid", "本地反馈只接受 JSON 请求")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > app_feedback.MAX_BODY:
+            return _error(413, "feedback.too_large", "反馈请求过大")
+        raw.extend(chunk)
+    try:
+        identifier, org_id, feedback = app_feedback.parse_submission(json.loads(raw))
+    except (ValueError, RecursionError):
+        return _error(400, "feedback.invalid", "反馈只接受有效的工作区编号、请求编号及 1 至 4000 字符的文字")
+    _root(org_id)
+
+    def save():
+        if who.is_owner:
+            app_feedback.submit(root, identifier, feedback, who)
+            return
+        registry = MemberRegistry(root)
+        with registry._locked_state() as state:
+            registry._actor(state, who)
+            app_feedback.submit(root, identifier, feedback, who)
+
+    try:
+        await asyncio.to_thread(save)
+    except Refused:
+        return _error(403, "forbidden", "只有在册成员能提交反馈")
+    except app_feedback.FeedbackConflict as error:
+        return _error(409, "feedback.conflict", str(error))
+    except (Damaged, sqlite3.Error, OSError):
+        return _error(503, "feedback.unavailable", "本地反馈暂时无法保存")
+    return Response(status_code=204, headers=_FEEDBACK_HEADERS)
 
 
 class _SignIn(BaseModel):
