@@ -2966,9 +2966,21 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/connectors",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/connectors/custom",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -3499,6 +3511,48 @@
     "path": "/api/app/organizations/{org_id}/computer-pairings/{pairing_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom/{server_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom/{server_id}/refresh",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom/{server_id}/tools",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/oauth/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/{connector}/oauth/start",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/{server_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/{server_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {

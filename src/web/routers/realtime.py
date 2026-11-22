@@ -1723,6 +1723,10 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
                 from src.llm.client import bind_usage
                 bind_usage(sess["usage"])
             await _ensure_mcp(agent, agent_say)   # 首回合按需连 MCP（config/mcp.yaml 存在才连）
+            from src.gateway.agent_session import sync_custom_connector_tools
+            from src.gateway.workspace_scope import current_workspace_scope
+            sync_custom_connector_tools(agent, (sess or {}).get("repo_root") or os.getcwd(),
+                                        scope=current_workspace_scope())
             turn_text = text
             if context_items:
                 chunks = []

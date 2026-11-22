@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 286 个，剩 **345** 个：
-- **要做：270**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 295 个，剩 **336** 个：
+- **要做：261**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -362,19 +362,19 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/credentials/{x}/remove-copies` | `agents.removeCredentialCopies` | 保存时就合并同一把 key，没有副本，回 0 |
 | ☑ | POST | `ORG/credentials/{x}/rotate` | `agents.rotateCredential` | 先用新 key 真调一次，通过才换 |
 
-### org/connectors（9 个，要做 9）
+### org/connectors（9 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/connectors` | `connectors.connectWithKey` | 读已接、写没接 |
-| ☐ | POST | `ORG/connectors/custom` | `customConnectors.connect` | 读已接、写没接 |
-| ☐ | DELETE | `ORG/connectors/custom/{x}` | `customConnectors.disconnect` |  |
-| ☐ | POST | `ORG/connectors/custom/{x}/refresh` | `customConnectors.refresh` |  |
-| ☐ | PUT | `ORG/connectors/custom/{x}/tools` | `customConnectors.saveTools` |  |
-| ☐ | POST | `ORG/connectors/oauth/complete` | `connectors.completeOAuth` |  |
-| ☐ | DELETE | `ORG/connectors/{x}` | `connectors.disconnect` | 读已接、写没接 |
-| ☐ | PATCH | `ORG/connectors/{x}` | `connectors.rename` | 读已接、写没接 |
-| ☐ | POST | `ORG/connectors/{x}/oauth/start` | `connectors.startOAuth` |  |
+| ☑ | POST | `ORG/connectors` | `connectors.connectWithKey` | 官方目录是空的：回 409，请用自定义连接器 |
+| ☑ | POST | `ORG/connectors/custom` | `customConnectors.connect` | 只接 HTTPS + key 的 MCP：读得到工具目录才存；没给 key 回 needs_key（不做 OAuth） |
+| ☑ | DELETE | `ORG/connectors/custom/{x}` | `customConnectors.disconnect` | 先除名再删 key，正在跑的会话立刻用不了 |
+| ☑ | POST | `ORG/connectors/custom/{x}/refresh` | `customConnectors.refresh` | 新出现或被对方改过的工具回到待审 |
+| ☑ | PUT | `ORG/connectors/custom/{x}/tools` | `customConnectors.saveTools` | 只读要对方也标了只读；其余只能每次问或关；保存过才给会话和 agent |
+| ☑ | POST | `ORG/connectors/oauth/complete` | `connectors.completeOAuth` | 不做 OAuth：回 409 |
+| ☑ | DELETE | `ORG/connectors/{x}` | `connectors.disconnect` | 自定义连接器走同一条断开 |
+| ☑ | PATCH | `ORG/connectors/{x}` | `connectors.rename` | 改自定义连接器的名字 |
+| ☑ | POST | `ORG/connectors/{x}/oauth/start` | `connectors.startOAuth` | 不做 OAuth：回 409 |
 
 ### org/skills（9 个，要做 8）
 
