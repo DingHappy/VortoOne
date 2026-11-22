@@ -3538,6 +3538,32 @@ async def _notifications_call(request: Request, org_id: str, action, *, write=Fa
         return _error(400, "invalid", str(error))
 
 
+@router.get(_ORG + "/notification-prefs")
+async def notification_preferences(org_id: str, request: Request, response: Response):
+    """Project the current account's registered notification destinations."""
+    from src.gateway import mobile_push
+    from src.gateway.mobile_devices import MobileDevices, MobileStoreError
+
+    root = _root(org_id)
+    who = _who(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        refused = _error(403, "forbidden", "读取通知设置需要已认证的空间成员")
+        refused.headers["Cache-Control"] = "no-store"
+        return refused
+
+    phones = 0
+    if who.is_owner and mobile_push.configured():
+        try:
+            phones = await asyncio.to_thread(lambda: len(MobileDevices(root).push_targets()))
+        except (MobileStoreError, OSError):
+            unavailable = _error(409, "unavailable", "无法读取手机通知登记")
+            unavailable.headers["Cache-Control"] = "no-store"
+            return unavailable
+    # 暂无按类别改变投递的能力。界面只显示服务实际提供的开关。
+    return {"categories": [], "phones": phones}
+
+
 @router.get(_INBOX)
 async def notifications(
     org_id: str,
