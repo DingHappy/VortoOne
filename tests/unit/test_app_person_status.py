@@ -88,11 +88,21 @@ def test_status_expiry_and_read_after_a_new_session(home, monkeypatch):
     {"status": {"text": "line", "emoji": {}}},
 ])
 def test_invalid_status_keeps_previous_prefs(home, body):
+    from src.utils.state_dir import state_dir
+
     owner, base = home["owner"], home["base"]
     path = f"{base}/me/status"
-    before = owner.put(path, json={"availability": "out"}).json()
+    saved = owner.put(path, json={"availability": "out", "status": {"text": "例行休息"}})
+    assert saved.status_code == 200
+    person_id = saved.json()["userId"]
+    prefs = state_dir(home["root"]) / "app_prefs.json"
+    before = prefs.read_bytes()
     assert owner.put(path, json=body).status_code == 400
-    assert _people(owner, base)[before["userId"]] == before
+    person = _people(owner, base)[person_id]
+    assert (person["availability"], person["presence"], person["status"]) == (
+        "out", "out", {"text": "例行休息", "emoji": None, "until": None},
+    )
+    assert prefs.read_bytes() == before
 
 
 def test_pending_members_and_cross_site_cookies_cannot_set_status(home):
