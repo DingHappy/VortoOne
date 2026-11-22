@@ -1348,6 +1348,33 @@ async def refuse(org_id: str, approval_id: str, body: _Approve, request: Request
     return await _decide(org_id, approval_id, False, request)
 
 
+class _DecideMany(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ids: list[str] = Field(min_length=1, max_length=50)
+    decision: str = Field(pattern=r"^(approve|refuse)$")
+    reason: str | None = None
+    via: str | None = None
+    only: str | None = None
+
+
+@router.post(_ORG + "/approvals/decide")
+async def decide_many(org_id: str, body: _DecideMany, request: Request):
+    """卡片上的「全部批准 / 全部拒绝」：只处理界面列出的这几条，每条照常单独决定、只批这一次。
+    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。"""
+    _root(org_id)
+    decided, skipped = [], []
+    for approval_id in dict.fromkeys(body.ids):
+        if body.only is not None:
+            skipped.append(approval_id)
+            continue
+        answer = await _decide(org_id, approval_id, body.decision == "approve", request)
+        if isinstance(answer, JSONResponse):
+            skipped.append(approval_id)
+        else:
+            decided.append(answer)
+    return {"approvals": decided, "skipped": skipped}
+
+
 @router.get(_ORG + "/channels/{channel_id}/pins")
 async def channel_pins(org_id: str, channel_id: str, request: Request):
     team = await _team_call(request, org_id, lambda service, actor: {"pins": service.pins(actor, channel_id)},
@@ -2041,6 +2068,63 @@ async def skill(org_id: str, skill_id: str):
     return detail if detail is not None else _error(404, "not_found", "没有这条技能")
 
 
+async def _owner_write(request: Request, root: str, what: str):
+    """只有所有者、且是已认证的主人连接才能改的东西。"""
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", f"{what}只有所有者能改")
+    if not views.owner_connection():
+        return _error(403, "forbidden", f"改{what}需要已认证的主人连接")
+    return None
+
+
+async def _skill_write(request: Request, org_id: str, action):
+    from src.workflow.workbench.personal_skills import SkillConflict
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "技能")
+    if refused:
+        return refused
+    try:
+        return await asyncio.to_thread(action, root)
+    except SkillConflict as error:
+        return _error(409, "conflict", str(error))
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+    except OSError:
+        return _error(409, "unavailable", "个人技能无法保存，请检查存储权限")
+
+
+@router.post(_ORG + "/skills")
+async def create_skill(org_id: str, body: Dict[str, Any], request: Request):
+    """主人写一条新技能。只是给主助理的说明，不执行脚本、不增加工具权限。"""
+    return await _skill_write(request, org_id, lambda root: views.create_skill(root, body))
+
+
+@router.patch(_ORG + "/skills/{skill_id}")
+async def update_skill(org_id: str, skill_id: str, body: Dict[str, Any], request: Request):
+    result = await _skill_write(request, org_id, lambda root: views.update_skill(root, skill_id, body))
+    return _error(404, "not_found", "没有这条技能") if result is None else result
+
+
+@router.delete(_ORG + "/skills/{skill_id}", status_code=204)
+async def delete_skill(org_id: str, skill_id: str, request: Request):
+    result = await _skill_write(request, org_id, lambda root: views.remove_skill(root, skill_id))
+    if isinstance(result, JSONResponse):
+        return result
+    return Response(status_code=204) if result else _error(404, "not_found", "没有这条技能")
+
+
+@router.put(_ORG + "/skill-settings")
+async def save_skill_settings(org_id: str, body: Dict[str, Any], request: Request):
+    """「agent 自己改进技能」在这里没有对应能力（技能改动都要主人核对）：只接受关着。"""
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "技能设置")
+    if refused:
+        return refused
+    if body != {"agentsImprove": False}:
+        return _error(400, "unsupported", "这里的技能改动都要主人核对，不能让 agent 自己改")
+    return {"agentsImprove": False}
+
+
 @router.put(_ORG + "/agents/{agent_id}/skills")
 async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any]):
     """主助理启用哪些个人技能。专员按岗位装配，不在这里改。"""
@@ -2072,6 +2156,18 @@ async def artifacts(org_id: str, q: str = "", kind: str = "", kinds: str = ""):
 async def artifact(org_id: str, artifact_id: str, version: int | None = None):
     found = views.artifact(_root(org_id), artifact_id, version)
     return found if found is not None else _error(404, "not_found", "没有这个制品")
+
+
+@router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
+async def delete_artifact(org_id: str, artifact_id: str, request: Request):
+    """删掉助理做的一个页面（和旧接口 DELETE /api/artifacts/{id} 同一个登记处）。"""
+    from src.agents.tools.artifacts import ArtifactStore
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "制品")
+    if refused:
+        return refused
+    removed = await asyncio.to_thread(ArtifactStore(root).delete, artifact_id)
+    return Response(status_code=204) if removed else _error(404, "not_found", "没有这个制品")
 
 
 @router.get(_ORG + "/dashboards/home")
