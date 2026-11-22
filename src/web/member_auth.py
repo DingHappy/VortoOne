@@ -36,6 +36,7 @@ _CATEGORY = _CATEGORIES + r"/" + CHANNEL_CATEGORY_ID_PATTERN
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
@@ -62,6 +63,15 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
 
     ("GET", _ORG + r"/team-memories"),                    # 所有 agent 都读的那一份
     ("PATCH", _ORG + r"/memories/[^/]+"),                 # 只有团队记忆，处理函数里按权限核对
+
+
+    ("GET", _ORG + r"/approvals"),                        # 只在替所有者代批时有内容
+    ("GET", _ORG + r"/approvals/[^/]+"),
+    ("POST", _ORG + r"/approvals/[^/]+/(approve|refuse)"),
+    ("POST", _ORG + r"/approvals/decide"),
+    ("GET", _ORG + r"/me/approval-cover"),
+    ("PUT", _ORG + r"/me/approval-cover"),                # 成员这边如实拒绝
+    ("DELETE", _ORG + r"/approval-covers/[^/]+"),
     ("GET", _ORG + r"/issues"),
     ("POST", _ORG + r"/issues"),
     ("GET", _ORG + r"/issues/by-number/[^/]+"),
@@ -185,7 +195,6 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/runs", {"runs": []}),
     (_ORG + r"/active-runs", {"runs": []}),
     (_ORG + r"/usage", {"usage": []}),
-    (_ORG + r"/approvals", {"approvals": []}),
     (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
     (_ORG + r"/former-agents", {"agents": []}),          # 不在团队里的 agent 是所有者的事
 )

@@ -499,6 +499,86 @@ def staff_proposal_approval(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
             "decidedByUserId": None, "decidedAt": None, "reason": None, "canDecide": True, "routine": False}
 
 
+_CARD_STATE = {"pending": "pending", "applying": "creating", "approved": "created", "rejected": "denied"}
+PROPOSAL_CARD_DAYS = 30
+
+
+def agent_proposal_card_id(proposal_id: str) -> str:
+    return _id("agent-proposal-card", proposal_id)
+
+
+def _assistant_member_proposals(root: str) -> List[Dict[str, Any]]:
+    """助理在主要聊天里提的新建 agent（kind=member、没有前一版）。"""
+    from src.workflow.staff.approvals import StaffApprovals
+    return [item for item in StaffApprovals(root).list()
+            if item.get("origin") == "assistant" and item["snapshot"].get("kind") == "member"
+            and not item["snapshot"].get("previous") and item.get("status") in _CARD_STATE]
+
+
+def agent_proposal(root: str, item: Dict[str, Any], *, can_decide: bool) -> Dict[str, Any]:
+    """界面的 AgentProposal：聊天卡片上的新建 agent 提议。「创建」就是按这一版批准，「不要」就是拒绝。"""
+    from datetime import timedelta
+    snapshot = item["snapshot"]
+    data, role = snapshot["data"], snapshot.get("role_snapshot") or {}
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    state = _CARD_STATE[item["status"]]
+    expired = state == "pending" and expires <= datetime.now(timezone.utc)
+    agent = main_agent_id(root)
+    return {"kind": "agent_proposal", "forUserId": owner_id(root),
+            "params": {"draft": {"name": data.get("name") or data["id"], "handle": data["id"],
+                                 "role": role.get("title") or data.get("role") or "",
+                                 "instructions": str(role.get("brief") or ""), "appearance": None,
+                                 "channelIds": [], "access": [], "routine": None, "ai": {"kind": "model"}},
+                       "why": item.get("reason") or ""},
+            "state": state, "agentId": member_agent_id(root, data["id"]) if state == "created" else None,
+            "decidedByUserId": owner_id(root) if state in {"created", "denied"} else None, "decidedAt": None,
+            "expiresAt": _iso(expires.timestamp()),
+            "messageId": agent_proposal_card_id(item["id"]), "channelId": dm_channel_id(agent), "threadId": None,
+            "proposedByAgentId": agent, "expired": expired,
+            "canDecide": can_decide and state == "pending" and not expired}
+
+
+_CARD_FIELDS = ("kind", "forUserId", "params", "state", "agentId", "decidedByUserId", "decidedAt", "expiresAt")
+
+
+def with_proposal_cards(root: str, rows: List[Dict[str, Any]], *, latest: bool) -> List[Dict[str, Any]]:
+    """把助理的新建 agent 提议当一条 agent 消息插进主要聊天（按提的时间）。正文说一句，卡片在 meta.actionCard。
+    latest：这一页是最新的一页（晚于最后一条的卡片也接在后面）。"""
+    try:
+        items = _assistant_member_proposals(root)
+    except (ValueError, OSError):
+        return rows
+    if not items or (not rows and not latest):
+        return rows
+    first = rows[0]["createdAt"] if rows else ""
+    last = rows[-1]["createdAt"] if rows else ""
+    cards = []
+    for item in items:
+        card = agent_proposal(root, item, can_decide=True)
+        created = _iso(item.get("created_at"))
+        if created < first or (created > last and not latest):
+            continue
+        name = card["params"]["draft"]["name"]
+        cards.append(_message(root, card["messageId"], from_owner=False, body=f"我提议新建 agent「{name}」。",
+                              created=created, meta={"actionCard": {key: card[key] for key in _CARD_FIELDS}}))
+    if not cards:
+        return rows
+    merged = sorted([*rows, *cards], key=lambda row: row["createdAt"])
+    for index, row in enumerate(merged):
+        if row.get("sequence") is None:
+            row["sequence"] = merged[index - 1].get("sequence") or 0 if index else 0
+    return merged
+
+
+def find_agent_proposal(root: str, message_id_value: str) -> Optional[Dict[str, Any]]:
+    try:
+        items = _assistant_member_proposals(root)
+    except (ValueError, OSError):
+        return None
+    return next((item for item in items if agent_proposal_card_id(item["id"]) == message_id_value), None)
+
+
 def pending_staff_proposals(root: str) -> List[Dict[str, Any]]:
     """新界面要批的专员提议：除了已经有自己核对页的（成员提交的例行工作、主人在新界面新建的例行工作）。"""
     from src.web import app_prefs

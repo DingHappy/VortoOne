@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Mapping, Optional
 from src.agents import identity_groups as rules
 from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE
 from src.agents.principal import Principal
+from src.web import app_prefs
 from src.web import app_views as views
 from src.workflow.members.registry import MemberRegistry, Missing, Refused
 
@@ -186,12 +187,14 @@ def reorder_roles(root: str, actor: Principal, ids: Any) -> None:
 
 
 def members(root: str) -> List[Dict[str, Any]]:
-    """所有者，加上在册的成员。成员没有邮箱和头像：登记处不存这些。"""
+    """所有者与在册成员，附界面使用的个人头像和时区。"""
     from src.web import app_profile_avatar
 
     state = MemberRegistry(root).snapshot()
     owner = views.person(root)
-    timezone = owner["timezone"]
+    default_timezone = owner["timezone"]
+    timezones = app_prefs.personal_timezones(root) if views.owner_connection() else {}
+    owner["timezone"] = timezones.get(owner["userId"], default_timezone)
     org_id = views.home_id(root)
     rows = [owner]
     for member_id, member in sorted(state["members"].items(), key=lambda pair: str(pair[1].get("joined") or "")):
@@ -200,7 +203,8 @@ def members(root: str) -> List[Dict[str, Any]]:
                      "avatarUrl": app_profile_avatar.current(root, org_id, member_id),
                      "role": "member", "roleIds": [group for group in member.get("groups") or []
                                                    if group in state["groups"]],
-                     "joinedAt": str(member.get("joined") or ""), "handle": member_id, "timezone": timezone})
+                     "joinedAt": str(member.get("joined") or ""), "handle": member_id,
+                     "timezone": timezones.get(member_id, default_timezone)})
     return rows
 
 
@@ -590,6 +594,8 @@ def set_person_status(root: str, actor: Principal, body: Dict[str, Any]) -> Dict
         (person for person in members(root) if person["userId"] == actor.id), None)
     if row is None:
         raise Refused("还不是这个空间的成员")
+    if actor.is_owner and views.owner_connection():
+        row["timezone"] = app_prefs.personal_timezones(root).get(actor.id, row["timezone"])
     saved = app_prefs.set_status(root, actor.id, body)
     return _person_status(row, saved, own=True, connected=True)
 
@@ -610,6 +616,21 @@ def team_directory(root: str, actor: Principal, *, activity: bool, main_running:
         # 当前没有在这个家内登记发给其他 agent 的咨询，也没有频道或汇报关系。
         "consultations": [],
     }
+
+
+def update_person_timezone(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
+    if body.keys() - {"handle", "timezone"}:
+        raise ValueError("个人资料目前只能更改时区")
+    person = next((row for row in people(root, actor) if row["userId"] == actor.id), None)
+    if person is None:
+        raise Refused("还不是这个空间的成员")
+    # 界面保存时区时也会传回现在的 handle；提及用的标识暂不支持改写。
+    if "handle" in body and body["handle"] != person["handle"]:
+        raise ValueError("目前不支持修改用户名")
+    if "timezone" in body:
+        saved = app_prefs.set_personal_timezone(root, actor.id, body["timezone"])
+        person["timezone"] = saved if saved is not None else views.person(root)["timezone"]
+    return person
 
 
 def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:

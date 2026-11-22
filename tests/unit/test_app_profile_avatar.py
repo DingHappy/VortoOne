@@ -60,6 +60,10 @@ def test_people_keep_their_own_avatar_and_can_remove_it(home):
     member_url = cropped.json()["avatarUrl"]
     assert member_id in member_url and "#" not in member_url
 
+    assert owner.patch(base + "/me", json={"timezone": "Europe/Paris"}).status_code == 200
+    assert member.patch(base + "/me", json={"timezone": "Asia/Tokyo"}).status_code == 200
+    people = owner.get(base + "/people").json()["people"]
+    assert {row["userId"]: row["timezone"] for row in people} == {owner_id: "Europe/Paris", member_id: "Asia/Tokyo"}
     assert _avatars(member, base, "members") == {owner_id: owner_url, member_id: member_url}
     assert _avatars(owner, base, "people") == {owner_id: owner_url, member_id: member_url}
     assert owner.get("/api/app/me").json()["user"]["image"] == owner_url

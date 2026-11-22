@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 251 个，剩 **380** 个：
-- **要做：310**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 259 个，剩 **372** 个：
+- **要做：302**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -255,15 +255,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 9）
+### org/me（12 个，要做 7）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/me` | `orgs.updateMe` |  |
+| ☐ | PATCH | `ORG/me` | `orgs.updateMe` | 已接个人时区（清空后跟随空间默认）；用户名仍待接，接受原样传回。 |
 | ☐ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
 | ☐ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` |  |
-| ☐ | GET | `ORG/me/approval-cover` | `approvals.covers` |  |
-| ☐ | PUT | `ORG/me/approval-cover` | `approvals.setCover` |  |
+| ☑ | GET | `ORG/me/approval-cover` | `approvals.covers` | 所有者托付一个成员替自己批主要聊天里的确认：一直或外出时，可设到期；默认只代批低风险的。读过外部内容的、网页登录、文件传输、设备钥匙、专员提议永远留给所有者；每次代批进审计 |
+| ☑ | PUT | `ORG/me/approval-cover` | `approvals.setCover` | 只有所有者能设；成员回 409 |
 | ☑ | DELETE | `ORG/me/avatar` | `orgs.removeAvatar` | 仅移除本人头像。 |
 | ☑ | PUT | `ORG/me/avatar` | `orgs.setAvatar` | 本人上传正方形 PNG 或 JPEG，支持头像绘制配方。仅当前空间的在册成员能读取，安全拒绝其他格式。 |
 | ☐ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
@@ -492,15 +492,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/account/deletion/code` | `account.deletionCode` |  |
 | ☐ | POST | `/api/app/account/email` | `account.changeEmail` |  |
 
-### org/agent-proposals（5 个，要做 5）
+### org/agent-proposals（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/agent-proposals/{x}` | `agents.proposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/ask` | `agents.askProposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/create` | `agents.createProposed` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` |  |
-| ☐ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` |  |
+| ☑ | GET | `ORG/agent-proposals/{x}` | `agents.proposal` | 助理在主要聊天里提的新建 agent 以卡片出现在对话里（和审批列表是同一份提议）；只有所有者能看 |
+| ☑ | POST | `ORG/agent-proposals/{x}/ask` | `agents.askProposal` | 只有所有者能决定，回 409 |
+| ☑ | POST | `ORG/agent-proposals/{x}/create` | `agents.createProposed` | 按卡片上这一版批准，登记处照常核对 |
+| ☑ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` | 拒绝 |
+| ☑ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` | 提议不附带例行工作，回 409 |
 
 ### org/invite-links（5 个，要做 5）
 
@@ -915,11 +915,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | POST | `ORG/approvals/{x}/cancel` | `approvals.cancel` |  |
 
-### org/approval-covers（1 个，要做 1）
+### org/approval-covers（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | DELETE | `ORG/approval-covers/{x}` | `approvals.endCover` |  |
+| ☑ | DELETE | `ORG/approval-covers/{x}` | `approvals.endCover` | 所有者收回，或被托付的成员自己不再代批 |
 
 ### org/right-hand-decisions（1 个，要做 1）
 
