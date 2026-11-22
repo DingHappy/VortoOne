@@ -1,6 +1,12 @@
 import { isolatedPage, PAGE_SANDBOX } from "@vortoone/client/lib/isolated-page";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  DESKTOP_ARTIFACT_PREVIEW_PATH,
+  DESKTOP_ARTIFACT_SANDBOX,
+  desktopArtifactPreviewStatus,
+  hasNativeArtifactFrame,
+} from "@/lib/desktop-artifact-preview";
 
 /**
  * Agent-made HTML, isolated: a blob URL in a sandboxed iframe, behind a policy that cuts it off from the network
@@ -77,18 +83,71 @@ export function usePageUrl(page: string, ready: boolean) {
   return { url: load === "failed" ? null : url, failed: load === "failed" };
 }
 
-export function HtmlFrame({
-  html,
-  title,
-  className,
-  thumbnail = false,
-}: {
+interface HtmlFrameProps {
   html: string;
   title: string;
   className?: string;
   /** A small non-interactive picture of the page (message cards): no notes, no scrollbar, out of the tab order. */
   thumbnail?: boolean;
-}) {
+}
+
+export function HtmlFrame(props: HtmlFrameProps) {
+  return hasNativeArtifactFrame() ? <DesktopHtmlFrame {...props} /> : <BrowserHtmlFrame {...props} />;
+}
+
+function DesktopHtmlFrame({ html, title, className, thumbnail = false }: HtmlFrameProps) {
+  const { t } = useTranslation();
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useLayoutEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const status = desktopArtifactPreviewStatus(event, frame.current?.contentWindow ?? null);
+      if (status === "ready") setReady(true);
+      if (status === "failed") setFailed(true);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) {
+      const timer = setTimeout(() => setFailed(true), READY_MS);
+      return () => clearTimeout(timer);
+    }
+    setFailed(false);
+    // The sandbox has an opaque origin. We send content only after its exact window acknowledges the probe.
+    frame.current?.contentWindow?.postMessage({ vortooneArtifactPreview: "render", html }, "*");
+  }, [html, ready]);
+
+  const iframe = (
+    <iframe
+      ref={frame}
+      className={className ?? "artifact-html"}
+      src={DESKTOP_ARTIFACT_PREVIEW_PATH}
+      title={title}
+      sandbox={DESKTOP_ARTIFACT_SANDBOX}
+      referrerPolicy="no-referrer"
+      tabIndex={thumbnail ? -1 : undefined}
+      aria-hidden={thumbnail || undefined}
+      scrolling={thumbnail ? "no" : undefined}
+      onLoad={() => {
+        setReady(false);
+        frame.current?.contentWindow?.postMessage({ vortooneArtifactPreview: "probe" }, "*");
+      }}
+    />
+  );
+  if (thumbnail) return iframe;
+  return (
+    <>
+      {iframe}
+      {failed && <p className="small muted">{t("artifacts.htmlFailed")}</p>}
+    </>
+  );
+}
+
+function BrowserHtmlFrame({ html, title, className, thumbnail = false }: HtmlFrameProps) {
   const { t } = useTranslation();
   const frame = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
