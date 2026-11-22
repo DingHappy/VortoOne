@@ -1,7 +1,4 @@
-"""例行工作的「立即运行」，以及完整能力的 agent 不能担任例行工作时当场说清楚。
-
-#1027 以后界面里新建的 agent 都是完整能力，而执行时一律拒绝它跑例行工作：建得出来、批得了、到点必失败。
-"""
+"""例行工作的「立即运行」。完整能力的 agent 担任例行工作时的降档见 test_routine_unattended。"""
 import asyncio
 import time
 from types import SimpleNamespace
@@ -26,14 +23,6 @@ def _approve(home):
     decided = home["owner"].post(f"{home['base']}/routines/proposals/{proposal['id']}/decision",
                                  json={"approve": True, **proposal["proof"]})
     assert decided.status_code == 200, decided.text
-
-
-def test_a_full_ability_agent_is_refused_when_the_routine_is_created_not_when_it_is_due(home):
-    made = home["owner"].post(f"{home['base']}/agents", json={"name": "全能", "handle": "helper"})
-    assert made.status_code == 200, made.text
-    refused = _propose(home, made.json()["id"])
-    assert refused.status_code >= 400 and "完整能力" in refused.json()["error"]["message"]
-    assert Routines(home["root"]).list() == []
 
 
 @pytest.fixture
@@ -148,34 +137,3 @@ async def test_only_the_proven_owner_may(pool, monkeypatch, action):
 async def test_an_unknown_routine_is_not_found(pool, action):
     async with _client(pool) as owner:
         assert (await owner.post(f"{pool.base}/routines/routine-none/{action}", json={})).status_code == 404
-
-
-def _made_before_the_check(home, monkeypatch, *, approve):
-    """#1027 到这次修复之间留下的记录：完整能力的 agent 已有提议或已登记。"""
-    agent = home["owner"].post(f"{home['base']}/agents", json={"name": "全能", "handle": "helper"}).json()["id"]
-    with monkeypatch.context() as before:
-        before.setattr(Routines, "check_unattended", staticmethod(lambda role: None))
-        made = _propose(home, agent)
-        assert made.status_code == 200, made.text
-        if approve:
-            _approve(home)
-    return made.json()["id"]
-
-
-def test_an_old_proposal_for_a_full_agent_can_still_be_refused_but_not_approved(home, monkeypatch):
-    _made_before_the_check(home, monkeypatch, approve=False)
-    [proposal] = home["owner"].get(f"{home['base']}/routines/proposals/review").json()["proposals"]
-    path = f"{home['base']}/routines/proposals/{proposal['id']}/decision"
-    approved = home["owner"].post(path, json={"approve": True, **proposal["proof"]})
-    assert approved.status_code == 409 and "完整能力" in approved.json()["error"]["message"]
-    refused = home["owner"].post(path, json={"approve": False, **proposal["proof"]})
-    assert refused.status_code == 200, refused.text
-    assert refused.json()["status"] == "rejected" and Routines(home["root"]).list() == []
-
-
-def test_an_old_routine_of_a_full_agent_can_be_paused_and_deleted_but_not_turned_on(home, monkeypatch):
-    path = f"{home['base']}/routines/{_made_before_the_check(home, monkeypatch, approve=True)}"
-    assert home["owner"].patch(path, json={"active": False}).status_code == 200
-    turned_on = home["owner"].patch(path, json={"active": True})
-    assert turned_on.status_code == 409 and "完整能力" in turned_on.json()["error"]["message"]
-    assert home["owner"].delete(path).status_code == 204

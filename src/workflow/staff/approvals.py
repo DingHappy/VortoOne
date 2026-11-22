@@ -185,13 +185,6 @@ class StaffApprovals:
                 raise LookupError('没有这个成员例行工作提议')
             return self.decide(proposal_id, approve, expected_digest, nonce=nonce, round=round, instance=instance)
 
-    @staticmethod
-    def _check_unattended(snapshot):
-        """只挡新提议和批准：拒绝也会重算 snapshot，检查放进 snapshot 会让已有的提议拒不掉。"""
-        if snapshot['kind'] == 'routine':
-            from src.workflow.staff.routines import Routines
-            Routines.check_unattended(snapshot['role_snapshot'])
-
     def propose(self, owner, kind, data, reason, *, expected=None, initiator=None, origin=None):
         """origin：'assistant' 表示助理在主要聊天里提的（摘要覆盖它，改不了）；其它入口不写。"""
         if origin is not None and origin not in ORIGINS:
@@ -218,7 +211,6 @@ class StaffApprovals:
                         raise ValueError('这份例行工作提议已提交，修改内容后请新建提议')
                     return self._view(entry)
             snapshot = self.snapshot(kind, data, initiator=initiator)
-            self._check_unattended(snapshot)
             if expected is not None and snapshot != expected:
                 raise ValueError('确认期间岗位或专员已变化')
             item = {'id': 'staff-proposal-' + uuid.uuid4().hex, 'snapshot': snapshot,
@@ -315,8 +307,6 @@ class StaffApprovals:
                 check_snapshot = approve or (kind != 'bundle' and initiator is None)
                 if check_snapshot and self.snapshot(kind, data, initiator=initiator) != snapshot:
                     raise ValueError('岗位或专员版本已变化，旧提议不能批准')
-                if approve:
-                    self._check_unattended(snapshot)
                 self._audit(item, approve)
                 item['decision'] = {'at': datetime.fromtimestamp(self.clock(), timezone.utc).isoformat(),
                     'approve': approve, 'source': 'owner_route', 'instance': self.instance,

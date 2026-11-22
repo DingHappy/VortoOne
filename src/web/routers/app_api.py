@@ -4405,8 +4405,7 @@ async def run_routine(org_id: str, routine_id: str, request: Request):
                 and current.collaboration.get("review") != "accepted"):
             return _error(409, "routine.awaiting_review", "上一次的结果还等你验收，验收以后才能再运行")
         registry.check_creator(item)
-        _member, role = registry.check_binding(item)
-        registry.check_unattended(role)
+        registry.check_binding(item)
         started = registry.dispatch(get_staff_service(root), datetime.now().astimezone(), only=routine_id, manual=True)
         if not started:
             reason = registry.get(routine_id)["state"].get("error")
@@ -4423,6 +4422,7 @@ async def routine_proposal_reviews(org_id: str, request: Request):
         return _error(403, "forbidden", "核对例行工作提议需要已认证的所有者")
 
     def read():
+        from src.workflow.staff.roles import unattended_role
         from src.workflow.members.registry import MemberRegistry
         from src.workflow.staff.approvals import StaffApprovals
         members = MemberRegistry(root).snapshot()["members"]
@@ -4433,7 +4433,7 @@ async def routine_proposal_reviews(org_id: str, request: Request):
                 continue                     # 助理替主人提的不在这里核对
             snapshot = item["snapshot"]
             data = snapshot["data"]
-            grants = snapshot["role_snapshot"]["grants"]
+            grants = unattended_role(snapshot["role_snapshot"])["grants"]      # 给主人看的是真正会跑的权限
             submitter = members.get(snapshot.get("initiator") or "")
             proposals.append({**_routine_proposal_row(item),
                               "submitterName": submitter["name"] if submitter else None, "reason": item["reason"],
