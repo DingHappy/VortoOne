@@ -84,6 +84,7 @@ def _fresh() -> Dict[str, Any]:
         "agent_audiences": {},
         "agent_policies": {},
         "channels": {},
+        "channel_categories": [],
     }
 
 
@@ -161,6 +162,7 @@ class MemberRegistry:
         value.setdefault("agent_audiences", {})       # 早于这一项的：没设受众，按所有人
         value.setdefault("agent_policies", {})
         value.setdefault("channels", {})
+        value.setdefault("channel_categories", [])
         if any(not isinstance(value[key], dict) for key in ("plans_shared", "agent_audiences", "agent_policies", "channels")):
             raise Damaged("成员登记文件结构无效")
         try:
@@ -186,9 +188,8 @@ class MemberRegistry:
                     or not isinstance(policy.get("autoApprove"), list)
                     or any(not isinstance(kind, str) or kind not in ALLOWABLE for kind in policy["autoApprove"])):
                 raise ValueError("智能体成员权限设置无效")
-        if state["channels"]:
-            from src.workflow.members.channels import check_channels
-            check_channels(state)
+        from src.workflow.members.channels import check_channels
+        check_channels(state)
 
     def _save(self, state: Dict[str, Any]) -> None:
         self._check(state)

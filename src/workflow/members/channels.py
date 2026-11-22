@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -12,12 +13,26 @@ from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _sta
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
 
 TEAM_CHANNEL_ID_PATTERN = r"ch_[a-f0-9]{32}"
+CHANNEL_CATEGORY_ID_PATTERN = r"cat_[a-f0-9]{32}"
 _ID = re.compile(TEAM_CHANNEL_ID_PATTERN)
+_CATEGORY_ID = re.compile(CHANNEL_CATEGORY_ID_PATTERN)
+CATEGORY_NAME_MAX = 40
 MAX_OVERRIDES = 64
+
+
+class ChannelCategoryNameConflict(ValueError):
+    """A category of the same name already exists in this workspace."""
 
 
 def is_team_channel(channel_id: str) -> bool:
     return bool(_ID.fullmatch(channel_id))
+
+
+def _category_name(value):
+    name = value.strip() if isinstance(value, str) else ""
+    if not 1 <= len(name) <= CATEGORY_NAME_MAX or any(ord(char) < 32 or ord(char) == 127 for char in name):
+        raise ValueError(f"频道分组名称需要 1～{CATEGORY_NAME_MAX} 个字，不能包含控制字符")
+    return name
 
 
 @dataclass(frozen=True)
@@ -69,11 +84,12 @@ class TeamChannels:
             raise Refused("没有执行此操作的频道权限")
         return channel, access
 
-    def _describe(self, channel, access):
+    def _describe(self, channel, access, position):
         flags = access.permissions
         return {"id": channel["id"], "name": channel["title"], "topic": channel["channel"]["topic"],
                 "visibility": "public" if channel["kind"] == "public" else "private",
                 "audienceRoleIds": channel["audience_roles"], "department": channel["kind"] == "department",
+                "categoryId": channel.get("category_id"), "position": position,
                 "isMember": access.joined,
                 "canRead": access.joined, "seenAsAdmin": access.privileged and not access.joined,
                 "createdAt": channel["created"], "createdByUserId": self.history.person_id(channel["creator"]),
@@ -81,17 +97,36 @@ class TeamChannels:
                         "callAgents": access.joined and "talk_to_agents" in flags,
                         "manage": "manage_channels" in flags}}
 
+    @staticmethod
+    def _ordered_channels(state, archived):
+        channels = [channel for channel in state["channels"].values() if bool(channel["archived"]) == archived]
+        return sorted(channels, key=lambda channel: channel["archived"], reverse=True) if archived else channels
+
+    def _position(self, state, actor, channel):
+        archived = bool(channel["archived"])
+        category_id = channel.get("category_id")
+        position = 0
+        for sibling in self._ordered_channels(state, archived):
+            if sibling is channel:
+                break
+            if sibling.get("category_id") == category_id:
+                access = self._access(state, actor, sibling)
+                if access.visible and (not archived or "manage_channels" in access.permissions):
+                    position += 1
+        return position
+
     def list(self, actor, *, archived=False):
         with self.registry._locked_state() as state, self.history.database() as conn:
             MemberRegistry._actor(state, actor)
             result = []
-            for channel in state["channels"].values():
-                if bool(channel["archived"]) != archived:
-                    continue
+            positions = Counter()
+            for channel in self._ordered_channels(state, archived):
                 access = self._access(state, actor, channel)
                 if not access.visible or (archived and "manage_channels" not in access.permissions):
                     continue
-                row = self._describe(channel, access)
+                category_id = channel.get("category_id")
+                row = self._describe(channel, access, positions[category_id])
+                positions[category_id] += 1
                 if archived:
                     row["archivedAt"] = channel["archived"]
                 elif access.joined:
@@ -105,7 +140,120 @@ class TeamChannels:
                                               "authorName": self.owner_name if latest["author"] == OWNER_KEY else person.get("name"),
                                               "preview": " ".join(latest["body"].split())[:140], "createdAt": latest["created"]}
                 result.append(row)
-            return sorted(result, key=lambda item: item["archivedAt"], reverse=True) if archived else result
+            return result
+
+    @staticmethod
+    def _can_manage_categories(state, actor):
+        owner, held = MemberRegistry._actor(state, actor)
+        return rules.has("chat.manage_channels", held, MemberRegistry._posts(state), owner=owner)
+
+    def _require_category_management(self, state, actor):
+        if not self._can_manage_categories(state, actor):
+            raise Refused("没有管理频道分组的权限")
+
+    @staticmethod
+    def _find_category(state, category_id):
+        for index, category in enumerate(state["channel_categories"]):
+            if category["id"] == category_id:
+                return index, category
+        raise Missing("没有这个频道分组")
+
+    @staticmethod
+    def _unique_category_name(state, name, excluding=None):
+        if any(row["name"].casefold() == name.casefold() and row["id"] != excluding
+               for row in state["channel_categories"]):
+            raise ChannelCategoryNameConflict("已有同名频道分组，请换一个名称")
+
+    def _visible_category_ids(self, state, actor):
+        return {channel["category_id"] for channel in state["channels"].values()
+                if channel.get("category_id") is not None and not channel["archived"]
+                and self._access(state, actor, channel).visible}
+
+    def _check_channel_category(self, state, actor, category_id):
+        if category_id is None:
+            return
+        self._find_category(state, category_id)
+        if not self._can_manage_categories(state, actor) and category_id not in self._visible_category_ids(state, actor):
+            raise Missing("没有这个频道分组")
+
+    def list_categories(self, actor):
+        state = self.registry.snapshot()
+        categories = state["channel_categories"]
+        if not self._can_manage_categories(state, actor):
+            visible = self._visible_category_ids(state, actor)
+            categories = [category for category in categories if category["id"] in visible]
+        return [{**category, "position": index} for index, category in enumerate(categories)]
+
+    @staticmethod
+    def _move_channel(state, channel, category_id, before_channel_id=None):
+        channel["category_id"] = category_id
+        channels = state["channels"]
+        channel_id = channel["id"]
+        channels.pop(channel_id)
+        if before_channel_id is None:
+            channels[channel_id] = channel
+        else:
+            rows = list(channels.items())
+            rows.insert(list(channels).index(before_channel_id), (channel_id, channel))
+            state["channels"] = dict(rows)
+
+    def create_category(self, actor, name, channel_ids=()):
+        name = _category_name(name)
+        with self.registry._change() as state:
+            self._require_category_management(state, actor)
+            self._unique_category_name(state, name)
+            selected = [self._find(state, actor, channel_id, archived=False, permission="manage_channels")[0]
+                        for channel_id in dict.fromkeys(channel_ids)]
+            category = {"id": "cat_" + uuid.uuid4().hex, "name": name}
+            categories = state["channel_categories"]
+            categories.append(category)
+            for channel in selected:
+                self._move_channel(state, channel, category["id"])
+            return {**category, "position": len(categories) - 1}
+
+    def rename_category(self, actor, category_id, name):
+        name = _category_name(name)
+        with self.registry._change() as state:
+            self._require_category_management(state, actor)
+            position, category = self._find_category(state, category_id)
+            self._unique_category_name(state, name, excluding=category_id)
+            category["name"] = name
+            return {**category, "position": position}
+
+    def delete_category(self, actor, category_id):
+        with self.registry._change() as state:
+            self._require_category_management(state, actor)
+            position, _ = self._find_category(state, category_id)
+            # Detach archived channels too so restoring one cannot leave it in a missing group.
+            for channel in list(state["channels"].values()):
+                if channel.get("category_id") == category_id:
+                    self._move_channel(state, channel, None)
+            del state["channel_categories"][position]
+
+    def place_category(self, actor, category_id, before_category_id):
+        with self.registry._change() as state:
+            self._require_category_management(state, actor)
+            position, category = self._find_category(state, category_id)
+            if before_category_id == category_id:
+                return
+            categories = state["channel_categories"]
+            before = len(categories) if before_category_id is None else self._find_category(state, before_category_id)[0]
+            categories.pop(position)
+            if position < before:
+                before -= 1
+            categories.insert(before, category)
+
+    def place_channel(self, actor, channel_id, category_id, before_channel_id=None):
+        with self.registry._change() as state:
+            channel, _ = self._find(state, actor, channel_id, archived=False, permission="manage_channels")
+            self._check_channel_category(state, actor, category_id)
+            if before_channel_id is not None:
+                before, _ = self._find(state, actor, before_channel_id, archived=False)
+                if before.get("category_id") != category_id:
+                    raise ValueError("作为位置参照的频道不在指定分组")
+                if before is channel:
+                    return
+            self._move_channel(state, channel, category_id, before_channel_id)
 
     def _unique_name(self, state, actor, title, excluding=None):
         if any(row["title"].casefold() == title.casefold() and row["id"] != excluding
@@ -137,12 +285,13 @@ class TeamChannels:
             raise Refused("只能添加持有此频道所需身份组的成员")
         channel["joined"].setdefault(person, joined_at)
 
-    def create(self, actor, name, topic, visibility, roles, initial_people):
+    def create(self, actor, name, topic, visibility, roles, initial_people, *, category_id=None):
         title, metadata = normalize_channel(name, topic, name_limit=80)
         with self.registry._change() as state:
             owner, held = MemberRegistry._actor(state, actor)
             if not rules.has("chat.create_channel", held, MemberRegistry._posts(state), owner=owner):
                 raise Refused("没有创建频道的权限")
+            self._check_channel_category(state, actor, category_id)
             self._unique_name(state, actor, title)
             kind, audience = self._audience(state, visibility, roles)
             stamp = _stamp(datetime.now(timezone.utc))
@@ -150,12 +299,12 @@ class TeamChannels:
             person = self._actor_key(actor)
             channel = {"id": channel_id, "title": title, "channel": metadata, "kind": kind,
                        "audience_roles": audience, "creator": person, "created": stamp, "archived": None,
-                       "joined": {}, "overrides": []}
+                       "joined": {}, "overrides": [], "category_id": category_id}
             self._add_person(state, channel, person, stamp)
             for person in initial_people:
                 self._add_person(state, channel, self._person_key(person), stamp)
             state["channels"][channel_id] = channel
-            return self._describe(channel, self._access(state, actor, channel))
+            return self._describe(channel, self._access(state, actor, channel), self._position(state, actor, channel))
 
     def update(self, actor, channel_id, change):
         with self.registry._change() as state:
@@ -176,12 +325,12 @@ class TeamChannels:
             channel.update(title=title, channel=metadata)
             access = self._access(state, actor, channel)
             # Someone can restrict a channel enough to lose their own access. Return only a receipt.
-            return self._describe(channel, access) if access.visible else None
+            return self._describe(channel, access, self._position(state, actor, channel)) if access.visible else None
 
     def card(self, actor, channel_id):
         state = self.registry.snapshot()
         channel, access = self._find(state, actor, channel_id)
-        return {**self._describe(channel, access), "archived": bool(channel["archived"]),
+        return {**self._describe(channel, access, self._position(state, actor, channel)), "archived": bool(channel["archived"]),
                 "people": len(channel["joined"]), "agents": 0}
 
     def archive(self, actor, channel_id, archived):
@@ -317,6 +466,19 @@ class TeamChannels:
 
 def check_channels(state):
     """Reject partial or malformed stored policy before serving any channel."""
+    categories = state["channel_categories"]
+    if not isinstance(categories, list):
+        raise Damaged("频道分组记录无效")
+    category_ids, category_names = set(), set()
+    for category in categories:
+        if (not isinstance(category, dict) or set(category) != {"id", "name"}
+                or not isinstance(category["id"], str) or not _CATEGORY_ID.fullmatch(category["id"])
+                or _category_name(category["name"]) != category["name"] or category["id"] in category_ids
+                or category["name"].casefold() in category_names):
+            raise Damaged("频道分组记录无效")
+        category_ids.add(category["id"])
+        category_names.add(category["name"].casefold())
+
     for channel_id, channel in state["channels"].items():
         if (not is_team_channel(channel_id) or not isinstance(channel, dict) or channel.get("id") != channel_id
                 or not isinstance(channel.get("title"), str) or channel_metadata(channel.get("channel")) is None
@@ -329,6 +491,9 @@ def check_channels(state):
                 or not isinstance(channel.get("creator"), str) or not isinstance(channel.get("created"), str)
                 or (channel.get("archived") is not None and not isinstance(channel["archived"], str))):
             raise Damaged("频道权限记录无效")
+        category_id = channel.get("category_id")
+        if category_id is not None and (not isinstance(category_id, str) or category_id not in category_ids):
+            raise Damaged("频道分组引用无效")
         for rule in channel["overrides"]:
             if (not isinstance(rule, dict) or not isinstance(rule.get("target"), dict)
                     or rule["target"].get("type") not in ("person", "role")

@@ -1980,6 +1980,30 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channel-categories",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories/{category_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories/{category_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories/{category_id}/place",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels",
     "methods": [
       "POST"
@@ -2067,6 +2091,12 @@
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/pins/{message_id}",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/place",
+    "methods": [
+      "PUT"
     ]
   },
   {

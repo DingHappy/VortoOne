@@ -25,7 +25,7 @@ from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
-from src.workflow.members.channels import is_team_channel
+from src.workflow.members.channels import ChannelCategoryNameConflict, is_team_channel
 from src.workflow.members.registry import MemberRegistry
 from src.workflow.wiki import Wiki, WikiError, WikiReader
 
@@ -831,7 +831,7 @@ def _staff_read(action):
         return _error(409, "staff_unavailable", str(error))
 
 
-async def _team_call(request, org_id, action, *, channel_id=None, listing=False):
+async def _team_call(request, org_id, action, *, channel_id=None, empty_list=None):
     from src.gateway.session_store import ChannelNameConflict
     from src.workflow.members.registry import Damaged, Missing, Refused
 
@@ -842,8 +842,8 @@ async def _team_call(request, org_id, action, *, channel_id=None, listing=False)
     if actor is None:
         return _error(403, "forbidden", _NOT_MEMBER)
     if actor.is_owner and not app_staff.owner_proof(request):
-        if listing and not views.owner_connection():
-            return {"channels": []}
+        if empty_list and not views.owner_connection():
+            return {empty_list: []}
         return _error(403, "owner_proof_required", "团队频道需要已认证的同源会话")
     try:
         return await asyncio.to_thread(lambda: action(app_channels.channels(root), actor))
@@ -855,6 +855,8 @@ async def _team_call(request, org_id, action, *, channel_id=None, listing=False)
         return _error(409, "unavailable", "读取或保存频道记录失败")
     except ChannelNameConflict as error:
         return _error(409, "channel.name_taken", str(error))
+    except ChannelCategoryNameConflict as error:
+        return _error(409, "channel_category.name_taken", str(error))
     except ValueError as error:
         return _error(400, "invalid", str(error))
 
@@ -883,7 +885,27 @@ class _TeamChannelCreate(BaseModel):
     visibility: str = "public"
     audienceRoleIds: list[str] = Field(default_factory=list, max_length=64)
     userIds: list[str] = Field(default_factory=list, max_length=500)
-    categoryId: None = None
+    categoryId: str | None = None
+
+
+class _CategoryName(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+
+
+class _CategoryCreate(_CategoryName):
+    channelIds: list[str] = Field(default_factory=list, max_length=500)
+
+
+class _CategoryPlacement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    beforeCategoryId: str | None
+
+
+class _ChannelPlacement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    categoryId: str | None
+    beforeChannelId: str | None = None
 
 
 class _ChannelPerson(BaseModel):
@@ -906,18 +928,57 @@ class _ChannelOverride(BaseModel):
 
 @router.get(_ORG + "/channels")
 async def list_team_channels(org_id: str, request: Request):
-    return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor)}, listing=True)
+    return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor)},
+                            empty_list="channels")
 
 
 @router.get(_ORG + "/archived-channels")
 async def list_archived_team_channels(org_id: str, request: Request):
-    return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor, archived=True)}, listing=True)
+    return await _team_call(request, org_id, lambda service, actor: {"channels": service.list(actor, archived=True)},
+                            empty_list="channels")
+
+
+@router.get(_ORG + "/channel-categories")
+async def list_channel_categories(org_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: {"categories": service.list_categories(actor)},
+                            empty_list="categories")
+
+
+@router.post(_ORG + "/channel-categories", status_code=201)
+async def create_channel_category(org_id: str, body: _CategoryCreate, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.create_category(actor, body.name, body.channelIds))
+
+
+@router.patch(_ORG + "/channel-categories/{category_id}")
+async def rename_channel_category(org_id: str, category_id: str, body: _CategoryName, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.rename_category(actor, category_id, body.name))
+
+
+@router.delete(_ORG + "/channel-categories/{category_id}", status_code=204)
+async def delete_channel_category(org_id: str, category_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            _team_receipt(lambda: service.delete_category(actor, category_id)))
+
+
+@router.put(_ORG + "/channel-categories/{category_id}/place", status_code=204)
+async def place_channel_category(org_id: str, category_id: str, body: _CategoryPlacement, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            _team_receipt(lambda: service.place_category(actor, category_id, body.beforeCategoryId)))
 
 
 @router.post(_ORG + "/channels", status_code=201)
 async def create_team_channel(org_id: str, body: _TeamChannelCreate, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.create(
-        actor, body.name, body.topic, body.visibility, body.audienceRoleIds, body.userIds))
+        actor, body.name, body.topic, body.visibility, body.audienceRoleIds, body.userIds, category_id=body.categoryId))
+
+
+@router.put(_ORG + "/channels/{channel_id}/place", status_code=204)
+async def place_team_channel(org_id: str, channel_id: str, body: _ChannelPlacement, request: Request):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.place_channel(actor, channel_id, body.categoryId, body.beforeChannelId)),
+        channel_id=channel_id))
 
 
 @router.patch(_ORG + "/channels/{channel_id}")
@@ -1459,7 +1520,6 @@ async def channel_threads(org_id: str, channel_id: str, request: Request, tab: s
 
 _EMPTY: Dict[str, Any] = {
     "/agent-groups": {"groups": []},
-    "/channel-categories": {"categories": []},
     "/unread-tasks": {"tasks": []},
     "/unread-threads": {"count": 0},
     "/notifications/count": {"unread": 0, "waiting": 0},

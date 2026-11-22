@@ -230,7 +230,8 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
                  "email": str(account["email"]), "image": None, **views.ui_locale(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            "showActivity": True, "permissions": permission_keys(root, actor),
-                           "memberRoutineProposals": True, "teamChannels": True}] if joined else [],
+                           "memberRoutineProposals": True, "teamChannels": True,
+                           "channelCategories": True}] if joined else [],
     }
 
 

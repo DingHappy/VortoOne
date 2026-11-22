@@ -179,6 +179,7 @@ def test_accepting_needs_a_signed_in_account_and_our_own_page(home):
 def _fill(path, *, team_channel=False):
     if team_channel:
         path = path.replace("{channel_id}", "ch_" + "0" * 32)
+    path = path.replace("{category_id}", "cat_" + "0" * 32)
     return re.sub(r"\{[^}]+\}", "x", path)
 
 
