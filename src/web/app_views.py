@@ -221,13 +221,19 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 def me(root: str) -> Dict[str, Any]:
     card = _owner_card(root)
+    user_id = owner_id(root)
+    requires_auth = owner_connection()
+    preferences = ui_account_preferences(root, user_id)
+    if not requires_auth:
+        # 未配置令牌的开发服务也可读 /me，个人引导答案在这种模式下不可见。
+        preferences["workArea"] = None
     return {
-        "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
-                 **ui_account_preferences(root, owner_id(root))},
+        "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": None,
+                 **preferences},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
-                           "routineProposalReview": owner_connection(), "teamChannels": owner_connection(),
-                           "channelCategories": owner_connection()}],
+                           "routineProposalReview": requires_auth, "teamChannels": requires_auth,
+                           "channelCategories": requires_auth}],
     }
 
 

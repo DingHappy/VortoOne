@@ -183,6 +183,22 @@ def test_work_area_rejects_untrusted_writes(local):
     assert local["client"].put(_AREA_URL, json={"area": "dev"}).status_code == 403
 
 
+def test_unauthenticated_me_does_not_reveal_an_existing_work_area(home, monkeypatch):
+    owner = home["owner"]
+    assert owner.patch("/api/app/me", json={"locale": "ja"}).status_code == 204
+    assert owner.put(_AREA_URL, json={"area": "ops"}).status_code == 204
+
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    visitor = TestClient(home["app"])
+    response = visitor.get("/api/app/me")
+    assert response.status_code == 200
+    assert response.json()["user"]["locale"] == "ja"
+    assert response.json()["user"]["workArea"] is None
+
+    monkeypatch.setenv("VORTOONE_API_TOKEN", TOKEN)
+    assert owner.get("/api/app/me").json()["user"]["workArea"] == "ops"
+
+
 def test_work_area_requires_authentication_and_same_origin_for_cookie_writes(home):
     visitor = TestClient(home["app"])
     assert visitor.put(_AREA_URL, json={"area": "dev"}).status_code == 401
