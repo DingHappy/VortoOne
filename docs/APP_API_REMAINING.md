@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 268 个，剩 **363** 个：
-- **要做：293**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 271 个，剩 **360** 个：
+- **要做：290**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -267,8 +267,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | DELETE | `ORG/me/avatar` | `orgs.removeAvatar` |  |
 | ☐ | PUT | `ORG/me/avatar` | `orgs.setAvatar` |  |
 | ☐ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
-| ☐ | GET | `ORG/me/right-hand-approvals` | `approvals.rightHand` |  |
-| ☐ | PUT | `ORG/me/right-hand-approvals` | `approvals.setRightHand` |  |
+| ☑ | GET | `ORG/me/right-hand-approvals` | `approvals.rightHand` | 如实是关着的：会提议的只有助理自己，代批等于自己批自己的提议；打开回 409。等专员也能提议再接 |
+| ☑ | PUT | `ORG/me/right-hand-approvals` | `approvals.setRightHand` | 只接受保持关着，要打开回 409 |
 | ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
@@ -921,11 +921,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | DELETE | `ORG/approval-covers/{x}` | `approvals.endCover` | 所有者收回，或被托付的成员自己不再代批 |
 
-### org/right-hand-decisions（1 个，要做 1）
+### org/right-hand-decisions（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/right-hand-decisions/{x}/undo` | `approvals.undoRightHand` |  |
+| ☑ | POST | `ORG/right-hand-decisions/{x}/undo` | `approvals.undoRightHand` | 没有代批过，一律 404 |
 
 ### org/search（1 个，要做 0）
 

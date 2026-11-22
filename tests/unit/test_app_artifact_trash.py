@@ -121,7 +121,8 @@ def test_matching_live_id_never_overwrites_a_different_generation_in_trash(home)
     store.publish("Old version", "<p>old</p>", "same-id")
     assert owner.delete(f"{base}/artifacts/same-id").status_code == 204
     store.publish("New version", "<p>new</p>", "same-id")
-    assert owner.post(f"{base}/artifacts/same-id/restore", json={}).status_code == 409
+    refused = owner.post(f"{base}/artifacts/same-id/restore", json={})
+    assert refused.status_code == 422 and refused.json()["error"]["code"] == "artifact.restore_id_taken"
     assert owner.delete(f"{base}/artifacts/same-id").status_code == 409
     assert store.html("same-id") == "<p>new</p>"
     assert owner.get(f"{base}/artifacts-trash").json()["files"][0]["title"] == "Old version"
@@ -161,3 +162,15 @@ def test_interrupted_permanent_delete_cannot_be_undone_and_can_finish_on_retry(h
     assert owner.delete(f"{base}/artifacts-trash/report").status_code == 204
     assert owner.get(f"{base}/artifacts-trash").json() == {"files": []}
     assert not list((store.root.parent / "artifact-trash").rglob("*.html"))
+
+
+def test_interruption_before_the_atomic_move_does_not_mark_the_active_file_as_purged(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    store = ArtifactStore(home["root"])
+    store.publish("Report", "<p>v1</p>", "report")
+    monkeypatch.setattr(artifact_trash, "_now", lambda: TRASHED_AT)
+    (store.root.parent / "artifact-trash" / "report" / str(int(TRASHED_AT.timestamp()))).mkdir(parents=True)
+    assert owner.post(f"{base}/artifacts/report/restore", json={}).status_code == 404
+    assert store.html("report") == "<p>v1</p>"
+    assert owner.delete(f"{base}/artifacts/report").status_code == 204
+    assert owner.get(f"{base}/artifacts-trash").json()["files"][0]["id"] == "report"

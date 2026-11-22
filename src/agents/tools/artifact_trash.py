@@ -83,7 +83,7 @@ class ArtifactTrash(ArtifactStore):
             source = self._dir(aid)
             if source.is_symlink() or (source / "meta.json").is_symlink():
                 raise OSError("制品目录无效")
-            if not self.meta(aid):
+            if (self.meta(aid) or {}).get("id") != aid:
                 return False
             now = _now()
             old = self._entry(aid)
@@ -132,11 +132,14 @@ class ArtifactTrash(ArtifactStore):
                 return "not_found"
             entry, deleted = stored
             payload = self._payload(entry)
-            if _now() >= deleted + _RETENTION or not payload.exists():
-                return "purged"
-            if not self._read_meta(payload):
-                raise OSError("回收站制品没有有效元数据")
             active = self._dir(aid)
+            if not payload.exists():
+                # A process may have stopped after making the timestamp directory but before the move.
+                return "not_found" if active.exists() else "purged"
+            if _now() >= deleted + _RETENTION:
+                return "purged"
+            if (self._read_meta(payload) or {}).get("id") != aid:
+                raise OSError("回收站制品没有有效元数据")
             if active.exists() or active.is_symlink():
                 raise TrashConflict("当前 Drive 已有同编号的制品，回收站内容仍保留")
             payload.rename(active)

@@ -3636,6 +3636,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/right-hand-approvals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/right-hand-approvals",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/memories/{memory_id}/team",
     "methods": [
       "POST"
@@ -3649,6 +3661,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/questions/{question_id}/dismiss",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/right-hand-decisions/{decision_id}/undo",
     "methods": [
       "POST"
     ]

@@ -196,7 +196,8 @@ class ArtifactStore:
         if not p.is_file():
             return None
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            meta = json.loads(p.read_text(encoding="utf-8"))
+            return meta if isinstance(meta, dict) else None
         except Exception:  # noqa: BLE001
             return None
 
