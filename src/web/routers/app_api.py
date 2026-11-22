@@ -433,6 +433,46 @@ async def settings(org_id: str):
     return views.settings(_root(org_id))
 
 
+_STORAGE = _ORG + "/storage"
+
+
+def _storage_owner(org_id: str, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取或管理存储需要已认证的所有者")
+    return None
+
+
+@router.get(_STORAGE)
+async def storage_status(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    # ArtifactStore writes to the server's disk. The client calls that option "agentes".
+    return JSONResponse({
+        "kind": "agentes",
+        "platform": {"kind": "disk", "folder": None},
+        "s3": None,
+        "migration": None,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_STORAGE + "/migration")
+async def storage_migration_status(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    return JSONResponse(None, headers={"Cache-Control": "no-store"})
+
+
+@router.put(_STORAGE)
+@router.post(_STORAGE + "/test")
+@router.post(_STORAGE + "/migrate")
+async def unavailable_s3_storage(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    # The server has no bucket to test, activate or migrate. Do not parse credentials.
+    return _error(409, "storage.s3_unavailable", "当前工作区使用服务器磁盘，S3 存储尚未开放")
+
+
 # 空间设置里有对应能力的：名字（主助理的名字，也就是这个家显示的名字）、默认时区（例行工作用的那个）、
 # 背景信息（进所有 agent 的系统提示，下一个会话起生效）、
 # GIF 开关和分级（团队频道里的 GIF）、语音消息开关。其余开关（团队巡视……）没有对应能力，改了也不会生效，
