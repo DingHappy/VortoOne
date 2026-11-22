@@ -70,8 +70,8 @@ def test_status_expiry_and_read_after_a_new_session(home, monkeypatch):
     assert _people(owner, base)[result.json()["userId"]]["status"] is None
     saved = owner.put(path, json={"status": {"text": "假期"}}).json()
     assert saved["availability"] == "out"
-    with TestClient(home["app"], headers={"Authorization": f"Bearer {TOKEN}"}) as another:
-        assert _people(another, base)[saved["userId"]] == saved
+    another = TestClient(home["app"], headers={"Authorization": f"Bearer {TOKEN}"})
+    assert _people(another, base)[saved["userId"]] == saved
     assert owner.put(path, json={"status": None}).json()["status"] is None
 
 
