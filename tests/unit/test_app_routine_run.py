@@ -1,4 +1,4 @@
-"""例行工作的「立即运行」「停止」，以及完整能力的 agent 不能担任例行工作时当场说清楚。
+"""例行工作的「立即运行」，以及完整能力的 agent 不能担任例行工作时当场说清楚。
 
 #1027 以后界面里新建的 agent 都是完整能力，而执行时一律拒绝它跑例行工作：建得出来、批得了、到点必失败。
 """
@@ -96,18 +96,15 @@ async def test_run_now_works_while_paused_and_leaves_it_paused(pool):
     assert Routines(pool.root).get(pool.routine)["enabled"] is False
 
 
-async def test_run_twice_does_not_run_two_at_once_and_stop_stops_it(pool):
+async def test_run_twice_does_not_run_two_at_once_and_runs_again_once_stopped(pool):
     pool.state.release = asyncio.Event()
     async with _client(pool) as owner:
         assert (await _act(owner, pool, "run")).status_code == 200
         await _until(lambda: pool.state.runs == 1)
         again = await _act(owner, pool, "run")
         assert again.status_code == 409 and again.json()["error"]["code"] == "routine.running"
-        stopped = await _act(owner, pool, "stop")
-        assert stopped.status_code == 200, stopped.text
+        assert pool.service.runner.cancel(_task(pool).id)
         await _until(lambda: _task(pool).status == "cancelled")
-        again = await _act(owner, pool, "stop")
-        assert again.status_code == 409 and again.json()["error"]["code"] == "routine.not_running"
         pool.state.release.set()
         assert (await owner.post(f"{pool.base}/routines/{pool.routine}/run", json={})).status_code == 200
         await _until(lambda: pool.state.runs == 2)
@@ -135,7 +132,7 @@ async def test_a_changed_agent_is_explained_without_parking_the_routine(pool, mo
     assert not Routines(pool.root).get(pool.routine)["state"].get("error")      # 点一下按钮不能把它停摆
 
 
-@pytest.mark.parametrize("action", ["run", "stop"])
+@pytest.mark.parametrize("action", ["run"])
 async def test_only_the_proven_owner_may(pool, monkeypatch, action):
     member = _join(vars(pool))
     assert member.post(f"{pool.base}/routines/{pool.routine}/{action}", json={}).status_code in {401, 403}
@@ -147,7 +144,7 @@ async def test_only_the_proven_owner_may(pool, monkeypatch, action):
     assert pool.state.runs == 0
 
 
-@pytest.mark.parametrize("action", ["run", "stop"])
+@pytest.mark.parametrize("action", ["run"])
 async def test_an_unknown_routine_is_not_found(pool, action):
     async with _client(pool) as owner:
         assert (await owner.post(f"{pool.base}/routines/routine-none/{action}", json={})).status_code == 404

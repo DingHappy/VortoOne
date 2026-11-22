@@ -4416,29 +4416,6 @@ async def run_routine(org_id: str, routine_id: str, request: Request):
         return _error(409, "routine.unavailable", str(error))
 
 
-@router.post(_ORG + "/routines/{routine_id}/stop")
-async def stop_routine(org_id: str, routine_id: str, request: Request):
-    """停掉正在跑的这一次，排期不变。走专员任务现有的停止路径（有审计、按轮次核对）。"""
-    from src.workflow.staff.routines import Routines
-    from src.workflow.tasks.tasks import TaskLedger
-    root = _root(org_id)
-    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
-        return _error(403, "owner_proof_required", "停止例行工作需要已认证的所有者")
-    try:
-        item = next((x for x in Routines(root).list() if x["id"] == routine_id and not x["retired"]), None)
-        if item is None:
-            return _error(404, "not_found", "没有这条例行工作")
-        task_id = item["state"].get("task")
-        current = TaskLedger(root).load(task_id) if task_id else None
-        if current is None or current.status not in views.ACTIVE_TASK:
-            return _error(409, "routine.not_running", "它现在没有在运行")
-        if not app_staff.stop(root, task_id):
-            return _error(409, "routine.stop_unavailable", "这一次停不了：成员发起的运行不在你和 agent 的对话里")
-        return _routine_row(root, routine_id)
-    except (ValueError, OSError) as error:
-        return _error(409, "routine.unavailable", str(error))
-
-
 @router.get(_ORG + "/routines/proposals/review")
 async def routine_proposal_reviews(org_id: str, request: Request):
     root = _root(org_id)
