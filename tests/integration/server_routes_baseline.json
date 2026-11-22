@@ -3634,6 +3634,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}/resend",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/issue-columns",
     "methods": [
       "GET"

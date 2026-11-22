@@ -14,7 +14,7 @@ import {
   useTurnOffInviteLink,
   useWorkspaceLimits,
 } from "@vortoone/client";
-import { errorCode } from "@vortoone/client/lib/errors";
+import { errorCode, errorText } from "@vortoone/client/lib/errors";
 import { formatShortDate, joinNames, relativeTime, timeLeft } from "@vortoone/client/lib/format";
 import { approvalCargos, linkNeedsAttention } from "@vortoone/client/lib/invite-start";
 import { approvalNews, JOIN_REASON_MAX, sendsEmail } from "@vortoone/client/lib/join-requests";
@@ -197,7 +197,7 @@ export function InvitesPage() {
           )}
         <WaitingRequests requests={shownRequests} look={look} focus={search.request} action={search.do} />
         <InviteLinks links={shownLinks} look={look} />
-        <EmailInvitations invitations={shownInvitations} look={look} loading={invitations.isLoading} />
+        <EmailInvitations key={org.id} invitations={shownInvitations} look={look} loading={invitations.isLoading} />
       </div>
     </div>
   );
@@ -702,6 +702,61 @@ const SENT_WORDS = {
 const byNewest = (a: InvitationWithStatus, b: InvitationWithStatus) =>
   (a.status === "expired" ? 1 : 0) - (b.status === "expired" ? 1 : 0) || b.createdAt.localeCompare(a.createdAt);
 
+function RegeneratedLinkDialog({
+  link,
+  onClose,
+}: {
+  link: { email: string; url: string; expiresAt: string };
+  onClose: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const toast = useToast();
+  const [copyFailed, setCopyFailed] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const copyLink = async () => {
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(link.url);
+      toast.show(t("members.invitations.copiedNoEmail", { email: link.email }));
+      onClose();
+    } catch {
+      setCopyFailed(true);
+    } finally {
+      setCopying(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("invites.invitationTitle", { email: link.email })}
+      description={t("members.invitations.newLinkNoEmail", {
+        email: link.email,
+        date: formatShortDate(i18n.language, link.expiresAt),
+      })}
+      closeLabel={t("common.close")}
+    >
+      <DialogBody>
+        <Field label={t("invites.link")} id="regenerated-invite-url">
+          <Input
+            id="regenerated-invite-url"
+            readOnly
+            value={link.url}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </Field>
+        {copyFailed && <Alert tone="neutral">{t("members.invitations.copyManually")}</Alert>}
+      </DialogBody>
+      <DialogFooter>
+        <Button onClick={onClose}>{t("common.close")}</Button>
+        <Button variant="primary" icon="copy" loading={copying} onClick={() => void copyLink()}>
+          {t("members.copyLink")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
 /**
  * Convites por e-mail (ADR 0090, 0184): every invitation not accepted yet, with what it gives, its link to copy at any
  * time (the same as the email's), Reenviar (the same link, 7 more days), Editar (what it gives) and Cancelar with
@@ -727,6 +782,7 @@ function EmailInvitations({
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   // Sent again from here: until when it works now.
   const [resent, setResent] = useState<Record<string, string>>({});
+  const [regenerated, setRegenerated] = useState<{ email: string; url: string; expiresAt: string } | null>(null);
   const [editing, setEditing] = useState<InvitationWithStatus | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const rows = invitations.filter((i) => !hidden.has(i.id)).sort(byNewest);
@@ -764,9 +820,15 @@ function EmailInvitations({
     resend.mutate(inv.id, {
       onSuccess: (res) => {
         setResent((prev) => ({ ...prev, [inv.id]: res.expiresAt }));
+        if (inv.canRegenerateLink) {
+          setRegenerated({ email: inv.email, url: res.url, expiresAt: res.expiresAt });
+          resend.reset();
+          return;
+        }
         const said = !inv.url ? words.newLink : renewing ? words.renewed : words.resent;
         toast.show(t(`members.invitations.${said}`, { email: inv.email, date: date(res.expiresAt) }));
       },
+      onError: (error) => toast.show(errorText(t, error, i18n.language), "error"),
     });
 
   if (rows.length === 0 && !loading) return null;
@@ -799,6 +861,7 @@ function EmailInvitations({
             .filter(Boolean)
             .join(" · ");
           const sending = resend.isPending && resend.variables === inv.id;
+          const legacyResend = inv.canRegenerateLink === undefined;
           return (
             // biome-ignore lint/a11y/useSemanticElements: a row of the list, named for whom it invites
             <div
@@ -815,7 +878,9 @@ function EmailInvitations({
               >
                 {again && !off ? (
                   <State icon="check" tone="ok">
-                    {t("members.invitations.resentState", { date: date(again) })}
+                    {t(legacyResend ? "members.invitations.resentState" : "members.invitations.regeneratedState", {
+                      date: date(again),
+                    })}
                   </State>
                 ) : off ? (
                   <State icon="clock">
@@ -830,9 +895,11 @@ function EmailInvitations({
               <span className="ac-mediarow__end ac-mediarow__end--wrap members-row__acts ac-acts">
                 {off ? (
                   <>
-                    <Button size="sm" icon="refresh" loading={sending} onClick={() => sendAgain(inv, true)}>
-                      {t("members.invitations.renew")}
-                    </Button>
+                    {legacyResend && (
+                      <Button size="sm" icon="refresh" loading={sending} onClick={() => sendAgain(inv, true)}>
+                        {t("members.invitations.renew")}
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" disabled={sending} onClick={() => takeOff(inv, "dropped")}>
                       {t("members.invitations.drop")}
                     </Button>
@@ -857,16 +924,19 @@ function EmailInvitations({
                         />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon="send"
-                      disabled={!!again}
-                      loading={sending}
-                      onClick={() => sendAgain(inv, false)}
-                    >
-                      {t("members.resend")}
-                    </Button>
+                    {(legacyResend || inv.canRegenerateLink) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={legacyResend ? "send" : "refresh"}
+                        title={legacyResend ? undefined : t("members.invitations.regenerateLinkHint")}
+                        disabled={legacyResend ? !!again : resend.isPending}
+                        loading={sending}
+                        onClick={() => sendAgain(inv, false)}
+                      >
+                        {t(legacyResend ? "members.resend" : "members.invitations.regenerateLink")}
+                      </Button>
+                    )}
                     <Menu
                       align="end"
                       label={t("members.invitations.more", { email: inv.email })}
@@ -910,7 +980,13 @@ function EmailInvitations({
           invitation={editing}
           open={editOpen}
           onClose={() => setEditOpen(false)}
-          onRenew={() => sendAgain(editing, true)}
+          onRenew={editing.canRegenerateLink === undefined ? () => sendAgain(editing, true) : undefined}
+        />
+      )}
+      {regenerated && (
+        <RegeneratedLinkDialog
+          link={regenerated}
+          onClose={() => setRegenerated((current) => (current === regenerated ? null : current))}
         />
       )}
     </section>

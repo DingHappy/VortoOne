@@ -2812,6 +2812,8 @@ export interface InvitationWithStatus {
   invitedBy?: string | null;
   /** Its link, the same as the email's, to copy at any time (ADR 0090); null for one sent before that. */
   url?: string | null;
+  /** A manual one-use link can be regenerated now; absent on servers with the original resend flow. */
+  canRegenerateLink?: boolean;
 }
 
 /** What the invite dialog sends (ADR 0090, 0184): the addresses, and the cargos, channels, agents and note for all. */
