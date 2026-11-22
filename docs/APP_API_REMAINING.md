@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 245 个，剩 **386** 个：
-- **要做：316**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 250 个，剩 **381** 个：
+- **要做：311**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -106,14 +106,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
 
-### org/agents（35 个，要做 30）
+### org/agents（35 个，要做 29）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | — | PUT | `ORG/agents/{x}/access` | `access.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☐ | GET | `ORG/agents/{x}/approval-rules` | `approvals.rules` |  |
 | ☐ | DELETE | `ORG/agents/{x}/approval-rules/{x}` | `approvals.removeRule` |  |
-| ☐ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` |  |
+| ☑ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` | agent 不接邮箱，回空列表 |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |
 | ☐ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 读已接、写没接 |
@@ -259,7 +259,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/me` | `orgs.updateMe` |  |
+| ☐ | PATCH | `ORG/me` | `orgs.updateMe` | 已接个人时区（清空后跟随空间默认）；用户名仍待接，接受原样传回。 |
 | ☐ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
 | ☐ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` |  |
 | ☐ | GET | `ORG/me/approval-cover` | `approvals.covers` |  |
@@ -348,13 +348,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/routines/{x}/runs` | `routines.runs` |  |
 | ☐ | POST | `ORG/routines/{x}/stop` | `routines.stop` |  |
 
-### org/credentials（9 个，要做 9）
+### org/credentials（9 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/credentials` | `agents.addCredential` | 读已接、写没接 |
 | ☐ | POST | `ORG/credentials/endpoint-models` | `agents.endpointModels` |  |
-| ☐ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` |  |
+| ☑ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` | 服务有没有接上模型 |
 | ☐ | DELETE | `ORG/credentials/{x}` | `agents.removeCredential` |  |
 | ☐ | POST | `ORG/credentials/{x}/check` | `agents.checkCredential` |  |
 | ☐ | POST | `ORG/credentials/{x}/make-default` | `agents.makeDefaultCredential` |  |
@@ -742,12 +742,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/team-templates` | `agents.teamTemplates` |  |
 | ☐ | POST | `ORG/team-templates/{x}/use` | `agents.applyTeamTemplate` |  |
 
-### org/agent-setup（2 个，要做 2）
+### org/agent-setup（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/agent-setup` | `agents.newAgentSetup` |  |
-| ☐ | POST | `ORG/agent-setup` | `agents.applySetup` |  |
+| ☑ | GET | `ORG/agent-setup` | `agents.newAgentSetup` | 不存上一次的设置，新 agent 用默认模型，回 null |
+| ☑ | POST | `ORG/agent-setup` | `agents.applySetup` | 换模型要经提议，回 409 |
 
 ### /api/app/github-app（2 个，要做 2）
 
@@ -763,12 +763,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/github/access` | `githubApp.access` |  |
 | ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` |  |
 
-### org/memories（2 个，要做 2）
+### org/memories（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/memories/{x}/revert` | `memory.revert` | 界面代码里没调用 |
-| ☐ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` |  |
+| ☑ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` | 只有所有者能把自己的记忆设成团队记忆、能改文字；成员有 `review_memory` 只能移除、恢复。进所有 agent 的系统提示（对外发布的岗位除外），标明是资料不是指令 |
 
 ### org/sandbox-settings（2 个，要做 2）
 

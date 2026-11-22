@@ -611,6 +611,18 @@ def member_dm(root: str, member_id: str) -> Dict[str, Any]:
 
 # ── 记忆、例行工作、技能、制品：现有记录的只读整理 ─────────────────────────────
 
+def team_memory_view(root: str, item: Dict[str, Any], *, can_change: bool, owner: bool) -> Dict[str, Any]:
+    """团队记忆（界面的 Memory）。归在主助理名下展示；文字都出自所有者。"""
+    card = _owner_card(root)
+    return {"id": item["id"], "agentId": main_agent_id(root), "kind": "fact", "text": item["text"],
+            "source": "", "origin": {"by": "person", "name": card["name"], "channel": None,
+                                     "at": _iso(item["createdAt"])},
+            "uses": 0, "lastUsedAt": None, "pinned": False, "archived": bool(item.get("archived")),
+            "lowTrust": False, "verified": True, "supersedes": item.get("supersedes"),
+            "editedByUserId": item.get("editedBy"), "updatedAt": _iso(item["updatedAt"]),
+            "removable": can_change}
+
+
 def _memory(agent_id: str, row: Dict[str, Any], archived: bool) -> Dict[str, Any]:
     created = _iso(row.get("created_at"))
     return {"id": str(row["id"]), "agentId": agent_id, "kind": "fact", "text": str(row.get("content") or ""),

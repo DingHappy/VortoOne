@@ -36,6 +36,7 @@ _CATEGORY = _CATEGORIES + r"/" + CHANNEL_CATEGORY_ID_PATTERN
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
@@ -55,6 +56,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
 
 
     ("POST", _ORG + r"/questions/[^/]+/(answer|dismiss)"),  # 只认被问的那个人
+
+
+    ("GET", _ORG + r"/team-memories"),                    # 所有 agent 都读的那一份
+    ("PATCH", _ORG + r"/memories/[^/]+"),                 # 只有团队记忆，处理函数里按权限核对
     ("GET", _ORG + r"/issues"),
     ("POST", _ORG + r"/issues"),
     ("GET", _ORG + r"/issues/by-number/[^/]+"),
