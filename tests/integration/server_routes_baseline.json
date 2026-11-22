@@ -2106,6 +2106,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/mute",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/mute",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/roster",
     "methods": [
       "GET"

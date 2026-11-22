@@ -121,6 +121,8 @@ class TeamChannels:
     def list(self, actor, *, archived=False):
         with self.registry._locked_state() as state, self.history.database() as conn:
             MemberRegistry._actor(state, actor)
+            person_key = self._actor_key(actor)
+            muted = set() if archived else self.history.muted_channels(conn, person_key)
             result = []
             positions = Counter()
             for channel in self._ordered_channels(state, archived):
@@ -133,9 +135,8 @@ class TeamChannels:
                 if archived:
                     row["archivedAt"] = channel["archived"]
                 elif access.joined:
-                    person_key = self._actor_key(actor)
                     latest, unread, read_at = self.history.summary(conn, channel["id"], person_key, channel["joined"][person_key])
-                    row.update(unreadCount=unread, lastReadAt=read_at, lastMessage=None)
+                    row.update(unreadCount=unread, lastReadAt=read_at, lastMessage=None, muted=channel["id"] in muted)
                     if latest:
                         person = state["members"].get(latest["author"], {})
                         row["lastMessage"] = {"id": latest["id"], "authorType": "person",
@@ -581,6 +582,11 @@ class TeamChannels:
         with self.registry._locked_state() as state:
             self._find(state, actor, channel_id, archived=False, joined=True)
             self.history.mark_read(channel_id, self._actor_key(actor))
+
+    def set_muted(self, actor, channel_id, muted):
+        with self.registry._locked_state() as state:
+            self._find(state, actor, channel_id, archived=False, joined=True)
+            self.history.set_muted(channel_id, self._actor_key(actor), muted)
 
     def pins(self, actor, channel_id):
         with self.registry._locked_state() as state:

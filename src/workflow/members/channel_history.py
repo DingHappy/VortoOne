@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS read_markers (
     created TEXT NOT NULL,
     PRIMARY KEY(channel, person)
 );
+CREATE TABLE IF NOT EXISTS channel_mutes (
+    person TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    PRIMARY KEY(person, channel)
+);
 CREATE TABLE IF NOT EXISTS mission_drafts (
     id TEXT PRIMARY KEY NOT NULL,
     thread_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
@@ -468,6 +473,26 @@ class ChannelHistory:
                     "INSERT INTO read_markers(channel, person, created) VALUES (?, ?, ?) "
                     "ON CONFLICT(channel, person) DO UPDATE SET created = max(created, excluded.created)",
                     (channel, actor, newest))
+
+    @staticmethod
+    def muted_channels(conn, actor):
+        if conn is None or conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'channel_mutes'"
+        ).fetchone() is None:
+            return set()
+        return {row[0] for row in conn.execute("SELECT channel FROM channel_mutes WHERE person = ?", (actor,))}
+
+    def set_muted(self, channel, actor, muted):
+        if not muted:
+            with self.database() as conn:
+                if channel not in self.muted_channels(conn, actor):
+                    return
+        with self.database(write=True) as conn:
+            if muted:
+                conn.execute("INSERT INTO channel_mutes(person, channel) VALUES (?, ?) "
+                             "ON CONFLICT(person, channel) DO NOTHING", (actor, channel))
+            else:
+                conn.execute("DELETE FROM channel_mutes WHERE person = ? AND channel = ?", (actor, channel))
 
     @staticmethod
     def summary(conn, channel, actor, joined_at):
