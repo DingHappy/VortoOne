@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
+from src.web import app_artifacts
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
@@ -2894,6 +2895,38 @@ async def artifact(org_id: str, artifact_id: str, version: int | None = None):
     found = views.artifact(_root(org_id), artifact_id, version)
     return found if found is not None else _error(404, "not_found", "没有这个制品")
 
+
+
+@router.get(_ORG + "/artifacts/{artifact_id}/versions")
+async def desktop_artifact_versions(org_id: str, artifact_id: str, request: Request):
+    return await _artifact_read(org_id, artifact_id, request, app_artifacts.versions)
+
+
+@router.get(_ORG + "/artifacts/{artifact_id}/download")
+async def desktop_artifact_download(org_id: str, artifact_id: str, request: Request, version: int | None = None):
+    return await _artifact_read(org_id, artifact_id, request,
+                                lambda root, aid: app_artifacts.download(root, org_id, aid, version))
+
+
+@router.get(_ORG + "/artifacts/{artifact_id}/file")
+async def desktop_artifact_file(org_id: str, artifact_id: str, request: Request, version: int | None = None,
+                                format: str = "", expires: int | None = None, signature: str = ""):
+    return await _artifact_read(
+        org_id, artifact_id, request,
+        lambda root, aid: app_artifacts.file(root, org_id, aid, version, format, expires, signature),
+    )
+
+
+async def _artifact_read(org_id, artifact_id, request, action):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "查看制品文件和历史需要已认证的所有者")
+    try:
+        return await asyncio.to_thread(action, root, artifact_id)
+    except app_artifacts.ArtifactReadError as error:
+        return _error(error.status, error.code, str(error))
+    except (OSError, ValueError, TypeError):
+        return _error(409, "artifact.unavailable", "无法读取已保存的制品")
 
 @router.delete(_ORG + "/artifacts/{artifact_id}", status_code=204)
 async def delete_artifact(org_id: str, artifact_id: str, request: Request):

@@ -159,8 +159,9 @@ class ArtifactStore:
         except Exception:  # noqa: BLE001
             return None
 
-    def html(self, artifact_id: str, version: Optional[int] = None) -> Optional[str]:
-        """取制品 HTML。version 给定取该版本快照（缺失则回退当前）；否则取当前(index.html)。"""
+    def html(self, artifact_id: str, version: Optional[int] = None, *,
+             strict: bool = False) -> Optional[str]:
+        """取制品 HTML。指定版本缺失时，旧调用回退当前，strict 调用只接受对应快照。"""
         aid = self._safe_id(artifact_id)
         if not aid:
             return None
@@ -172,6 +173,11 @@ class ArtifactStore:
                 vp = None
             if vp and vp.is_file():
                 return vp.read_text(encoding="utf-8")
+            if strict:
+                # 只有老格式的单版本制品没有快照；名称或版本不符不能替换成最新。
+                meta = self.meta(aid)
+                if not meta or meta.get("versions") or version != int(meta.get("version", 1)):
+                    return None
         p = d / "index.html"
         return p.read_text(encoding="utf-8") if p.is_file() else None
 
