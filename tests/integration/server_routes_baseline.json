@@ -2220,6 +2220,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/tasks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}/unarchive",
     "methods": [
       "POST"
@@ -2424,6 +2430,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/files",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
     "methods": [
       "GET"
@@ -2431,6 +2443,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/plan",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/settings",
     "methods": [
       "GET"
     ]

@@ -1,12 +1,15 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 276 个，剩 **355** 个：
-- **要做：280**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 279 个，剩 **352** 个：
+- **要做：277**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
-- **按已定决定不做：12**
+- **按已定决定不做：13**
+- **暂缓：4**（投票和选择卡，等智能体接入团队频道）
 
-表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办或已定不做。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+
+当前分工中，`credentials`（8）、`connectors`（9）和 `secret-requests`（4）由 Claude 负责，`databases`（6）待确认交接。Missions、加入申请、邀请链接、GitHub App 和 Webhooks 由 Codex 负责。分工暂不改变接口计数。
 
 ## 怎么核对
 
@@ -61,7 +64,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 35）
+### org/missions（40 个，要做 33）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -86,7 +89,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/deliveries/{x}/changes` | `missions.requestDeliveryChanges` |  |
 | ☐ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` |  |
 | ☐ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` |  |
-| ☐ | GET | `ORG/missions/{x}/files` | `missions.files` |  |
+| ☑ | GET | `ORG/missions/{x}/files` | `missions.files` | 所有者可查看已有草案的空文件列表。草案尚无隔离目录或文件。 |
 | ☐ | GET | `ORG/missions/{x}/join-requests` | `missions.joinRequests` |  |
 | ☐ | POST | `ORG/missions/{x}/join-requests` | `missions.requestJoin` |  |
 | ☐ | POST | `ORG/missions/{x}/join-requests/{x}/{x}` | `missions.decideJoin` |  |
@@ -99,7 +102,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/missions/{x}/plan` | `missions.plan` |  |
 | ☐ | GET | `ORG/missions/{x}/reviews` | `missions.reviews` |  |
 | ☐ | POST | `ORG/missions/{x}/reviews/{x}/{x}` | `missions.review` |  |
-| ☐ | GET | `ORG/missions/{x}/settings` | `missions.settings` |  |
+| ☑ | GET | `ORG/missions/{x}/settings` | `missions.settings` | 仅所有者读取已有草案；审批策略固定，草案没有规则或执行统计。 |
 | ☐ | POST | `ORG/missions/{x}/suggestions/{x}/{x}` | `missions.suggestion` |  |
 | ☑ | GET | `ORG/missions/{x}/summary` | `missions.summary` |  |
 | ☐ | POST | `ORG/missions/{x}/transfer` | `missions.transfer` |  |
@@ -288,7 +291,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
-### org/threads（10 个，要做 6）
+### org/threads（10 个，要做 5）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -300,7 +303,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 界面代码里没调用 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
 | ☑ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | Desktop 打开话题时调用。已接团队频道话题的个人已读位置及频道、工作区两处列表的未读状态。侧栏只计有权限、已关注且未归档的话题。 |
-| ☐ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` |  |
+| ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 
 ### org/channels（10 个，要做 7）

@@ -212,3 +212,54 @@ def test_old_history_reads_and_concurrent_draft_retries(home):
     assert next(row for row in competing if row.status_code == 409).json()["error"]["code"] == "mission.thread_in_use"
     assert owner.get(url).json()["counts"]["active"] == 2
     assert owner.get(f"{home['base']}/threads/{first}").json()["rootText"] == "频道讨论"
+
+
+def test_draft_inspection_has_no_executions_or_files_and_cannot_change_approval(home):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "draft-inspection")
+    thread_id, _ = _thread(owner, channel)
+    other_thread, _ = _thread(owner, channel)
+
+    assert owner.get(f"{base}/threads/{thread_id}/tasks").status_code == 404
+    draft = _draft(home, thread_id)
+    mission_path = f"{base}/missions/{draft['id']}"
+    paths = {
+        mission_path + "/files": {"files": [], "editedOnMachine": []},
+        mission_path + "/settings": {
+            "missionId": draft["id"],
+            "rules": [],
+            "stats": {"auto": 0, "asked": 0, "blocked": 0},
+            "agentDefault": {"commandApproval": "always", "canSet": False, "ownerId": draft["ownerId"]},
+        },
+        f"{base}/threads/{thread_id}/tasks": {"tasks": []},
+    }
+
+    outsider = TestClient(home["app"])
+    member = _join(home)
+    assert member.post(channel + "/join").status_code == 204
+    assert member.get(f"{base}/threads/{thread_id}").status_code == 200
+    browser = TestClient(home["app"], headers=ORIGIN)
+    assert browser.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    for path, data in paths.items():
+        result = owner.get(path)
+        assert result.status_code == 200 and result.json() == data
+        assert result.headers["cache-control"] == "no-store"
+        assert outsider.get(path).status_code == 401
+        assert member.get(path).status_code == 403
+        assert browser.get(path).json() == data
+        assert browser.get(path, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+        assert owner.get(path.replace(base, "/api/app/organizations/another-home")).status_code == 404
+
+    for path in (f"{base}/missions/missing/files", f"{base}/missions/missing/settings",
+                 f"{base}/threads/{other_thread}/tasks"):
+        result = owner.get(path)
+        assert result.status_code == 404 and result.json()["error"]["code"] == "mission.not_found"
+    assert owner.put(mission_path + "/command-approval", json={"commandApproval": "never"}).status_code == 404
+    assert owner.get(mission_path).json() == draft
+    assert not home["pool"].jobs
+    assert TaskLedger(home["root"]).list() == []
+
+    assert owner.delete(channel).status_code == 204
+    for path in paths:
+        response = owner.get(path)
+        assert response.status_code == 404 and response.json()["error"]["code"] == "mission.not_found"
