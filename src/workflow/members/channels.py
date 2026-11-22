@@ -10,8 +10,10 @@ from datetime import datetime, timezone
 
 from src.agents import identity_groups as rules
 from src.gateway.session_store import ChannelNameConflict, channel_metadata, normalize_channel
-from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _stamp
+from src.workflow.members import channel_threads
+from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _before, _stamp
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
+from src.workflow.members.thread_reads import ThreadReader
 
 TEAM_CHANNEL_ID_PATTERN = r"ch_[a-f0-9]{32}"
 CHANNEL_CATEGORY_ID_PATTERN = r"cat_[a-f0-9]{32}"
@@ -119,6 +121,8 @@ class TeamChannels:
     def list(self, actor, *, archived=False):
         with self.registry._locked_state() as state, self.history.database() as conn:
             MemberRegistry._actor(state, actor)
+            person_key = self._actor_key(actor)
+            muted = set() if archived else self.history.muted_channels(conn, person_key)
             result = []
             positions = Counter()
             for channel in self._ordered_channels(state, archived):
@@ -131,9 +135,8 @@ class TeamChannels:
                 if archived:
                     row["archivedAt"] = channel["archived"]
                 elif access.joined:
-                    person_key = self._actor_key(actor)
                     latest, unread, read_at = self.history.summary(conn, channel["id"], person_key, channel["joined"][person_key])
-                    row.update(unreadCount=unread, lastReadAt=read_at, lastMessage=None)
+                    row.update(unreadCount=unread, lastReadAt=read_at, lastMessage=None, muted=channel["id"] in muted)
                     if latest:
                         person = state["members"].get(latest["author"], {})
                         row["lastMessage"] = {"id": latest["id"], "authorType": "person",
@@ -404,6 +407,32 @@ class TeamChannels:
             channel["overrides"] = rest + [result]
             return self._describe_override(result)
 
+    def search(self, actor, needle, *, channel_ids=None, after="", before="", oldest=False, limit=20):
+        """调用人读得到的团队频道（已加入、未归档）里含这段文字的消息。after/before 是带时区的 ISO 时间。"""
+        after, before = (_before(value) if value else "" for value in (after, before))
+        with self.registry._locked_state() as state, self.history.database() as conn:
+            MemberRegistry._actor(state, actor)
+            readable = {key: channel for key, channel in state["channels"].items()
+                        if not channel["archived"] and self._access(state, actor, channel).joined
+                        and (channel_ids is None or key in channel_ids)}
+            rows = self.history.search(conn, list(readable), needle, after=after, before=before, oldest=oldest,
+                                       limit=limit)
+            hits = []
+            for row in rows:
+                author = row["author"]
+                name = self.owner_name if author == OWNER_KEY else state["members"].get(author, {}).get("name", "")
+                title = None
+                if row["thread"]:
+                    try:
+                        root = self.history.find_by_id(conn, row["thread"])
+                    except Missing:
+                        root = None
+                    title = (root["body"].strip().splitlines() or [""])[0][:80] if root is not None else ""
+                hits.append({"message": self.history.message(row, self._actor_key(actor)),
+                             "channelName": readable[row["channel"]]["title"], "authorName": name,
+                             "threadTitle": title})
+            return hits
+
     def can_read(self, actor, channel_id):
         state = self.registry.snapshot()
         try:
@@ -437,12 +466,17 @@ class TeamChannels:
     def subscribe(self, actor, channel_id):
         with self.registry._locked_state() as state, self.history.database() as conn:
             self._find(state, actor, channel_id, archived=False, joined=True)
-            return (self.history.latest_sequence(conn, channel_id), self.history.reaction_cursor(conn, channel_id))
+            return (self.history.latest_sequence(conn, channel_id), self.history.reaction_cursor(conn, channel_id),
+                    self.history.thread_cursor(conn, channel_id))
 
     def reaction_changes(self, actor, channel_id, after):
         with self.registry._locked_state() as state, self.history.database() as conn:
             self._find(state, actor, channel_id, archived=False, joined=True)
             return self.history.reaction_changes(conn, channel_id, after)
+    def thread_changes(self, actor, channel_id, after):
+        with self.registry._locked_state() as state, self.history.database() as conn:
+            self._find(state, actor, channel_id, archived=False, joined=True)
+            return self.history.thread_changes(conn, channel_id, after)
 
     def messages(self, actor, channel_id, *, before="", limit=100, thread=None, after=None):
         with self.registry._locked_state() as state:
@@ -456,6 +490,11 @@ class TeamChannels:
             return self.history.append(channel_id, self._actor_key(actor), text, client_id, thread, reply_to, opened,
                                        media)
 
+    def check_thread_voice(self, actor, channel_id, thread, reply_to, client, existing_clip):
+        with self.registry._locked_state() as state:
+            self._find(state, actor, channel_id, archived=False, joined=True, permission="post")
+            self.history.check_thread_voice(channel_id, self._actor_key(actor), thread, reply_to, client, existing_clip)
+
     def _message_access(self, state, conn, actor, message_id):
         row = self.history.find_by_id(conn, message_id)
         try:
@@ -464,13 +503,18 @@ class TeamChannels:
             raise Missing("没有这条消息") from error
         return row, channel, access
 
+    def _can_manage_thread(self, actor, access, author):
+        return "post" in access.permissions and (author == self._actor_key(actor) or "manage_channels" in access.permissions)
+
     def message_details(self, actor, message_id, *, thread=False):
         with self.registry._locked_state() as state, self.history.database() as conn:
-            row, channel, _ = self._message_access(state, conn, actor, message_id)
+            row, channel, access = self._message_access(state, conn, actor, message_id)
             if thread:
                 if row["thread"] is not None:
                     raise Missing("没有这个线程")
-                return self.history.thread_summary(conn, row["channel"], row, channel["title"])
+                return self.history.thread_summary(conn, row["channel"], row, channel["title"],
+                                                   reader=self._thread_reader(actor, channel),
+                                                   can_manage=self._can_manage_thread(actor, access, row["author"]))
             name = self.owner_name if row["author"] == OWNER_KEY else state["members"].get(row["author"], {}).get("name", "")
             return {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
                     "kind": "channel", "name": channel["title"], "author": name}
@@ -487,31 +531,88 @@ class TeamChannels:
 
     def threads(self, actor, channel_id, *, tab, limit):
         with self.registry._locked_state() as state:
-            channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
-            if tab not in ("all", "open"):
+            channel, access = self._find(state, actor, channel_id, archived=False, joined=True)
+            if tab not in ("all", "open", "closed", "archived"):
                 return []
-            return self.history.thread_page({channel_id: channel["title"]}, limit=min(max(limit, 1), 100))["threads"]
+            return self.history.thread_page(
+                {channel_id: channel["title"]}, tab=tab, limit=min(max(limit, 1), 100),
+                reader_for=lambda _channel: self._thread_reader(actor, channel),
+                can_manage=lambda _channel, author: self._can_manage_thread(actor, access, author),
+            )["threads"]
 
     def organization_threads(self, actor, *, tab, channel_id, agent_id, needs_you, mine, query, cursor, limit):
         with self.registry._locked_state() as state:
             MemberRegistry._actor(state, actor)
             if tab not in ("all", "open", "working", "missions", "closed", "archived"):
                 raise ValueError("话题列表分类无效")
-            # Team channel history currently contains open conversations between people.
-            if tab not in ("all", "open") or agent_id or needs_you:
+            # Team channel history contains conversations between people.
+            if tab in ("working", "missions") or agent_id or needs_you:
                 return {"threads": [], "nextCursor": None}
             channels = state["channels"]
             if channel_id:
                 channels = {channel_id: channels[channel_id]} if channel_id in channels else {}
-            titles = {cid: channel["title"] for cid, channel in channels.items()
-                      if not channel["archived"] and self._access(state, actor, channel).joined}
-            return self.history.thread_page(titles, limit=min(max(limit, 1), 100), cursor=cursor, query=query,
-                                            person=self._actor_key(actor) if mine else "")
+            titles, accesses = {}, {}
+            for cid, channel in channels.items():
+                if channel["archived"]:
+                    continue
+                access = self._access(state, actor, channel)
+                if access.joined:
+                    titles[cid], accesses[cid] = channel["title"], access
+            return self.history.thread_page(
+                titles, tab=tab, limit=min(max(limit, 1), 100), cursor=cursor, query=query,
+                person=self._actor_key(actor) if mine else "",
+                reader_for=lambda cid: self._thread_reader(actor, channels[cid]),
+                can_manage=lambda channel, author: self._can_manage_thread(actor, accesses[channel], author),
+            )
+
+    def change_thread(self, actor, thread_id, action, *, title=None):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, channel, access = self._message_access(state, conn, actor, thread_id)
+                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                    raise Missing("没有这个话题")
+                if not self._can_manage_thread(actor, access, row["author"]):
+                    raise Refused("没有管理这个话题的权限")
+            with self.history.database(write=True) as conn:
+                if action == "title":
+                    normalized = " ".join(title.split()) if title else ""
+                    if len(normalized) > 200 or any(ord(char) < 32 for char in normalized):
+                        raise ValueError("话题名称不能超过 200 字或包含控制字符")
+                    channel_threads.rename(conn, channel["id"], thread_id, normalized or None)
+                else:
+                    channel_threads.apply(conn, channel["id"], thread_id, self._actor_key(actor), action,
+                                          _stamp(datetime.now(timezone.utc)))
+                return self.history.thread_summary(conn, channel["id"], row, channel["title"],
+                                                   reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def _thread_reader(self, actor, channel):
+        person = self._actor_key(actor)
+        return ThreadReader(person, channel["joined"][person])
+
+    def mark_thread_read(self, actor, thread_id):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, channel, _ = self._message_access(state, conn, actor, thread_id)
+                if row["thread"] is not None:
+                    raise Missing("没有这个话题")
+            self.history.mark_thread_read(channel["id"], thread_id, self._actor_key(actor))
+
+    def unread_thread_count(self, actor):
+        with self.registry._locked_state() as state:
+            MemberRegistry._actor(state, actor)
+            readers = {cid: self._thread_reader(actor, channel) for cid, channel in state["channels"].items()
+                       if not channel["archived"] and self._access(state, actor, channel).joined}
+            return self.history.unread_thread_count(readers)
 
     def read(self, actor, channel_id):
         with self.registry._locked_state() as state:
             self._find(state, actor, channel_id, archived=False, joined=True)
             self.history.mark_read(channel_id, self._actor_key(actor))
+
+    def set_muted(self, actor, channel_id, muted):
+        with self.registry._locked_state() as state:
+            self._find(state, actor, channel_id, archived=False, joined=True)
+            self.history.set_muted(channel_id, self._actor_key(actor), muted)
 
     def pins(self, actor, channel_id):
         with self.registry._locked_state() as state:

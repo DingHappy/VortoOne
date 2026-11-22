@@ -1,7 +1,7 @@
-"""新版界面里每个人自己的显示偏好：侧栏怎么排、界面用什么语言。
+"""新版界面里每个人自己的显示偏好：侧栏、界面语言和个人时区。
 
 只是界面的摆放，不涉及权限、不进模型上下文。所有者和成员各存各的，键是调用人的身份
-（``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏跟着「这个人在这个家里」走。
+（``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏和时区跟着「这个人在这个家里」走。
 存在 ``.vortoone/app_prefs.json``，坏了就如实报错（ValueError），不悄悄换成默认值覆盖掉。
 
 字段和取值按界面合同（frontend/packages/client/src/api/types.ts 的 SidebarItem / SidebarPlace /
@@ -14,9 +14,12 @@ import json
 import os
 import threading
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unicodedata import category
 
+from src.scheduling.routine_schedule import zone
 from src.utils.state_dir import state_dir
 
 _FILE = "app_prefs.json"
@@ -34,6 +37,7 @@ DEFAULT_VIEW = {"agentSort": "workspace", "showAllAgents": True, "pins": None}
 # 界面能选的语言（packages/i18n/src/locale.ts 的 LOCALES）
 LOCALES = ("en", "pt-BR", "es", "fr", "de", "it", "nl", "ja", "ko", "zh-Hans", "id", "tr", "pl", "ru")
 DEFAULT_LOCALE = "zh-Hans"
+AVAILABILITIES = ("auto", "away", "busy", "out", "hidden")
 
 
 def _path(root: str) -> Path:
@@ -73,6 +77,8 @@ def _change(root: str, who: str, key: str, value: Any) -> None:
     with _LOCK:
         data = _read(root)
         row = data["people"].setdefault(who, {})
+        if not isinstance(row, dict):
+            raise ValueError("个人偏好记录损坏，需要先修复")
         if value is None:
             row.pop(key, None)
         else:
@@ -80,6 +86,77 @@ def _change(root: str, who: str, key: str, value: Any) -> None:
         if not row:
             data["people"].pop(who, None)
         _write(root, data)
+
+
+def person_value(root: str, who: str, key: str) -> Any:
+    """一个人的一项偏好（没有就是 None）。"""
+    return _own(root, who).get(key)
+
+
+def set_person_value(root: str, who: str, key: str, value: Any) -> None:
+    _change(root, who, key, value)
+
+
+def _status_line(value: Any) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) - {"text", "emoji", "until"}:
+        raise ValueError("状态要包含文字，可附表情和到期时间")
+    text, emoji, until = value.get("text"), value.get("emoji"), value.get("until")
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 100 or _has_control(text):
+        raise ValueError("状态文字须为 1 到 100 个可显示字符")
+    if emoji is not None and (not isinstance(emoji, str) or not 1 <= len(emoji) <= 32 or _has_control(emoji)):
+        raise ValueError("状态表情格式不正确")
+    if until is not None:
+        if not isinstance(until, str) or len(until) > 40:
+            raise ValueError("状态到期时间须为带时区的 ISO 时间")
+        try:
+            instant = datetime.fromisoformat(until[:-1] + "+00:00" if until.endswith("Z") else until)
+        except ValueError as error:
+            raise ValueError("状态到期时间须为带时区的 ISO 时间") from error
+        if instant.tzinfo is None or "T" not in until:
+            raise ValueError("状态到期时间须为带时区的 ISO 时间")
+        if instant <= datetime.now(timezone.utc):
+            return None
+    return {"text": text.strip(), "emoji": emoji, "until": until}
+
+
+def _has_control(text: str) -> bool:
+    return any(category(char) in {"Cc", "Cs"} for char in text)
+
+
+def status_preferences(root: str) -> Dict[str, Optional[Dict[str, Any]]]:
+    return {who: {"availability": row.get("availability"), "status": row.get("status")} if isinstance(row, dict) else None
+            for who, row in _read(root)["people"].items()}
+
+
+def status_line(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    try:
+        return _status_line(row.get("status"))
+    except ValueError:
+        return None
+
+
+def set_status(root: str, who: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    if not body or set(body) - {"availability", "status"}:
+        raise ValueError("只能更新可用状态或状态文字")
+    if "availability" in body and body["availability"] not in AVAILABILITIES:
+        raise ValueError("未识别的可用状态")
+    line = _status_line(body.get("status"))
+    with _LOCK:
+        data = _read(root)
+        row = data["people"].setdefault(who, {})
+        if not isinstance(row, dict):
+            raise ValueError("界面偏好记录损坏，需要先修复")
+        if "availability" in body:
+            row["availability"] = body["availability"]
+        if "status" in body:
+            if line is None:
+                row.pop("status", None)
+            else:
+                row["status"] = line
+        _write(root, data)
+        return {"availability": row.get("availability"), "status": row.get("status")}
 
 
 def _unique_known(items: Any, known: tuple, what: str) -> List[str]:
@@ -190,11 +267,23 @@ def set_sidebar_view(root: str, who: str, view: Any) -> Dict[str, Any]:
     return sidebar_view(root, who)
 
 
-# ── 界面语言（跟着账号）────────────────────────────────────────────────────
+# ── 账号偏好 ────────────────────────────────────────────────────────────────
 
-def locale(root: str, account_key: str) -> Dict[str, Any]:
+# frontend/packages/client/src/lib/work-area.ts 的 WORK_AREA_ANSWERS
+WORK_AREAS = ("dev", "marketing", "sales", "finance", "ops", "support", "other", "skipped")
+
+
+def account_preferences(root: str, account_key: str) -> Dict[str, Any]:
     row = _own(root, account_key)
-    return {"locale": row.get("locale") or DEFAULT_LOCALE, "localeAuto": bool(row.get("localeAuto", False))}
+    area = row.get("workArea")
+    return {"locale": row.get("locale") or DEFAULT_LOCALE, "localeAuto": bool(row.get("localeAuto", False)),
+            "workArea": area if area in WORK_AREAS else None}
+
+
+def set_work_area(root: str, account_key: str, body: Dict[str, Any]) -> None:
+    if set(body) != {"area"} or body["area"] not in WORK_AREAS:
+        raise ValueError("请选择引导中的工作领域或跳过")
+    _change(root, account_key, "workArea", body["area"])
 
 
 def set_locale(root: str, account_key: str, body: Any) -> None:
@@ -211,6 +300,28 @@ def set_locale(root: str, account_key: str, body: Any) -> None:
         row["locale"] = body["locale"]
         row["localeAuto"] = auto
         _write(root, data)
+
+
+# ── 个人时区 ────────────────────────────────────────────────────────────────
+
+def personal_timezones(root: str) -> Dict[str, str]:
+    try:
+        people = _read(root)["people"]
+    except ValueError:
+        # 名册仍能读到工作区默认时区；保存时报告文件损坏。
+        return {}
+    return {who: row["timezone"] for who, row in people.items()
+            if isinstance(row, dict) and isinstance(row.get("timezone"), str) and row["timezone"]}
+
+
+def set_personal_timezone(root: str, who: str, value: Any) -> Optional[str]:
+    if value is not None:
+        try:
+            zone(value)
+        except ValueError as error:
+            raise ValueError("个人时区须使用有效的 IANA 名称，例如 Asia/Shanghai") from error
+    _change(root, who, "timezone", value)
+    return value
 
 
 # ── 整个家的界面开关（所有者在空间设置里改）─────────────────────────────────

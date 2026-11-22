@@ -73,6 +73,9 @@ async def runtime_lifespan():
         observer = asyncio.create_task(observe_loop(stop)) if observer_enabled() else None
         # 任务上下文（ADR-014）：常驻助理开的大任务，成员交回就叫醒协调人；启动时恢复被打断的回合
         team_runner = None
+        # 所有者在新界面里加的模型端点：登记进进程环境，默认的那个换掉服务配置的默认端点
+        from src.web.app_credentials import apply as apply_credentials
+        apply_credentials(os.getcwd())
         if current_workspace_scope() == GENERAL:
             from src.scheduling.task_notices import notify_transition
             from src.scheduling.team_runner import TeamRunner, set_team_runner
@@ -81,6 +84,10 @@ async def runtime_lifespan():
             set_team_runner(team_runner)
             from src.scheduling.staff_runner import set_staff_service
             set_staff_service(root, get_runner(), on_update=lambda task: notify_transition(root, task))
+            # 完整能力的 agent 用主助理那一套工具（装配在会话层，下层不反向导入）
+            from src.agents.staff import set_full_toolset
+            from src.web.agent_toolset import main_assistant_toolset
+            set_full_toolset(main_assistant_toolset)
             try:
                 await team_runner.recover()
             except Exception:  # noqa: BLE001 —— 恢复失败不挡住服务启动；坏掉的任务在列表里可见
@@ -93,6 +100,8 @@ async def runtime_lifespan():
                 set_team_runner(None)
                 from src.scheduling.staff_runner import set_staff_service
                 set_staff_service(os.getcwd())
+                from src.agents.staff import set_full_toolset
+                set_full_toolset(None)
                 await team_runner.close()
             stop.set()
             for task in (watch, observer):

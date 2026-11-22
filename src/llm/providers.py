@@ -193,13 +193,27 @@ def _client(provider: ProviderSpec, model: str) -> Any:
     return client
 
 
+def _custom_spec(spec: str) -> str:
+    """新版界面里端点模型的写法 ``custom:<密钥 id>:<模型>`` → 登记的供应商写法 ``cred_<id>:<模型>``。
+
+    密钥 id 是 ``cred-`` 加 12 位十六进制（见 web/app_credentials.py），登记成 ``VORTOONE_PROVIDER_CRED_<ID>``。
+    别的写法原样返回。"""
+    head, sep, rest = (spec or "").partition(":")
+    if sep and head.strip().lower() == "custom":
+        credential, sep2, model = rest.partition(":")
+        credential = credential.strip().lower()
+        if sep2 and credential.startswith("cred-") and len(credential) == 17 and model.strip():
+            return f"cred_{credential[5:]}:{model.strip()}"
+    return spec
+
+
 def client_for_spec(spec: str) -> Optional[Any]:
     """给一条**显式**的 `provider:model` 造客户端（`.vortoone/agents/*.md` 的 `model:` 用）。
 
     不带 provider 前缀（只写模型名）返回 None——那种情况调用方用 `set_model()` 就够了，端点不变。
     端点没登记/没凭据同样返回 None 并记警告，绝不借别家的 key。
     """
-    provider_name, sep, model = (spec or "").partition(":")
+    provider_name, sep, model = _custom_spec(spec).partition(":")
     provider_name, model = provider_name.strip().lower(), model.strip()
     if not sep or not provider_name or not model:
         return None
@@ -218,7 +232,7 @@ def chat_target(spec: str) -> Optional[Tuple[ProviderSpec, str]]:
     不是这种形状（或供应商没登记）返回 None，调用方把整串当默认端点上的模型名——
     有些模型名本身就带冒号（如 `qwen2.5:7b`），不能见冒号就拆。
     """
-    provider_name, sep, model = (spec or "").partition(":")
+    provider_name, sep, model = _custom_spec(spec).partition(":")
     provider_name, model = provider_name.strip().lower(), model.strip()
     if not sep or not model or provider_name in ("", DEFAULT_PROVIDER):
         return None

@@ -221,23 +221,29 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 def me(root: str) -> Dict[str, Any]:
     card = _owner_card(root)
+    user_id = owner_id(root)
+    requires_auth = owner_connection()
+    preferences = ui_account_preferences(root, user_id)
+    if not requires_auth:
+        # 未配置令牌的开发服务也可读 /me，个人引导答案在这种模式下不可见。
+        preferences["workArea"] = None
     return {
-        "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
-                 **ui_locale(root, owner_id(root))},
+        "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": None,
+                 **preferences},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
-                           "routineProposalReview": owner_connection(), "teamChannels": owner_connection(),
-                           "channelCategories": owner_connection()}],
+                           "routineProposalReview": requires_auth, "teamChannels": requires_auth,
+                           "channelCategories": requires_auth}],
     }
 
 
-def ui_locale(root: str, account_key: str) -> Dict[str, Any]:
+def ui_account_preferences(root: str, account_key: str) -> Dict[str, Any]:
     from src.web import app_prefs
     try:
-        return app_prefs.locale(root, account_key)
+        return app_prefs.account_preferences(root, account_key)
     except ValueError:
-        # 偏好文件坏了不挡登录：语言回到默认，改的时候再如实报错
-        return {"locale": app_prefs.DEFAULT_LOCALE, "localeAuto": False}
+        # 偏好文件坏了不挡登录，改的时候再如实报错。
+        return {"locale": app_prefs.DEFAULT_LOCALE, "localeAuto": False, "workArea": None}
 
 
 def person(root: str) -> Dict[str, Any]:
@@ -431,6 +437,249 @@ def approval(root: str, pending: Dict[str, Any], *, status: str = "pending",
             "canDecide": status == "pending", **({"websiteLogin": website} if website else {})}
 
 
+STAFF_PROPOSAL_PREFIX = "staff-proposal-"
+_PROPOSAL_KINDS = {"member": "新建 agent", "role": "岗位", "routine": "例行工作", "department": "部门",
+                   "bundle": "开通单", "routine_migration": "例行工作迁移"}
+_OPERATION_WORDS = {"read": "读", "own_data": "改主人自己的资料", "draft": "起草", "write": "写",
+                    "execute": "执行命令", "interact": "操作界面", "deliver": "对外发送", "irreversible": "做不可撤销的事"}
+STAFF_ACTION_PREFIX = "staff-action-"
+
+
+def staff_action_approval(root: str, task: Any, card: Dict[str, Any], *, status: str = "pending") -> Dict[str, Any]:
+    """agent 在后台干活时停下来等批准的那一步，整理成界面的审批。
+    id 带着摘要前缀：卡片内容变了（比如换成下一步），旧 id 就批不了。"""
+    p = card["payload"]
+    agent = member_agent_id(root, str(p.get("member") or ""))
+    kind = str(p.get("kind") or "")
+    detail = str(p.get("message") or "")
+    if p.get("tainted"):
+        detail = "⚠️ 这件事读取过外部内容（网页、搜索或外部工具），请确认这一步确实是你要它做的。\n\n" + detail
+    detail += f"\n\n这件事：{str(task.prompt or '')[:300]}"
+    return {"id": f"{p['id']}~{card['digest'][:16]}", "runId": task.id, "agentId": agent,
+            "channelId": dm_channel_id(agent), "threadId": message_id(task.id, "user"), "messageId": None,
+            "tool": str(p.get("tool") or ""), "scope": kind,
+            "title": f"{p.get('member_name') or 'agent'} 要{_OPERATION_WORDS.get(kind, kind)}：{p.get('tool') or ''}"[:120],
+            "detail": detail, "params": {}, "status": status,
+            "expiresAt": _iso(p.get("expires_at")), "createdAt": _iso(p.get("created")),
+            "decidedByUserId": owner_id(root) if status != "pending" else None,
+            "decidedAt": now_iso() if status != "pending" else None, "reason": None,
+            "canDecide": status == "pending", "routine": False}
+
+
+def _grants_text(grants: Dict[str, Any]) -> str:
+    grants = grants if isinstance(grants, dict) else {}
+    if grants.get("full") is True:
+        return "能做：和主助理一样的全部能力（危险操作按你的授权规则自动放行或等你批准）"
+    operations = "、".join(_OPERATION_WORDS.get(str(op), str(op)) for op in grants.get("operations") or []) or "无"
+    tools = "、".join(str(tool) for tool in grants.get("tools") or []) or "无"
+    return (f"能做：{operations}；工具：{tools}；联网：{'是' if grants.get('web') else '否'}；"
+            f"看主人的私人资料：{'是' if grants.get('sees') else '否'}")
+
+
+def _proposal_text(snapshot: Dict[str, Any]) -> tuple[str, str]:
+    """（标题，正文）。正文列出批准后会登记的全部要点；完整内容仍以摘要核对为准。"""
+    import json as _json
+    kind, data = snapshot.get("kind"), snapshot.get("data") or {}
+    previous = snapshot.get("previous")
+    if kind == "member":
+        role = snapshot.get("role_snapshot") or {}
+        title = f"新建 agent「{data.get('name') or data.get('id')}」" if not previous else \
+            f"修改 agent「{data.get('name') or data.get('id')}」"
+        body = (f"岗位：{role.get('title') or data.get('role')}\n执行框架：{data.get('engine') or '默认'}"
+                f"\n模型：{data.get('model') or '默认'}\n{_grants_text(role.get('grants'))}")
+    elif kind == "role":
+        title = f"{'修改' if previous else '新建'}岗位「{data.get('title') or data.get('id')}」"
+        body = _grants_text(data.get("grants"))
+        if previous:
+            body = f"改成：{body}\n原来：{_grants_text((previous.get('data') or previous).get('grants'))}"
+        if data.get("brief"):
+            body += f"\n岗位说明：{str(data['brief'])[:600]}"
+    elif kind == "routine":
+        title = f"{'修改' if previous else '新建'}例行工作「{data.get('name') or data.get('id')}」"
+        body = (f"交给：{data.get('member')}\n时间：{data.get('schedule')}（{data.get('timezone') or ''}）"
+                f"\n要做的事：{str(data.get('prompt') or '')[:1200]}")
+    else:
+        title = _PROPOSAL_KINDS.get(str(kind), "提议")
+        body = _json.dumps(data, ensure_ascii=False)[:1500]
+    return title, body
+
+
+def staff_proposal_approval(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """一条待批的专员提议，整理成界面的审批。id 带着摘要前缀：内容变了，旧 id 就批不了。"""
+    from datetime import timedelta
+    title, body = _proposal_text(item["snapshot"])
+    origin = "助理在主要聊天里提的。" if item.get("origin") == "assistant" else ""
+    detail = (f"{origin}{body}\n\n理由：{item.get('reason') or ''}"
+              "\n\n批准后才会登记；按这里列出的内容核对，有不对的地方就拒绝。")
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=30)
+    agent = main_agent_id(root)
+    return {"id": f"{item['id']}~{item['digest'][:16]}", "runId": None, "agentId": agent,
+            "channelId": dm_channel_id(agent), "threadId": None, "messageId": None,
+            "tool": "staff_propose", "scope": str(item["snapshot"].get("kind") or ""),
+            "title": ("助理提议：" if origin else "待批准：") + title, "detail": detail, "params": {},
+            "status": "pending", "expiresAt": _iso(expires.timestamp()), "createdAt": created,
+            "decidedByUserId": None, "decidedAt": None, "reason": None, "canDecide": True, "routine": False}
+
+
+_CARD_STATE = {"pending": "pending", "applying": "creating", "approved": "created", "rejected": "denied"}
+PROPOSAL_CARD_DAYS = 30
+
+
+def agent_proposal_card_id(proposal_id: str) -> str:
+    return _id("agent-proposal-card", proposal_id)
+
+
+def _assistant_member_proposals(root: str) -> List[Dict[str, Any]]:
+    """助理在主要聊天里提的、会出卡片的：新建 agent（kind=member、没有前一版），
+    和带新 agent 的开通单（kind=bundle、含 member）。"""
+    from src.workflow.staff.approvals import StaffApprovals
+    rows = []
+    for item in StaffApprovals(root).list():
+        snapshot = item["snapshot"]
+        if item.get("origin") != "assistant" or item.get("status") not in _CARD_STATE:
+            continue
+        if (snapshot.get("kind") == "member" and not snapshot.get("previous")) or \
+                (snapshot.get("kind") == "bundle" and (snapshot.get("data") or {}).get("member")):
+            rows.append(item)
+    return rows
+
+
+def team_proposal_card_id(proposal_id: str) -> str:
+    return _id("team-proposal-card", proposal_id)
+
+
+def _proposed_routine(row: Dict[str, Any]) -> Dict[str, Any]:
+    schedule = str(row.get("schedule") or "")
+    return {"name": str(row.get("name") or row.get("id") or ""), "prompt": str(row.get("prompt") or ""),
+            "schedule": schedule, "rule": None, "cron": schedule if len(schedule.split()) == 5 else "",
+            "timezone": str(row.get("timezone") or ""), "description": schedule, "report": "always",
+            "access": "read", "reportsIn": None}
+
+
+def team_proposal(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """界面的 TeamProposalCard：开通单里的新 agent、它的岗位和例行工作。「创建」就是按这一版批准整张开通单。"""
+    from datetime import timedelta
+    data = item["snapshot"]["data"]
+    member, role = data["member"], data.get("role") or {}
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    state = _CARD_STATE[item["status"]]
+    agent = {"name": member.get("name") or member["id"], "handle": member["id"],
+             "role": role.get("title") or member.get("role") or "", "line": str(role.get("brief") or "")[:120],
+             "instructions": str(role.get("brief") or ""), "appearance": None, "channel": "",
+             "routines": [_proposed_routine(row) for row in data.get("routines") or []], "firstTask": None}
+    card = {"kind": "team_proposal", "forUserId": owner_id(root),
+            "params": {"lead": member["id"], "agents": [agent], "newChannels": [], "skills": [], "weekly": None,
+                       "approvals": "", "invite": []},
+            "state": state, "decidedByUserId": owner_id(root) if state in {"created", "denied"} else None,
+            "decidedAt": None, "expiresAt": _iso(expires.timestamp()), "error": None}
+    if state == "created":
+        card["created"] = {"agentIds": [member_agent_id(root, member["id"])], "channelIds": [],
+                           "routineIds": [str(row.get("id")) for row in data.get("routines") or []],
+                           "skillIds": [], "skipped": [], "noAi": []}
+    return card
+
+
+def proposal_expired(item: Dict[str, Any]) -> bool:
+    from datetime import timedelta
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    return item.get("status") == "pending" and expires <= datetime.now(timezone.utc)
+
+
+def agent_proposal(root: str, item: Dict[str, Any], *, can_decide: bool) -> Dict[str, Any]:
+    """界面的 AgentProposal：聊天卡片上的新建 agent 提议。「创建」就是按这一版批准，「不要」就是拒绝。"""
+    from datetime import timedelta
+    snapshot = item["snapshot"]
+    data, role = snapshot["data"], snapshot.get("role_snapshot") or {}
+    created = _iso(item.get("created_at"))
+    expires = datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(days=PROPOSAL_CARD_DAYS)
+    state = _CARD_STATE[item["status"]]
+    expired = state == "pending" and expires <= datetime.now(timezone.utc)
+    agent = main_agent_id(root)
+    return {"kind": "agent_proposal", "forUserId": owner_id(root),
+            "params": {"draft": {"name": data.get("name") or data["id"], "handle": data["id"],
+                                 "role": role.get("title") or data.get("role") or "",
+                                 "instructions": str(role.get("brief") or ""), "appearance": None,
+                                 "channelIds": [], "access": [], "routine": None, "ai": {"kind": "model"}},
+                       "why": item.get("reason") or ""},
+            "state": state, "agentId": member_agent_id(root, data["id"]) if state == "created" else None,
+            "decidedByUserId": owner_id(root) if state in {"created", "denied"} else None, "decidedAt": None,
+            "expiresAt": _iso(expires.timestamp()),
+            "messageId": agent_proposal_card_id(item["id"]), "channelId": dm_channel_id(agent), "threadId": None,
+            "proposedByAgentId": agent, "expired": expired,
+            "canDecide": can_decide and state == "pending" and not expired}
+
+
+_CARD_FIELDS = ("kind", "forUserId", "params", "state", "agentId", "decidedByUserId", "decidedAt", "expiresAt")
+
+
+def with_proposal_cards(root: str, rows: List[Dict[str, Any]], *, latest: bool) -> List[Dict[str, Any]]:
+    """把助理的新建 agent 提议当一条 agent 消息插进主要聊天（按提的时间）。正文说一句，卡片在 meta.actionCard。
+    latest：这一页是最新的一页（晚于最后一条的卡片也接在后面）。"""
+    try:
+        items = _assistant_member_proposals(root)
+    except (ValueError, OSError):
+        return rows
+    if not items or (not rows and not latest):
+        return rows
+    first = rows[0]["createdAt"] if rows else ""
+    last = rows[-1]["createdAt"] if rows else ""
+    cards = []
+    for item in items:
+        created = _iso(item.get("created_at"))
+        if created < first or (created > last and not latest):
+            continue
+        if item["snapshot"]["kind"] == "bundle":
+            card = team_proposal(root, item)
+            name = card["params"]["agents"][0]["name"]
+            routines = len(card["params"]["agents"][0]["routines"])
+            body = f"我提议开通「{name}」" + (f"，连同 {routines} 项例行工作。" if routines else "。")
+            cards.append(_message(root, team_proposal_card_id(item["id"]), from_owner=False, body=body,
+                                  created=created, meta={"actionCard": card}))
+            continue
+        card = agent_proposal(root, item, can_decide=True)
+        name = card["params"]["draft"]["name"]
+        cards.append(_message(root, card["messageId"], from_owner=False, body=f"我提议新建 agent「{name}」。",
+                              created=created, meta={"actionCard": {key: card[key] for key in _CARD_FIELDS}}))
+    if not cards:
+        return rows
+    merged = sorted([*rows, *cards], key=lambda row: row["createdAt"])
+    for index, row in enumerate(merged):
+        if row.get("sequence") is None:
+            row["sequence"] = merged[index - 1].get("sequence") or 0 if index else 0
+    return merged
+
+
+def find_agent_proposal(root: str, message_id_value: str, *, kind: str = "member") -> Optional[Dict[str, Any]]:
+    """kind：member 找新建 agent 卡片，bundle 找开通单（团队）卡片。"""
+    try:
+        items = _assistant_member_proposals(root)
+    except (ValueError, OSError):
+        return None
+    card_id = agent_proposal_card_id if kind == "member" else team_proposal_card_id
+    return next((item for item in items if item["snapshot"]["kind"] == kind
+                 and card_id(item["id"]) == message_id_value), None)
+
+
+def pending_staff_proposals(root: str) -> List[Dict[str, Any]]:
+    """新界面要批的专员提议：除了已经有自己核对页的（成员提交的例行工作、主人在新界面新建的例行工作）。"""
+    from src.web import app_prefs
+    from src.workflow.staff.approvals import StaffApprovals
+    approvals = StaffApprovals(root)
+    from_ui = app_prefs.ui_routine_proposals(root)
+    rows = []
+    for item in approvals.list():
+        snapshot = item["snapshot"]
+        if item.get("status") != "pending" or item["id"] in from_ui:
+            continue
+        if snapshot.get("kind") == "routine" and snapshot.get("initiator"):
+            continue
+        rows.append(item)
+    return rows
+
+
 def main_dm(root: str) -> Dict[str, Any]:
     agent = agents(root)[0]
     messages = main_messages(root, limit=1)
@@ -452,6 +701,16 @@ def is_main_dm(root: str, channel_id: str) -> bool:
 
 def channel_members(root: str) -> List[Dict[str, str]]:
     return [{"type": "person", "id": owner_id(root)}, {"type": "agent", "id": main_agent_id(root)}]
+
+
+def agent_groups(root: str) -> List[Dict[str, Any]]:
+    """agent 分组：已登记、没退役的部门，成员换成界面上的 agent id。部门登记读不出来就抛 ValueError。"""
+    from src.workflow.staff.departments import Departments
+    from src.workflow.staff.registry import StaffRegistry
+    return [{"id": item["id"], "name": item["name"],
+             "agentIds": [member_agent_id(root, str(member)) for member in item.get("members") or []],
+             "leadUserId": None, "backupUserId": None}
+            for item in Departments(StaffRegistry(root)).list() if item.get("status") != "retired"]
 
 
 def agent_detail(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
@@ -504,24 +763,87 @@ def member_owner_message(root: str, member_id: str, task: Dict[str, Any],
                            task_id=task["id"], viewer=viewer, **extra)
 
 
+def staff_question(root: str, member_id: str, task: Dict[str, Any], item: Dict[str, Any],
+                   carrier: str) -> Dict[str, Any]:
+    """专员在这件事里问的问题（界面的 AgentQuestion）。carrier：带着它的那条 agent 消息。"""
+    from src.workflow.staff.questions import state_of
+    agent = member_agent_id(root, member_id)
+    state = state_of(str(task.get("status") or ""), task.get("collaboration") or {}, item)
+    asked = item.get("askedTo") or owner_id(root)
+    view = {"id": item["id"], "agentId": agent, "channelId": dm_channel_id(agent),
+            "threadId": message_id(task["id"], "user"), "messageId": carrier, "runId": task["id"],
+            "text": item["text"], "choices": item.get("choices"), "requestedForUserId": asked,
+            "status": "open" if state == "open" else "answered", "answer": item.get("answer"),
+            "answeredByUserId": asked if state in {"answered", "dismissed"} else None,
+            "answeredAt": _iso(item["answeredAt"]) if item.get("answeredAt") else None}
+    if state == "withdrawn":
+        view["withdrawn"] = True
+    if state == "dismissed":
+        view["dismissed"] = True
+    return view
+
+
+def _round_result(status: str, result: str, error: str) -> str:
+    if status in {"done", "submitted"}:
+        return result.strip() or "已完成，没有交回文字说明。"
+    return "这件事没有完成" + (f"：{error.strip()}" if error.strip() else f"（状态：{status or '未知'}）。")
+
+
+def _earlier_rounds(root: str, member_id: str, task: Dict[str, Any], asked: Dict[int, Dict[str, Any]],
+                    viewer: Optional[str]) -> List[Dict[str, Any]]:
+    """上一轮交回的结果和接着交代的话（回答问题、返工意见），让多轮的一件事在私聊里看得全。"""
+    collaboration = task.get("collaboration") or {}
+    messages = [m for m in collaboration.get("messages") or [] if isinstance(m, dict)]
+    rows = []
+    for number in range(1, int(collaboration.get("round") or 1)):
+        ended = next((m for m in reversed(messages) if m.get("round") == number
+                      and m.get("kind") in {"submitted", "failed", "interrupted", "cancelled"}), None)
+        if ended is not None:
+            carrier = message_id(task["id"], "assistant", number)
+            extra = ({"meta": {"question": staff_question(root, member_id, task, asked[number], carrier)}}
+                     if number in asked else {})
+            rows.append(_member_message(root, member_id, carrier, from_owner=False,
+                                        body=_round_result(str(ended.get("kind")), str(ended.get("body") or ""), ""),
+                                        created=_iso(ended.get("created")), task_id=task["id"], viewer=viewer, **extra))
+        followup = next((m for m in messages if m.get("round") == number + 1 and m.get("kind") == "followup"), None)
+        if followup is not None:
+            item = asked.get(number)
+            if item is not None and item.get("status") == "answered":
+                body = str(item.get("answer") or "")
+            elif item is not None and item.get("status") == "dismissed":
+                body = "（跳过了这个问题）"
+            else:
+                body = str(followup.get("body") or "")
+            rows.append(_member_message(root, member_id, message_id(task["id"], "user", number + 1), from_owner=True,
+                                        body=body, created=_iso(followup.get("created")), task_id=task["id"],
+                                        viewer=viewer))
+    return rows
+
+
 def member_messages(root: str, member_id: str, conversation: Optional[Dict[str, Any]] = None, *,
                     before: str = "", limit: int = 100, viewer: Optional[str] = None) -> List[Dict[str, Any]]:
-    """每件事两条：交代的话；做完（或没做成）后 agent 交回的结果。进行中的只有前一条。"""
+    """每件事：交代的话；每轮交回的结果，以及接着交代的话（回答问题、返工意见）。进行中的那一轮还没有结果。
+    专员这一轮问了问题的，问题卡片跟在那一轮的结果上。"""
+    from src.workflow.staff.questions import recorded
     conversation = conversation or member_conversation(root, member_id, viewer)
     rows: List[Dict[str, Any]] = []
     for task in reversed(conversation["tasks"]):          # 台账给的是新的在前
         rows.append(member_owner_message(root, member_id, task, viewer=viewer))
+        asked = {int(item["round"]): item for item in recorded(task.get("collaboration") or {})
+                 if isinstance(item.get("round"), int)}
+        rows.extend(_earlier_rounds(root, member_id, task, asked, viewer))
         status = str(task.get("status") or "")
         if status in ACTIVE_TASK:
             continue
-        if status == "done":
-            body = str(task.get("result") or "").strip() or "已完成，没有交回文字说明。"
-        else:
-            reason = str(task.get("error") or "").strip()
-            body = "这件事没有完成" + (f"：{reason}" if reason else f"（状态：{status or '未知'}）。")
-        rows.append(_member_message(root, member_id, message_id(task["id"], "assistant"), from_owner=False,
-                                    body=body, created=_iso(task.get("updated") or task.get("created")),
-                                    task_id=task["id"], viewer=viewer))
+        carrier = message_id(task["id"], "assistant")
+        number = int((task.get("collaboration") or {}).get("round") or 1)
+        extra = ({"meta": {"question": staff_question(root, member_id, task, asked[number], carrier)}}
+                 if number in asked else {})
+        rows.append(_member_message(root, member_id, carrier, from_owner=False,
+                                    body=_round_result(status, str(task.get("result") or ""),
+                                                       str(task.get("error") or "")),
+                                    created=_iso(task.get("updated") or task.get("created")),
+                                    task_id=task["id"], viewer=viewer, **extra))
     if before:
         cutoff = _iso(before)
         rows = [row for row in rows if row["createdAt"] < cutoff]
@@ -534,7 +856,8 @@ def member_runs(root: str, member_id: str, conversation: Optional[Dict[str, Any]
     agent = member_agent_id(root, member_id)
     return [{"runId": task["id"], "agentId": agent, "channelId": dm_channel_id(agent),
              "threadId": message_id(task["id"], "user"), "triggerMessageId": message_id(task["id"], "user"),
-             "status": "running" if task.get("status") == "running" else "queued",
+             # 停下来等批准的也是在办（blocked），不是还没开始
+             "status": "running" if task.get("status") in {"running", "blocked"} else "queued",
              "startedAt": _iso(task.get("created")), "createdAt": _iso(task.get("created"))}
             for task in conversation["tasks"] if task.get("status") in ACTIVE_TASK]
 
@@ -547,6 +870,18 @@ def member_dm(root: str, member_id: str) -> Dict[str, Any]:
 
 
 # ── 记忆、例行工作、技能、制品：现有记录的只读整理 ─────────────────────────────
+
+def team_memory_view(root: str, item: Dict[str, Any], *, can_change: bool, owner: bool) -> Dict[str, Any]:
+    """团队记忆（界面的 Memory）。归在主助理名下展示；文字都出自所有者。"""
+    card = _owner_card(root)
+    return {"id": item["id"], "agentId": main_agent_id(root), "kind": "fact", "text": item["text"],
+            "source": "", "origin": {"by": "person", "name": card["name"], "channel": None,
+                                     "at": _iso(item["createdAt"])},
+            "uses": 0, "lastUsedAt": None, "pinned": False, "archived": bool(item.get("archived")),
+            "lowTrust": False, "verified": True, "supersedes": item.get("supersedes"),
+            "editedByUserId": item.get("editedBy"), "updatedAt": _iso(item["updatedAt"]),
+            "removable": can_change}
+
 
 def _memory(agent_id: str, row: Dict[str, Any], archived: bool) -> Dict[str, Any]:
     created = _iso(row.get("created_at"))
@@ -700,7 +1035,7 @@ def _skill(root: str, item: Dict[str, Any], created: str) -> Dict[str, Any]:
     revision = item.get("revision")
     return {"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
             "description": str(item.get("description") or ""),
-            "version": revision if type(revision) is int else 1, "source": "manual", "sourceUrl": None,
+            "version": revision if type(revision) is int else 1, "source": item.get("source", "manual"), "sourceUrl": None,
             "defaultForNewAgents": False, "metadata": {}, "origin": "person",
             "ownerUserId": owner_id(root), "createdAt": created, "updatedAt": created,
             "enabled": bool(item.get("enabled"))}
@@ -721,7 +1056,7 @@ def skills(root: str) -> List[Dict[str, Any]]:
     return [_skill(root, item, created) for item in store.list()["items"]]
 
 
-def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
+def skill_detail(root: str, skill_id: str, *, owner_verified: bool = False) -> Optional[Dict[str, Any]]:
     """一条技能的正文。看过正文才算核对：这里记下给界面看的是哪个版本，启用时只认它。"""
     store = _personal_skills(root)
     if store is None:
@@ -730,7 +1065,13 @@ def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
         item = store.get(skill_id, preview=True)
     except (OSError, ValueError):
         return None
+    if item.get("source") == "upload" and not owner_verified:
+        raise PermissionError("审阅导入技能需要经过认证的所有者")
     _SHOWN_SKILLS[(root, skill_id)] = str(item["revision"])
+    return _skill_detail(root, item)
+
+
+def _skill_detail(root: str, item: Dict[str, Any]) -> Dict[str, Any]:
     row = _skill(root, item, _home_created(root))
     return {**{k: v for k, v in row.items() if k != "enabled"}, "body": item["instructions"], "files": [],
             "pending": None, "changes": []}
@@ -773,8 +1114,37 @@ def create_skill(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
     return detail
 
 
+def import_skill(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow.workbench.skill_import import SkillImportError, upload_draft
+
+    if "url" in body or "forAgentId" in body:
+        raise SkillImportError("本地技能仅支持上传 ZIP，需要审阅后手动启用",
+                               status=409, code="skill.import_unsupported")
+    if set(body) - {"zipBase64", "personal"} or "zipBase64" not in body:
+        raise SkillImportError("需要 ZIP 文件及可选的个人范围")
+    if "personal" in body and type(body["personal"]) is not bool:
+        raise SkillImportError("personal 需要布尔值")
+
+    store = _skill_store(root)
+    # The client omits the scope before a single-person library has personal skills.
+    if body.get("personal") is not True and (
+        "personal" in body or MemberRegistry(root).snapshot()["members"] or store.list()["items"]
+    ):
+        raise SkillImportError("这里仅支持导入到个人技能，请选择个人范围",
+                               status=409, code="skill.import_unsupported")
+    draft = upload_draft(body["zipBase64"])
+    if not draft["name"].strip():
+        raise SkillImportError("技能名称不能为空")
+    skill_id = _new_skill_id(store, draft["name"].strip())
+    _SHOWN_SKILLS.pop((root, skill_id), None)
+    item = store.save(skill_id, draft, uploaded=True, preview=True)
+    # Preserve the separate detail review for this imported revision.
+    return _skill_detail(root, item)
+
+
 def update_skill(root: str, skill_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """改说明或正文。技能登记处规定改过就要重新核对；改的人就是主人自己，所以原来启用的照旧启用。"""
+    """导入的技能改过后重新审阅，主人自己写的技能沿用原启用状态。"""
     unsupported = set(patch) - {"description", "body", "defaultForNewAgents"}
     if unsupported or patch.get("defaultForNewAgents") not in (None, False):
         raise ValueError(f"这些选项这里还不支持：{sorted(unsupported) or ['defaultForNewAgents']}")
@@ -783,12 +1153,18 @@ def update_skill(root: str, skill_id: str, patch: Dict[str, Any]) -> Optional[Di
         current = store.get(skill_id, preview=True)
     except FileNotFoundError:
         return None
+    uploaded = current.get("source") == "upload"
     if "description" not in patch and "body" not in patch:
-        return skill_detail(root, skill_id)
+        return _skill_detail(root, current) if uploaded else skill_detail(root, skill_id)
+    if uploaded:
+        _SHOWN_SKILLS.pop((root, skill_id), None)
     saved = store.save(skill_id, {"name": current["name"],
                                   "description": patch.get("description", current["description"]),
                                   "instructions": patch.get("body", current["instructions"]),
-                                  "revision": current["revision"]})
+                                  "revision": current["revision"]},
+                       uploaded=uploaded, preview=uploaded)
+    if uploaded:
+        return _skill_detail(root, saved)
     if current["enabled"]:
         store.set_enabled(skill_id, enabled=True, revision=saved["revision"])
     return skill_detail(root, skill_id)
@@ -804,7 +1180,8 @@ def remove_skill(root: str, skill_id: str) -> bool:
     return True
 
 
-def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
+def set_main_skills(root: str, wanted: List[str], *, referenced: Optional[List[str]] = None,
+                    owner_verified: bool = False) -> List[Dict[str, Any]]:
     """把主助理启用的个人技能改成 wanted。停用随时可以；启用只认主人在界面上看过正文的那个版本——
     没看过、或看过之后内容变了，都拒绝（SkillConflict），要主人重新打开核对。"""
     from src.workflow.workbench.personal_skills import SkillConflict
@@ -812,17 +1189,22 @@ def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
     if store is None:
         raise ValueError("个人技能仅在私人助理范围管理")
     items = {str(item["id"]): item for item in store.list()["items"]}
-    unknown = [skill_id for skill_id in wanted if skill_id not in items]
+    unknown = [skill_id for skill_id in (wanted if referenced is None else referenced) if skill_id not in items]
     if unknown:
         raise LookupError(unknown[0])
+    changes = []
     for skill_id, item in items.items():
         enable = skill_id in wanted
         if enable == bool(item.get("enabled")):
             continue
+        if item.get("source") == "upload" and not owner_verified:
+            raise PermissionError("启停导入技能需要经过认证的所有者")
         revision = str(item["revision"])
         if enable and _SHOWN_SKILLS.get((root, skill_id)) != revision:
             raise SkillConflict("启用前请先打开这条技能核对正文")
-        store.set_enabled(skill_id, enabled=enable, revision=revision)
+        changes.append((skill_id, enable, revision))
+    for skill_id, enable, revision in changes:
+        store.set_enabled(skill_id, enabled=enable, revision=revision, owner_verified=owner_verified)
     return skills(root)
 
 
@@ -887,6 +1269,8 @@ def agent_access(root: str, agent_id: str) -> Dict[str, Any]:
         return {"all": False, "builtins": [], "connectors": []}
     role = next((r for r in _staff(root).get("roles") or [] if r.get("id") == member.get("role")), None) or {}
     grants = role.get("grants") or {}
+    if grants.get("full") is True:       # 完整能力：和主助理同一套工具，登记里不逐个列
+        return {"all": True, "builtins": [], "connectors": []}
     read_only = set(grants.get("operations") or []) <= {"read"}
     scope = f"role:{role.get('id') or ''}"
     tools = [{"name": str(name), "label": str(name), "description": "", "readOnly": read_only,
@@ -897,31 +1281,6 @@ def agent_access(root: str, agent_id: str) -> Dict[str, Any]:
     return {"all": False, "connectors": [],
             "builtins": [{"scope": scope, "label": f"岗位「{role.get('title') or role.get('id')}」的授权",
                           "state": "granted", "tools": tools}]}
-
-
-# ── 通知 ─────────────────────────────────────────────────────────────────────
-
-def notifications(root: str, *, filter_name: str = "", limit: int = 50) -> Dict[str, Any]:
-    """后台通知台账（定时作业结果、巡视发现等）整理成界面的通知，新的在前。
-
-    台账不记「读没读」，所以这些通知一律按已读列出：只进「全部」，不计未读数、不进「等我处理」，
-    免得界面上挂一个永远消不掉的红点。真正要主人处理的事在审批里。"""
-    from src.scheduling.notices import load_notices
-    agent = main_agent_id(root)
-    items = []
-    for row in load_notices(root, max(1, min(int(limit), 100))):
-        text, stamp = str(row.get("text") or ""), _iso(row.get("ts"))
-        if not text:
-            continue
-        key = hashlib.sha256(f"{row.get('ts')}\0{row.get('source')}\0{text}".encode("utf-8", "surrogatepass"))
-        items.append({"id": _id("notice", key.hexdigest()), "kind": "agent_reply", "waiting": False,
-                      "actors": [{"type": "agent", "id": agent}], "count": 1,
-                      "source": {"channelId": dm_channel_id(agent)}, "latest": {"text": text},
-                      "readAt": stamp, "doneAt": None, "snoozedUntil": None, "createdAt": stamp,
-                      "updatedAt": stamp})
-    counts = {"all": len(items), "mentions": 0, "waiting": 0, "unread": 0, "reactions": 0}
-    shown = items if filter_name in {"", "all"} else []
-    return {"items": shown, "counts": counts, "nextCursor": None}
 
 
 # ── 运行记录与用量：来自任务台账和模型用量账本 ────────────────────────────────
@@ -956,6 +1315,23 @@ def runs(root: str, *, agent_id: str = "", limit: int = 50) -> List[Dict[str, An
     if agent_id:
         rows = [row for row in rows if row["agentId"] == agent_id]
     return rows[:max(1, min(int(limit), 200))]
+
+
+def running_staff(root: str, viewer: Optional[str]) -> Set[str]:
+    """团队页只显示调用人自己发起、此刻在执行的专员任务。"""
+    from src.workflow.staff.initiators import initiator_of
+
+    running = set()
+    for task in _staff_tasks(root):
+        if task.kind != "delegation" or task.status != "running":
+            continue
+        try:
+            initiator = initiator_of(task)
+        except ValueError:
+            continue
+        if (initiator.id if initiator else None) == viewer:
+            running.add(task.collaboration["dispatch"]["member"])
+    return running
 
 
 def _month_days() -> List[Any]:

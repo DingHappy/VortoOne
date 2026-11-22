@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from heapq import nlargest
 from pathlib import Path
 
+from src.workflow.members import channel_threads, thread_reads
 from src.workflow.members.registry import Damaged, Missing
 
 OWNER_KEY = "owner"
@@ -51,6 +52,11 @@ CREATE TABLE IF NOT EXISTS read_markers (
     person TEXT NOT NULL,
     created TEXT NOT NULL,
     PRIMARY KEY(channel, person)
+);
+CREATE TABLE IF NOT EXISTS channel_mutes (
+    person TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    PRIMARY KEY(person, channel)
 );
 CREATE TABLE IF NOT EXISTS mission_drafts (
     id TEXT PRIMARY KEY NOT NULL,
@@ -194,7 +200,7 @@ class ChannelHistory:
                 conn.row_factory = sqlite3.Row
                 if write:
                     conn.execute("PRAGMA foreign_keys = ON")
-                    conn.executescript("BEGIN;" + _SCHEMA + "COMMIT;")
+                    conn.executescript("BEGIN;" + _SCHEMA + channel_threads.SCHEMA + thread_reads.SCHEMA + "COMMIT;")
                     _migrate(conn)
                 yield conn
         except sqlite3.Error as error:
@@ -279,6 +285,8 @@ class ChannelHistory:
                     return self.message(existing, actor, reactions=reactions)
             if thread is not None and self.find(conn, channel, thread)["thread"] is not None:
                 raise ValueError("线程需要使用频道中的原消息")
+            if thread is not None:
+                channel_threads.read(conn, thread, initialized=True).allow_reply()
             if reply_to is not None:
                 self.find(conn, channel, reply_to)
             latest = conn.execute("SELECT created FROM messages WHERE channel = ? ORDER BY sequence DESC LIMIT 1",
@@ -291,6 +299,8 @@ class ChannelHistory:
                 "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened, media) "
                 "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (message_id, channel, actor, body, _stamp(now), client, thread, reply_to, int(opened), stored))
+            if thread is not None:
+                channel_threads.apply(conn, channel, thread, actor, "reopen", _stamp(now))
             return self.message(self.find(conn, channel, message_id), actor)
 
     def messages(self, channel, viewer, *, before="", limit=100, thread=None, after=None):
@@ -320,6 +330,20 @@ class ChannelHistory:
             return [self.message(row, viewer, reactions=reactions.get(row["id"])) for row in rows]
 
     @staticmethod
+    def search(conn, channels, needle, *, after="", before="", oldest=False, limit=20):
+        """在这几个频道里按子串找消息（不分大小写），默认新的在前。语音没有文字，找不到。"""
+        if conn is None or not channels or not needle:
+            return []
+        marks = ",".join("?" * len(channels))
+        escaped = needle.casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = conn.execute(
+            f"SELECT m.*, p.message IS NOT NULL AS pinned FROM messages m LEFT JOIN pins p ON p.message = m.id "
+            f"WHERE m.channel IN ({marks}) AND lower(m.body) LIKE ? ESCAPE '\\' AND m.created >= ? AND m.created < ? "
+            f"ORDER BY m.sequence {'ASC' if oldest else 'DESC'} LIMIT ?",
+            (*channels, f"%{escaped}%", after or "", before or "9999", limit)).fetchall()
+        return list(rows)
+
+    @staticmethod
     def latest_sequence(conn, channel):
         if conn is None:
             return 0
@@ -333,7 +357,28 @@ class ChannelHistory:
             raise Missing("没有这条消息")
         return row
 
-    def thread_summary(self, conn, channel, root, title):
+    @staticmethod
+    def has_thread_replies(conn, channel, thread):
+        return conn.execute("SELECT 1 FROM messages WHERE channel = ? AND thread = ? LIMIT 1",
+                            (channel, thread)).fetchone() is not None
+
+    def check_thread_voice(self, channel, actor, thread, reply_to, client, existing_clip):
+        with self.database() as conn:
+            if self.find(conn, channel, thread)["thread"] is not None:
+                raise Missing("没有这个话题")
+            if existing_clip is None:
+                channel_threads.read(conn, thread).allow_reply()
+                return
+            # A staged upload is not a receipt. Only an already committed reply is replayable.
+            message = conn.execute("SELECT * FROM messages WHERE channel = ? AND author = ? AND client = ?",
+                                   (channel, actor, client)).fetchone()
+            if message is not None and message["thread"] == thread and message["reply_to"] == reply_to:
+                media = json.loads(message["media"] or "{}") if "media" in message.keys() else {}
+                if media.get("kind") == "voice" and media.get("clipId") == existing_clip:
+                    return
+            raise ValueError("录音回复尚未完成或重试参数发生变化")
+
+    def thread_summary(self, conn, channel, root, title, *, reader, can_manage=False):
         def actor(row):
             return {"type": "person", "id": self.person_id(row["author"])}
 
@@ -345,18 +390,22 @@ class ChannelHistory:
         authors = conn.execute("SELECT DISTINCT author FROM messages WHERE channel = ? AND thread = ? LIMIT 32",
                                (channel, root["id"])).fetchall()
         participants = dict.fromkeys([root["author"], *(row["author"] for row in authors)])
+        state = channel_threads.read(conn, root["id"])
         return {"id": root["id"], "channelId": channel, "channelName": title, "channelKind": "channel",
-                "title": None, "rootText": root["body"], "rootAuthor": actor(root), "state": "open",
-                "createdBy": self.person_id(root["author"]), "closedBy": None, "closedAt": None, "archivedBy": None,
-                "archivedAt": None, "context": None, "replyCount": reply_count, "createdAt": root["created"],
+                "title": state.title, "rootText": root["body"], "rootAuthor": actor(root), "state": state.state,
+                "createdBy": self.person_id(root["author"]),
+                "closedBy": self.person_id(state.closed_by) if state.closed_by else None,
+                "closedAt": state.closed_at, "archivedBy": self.person_id(state.archived_by) if state.archived_by else None,
+                "archivedAt": state.archived_at, "context": None, "replyCount": reply_count, "createdAt": root["created"],
                 "lastActivityAt": latest["created"] if latest else root["created"],
                 "lastMessage": ({"author": actor(latest), "excerpt": latest["body"][:140],
                                  "createdAt": latest["created"]} if latest else None),
                 "participants": [{"type": "person", "id": self.person_id(person)} for person in participants],
                 "working": False, "needsYou": False, "openedByReplyAt": opened,
-                "suggestedResolved": False, "canManage": False}
+                "suggestedResolved": False, "canManage": can_manage and reply_count > 0,
+                **thread_reads.info(conn, channel, root, reader, archived=bool(state.archived_at))}
 
-    def thread_page(self, titles, *, limit, cursor="", query="", person=""):
+    def thread_page(self, titles, *, tab, limit, can_manage, reader_for, cursor="", query="", person=""):
         before = ("9999", "")
         if cursor:
             try:
@@ -374,6 +423,9 @@ class ChannelHistory:
                 return {"threads": [], "nextCursor": None}
             conn.create_function("casefold", 1, str.casefold, deterministic=True)
             query = query.strip().casefold()
+            join, state_filter = channel_threads.list_filter(conn, tab)
+            title_match = " OR instr(casefold(coalesce(l.title, '')), ?) > 0" if join else ""
+            query_args = (query, query, query) if join else (query, query)
 
             def candidates():
                 for channel in titles:
@@ -381,21 +433,50 @@ class ChannelHistory:
                         "SELECT r.id, r.channel, t.activity FROM ("
                         "  SELECT thread, max(created) AS activity FROM messages "
                         "  WHERE channel = ? AND thread IS NOT NULL GROUP BY thread"
-                        ") t JOIN messages r ON r.id = t.thread AND r.channel = ? "
-                        "WHERE r.thread IS NULL AND (t.activity, r.id) < (?, ?) "
-                        "AND (? = '' OR instr(casefold(r.body), ?) > 0) "
+                        ") t JOIN messages r ON r.id = t.thread AND r.channel = ?" + join +
+                        " WHERE r.thread IS NULL AND (t.activity, r.id) < (?, ?) "
+                        "AND " + state_filter + " AND (? = '' OR instr(casefold(r.body), ?) > 0" + title_match + ") "
                         "AND (? = '' OR r.author = ? OR EXISTS ("
                         "  SELECT 1 FROM messages m WHERE m.channel = r.channel AND m.thread = r.id AND m.author = ?"
                         ")) ORDER BY t.activity DESC, r.id DESC LIMIT ?",
-                        (channel, channel, *before, query, query, person, person, person, limit + 1),
+                        (channel, channel, *before, *query_args, person, person, person, limit + 1),
                     )
 
             # Only the selected page needs message bodies, participants and reply counts.
             roots = nlargest(limit + 1, candidates(), key=lambda row: (row["activity"], row["id"]))
-            threads = [self.thread_summary(conn, row["channel"], self.find_by_id(conn, row["id"]), titles[row["channel"]])
-                       for row in roots[:limit]]
+            threads = []
+            for row in roots[:limit]:
+                channel, root = row["channel"], self.find_by_id(conn, row["id"])
+                threads.append(self.thread_summary(conn, channel, root, titles[channel],
+                                                   reader=reader_for(channel),
+                                                   can_manage=can_manage(channel, root["author"])))
             last = roots[limit - 1] if len(roots) > limit else None
             return {"threads": threads, "nextCursor": f"{last['activity']}/{last['id']}" if last else None}
+
+    @staticmethod
+    def thread_cursor(conn, channel):
+        if not channel_threads.exists(conn):
+            return 0
+        return conn.execute("SELECT coalesce(max(sequence), 0) FROM thread_lifecycle WHERE channel = ?",
+                            (channel,)).fetchone()[0]
+
+    @staticmethod
+    def thread_changes(conn, channel, after):
+        if not channel_threads.exists(conn):
+            return []
+        return conn.execute("SELECT sequence, message, change FROM thread_lifecycle "
+                            "WHERE channel = ? AND sequence > ? ORDER BY sequence LIMIT 100",
+                            (channel, after)).fetchall()
+
+    def mark_thread_read(self, channel, thread, person):
+        with self.database(write=True) as conn:
+            thread_reads.mark(conn, channel, thread, person)
+
+    def unread_thread_count(self, readers):
+        if not readers:
+            return 0
+        with self.database() as conn:
+            return thread_reads.count(conn, readers)
 
     def mark_read(self, channel, actor):
         with self.database(write=True) as conn:
@@ -406,6 +487,26 @@ class ChannelHistory:
                     "INSERT INTO read_markers(channel, person, created) VALUES (?, ?, ?) "
                     "ON CONFLICT(channel, person) DO UPDATE SET created = max(created, excluded.created)",
                     (channel, actor, newest))
+
+    @staticmethod
+    def muted_channels(conn, actor):
+        if conn is None or conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'channel_mutes'"
+        ).fetchone() is None:
+            return set()
+        return {row[0] for row in conn.execute("SELECT channel FROM channel_mutes WHERE person = ?", (actor,))}
+
+    def set_muted(self, channel, actor, muted):
+        if not muted:
+            with self.database() as conn:
+                if channel not in self.muted_channels(conn, actor):
+                    return
+        with self.database(write=True) as conn:
+            if muted:
+                conn.execute("INSERT INTO channel_mutes(person, channel) VALUES (?, ?) "
+                             "ON CONFLICT(person, channel) DO NOTHING", (actor, channel))
+            else:
+                conn.execute("DELETE FROM channel_mutes WHERE person = ? AND channel = ?", (actor, channel))
 
     @staticmethod
     def summary(conn, channel, actor, joined_at):

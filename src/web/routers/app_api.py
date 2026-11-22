@@ -15,18 +15,22 @@ import json
 import os
 import sqlite3
 from contextlib import suppress
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from src.gateway import app_protocol as F
-from src.web import app_views as views
-from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
 from src.web import app_artifacts
+from src.web import app_views as views
+from src.web import (
+    app_board, app_channels, app_covers, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_personal_vault, app_prefs, app_schedule, app_staff, app_voice, member_auth,
+)
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
+from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MemberRegistry
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
@@ -34,6 +38,7 @@ from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 router = APIRouter(tags=["app"])
 
 _ORG = "/api/app/organizations/{org_id}"
+_THREAD = _ORG + "/threads/{thread_id}"
 _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
@@ -376,12 +381,17 @@ async def device_sign_out(request: Request, response: Response):
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
 @router.get("/api/app/me")
-async def me(request: Request):
+async def me(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     account = getattr(request.state, "member_account", None)
     if account is None:
-        return views.me(root)
-    return await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
+        result = views.me(root)
+    else:
+        result = await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
+    if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
+        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
+    return result
 
 
 @router.patch("/api/app/me", status_code=204)
@@ -397,9 +407,30 @@ async def update_me(body: Dict[str, Any], request: Request):
     return Response(status_code=204)
 
 
+@router.put("/api/app/me/work-area", status_code=204)
+async def set_work_area(body: Dict[str, Any], request: Request):
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "forbidden", "保存工作领域需要已认证的所有者会话")
+        key = actor.id
+    else:
+        key = app_members.member_auth_key(request.state.member_account)
+    try:
+        await asyncio.to_thread(app_prefs.set_work_area, root, key, body)
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+    except OSError:
+        return _error(503, "unavailable", "暂时无法保存工作领域")
+    return Response(status_code=204)
+
+
 @router.get("/api/app/models")
 async def models():
-    return {"models": [], "defaultModel": ""}
+    """所有者加的模型端点上的模型（见 app_credentials.models）；没加过就是空的，agent 用服务配置的默认模型。"""
+    from src.web import app_credentials
+    return await asyncio.to_thread(app_credentials.models, os.getcwd())
 
 
 def _who(request: Request, root: str):
@@ -427,6 +458,46 @@ async def overview(org_id: str, request: Request):
 @router.get(_ORG + "/settings")
 async def settings(org_id: str):
     return views.settings(_root(org_id))
+
+
+_STORAGE = _ORG + "/storage"
+
+
+def _storage_owner(org_id: str, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取或管理存储需要已认证的所有者")
+    return None
+
+
+@router.get(_STORAGE)
+async def storage_status(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    # ArtifactStore writes to the server's disk. The client calls that option "agentes".
+    return JSONResponse({
+        "kind": "agentes",
+        "platform": {"kind": "disk", "folder": None},
+        "s3": None,
+        "migration": None,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_STORAGE + "/migration")
+async def storage_migration_status(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    return JSONResponse(None, headers={"Cache-Control": "no-store"})
+
+
+@router.put(_STORAGE)
+@router.post(_STORAGE + "/test")
+@router.post(_STORAGE + "/migrate")
+async def unavailable_s3_storage(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    # The server has no bucket to test, activate or migrate. Do not parse credentials.
+    return _error(409, "storage.s3_unavailable", "当前工作区使用服务器磁盘，S3 存储尚未开放")
 
 
 # 空间设置里有对应能力的：名字（主助理的名字，也就是这个家显示的名字）、默认时区（例行工作用的那个）、
@@ -495,6 +566,50 @@ async def update_home(org_id: str, body: Dict[str, Any], request: Request):
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
+async def _change_workspace_logo(org_id: str, request: Request, *, remove: bool = False):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "工作区 Logo")
+    if refused:
+        return refused
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "更新工作区 Logo 需要所有者的同源会话")
+    try:
+        if remove:
+            await asyncio.to_thread(app_org_logo.remove_logo, root)
+            return Response(status_code=204)
+        if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+            return _error(415, "logo.invalid", "工作区 Logo 只接受 JSON 请求")
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > app_org_logo.MAX_REQUEST_BYTES:
+                return _error(413, "logo.too_large", "工作区 Logo 请求过大")
+            raw.extend(chunk)
+        try:
+            body = json.loads(raw)
+        except (ValueError, RecursionError):
+            return _error(400, "logo.invalid", "工作区 Logo 请求格式无效")
+        logo = await asyncio.to_thread(app_org_logo.set_logo, root, body)
+        return JSONResponse({"logo": logo}, headers={"Cache-Control": "no-store"})
+    except app_org_logo.LogoTooLarge as error:
+        return _error(413, "logo.too_large", str(error))
+    except app_org_logo.InvalidLogo as error:
+        return _error(400, "logo.invalid", str(error))
+    except (HomeMaintenanceError, OSError):
+        return _error(409, "logo.unavailable", "无法保存或删除工作区 Logo")
+
+
+@router.put(_ORG + "/logo")
+async def set_workspace_logo(org_id: str, request: Request):
+    return await _change_workspace_logo(org_id, request)
+
+
+@router.delete(_ORG + "/logo", status_code=204)
+async def delete_workspace_logo(org_id: str, request: Request):
+    return await _change_workspace_logo(org_id, request, remove=True)
+
+
 @router.get(_ORG + "/members")
 async def members(org_id: str, request: Request):
     root = _root(org_id)
@@ -504,11 +619,37 @@ async def members(org_id: str, request: Request):
 
 
 @router.get(_ORG + "/people")
-async def people(org_id: str, request: Request):
+async def people(org_id: str, request: Request, response: Response):
     root = _root(org_id)
-    if _who(request, root) is None:
+    who = _who(request, root)
+    if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    return await _members_call(lambda: {"people": app_members.people(root)})
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: {"people": app_members.people(root, who)})
+
+
+@router.put(_ORG + "/me/status")
+async def set_person_status(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and views.owner_connection() and not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "需要所有者证明")
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.set_person_status(root, who, body))
+
+
+@router.patch(_ORG + "/me")
+async def update_person_timezone(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "保存个人时区需要已认证的同源会话")
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.update_person_timezone(root, who, body))
 
 
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
@@ -578,6 +719,20 @@ async def set_member_roles(org_id: str, user_id: str, body: Dict[str, Any], requ
     who = member_auth.principal(request, root)
     return await _members_call(
         lambda: {"roleIds": app_members.set_member_roles(root, who, user_id, body.get("roleIds"))}, write=True)
+
+
+@router.get(_ORG + "/members/{user_id}/removal")
+async def member_removal_preview(org_id: str, user_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "forbidden", "移除成员预览需要已认证的所有者连接")
+    else:
+        result = await _members_call(lambda: app_members.removal_preview(root, who, user_id))
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.delete(_ORG + "/members/{user_id}", status_code=204)
@@ -658,13 +813,25 @@ async def password_link(org_id: str, user_id: str, request: Request):
     return await _members_call(lambda: app_members.password_link(root, who, user_id, origin), write=True)
 
 
-# 下面两条不过鉴权中间件（收到邀请的人可能还没有账号）：凭邀请令牌本身，接受时再核对成员会话。
+# 下面几条不过鉴权中间件（收到邀请的人可能还没有账号）：凭邀请令牌本身，接受时再核对成员会话。
 
 @router.get("/api/app/invitations/{token}")
 async def invitation_preview(token: str):
     root = os.getcwd()
     result = await _members_call(lambda: app_members.invitation_preview(root, token))
     return result if result is not None else _error(404, "not_found", "邀请不存在或已失效")
+
+
+@router.get("/api/app/invitations/{token}/state")
+async def expired_invitation_state(token: str, response: Response):
+    root = os.getcwd()
+    response.headers["Cache-Control"] = "no-store"
+    result = await _members_call(lambda: app_members.expired_invitation_state(root, token))
+    if result is None:
+        result = _error(404, "not_found", "邀请不存在或已失效")
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.post("/api/app/invitations/{token}/accept")
@@ -722,6 +889,20 @@ async def agent_status(org_id: str, request: Request):
     except PermissionError as error:
         return _error(403, "forbidden", str(error))
     return {"agents": [row for row in views.agent_statuses(root) if shown is None or row["agentId"] in shown]}
+
+
+@router.get(_ORG + "/team")
+async def agent_team_directory(org_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    owner_activity = who.is_owner and app_staff.owner_proof(request)
+    bridge = existing_bridge(root) if owner_activity else None
+    main_running = bridge is not None and any(run["status"] == "running" for run in bridge.active_runs())
+    response.headers["Cache-Control"] = "no-store"
+    return await _members_call(lambda: app_members.team_directory(
+        root, who, activity=who.is_member or owner_activity, main_running=main_running))
 
 
 @router.get(_ORG + "/ai-status")
@@ -807,8 +988,15 @@ def _member_dm(request: Request, org_id: str, channel_id: str):
     return root, staff_id, who
 
 
-async def _as_member(request: Request, org_id: str, channel_id: str, answer):
-    """成员会话走这里：answer(家, 专员, 成员) 给出回答。不是成员会话返回 None，交回原有逻辑。"""
+async def _dispatch_ready(root: str) -> None:
+    """派活要用主要聊天的会话当发起身份；新界面里还没打开过主要聊天时（直接去 agent 私聊派活）先登记上。"""
+    if not views.main_chat_key(root):
+        await main_chat_bridge(root)
+
+
+async def _as_member(request: Request, org_id: str, channel_id: str, answer, *, dispatch: bool = False):
+    """成员会话走这里：answer(家, 专员, 成员) 给出回答。不是成员会话返回 None，交回原有逻辑。
+    dispatch：answer 会把事交进执行池——执行池只能在事件循环所在的线程里登记任务，所以就地调用，不挪到工作线程。"""
     try:
         found = await asyncio.to_thread(_member_dm, request, org_id, channel_id)
     except PermissionError as error:
@@ -819,6 +1007,9 @@ async def _as_member(request: Request, org_id: str, channel_id: str, answer):
         return None
     from src.workflow.members.registry import Refused
     try:
+        if dispatch:
+            await _dispatch_ready(found[0])
+            return answer(*found)
         return await asyncio.to_thread(answer, *found)
     except Refused as error:
         return _error(403, "forbidden", str(error))
@@ -859,6 +1050,8 @@ async def _team_call(request, org_id, action, *, channel_id=None, empty_listing=
         return _error(409, "channel.name_taken", str(error))
     except ChannelCategoryNameConflict as error:
         return _error(409, "channel_category.name_taken", str(error))
+    except ThreadArchived as error:
+        return _error(409, "thread.archived", str(error))
     except ValueError as error:
         return _error(400, "invalid", str(error))
 
@@ -1049,6 +1242,17 @@ async def mark_team_channel_read(org_id: str, channel_id: str, request: Request)
         _team_receipt(lambda: service.read(actor, channel_id)), channel_id=channel_id))
 
 
+class _ChannelMuteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.put(_ORG + "/channels/{channel_id}/mute", status_code=204)
+@router.delete(_ORG + "/channels/{channel_id}/mute", status_code=204)
+async def mute_team_channel(org_id: str, channel_id: str, request: Request, body: _ChannelMuteBody | None = None):
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.set_muted(actor, channel_id, request.method == "PUT")), channel_id=channel_id))
+
+
 @router.get(_ORG + "/messages/{message_id}/card")
 async def team_message_card(org_id: str, message_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, message_id))
@@ -1088,9 +1292,39 @@ async def list_team_threads(org_id: str, request: Request, tab: str = "all", cha
         limit=limit), empty_listing={"threads": [], "nextCursor": None})
 
 
-@router.get(_ORG + "/threads/{thread_id}")
+@router.get(_THREAD)
 async def team_thread_detail(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, thread_id, thread=True))
+
+
+class _ThreadTitle(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    title: str | None = Field(max_length=200)
+
+
+@router.patch(_THREAD)
+async def rename_team_thread(org_id: str, thread_id: str, body: _ThreadTitle, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.change_thread(actor, thread_id, "title", title=body.title))
+
+
+class _ThreadAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post(_THREAD + "/close")
+@router.post(_THREAD + "/reopen")
+@router.post(_THREAD + "/archive")
+@router.post(_THREAD + "/unarchive")
+async def act_team_thread(org_id: str, thread_id: str, request: Request, body: _ThreadAction | None = None):
+    action = request.url.path.rsplit("/", 1)[1]
+    return await _team_call(request, org_id, lambda service, actor: service.change_thread(actor, thread_id, action))
+
+
+@router.post(_THREAD + "/read", status_code=204)
+async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            _team_receipt(lambda: service.mark_thread_read(actor, thread_id)))
 
 
 @router.get(_ORG + "/channels/{channel_id}/members")
@@ -1139,6 +1373,8 @@ async def channel_messages(org_id: str, channel_id: str, request: Request, befor
     if threadId:
         return {"messages": []}
     messages = views.main_messages(root, before=before, limit=limit)
+    if app_staff.owner_proof(request):
+        messages = await asyncio.to_thread(views.with_proposal_cards, root, messages, latest=not before)
     bridge = existing_bridge(root)
     if bridge is not None and not before:
         messages += [views.approval_card(root, item) for item in reversed(bridge.pending_confirmations())]
@@ -1188,7 +1424,8 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     answer = await _as_member(request, org_id, channel_id,
-                              lambda root, staff, who: app_members.member_send(root, who, staff, text, client_id))
+                              lambda root, staff, who: app_members.member_send(root, who, staff, text, client_id),
+                              dispatch=True)
     if answer is not None:
         return answer
     if member:
@@ -1196,7 +1433,9 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             return _error(413, "message_too_long", "交给专员的一件事最多 4000 字")
         if not app_staff.owner_proof(request):
             return _error(403, "owner_proof_required", _NEEDS_OWNER)
-        return await asyncio.to_thread(_staff_read, lambda: app_staff.send(member[0], member[1], text, client_id))
+        # 执行池只能在事件循环线程里登记任务（见 _as_member 的 dispatch）
+        await _dispatch_ready(member[0])
+        return _staff_read(lambda: app_staff.send(member[0], member[1], text, client_id))
     try:
         from src.web.routers.computers import (
             has_computer_owner_proof, has_local_owner_browser_session, has_owner_browser_session,
@@ -1263,18 +1502,159 @@ async def cancel_run(org_id: str, run_id: str, request: Request):
 # ── 审批：内核发出的确认 ──────────────────────────────────────────────────────
 
 @router.get(_ORG + "/approvals")
-async def approvals(org_id: str, response: Response, status: str = ""):
+async def approvals(org_id: str, request: Request, response: Response, status: str = ""):
     root = _root(org_id)
     response.headers["Cache-Control"] = "no-store"
-    bridge = existing_bridge(root)
-    if bridge is None or status not in {"", "pending"}:
+    if status not in {"", "pending"}:
         return {"approvals": []}
-    return {"approvals": [views.approval(root, item) for item in bridge.pending_confirmations()]}
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    bridge = existing_bridge(root)
+    if not who.is_owner:
+        # 成员只在替所有者代批时看得到，而且只看能代批的那些
+        value = app_covers.covering(root, who)
+        if value is None or bridge is None:
+            return {"approvals": []}
+        return {"approvals": [app_covers.mark(views.approval(root, item), root, who.id)
+                              for item in app_covers.visible(root, bridge.pending_confirmations(), value,
+                                                             _needs_owner_file_proof)]}
+    live = [views.approval(root, item) for item in bridge.pending_confirmations()] if bridge else []
+    return {"approvals": live + [views.staff_action_approval(root, task, card) for task, card in _staff_actions(root)]
+            + await asyncio.to_thread(_staff_proposal_approvals, root)}
+
+
+def _staff_actions(root: str) -> List[Any]:
+    """agent 在后台等批准的那一步：（任务, 审批卡）。执行池没连上或台账读不出来时不列。
+    只列这个进程里真的还有人在等的卡（重启前的卡显示为中断，批了也没人接着做）。"""
+    from src.scheduling.staff_runner import get_staff_service
+    from src.workflow.tasks.tasks import TaskLedger
+    try:
+        actions = get_staff_service(root).actions
+        rows = []
+        for task in TaskLedger(root).list(limit=500):
+            card = (task.collaboration or {}).get("approval") or {}
+            if task.status != "blocked" or card.get("status") != "pending":
+                continue
+            card = actions.view(task.id)
+            if card["status"] == "pending":
+                rows.append((task, card))
+        return rows
+    except (ValueError, OSError):
+        return []
+
+
+def _staff_action(root: str, approval_id: str):
+    """（任务, 审批卡, 是否还是界面上看到的那一版）；找不到返回 None。"""
+    action_id, _, shown = approval_id.partition("~")
+    for task, card in _staff_actions(root):
+        if card["payload"]["id"] == action_id:
+            return task, card, card["digest"][:16] == shown
+    return None
+
+
+async def _decide_staff_action(root: str, approval_id: str, approve: bool, request: Request, reason: str = ""):
+    """主人在新界面批准或拒绝 agent 的一步：按界面上看到的那一版核对，变了就不批。
+    决定要在事件循环线程里做：它会叫醒正在等这一步的 agent。"""
+    from src.scheduling.staff_runner import get_staff_service
+    from src.workflow.staff.owner_confirmation import owner_route
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "批准 agent 的操作需要已认证的所有者")
+    found = _staff_action(root, approval_id)
+    if found is None:
+        return _error(409, "approval_decided", "这一步已经不在等待")
+    task, card, current = found
+    if not current:
+        return _error(409, "approval_changed", "这一步的内容已经变了，请刷新后重新核对")
+    p = card["payload"]
+    try:
+        with owner_route(root):
+            get_staff_service(root).actions.decide(
+                task.id, p["id"], approve=approve, expected_digest=card["digest"],
+                # 拒绝要给 agent 一个理由；界面上没写就如实告诉它是主人拒的
+                reason=str(reason or "").strip()[:500] or ("" if approve else "主人在审批里拒绝了这一步"),
+                nonce=p["nonce"], round=p["round"], instance=p["instance"], runtime=p["runtime"])
+    except (ValueError, OSError) as error:
+        return _error(409, "approval_decided", str(error))
+    return views.staff_action_approval(root, task, card, status="approved" if approve else "denied")
+
+
+def _needs_owner_file_proof(confirmation_id: str) -> bool:
+    from src.web.routers import realtime
+    return realtime.requires_owner_confirmation(confirmation_id)
+
+
+def _staff_proposal_approvals(root: str) -> List[Dict[str, Any]]:
+    """待批的专员提议（助理提的、旧版 Desktop 里提的）。登记处读不出来时不列，审批页照常显示实时确认。"""
+    try:
+        return [views.staff_proposal_approval(root, item) for item in views.pending_staff_proposals(root)]
+    except (ValueError, OSError):
+        return []
+
+
+def _staff_proposal(root: str, approval_id: str):
+    """（提议, 是否还是界面上看到的那一版）；不是专员提议的 id 返回 None。"""
+    if not approval_id.startswith(views.STAFF_PROPOSAL_PREFIX) or "~" not in approval_id:
+        return None
+    proposal_id, _, shown = approval_id.partition("~")
+    item = next((row for row in views.pending_staff_proposals(root) if row["id"] == proposal_id), None)
+    return (item, item is not None and item["digest"][:16] == shown)
+
+
+async def _decide_staff_proposal(root: str, approval_id: str, approve: bool, request: Request):
+    """主人在新界面批准或拒绝一条专员提议：按界面上看到的那一版（id 里的摘要前缀）核对，变了就不批。"""
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.owner_confirmation import owner_route
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "批准提议需要已认证的所有者")
+
+    def run():
+        found = _staff_proposal(root, approval_id)
+        if found is None or found[0] is None:
+            return None
+        item, current = found
+        if not current:
+            raise ValueError("这条提议的内容已经变了，请刷新后重新核对")
+        view = views.staff_proposal_approval(root, item)
+        with owner_route(root):
+            StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
+                                        round=item["round"], instance=item["instance"])
+        return {**view, "status": "approved" if approve else "refused", "canDecide": False,
+                "decidedByUserId": views.owner_id(root), "decidedAt": views.now_iso()}
+    try:
+        decided = await asyncio.to_thread(run)
+    except (ValueError, LookupError, OSError) as error:
+        return _error(409, "approval_decided", str(error) or "这条提议已经不在等待")
+    return decided if decided is not None else _error(409, "approval_decided", "这条提议已经不在等待")
 
 
 @router.get(_ORG + "/approvals/{approval_id}")
-async def approval(org_id: str, approval_id: str, response: Response):
+async def approval(org_id: str, approval_id: str, request: Request, response: Response):
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        value = app_covers.covering(root, who)
+        bridge = existing_bridge(root)
+        pending = bridge.pending(approval_id) if bridge and value else None
+        if pending is None or not app_covers.coverable(
+                pending, value, needs_owner_proof=_needs_owner_file_proof(approval_id)):
+            return _error(404, "not_found", "这个确认已经不在等待")
+        response.headers["Cache-Control"] = "no-store"
+        return app_covers.mark(views.approval(root, pending), root, who.id)
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        found = await asyncio.to_thread(_staff_proposal, root, approval_id)
+        if not found or not found[1]:
+            return _error(404, "not_found", "这条提议已经不在等待，或内容已经变了")
+        response.headers["Cache-Control"] = "no-store"
+        return views.staff_proposal_approval(root, found[0])
+    if approval_id.startswith(views.STAFF_ACTION_PREFIX):
+        action = _staff_action(root, approval_id)
+        if action is None or not action[2]:
+            return _error(404, "not_found", "这一步已经不在等待，或内容已经变了")
+        response.headers["Cache-Control"] = "no-store"
+        return views.staff_action_approval(root, action[0], action[1])
     bridge = existing_bridge(root)
     pending = bridge.pending(approval_id) if bridge else None
     if pending is None:
@@ -1452,10 +1832,103 @@ async def watch_approval_browser(socket: WebSocket, org_id: str, approval_id: st
             await socket.close(code=1008)
 
 
-async def _decide(org_id: str, approval_id: str, approve: bool, request: Request):
+@router.get(_ORG + "/me/approval-cover")
+async def approval_cover(org_id: str, request: Request):
+    """谁在替我批（所有者），或我在替谁批（成员）。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return await asyncio.to_thread(app_covers.covers_for, root, who)
+
+
+@router.put(_ORG + "/me/approval-cover")
+async def set_approval_cover(org_id: str, request: Request):
+    """所有者托付一个成员替自己批；body.userId 为 null 表示不再托付。成员没有要别人代批的确认。"""
+    from src.workflow.members.registry import MemberRegistry
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        return _error(409, "cover.unsupported", "成员这边没有要别人代批的确认")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    body = await _body(request)
+
+    def run():
+        if body.get("userId") is None and set(body) <= {"userId", "mode", "risky", "endsAt"}:
+            app_covers.save(root, None)
+        else:
+            members = MemberRegistry(root).snapshot()["members"]
+            app_covers.save(root, app_covers.check(body, members))
+        return app_covers.covers_for(root, who)
+    try:
+        return await asyncio.to_thread(run)
+    except app_covers.CoverError as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.delete(_ORG + "/approval-covers/{user_id}", status_code=204)
+async def end_approval_cover(org_id: str, user_id: str, request: Request):
+    """收回代批：所有者收回给某人的托付；被托付的成员自己不再代批（user_id 是所有者）。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+
+    def run():
+        value = app_covers.setting(root)
+        if value is None:
+            return False
+        mine = value["userId"] == user_id if who.is_owner else (value["userId"] == who.id
+                                                                and user_id == views.owner_id(root))
+        if mine:
+            app_covers.save(root, None)
+        return mine
+    return Response(status_code=204) if await asyncio.to_thread(run) else _error(404, "not_found", "没有这个代批")
+
+
+async def _decide_covering(root: str, who, approval_id: str, approve: bool):
+    """成员替所有者批：只在代批生效时、只批能代批的、只批这一次；每次都记进审计。"""
+    from src.gateway.audit import append_audit
+    value = app_covers.covering(root, who)
+    if value is None:
+        return _error(403, "forbidden", "你现在没有替所有者代批")
+    if approval_id.startswith((views.STAFF_PROPOSAL_PREFIX, views.STAFF_ACTION_PREFIX)):
+        return _error(403, "forbidden", "专员提议和 agent 的操作要所有者本人决定")
+    bridge = existing_bridge(root)
+    pending = bridge.pending(approval_id) if bridge else None
+    if pending is None:
+        return _error(409, "approval_decided", "这个确认已经不在等待")
+    if not app_covers.coverable(pending, value, needs_owner_proof=_needs_owner_file_proof(approval_id)):
+        return _error(403, "forbidden", "这一条要所有者本人决定")
+    if not append_audit(root, {"category": "event", "event": "approval_covered", "session": "app",
+                               "data": {"approval": approval_id, "member": who.id, "approved": approve,
+                                        "operation_kind": str(pending.get("operation_kind") or "")}},
+                        durable=True):
+        return _error(409, "unavailable", "审计记录写不进去，没有代批")
+    decided = await bridge.decide(approval_id, approve)
+    if decided is None:
+        return _error(409, "approval_decided", "这个确认已经不在等待")
+    return app_covers.mark(decided, root, who.id)
+
+
+async def _decide(org_id: str, approval_id: str, approve: bool, request: Request, reason: str = ""):
     from src.gateway.paired_browser_task import PairedBrowserNotReady
     from src.web.routers.computers import has_computer_owner_proof, has_owner_browser_session
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if not who.is_owner:
+        return await _decide_covering(root, who, approval_id, approve)
+    if approval_id.startswith(views.STAFF_PROPOSAL_PREFIX):
+        return await _decide_staff_proposal(root, approval_id, approve, request)
+    if approval_id.startswith(views.STAFF_ACTION_PREFIX):
+        return await _decide_staff_action(root, approval_id, approve, request, reason)
     bridge = existing_bridge(root)
     try:
         decided = await bridge.decide(
@@ -1485,7 +1958,7 @@ async def approve(org_id: str, approval_id: str, body: _Approve, request: Reques
 
 @router.post(_ORG + "/approvals/{approval_id}/refuse")
 async def refuse(org_id: str, approval_id: str, body: _Approve, request: Request):
-    return await _decide(org_id, approval_id, False, request)
+    return await _decide(org_id, approval_id, False, request, body.reason or "")
 
 
 class _DecideMany(BaseModel):
@@ -1500,11 +1973,12 @@ class _DecideMany(BaseModel):
 @router.post(_ORG + "/approvals/decide")
 async def decide_many(org_id: str, body: _DecideMany, request: Request):
     """卡片上的「全部批准 / 全部拒绝」：只处理界面列出的这几条，每条照常单独决定、只批这一次。
-    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。"""
+    「只批例行工作的」在这里没有对应的分类，就一条也不动，全部跳过。
+    专员提议和 agent 的操作要一条条核对内容，不参加批量，也跳过。"""
     _root(org_id)
     decided, skipped = [], []
     for approval_id in dict.fromkeys(body.ids):
-        if body.only is not None:
+        if body.only is not None or approval_id.startswith((views.STAFF_PROPOSAL_PREFIX, views.STAFF_ACTION_PREFIX)):
             skipped.append(approval_id)
             continue
         answer = await _decide(org_id, approval_id, body.decision == "approve", request)
@@ -1552,23 +2026,24 @@ async def channel_threads(org_id: str, channel_id: str, request: Request, tab: s
     return {"threads": [], "nextCursor": None}
 
 
+@router.get(_ORG + "/unread-threads")
+async def unread_team_threads(org_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: {"count": service.unread_thread_count(actor)},
+                            empty_listing={"count": 0})
+
+
 # ── 启动时读取、目前没有对应记录的列表：返回空的合法结构 ─────────────────────────
 
 _EMPTY: Dict[str, Any] = {
-    "/agent-groups": {"groups": []},
     "/unread-tasks": {"tasks": []},
-    "/unread-threads": {"count": 0},
-    "/notifications/count": {"unread": 0, "waiting": 0},
     "/waiting": {"items": [], "count": 0},
     "/machines/outages": {"outages": [], "targets": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
     "/connectors/custom": {"servers": []},
-    "/credentials": {"credentials": []},
     "/mail/accounts": {"accounts": []},
     "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
-    "/team-memories": {"memories": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
@@ -1587,9 +2062,174 @@ for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
 
 
+# ── AI 密钥：所有者自己加的模型端点（见 app_credentials）──────────────────────
+
+async def _credential_call(request: Request, org_id: str, action, *, sync: bool = False, read: bool = False):
+    """只有所有者能看（只回末 4 位和地址）；改要带所有者证明。拒绝如实说明，密钥从不回给界面。"""
+    from src.web import app_credentials
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "AI 密钥只有所有者能看和改")
+    if not read and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "改 AI 密钥需要已认证的所有者")
+    try:
+        result = await asyncio.to_thread(action, root) if sync else await action(root)
+    except app_credentials.CredentialError as error:
+        return _error(error.status, error.code, str(error))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"}) if result is not None \
+        else Response(status_code=204)
+
+
+@router.get(_ORG + "/credentials")
+async def credentials(org_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: {"credentials": app_credentials.listing(root)},
+                                  sync=True, read=True)
+
+
+@router.post(_ORG + "/credentials")
+async def add_credential(org_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.add(root, body))
+
+
+@router.post(_ORG + "/credentials/endpoint-models")
+async def credential_endpoint_models(org_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda _root: app_credentials.endpoint_models(body or {}))
+
+
+@router.put(_ORG + "/credentials/{credential_id}/models")
+async def credential_models(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.set_models(
+        root, credential_id, (body or {}).get("models")))
+
+
+@router.post(_ORG + "/credentials/{credential_id}/rotate")
+async def rotate_credential(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.rotate(root, credential_id, body or {}))
+
+
+@router.post(_ORG + "/credentials/{credential_id}/check")
+async def check_credential(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: app_credentials.check(root, credential_id))
+
+
+@router.post(_ORG + "/credentials/{credential_id}/make-default")
+async def default_credential(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: app_credentials.make_default(root, credential_id),
+                                  sync=True)
+
+
+@router.post(_ORG + "/credentials/{credential_id}/remove-copies")
+async def credential_copies(org_id: str, credential_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: app_credentials.remove_copies(root, credential_id),
+                                  sync=True)
+
+
+@router.delete(_ORG + "/credentials/{credential_id}", status_code=204)
+async def remove_credential(org_id: str, credential_id: str, request: Request, purge: str = "", release: str = ""):
+    from src.web import app_credentials
+
+    def run(root):
+        app_credentials.remove(root, credential_id, purge=purge == "true", release=release == "true")
+        return None
+    return await _credential_call(request, org_id, run, sync=True)
+
+
+# ── 个人 Vault：无原值读取，不参与 Agent 工具或共享 ────────────────────────────
+
+_VAULT = _ORG + "/vault"
+_VAULT_ITEMS = _VAULT + "/items"
+_VAULT_ITEM = _VAULT_ITEMS + "/{item_id}"
+_VAULT_HEADERS = {"Cache-Control": "no-store"}
+
+
+async def _vault_body(request: Request) -> dict:
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        raise app_personal_vault.VaultError(415, "vault.invalid", "个人 Vault 只接受 JSON 请求")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > app_personal_vault.MAX_BODY:
+            raise app_personal_vault.VaultError(413, "vault.too_large", "个人 Vault 请求过大")
+        raw.extend(chunk)
+    try:
+        body = json.loads(raw)
+    except (ValueError, RecursionError):
+        body = None
+    if not isinstance(body, dict):
+        raise app_personal_vault.VaultError(422, "vault.invalid", "个人 Vault 请求格式无效")
+    return body
+
+
+async def _vault_call(request: Request, org_id: str, action, *, write_body: bool = False):
+    root = _root(org_id)
+    loopback = {"127.0.0.1", "::1"}
+    local = (request.url.scheme == "http" and request.url.hostname in loopback and request.client
+             and request.client.host in loopback and not any(header in request.headers for header in (
+                 "forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto",
+             )))
+    if request.url.scheme != "https" and not local:
+        return _error(403, "vault.secure_transport_required", "个人 Vault 需要 HTTPS 或本机回环连接")
+    who = _who(request, root)
+    if who is None or (who.is_owner and not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "个人 Vault 需要已验证的空间身份")
+    account = None if who.is_owner else request.state.member_account["id"]
+
+    def call(body):
+        if _who(request, root) != who:
+            raise app_personal_vault.VaultError(403, "forbidden", "当前身份不能使用个人 Vault")
+        return action(app_personal_vault.PersonalVault(root, who.id, member_account=account), body)
+
+    try:
+        body = await _vault_body(request) if write_body else None
+        result = await asyncio.to_thread(call, body)
+        if result is None:
+            return Response(status_code=204, headers=_VAULT_HEADERS)
+        return JSONResponse(result, headers=_VAULT_HEADERS)
+    except app_personal_vault.VaultError as error:
+        return _error(error.status, error.code, str(error))
+
+
+@router.get(_VAULT)
+async def vault_overview(org_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, _: vault.overview())
+
+
+@router.get(_VAULT_ITEM)
+async def vault_item(org_id: str, item_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, _: vault.item(item_id))
+
+
+@router.post(_VAULT_ITEMS)
+async def vault_create(org_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, body: vault.create(body), write_body=True)
+
+
+@router.patch(_VAULT_ITEM)
+async def vault_update(org_id: str, item_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, body: vault.update(item_id, body), write_body=True)
+
+
+@router.delete(_VAULT_ITEM, status_code=204)
+async def vault_remove(org_id: str, item_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, _: vault.remove(item_id))
+
+
 # ── Wiki ───────────────────────────────────────────────────────────────────
 
 _WIKI = _ORG + "/wiki"
+# The client's 8 Mi UTF-16-code-unit batch budget can take three times as many UTF-8 bytes.
+_MAX_WIKI_IMPORT_BYTES = 24 * 1024 * 1024 + 64 * 1024
 
 
 class _WikiMessageSource(BaseModel):
@@ -1605,7 +2245,7 @@ class _WikiAppend(BaseModel):
     source: _WikiMessageSource
 
 
-async def _wiki_call(request, org_id, action, *, listing=False, source=None):
+async def _wiki_call(request, org_id, action, *, listing=False, source=None, read_body=None):
     from src.workflow.members.registry import Damaged, Missing, Refused
 
     root = _root(org_id)
@@ -1628,13 +2268,15 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None):
 
     def execute():
         if source is None:
-            return action(wiki_for_reader())
+            wiki = wiki_for_reader()
+            return action(wiki, raw) if read_body is not None else action(wiki)
         if not is_team_channel(source.channelId):
             return _error(409, "wiki_source_unsupported", "目前只能从加入的公开团队频道摘录消息")
         with app_channels.channels(root).public_message(actor, source.channelId, source.messageId) as message:
             return action(wiki_for_reader(), message)
 
     try:
+        raw = await read_body(request) if read_body is not None else None
         return await asyncio.to_thread(execute)
     except WikiError as error:
         return _error(error.status, error.code, str(error))
@@ -1654,6 +2296,31 @@ async def wiki_pages(org_id: str, request: Request, deleted: bool = False):
 @router.get(_WIKI + "/graph")
 async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
+
+
+async def _wiki_import_body(request: Request) -> bytearray:
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        raise WikiError(415, "invalid", "Markdown 导入只接受 JSON 请求")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > _MAX_WIKI_IMPORT_BYTES:
+            raise WikiError(413, "wiki_import_too_large", "Markdown 导入批次太大")
+        raw.extend(chunk)
+    return raw
+
+
+@router.post(_WIKI + "/import")
+async def import_wiki_notes(org_id: str, request: Request):
+    def import_notes(wiki, raw):
+        try:
+            data = json.loads(raw)
+        except (ValueError, RecursionError):
+            data = None
+        if not isinstance(data, dict):
+            raise WikiError(422, "invalid", "Markdown 导入请求格式无效")
+        return wiki.import_notes(data)
+
+    return await _wiki_call(request, org_id, import_notes, read_body=_wiki_import_body)
 
 
 @router.post(_WIKI + "/pages", status_code=201)
@@ -2117,6 +2784,11 @@ async def send_voice(org_id: str, channel_id: str, request: Request):
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     again = await asyncio.to_thread(app_voice.find_clip, root, channel=channel_id, author=who.id,
                                     client=wanted["clientId"])
+    if team and wanted["threadId"]:
+        check = await _team_call(request, org_id, lambda service, actor: service.check_thread_voice(
+            actor, channel_id, wanted["threadId"], wanted["replyTo"], wanted["clientId"], again["id"] if again else None))
+        if isinstance(check, JSONResponse):
+            return check
     if again is not None:                                   # 界面重试：已经发出去了
         return {"clipId": again["id"]}
     record = await asyncio.to_thread(app_voice.store_clip, root, upload[0], kind, channel=channel_id,
@@ -2185,7 +2857,7 @@ async def voice_audio(org_id: str, clip_id: str, request: Request):
 # 规矩在 web/app_board.py：所有者全部；成员看可见范围里的、凭「编辑资料」新建和编辑、只删自己建的。
 # 交给 agent 走现有派活入口，不另起执行器。
 
-async def _board(org_id: str, request: Request, action, *, edit: bool = False):
+async def _board(org_id: str, request: Request, action, *, edit: bool = False, dispatch: bool = False):
     from src.workflow.board.store import BoardError, NotFound
     from src.workflow.members.registry import Refused
     root = _root(org_id)
@@ -2195,6 +2867,9 @@ async def _board(org_id: str, request: Request, action, *, edit: bool = False):
     if edit and not app_board.can_edit(root, who):
         return _error(403, "forbidden", "你没有编辑看板的权限")
     try:
+        if dispatch:
+            await _dispatch_ready(root)
+            return action(root, who)
         return await asyncio.to_thread(action, root, who)
     except (NotFound, LookupError) as error:
         return _error(404, "not_found", str(error))
@@ -2266,7 +2941,7 @@ async def comment_issue(org_id: str, issue_id: str, body: Dict[str, Any], reques
 async def ask_agent_on_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
     proof = app_staff.owner_proof(request)
     return await _board(org_id, request, lambda root, who: app_board.ask_agent(
-        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of), edit=True)
+        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of), edit=True, dispatch=True)
 
 
 @router.get(_ORG + "/issue-columns")
@@ -2437,16 +3112,361 @@ async def all_memories(org_id: str):
     return _listing(lambda: {"memories": views.memories(root, views.main_agent_id(root))})
 
 
-@router.get(_ORG + "/notifications")
-async def notifications(org_id: str, filter: str = "", limit: int = 50):  # noqa: A002 —— 界面的查询参数名
+_INBOX = _ORG + "/notifications"
+
+
+class _ReadNotice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    read: StrictBool
+
+
+class _DoneNotice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    done: StrictBool
+
+
+class _SnoozeNotice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    until: str | None
+
+
+class _InboxFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filter: app_notice_inbox.NoticeFilter = "all"
+
+
+async def _notifications_call(request: Request, org_id: str, action, *, write=False):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
     root = _root(org_id)
-    return _listing(lambda: views.notifications(root, filter_name=filter, limit=limit))
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "这些通知属于所有者")
+    if write and (not views.owner_connection() or not app_staff.owner_proof(request)):
+        return _error(403, "owner_proof_required", "更新通知需要已认证的同源会话")
+    try:
+        return await asyncio.to_thread(action, root)
+    except app_notice_inbox.NoticeMissing as error:
+        return _error(404, "not_found", str(error))
+    except (app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
+        return _error(409, "unavailable", "无法读取或保存通知状态")
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.get(_INBOX)
+async def notifications(
+    org_id: str,
+    request: Request,
+    filter_name: app_notice_inbox.NoticeFilter | Literal[""] = Query("all", alias="filter"),
+    cursor: int = Query(0, ge=0),
+    limit: int = 50,
+):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.page(root, filter_name or "all", cursor, max(1, min(limit, 100))))
+
+
+@router.get(_INBOX + "/count")
+async def notifications_count(org_id: str, request: Request):
+    return await _notifications_call(request, org_id, app_notice_inbox.count)
+
+
+@router.post(_INBOX + "/{notice_id}/read")
+async def read_notice(org_id: str, notice_id: str, body: _ReadNotice, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.set_status(root, notice_id, "read", body.read), write=True)
+
+
+@router.post(_INBOX + "/{notice_id}/done")
+async def done_notice(org_id: str, notice_id: str, body: _DoneNotice, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.set_status(root, notice_id, "done", body.done), write=True)
+
+
+@router.post(_INBOX + "/{notice_id}/snooze")
+async def snooze_notice(org_id: str, notice_id: str, body: _SnoozeNotice, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.set_status(root, notice_id, "snooze", app_notice_inbox.snooze_time(body.until)), write=True)
+
+
+@router.post(_INBOX + "/read-all")
+async def read_all_notices(org_id: str, body: _InboxFilter, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.clear(root, body.filter, done=False), write=True)
+
+
+@router.post(_INBOX + "/done-all")
+async def done_all_notices(org_id: str, body: _InboxFilter, request: Request):
+    return await _notifications_call(request, org_id, lambda root:
+        app_notice_inbox.clear(root, body.filter, done=True), write=True)
 
 
 @router.get(_ORG + "/runs")
 async def runs(org_id: str, agentId: str = "", limit: int = 50):  # noqa: N803 —— 界面的查询参数名
     root = _root(org_id)
     return _listing(lambda: {"runs": views.runs(root, agent_id=agentId, limit=limit)})
+
+
+@router.get(_ORG + "/runs/{run_id}")
+async def run_detail(org_id: str, run_id: str):
+    """一件事的详情。专员的过程只留在任务台账的进度尾部（主人在「输出」里看），这里没有逐步记录，``steps`` 为空。"""
+    root = _root(org_id)
+
+    def read():
+        row = next((item for item in views.runs(root, limit=200) if item["id"] == run_id), None)
+        return None if row is None else {"run": row, "steps": []}
+    result = await asyncio.to_thread(read)
+    return result if result is not None else _error(404, "not_found", "没有这件事")
+
+
+@router.get(_ORG + "/audit")
+async def audit(org_id: str, request: Request, actorType: str = "", actorId: str = "",  # noqa: N803 —— 界面的查询参数名
+                via: str = "", outcome: str = "", waiting: str = "", kind: str = "", before: str = "",
+                limit: int | None = None):
+    """审计页：共享审计台账的投影，只给所有者（参数里有主人对话里的路径和命令）。"""
+    from src.web import app_audit
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "查看审计记录需要已认证的所有者")
+
+    def read():
+        me = views.me(root)["user"]
+        main = views.main_agent_id(root)
+        agent = next((item for item in views.agents(root) if item["id"] == main), {})
+        return app_audit.page(root, owner={"id": me["id"], "name": me["name"]},
+                              agent={"id": main, "name": agent.get("name")}, actor_type=actorType,
+                              actor_id=actorId, via=via, outcome=outcome, waiting=waiting == "true", kind=kind,
+                              before=before, limit=limit)
+    try:
+        result = await asyncio.to_thread(read)
+    except app_audit.AuditQueryError as error:
+        return _error(400, "invalid", str(error))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/search")
+async def search(org_id: str, request: Request, q: str = "", kinds: str = "", limit: int | None = None):
+    """搜索：团队频道消息与任务卡片，各按调用人能看到的范围（见 app_search 的说明）。"""
+    from src.web import app_search
+    filters = {key: request.query_params.get(key, "") for key in (
+        "in", "fromUsers", "fromAgents", "mentionsUsers", "mentionsAgents", "has", "author", "pinned", "after",
+        "before", "sort")}
+    try:
+        parsed = app_search.parse(q=q, kinds=kinds, limit=limit, **filters)
+    except app_search.SearchQueryError as error:
+        return _error(400, "invalid", str(error))
+    root = _root(org_id)
+    result = await _team_call(request, org_id, lambda service, actor:
+                              {"hits": app_search.query(root, service, actor, parsed)})
+    return JSONResponse(result, headers={"Cache-Control": "no-store"}) if isinstance(result, dict) else result
+
+
+async def _question_reply(request: Request, org_id: str, question_id: str, answer):
+    """专员问的问题：只有被问的那个人能回答或跳过；回答后按返工路径接着做下一轮。"""
+    from src.workflow.staff import questions
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+
+    def run():
+        task, item = questions.respond(root, question_id, None if who.is_owner else who.id, answer)
+        view = task.to_dict()
+        member = str(task.collaboration["dispatch"]["member"])
+        carrier = views.message_id(task.id, "assistant", item["round"])
+        return views.staff_question(root, member, view, item, carrier)
+    try:
+        await _dispatch_ready(root)
+        return run()          # 接着做会把事交进执行池，只能在事件循环线程里登记
+    except questions.QuestionMissing as error:
+        return _error(404, "not_found", str(error))
+    except questions.QuestionError as error:
+        ended = str(error) in {"这个问题已经回答过了", "agent 已经不在等这个回答"}
+        return _error(409 if ended else 400, "question.ended" if ended else "invalid", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "staff_unavailable", str(error))
+
+
+@router.post(_ORG + "/questions/{question_id}/answer")
+async def answer_question(org_id: str, question_id: str, request: Request):
+    body = await _body(request)
+    value = body.get("choice", body.get("text")) if isinstance(body, dict) else None
+    if not isinstance(value, str):
+        return _error(400, "invalid", "回答要是文字")
+    return await _question_reply(request, org_id, question_id, value)
+
+
+@router.post(_ORG + "/questions/{question_id}/dismiss")
+async def dismiss_question(org_id: str, question_id: str, request: Request):
+    return await _question_reply(request, org_id, question_id, None)
+
+
+# ── 新建 agent 页面要的几项 ───────────────────────────────────────────────────
+
+@router.get(_ORG + "/agent-setup")
+async def new_agent_setup(org_id: str):
+    """新 agent 从哪套 AI 设置开始：这里不存上一次的设置，新 agent 都用默认模型，所以是 null。"""
+    _root(org_id)
+    return {"setup": None}
+
+
+@router.post(_ORG + "/agent-setup")
+async def apply_agent_setup(org_id: str):
+    """给一批 agent 换 AI：和 agent 的「大脑」页一样，换模型要经提议核对，这里不直接改。"""
+    _root(org_id)
+    return _error(409, "agent_setup.by_proposal", "给 agent 换模型要经提议、在审批里批准，请让助理提议")
+
+
+@router.get(_ORG + "/credentials/platform")
+async def platform_key(org_id: str):
+    """平台有没有现成的模型可用（不用自己填 Key）：就是这台服务有没有接上模型。"""
+    _root(org_id)
+    return {"available": bool(views.model_connected())}
+
+
+@router.post(_ORG + "/agents/{agent_id}/audience/mail-loss")
+async def agent_mail_loss(org_id: str, agent_id: str):
+    """改 agent 服务谁时会失去哪些人的邮箱：这里 agent 不接邮箱，所以没有。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"mailboxes": []}
+
+
+# 「右手代批」：新版界面里是主助理替人处理别的 agent 提的新建 agent、改 agent 设置的提议。
+# 这里会提这类提议的只有主助理自己（专员不提议），代批就等于助理批自己的提议，违反「助理不能自己批」
+# （2026-11-22 放开提议时定的）。所以如实是关着的，打开回 409 并说明原因；等专员也能提议再接。
+_RIGHT_HAND_OFF = "现在会提议的只有助理自己，让它代批就是自己批自己的提议，所以不能打开"
+_RIGHT_HAND_FIELDS = {"enabled", "newAgents", "agentChanges", "budgetCapNanoUsd", "guidance"}
+
+
+def _right_hand(root: str, who) -> Dict[str, Any]:
+    main = views.main_agent_id(root)
+    name = next((a["name"] for a in views.agents(root) if a["id"] == main), None)
+    return {"enabled": False, "newAgents": False, "agentChanges": False, "budgetCapNanoUsd": 0, "guidance": "",
+            "pausedAt": None, "rightHand": {"id": main, "name": name} if who.is_owner else None,
+            "mayDecide": {"newAgents": who.is_owner, "agentChanges": who.is_owner},
+            "caps": {"decisionsPerDay": 0, "newAgentsPerDay": 0, "monthNanoUsd": 0},
+            "used": {"decisionsToday": 0, "newAgentsToday": 0, "monthNanoUsd": 0}}
+
+
+@router.get(_ORG + "/me/right-hand-approvals")
+async def right_hand_approvals(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return await asyncio.to_thread(_right_hand, root, who)
+
+
+@router.put(_ORG + "/me/right-hand-approvals")
+async def set_right_hand_approvals(org_id: str, request: Request):
+    """只接受「保持关着」；要打开的如实拒绝，不存一份不生效的设置。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    body = await _body(request)
+    if not body or set(body) - _RIGHT_HAND_FIELDS:
+        return _error(400, "invalid", "只能改开关、两类提议、预算上限和说明")
+    current = await asyncio.to_thread(_right_hand, root, who)
+    if any(body[key] != current[key] for key in body):
+        return _error(409, "right_hand.unavailable", _RIGHT_HAND_OFF)
+    return current
+
+
+@router.post(_ORG + "/right-hand-decisions/{decision_id}/undo", status_code=204)
+async def undo_right_hand(org_id: str, decision_id: str):
+    _root(org_id)
+    return _error(404, "not_found", "没有这个代批决定（代批没有打开过）")
+
+
+# ── agent 详情页的几项：如实给现在的状态 ─────────────────────────────────────
+
+_GROUPS_BY_PROPOSAL = "agent 分组就是部门；部门的调整要经提议、在审批里批准，请让助理提议"
+
+
+@router.get(_ORG + "/agent-groups")
+async def agent_groups(org_id: str, request: Request):
+    """agent 分组：就是已登记的部门（只读）。"""
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    try:
+        return {"groups": await asyncio.to_thread(views.agent_groups, root)}
+    except (ValueError, OSError) as error:
+        return _error(409, "unavailable", str(error))
+
+
+@router.post(_ORG + "/agent-groups")
+async def create_agent_group(org_id: str):
+    _root(org_id)
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.patch(_ORG + "/agent-groups/{group_id}")
+async def update_agent_group(org_id: str, group_id: str):
+    _root(org_id)
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.delete(_ORG + "/agent-groups/{group_id}")
+async def remove_agent_group(org_id: str, group_id: str):
+    _root(org_id)
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.put(_ORG + "/agents/{agent_id}/group")
+async def move_agent_group(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return _error(409, "agent_group.by_proposal", _GROUPS_BY_PROPOSAL)
+
+
+@router.get(_ORG + "/agents/{agent_id}/approval-rules")
+async def approval_rules(org_id: str, agent_id: str):
+    """「以后都允许」的规则：这里每次批准都只批这一次（approve 拒绝 always），所以没有规则。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"rules": []}
+
+
+@router.delete(_ORG + "/agents/{agent_id}/approval-rules/{rule_id}", status_code=204)
+async def remove_approval_rule(org_id: str, agent_id: str, rule_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return _error(404, "not_found", "没有这条规则")
+
+
+@router.get(_ORG + "/agents/{agent_id}/learned-skills")
+async def learned_skills(org_id: str, agent_id: str):
+    """agent 自己学会的技能：这里 agent 不自己写技能（skill-settings 的 agentsImprove 固定关着），所以是空的。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"skills": []}
+
+
+_NO_AGENTS_IN_CHANNELS = "团队频道里还没有 agent：agent 现在只在私聊里回应"
+
+
+@router.get(_ORG + "/agents/{agent_id}/channels")
+async def agent_channels(org_id: str, agent_id: str):
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"channels": []}
+
+
+@router.put(_ORG + "/agents/{agent_id}/channels")
+async def set_agent_channels(org_id: str, agent_id: str, request: Request):
+    """只接受「一个频道都不进」；要把 agent 放进团队频道的如实拒绝。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    body = await _body(request)
+    if set(body) != {"channels"} or not isinstance(body["channels"], list):
+        return _error(400, "invalid", "要给出 agent 所在的频道列表")
+    if body["channels"]:
+        return _error(409, "agent_channels.unavailable", _NO_AGENTS_IN_CHANNELS)
+    return {"channels": []}
 
 
 @router.get(_ORG + "/usage")
@@ -2721,10 +3741,81 @@ async def agent_skills(org_id: str, agent_id: str):
 # ── 写入：记忆归档、例行工作启停与删除、技能启停 ─────────────────────────────
 # 每一项都交给现有的登记处去改，规矩（版本核对、绑定核对、范围）在那里；这里只把界面的写法对上。
 
-@router.patch(_ORG + "/memories/{memory_id}")
-async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any]):
-    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。"""
+@router.get(_ORG + "/team-memories")
+async def team_memories(org_id: str, request: Request):
+    """团队记忆：所有 agent 都读的那一份，所有者和成员都能看（内容本来就会出现在所有 agent 的回答里）。"""
+    from src.memory import team_memory
     root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    can_change = who.is_owner or "review_memory" in app_members.permission_keys(root, who)
+    try:
+        rows = await asyncio.to_thread(team_memory.items, root)
+    except team_memory.TeamMemoryError as error:
+        return _error(409, "unavailable", str(error))
+    return {"memories": [views.team_memory_view(root, row, can_change=can_change, owner=who.is_owner)
+                         for row in rows if not row.get("archived")]}
+
+
+@router.post(_ORG + "/memories/{memory_id}/team")
+async def share_memory(org_id: str, memory_id: str, request: Request):
+    """把所有者自己的一条记忆设成团队记忆（所有 agent 都会知道）。只有所有者能做。"""
+    from src.memory import team_memory
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "设成团队记忆需要已认证的所有者")
+
+    def run():
+        mine = next((m for m in views.memories(root, views.main_agent_id(root))
+                     if m["id"] == memory_id and not m["archived"]), None)
+        if mine is None:
+            return None
+        item = team_memory.share(root, memory_id, mine["text"], views.owner_id(root))
+        return views.team_memory_view(root, item, can_change=True, owner=True)
+    try:
+        result = await asyncio.to_thread(run)
+    except team_memory.TeamMemoryError as error:
+        return _error(409, "team_memory.unavailable", str(error))
+    return result if result is not None else _error(404, "not_found", "没有这条记忆")
+
+
+async def _patch_team_memory(request: Request, root: str, memory_id: str, body: Dict[str, Any]):
+    """团队记忆：所有者可以改文字、移除、恢复；有「审核 agent 记住的东西」权限的成员只能移除、恢复，
+    这样进系统提示的文字都出自所有者。"""
+    from src.memory import team_memory
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    if not who.is_owner and "review_memory" not in app_members.permission_keys(root, who):
+        return _error(403, "forbidden", "需要「审核 agent 记住的东西」权限")
+    if set(body) == {"archived"} and type(body["archived"]) is bool:
+        change = lambda: team_memory.set_archived(root, memory_id, body["archived"])  # noqa: E731
+    elif set(body) == {"text"} and isinstance(body["text"], str):
+        if not who.is_owner:
+            return _error(403, "forbidden", "团队记忆的文字只有所有者能改")
+        change = lambda: team_memory.edit(root, memory_id, body["text"], views.owner_id(root))  # noqa: E731
+    else:
+        return _error(400, "unsupported", "团队记忆只能改文字、移除或恢复")
+    try:
+        item = await asyncio.to_thread(change)
+    except LookupError:
+        return _error(404, "not_found", "没有这条团队记忆")
+    except team_memory.TeamMemoryError as error:
+        return _error(400, "invalid", str(error))
+    return views.team_memory_view(root, item, can_change=True, owner=who.is_owner)
+
+
+@router.patch(_ORG + "/memories/{memory_id}")
+async def patch_memory(org_id: str, memory_id: str, body: Dict[str, Any], request: Request):
+    """只接归档与恢复。改写内容、置顶、确认没有对应能力：拒绝，而不是假装改了。团队记忆另有规矩。"""
+    root = _root(org_id)
+    if memory_id.startswith("team-"):
+        return await _patch_team_memory(request, root, memory_id, body)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "只有所有者能改自己的记忆")
     if set(body) != {"archived"} or type(body["archived"]) is not bool:
         return _error(400, "unsupported", "这里只能归档或恢复记忆")
     try:
@@ -2800,9 +3891,13 @@ async def routine_takeover_confirm(org_id: str, routine_id: str, body: Dict[str,
 
 
 @router.get(_ORG + "/skills/{skill_id}")
-async def skill(org_id: str, skill_id: str):
+async def skill(org_id: str, skill_id: str, request: Request):
     root = _root(org_id)
-    detail = await asyncio.to_thread(views.skill_detail, root, skill_id)
+    try:
+        detail = await asyncio.to_thread(views.skill_detail, root, skill_id,
+                                         owner_verified=app_staff.owner_proof(request))
+    except PermissionError as error:
+        return _error(403, "owner_proof_required", str(error))
     return detail if detail is not None else _error(404, "not_found", "没有这条技能")
 
 
@@ -2816,6 +3911,7 @@ async def _owner_write(request: Request, root: str, what: str):
 
 
 async def _skill_write(request: Request, org_id: str, action):
+    from src.workflow.workbench.skill_import import SkillImportError
     from src.workflow.workbench.personal_skills import SkillConflict
     root = _root(org_id)
     refused = await _owner_write(request, root, "技能")
@@ -2823,6 +3919,8 @@ async def _skill_write(request: Request, org_id: str, action):
         return refused
     try:
         return await asyncio.to_thread(action, root)
+    except SkillImportError as error:
+        return _error(error.status, error.code, str(error))
     except SkillConflict as error:
         return _error(409, "conflict", str(error))
     except ValueError as error:
@@ -2835,6 +3933,50 @@ async def _skill_write(request: Request, org_id: str, action):
 async def create_skill(org_id: str, body: Dict[str, Any], request: Request):
     """主人写一条新技能。只是给主助理的说明，不执行脚本、不增加工具权限。"""
     return await _skill_write(request, org_id, lambda root: views.create_skill(root, body))
+
+
+async def _skill_upload_body(request: Request) -> dict:
+    from src.workflow.workbench.skill_import import MAX_IMPORT_BODY, SkillImportError
+
+    oversized = SkillImportError("本地技能 ZIP 最大 128 KiB", status=413, code="skill.local_upload_too_large")
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise SkillImportError("技能导入需要 JSON 正文", status=415)
+    try:
+        declared = int(request.headers.get("content-length", "0"))
+    except ValueError as error:
+        raise SkillImportError("无效的正文长度") from error
+    if declared < 0:
+        raise SkillImportError("无效的正文长度")
+    if declared > MAX_IMPORT_BODY:
+        raise oversized
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > MAX_IMPORT_BODY:
+            raise oversized
+        raw.extend(chunk)
+    try:
+        body = json.loads(raw)
+    except (ValueError, RecursionError) as error:
+        raise SkillImportError("技能导入 JSON 无效") from error
+    if not isinstance(body, dict):
+        raise SkillImportError("技能导入需要 JSON 对象")
+    return body
+
+
+@router.post(_ORG + "/skills/import")
+async def import_skill(org_id: str, request: Request):
+    """上传私人技能 ZIP，启用沿用原有正文审阅与版本核对。"""
+    from src.workflow.workbench.skill_import import SkillImportError
+
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "导入个人技能需要已认证的同源所有者会话")
+    try:
+        body = await _skill_upload_body(request)
+    except SkillImportError as error:
+        return _error(error.status, error.code, str(error))
+    return await _skill_write(request, org_id, lambda root: views.import_skill(root, body))
 
 
 @router.patch(_ORG + "/skills/{skill_id}")
@@ -2864,19 +4006,38 @@ async def save_skill_settings(org_id: str, body: Dict[str, Any], request: Reques
 
 
 @router.put(_ORG + "/agents/{agent_id}/skills")
-async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any]):
+async def set_agent_skills(org_id: str, agent_id: str, body: Dict[str, Any], request: Request):
     """主助理启用哪些个人技能。专员按岗位装配，不在这里改。"""
     from src.workflow.workbench.personal_skills import SkillConflict
     root = _root(org_id)
+    owner_verified = app_staff.owner_proof(request)
+    if not member_auth.principal(request, root).is_owner or (views.owner_connection() and not owner_verified):
+        return _error(403, "owner_proof_required", "启停个人技能需要已认证的同源所有者会话")
     if agent_id != views.main_agent_id(root):
         return _error(404 if not _known_agent(org_id, agent_id) else 400, "unsupported", "专员的技能按岗位装配")
-    wanted = body.get("skills")
-    if set(body) != {"skills"} or not isinstance(wanted, list) or not all(isinstance(x, str) for x in wanted):
+    rows = body.get("skills")
+    if set(body) != {"skills"} or not isinstance(rows, list):
         return _error(400, "invalid", "需要技能 id 列表")
+    referenced = None
+    if all(isinstance(row, str) for row in rows):
+        wanted = rows
+    elif all(isinstance(row, dict) and set(row) == {"skillId", "enabled"}
+             and isinstance(row["skillId"], str) and type(row["enabled"]) is bool for row in rows):
+        if not owner_verified:
+            return _error(403, "owner_proof_required", "启停个人技能需要已认证的同源所有者会话")
+        referenced = [row["skillId"] for row in rows]
+        if len(set(referenced)) != len(referenced):
+            return _error(400, "invalid", "同一个技能只能指定一次")
+        wanted = [row["skillId"] for row in rows if row["enabled"]]
+    else:
+        return _error(400, "invalid", "需要技能 id 列表或技能启停状态")
     try:
-        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted)}
+        return {"skills": await asyncio.to_thread(views.set_main_skills, root, wanted, referenced=referenced,
+                                                 owner_verified=owner_verified)}
     except LookupError:
         return _error(404, "not_found", "没有这条技能")
+    except PermissionError as error:
+        return _error(403, "owner_proof_required", str(error))
     except SkillConflict as error:
         return _error(409, "conflict", str(error))
     except (ValueError, OSError):
@@ -3073,6 +4234,101 @@ async def _lifecycle(request: Request, action):
 
 def _agent_view(root: str, staff_id: str) -> Optional[Dict[str, Any]]:
     return next((a for a in views.agents(root) if a["handle"] == staff_id), None)
+
+
+# ── 聊天里的新建 agent 提议卡片（主人 2026-11-22 定）：和审批列表是同一份提议、同一套核对 ──────────
+
+async def _agent_proposal_call(request: Request, org_id: str, message_id: str, action, *, kind: str = "member"):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "提议卡片只有已认证的所有者能看和决定")
+
+    def run():
+        item = views.find_agent_proposal(root, message_id, kind=kind)
+        return None if item is None else action(root, item)
+    try:
+        result = await asyncio.to_thread(run)
+    except (ValueError, LookupError, OSError) as error:
+        return _error(409, "agent_proposal.unavailable", str(error) or "这份提议已经不在等待")
+    return result if result is not None else _error(404, "not_found", "没有这份提议")
+
+
+def _decide_card(root: str, item: Dict[str, Any], approve: bool) -> Dict[str, Any]:
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.owner_confirmation import owner_route
+    if item["status"] != "pending":
+        raise ValueError("这份提议已经处理过了")
+    if views.proposal_expired(item):
+        raise ValueError("这份提议已经过期，请让助理重新提")
+    with owner_route(root):
+        StaffApprovals(root).decide(item["id"], approve, item["digest"], nonce=item["nonce"],
+                                    round=item["round"], instance=item["instance"])
+    return next(row for row in StaffApprovals(root).list() if row["id"] == item["id"])
+
+
+@router.get(_ORG + "/agent-proposals/{message_id}")
+async def agent_proposal(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id,
+                                      lambda root, item: views.agent_proposal(root, item, can_decide=True))
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/create")
+async def create_proposed_agent(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准提议，登记处照常核对岗位、实例和摘要。"""
+    def run(root, item):
+        decided = _decide_card(root, item, True)
+        card = views.agent_proposal(root, decided, can_decide=True)
+        return {"agent": _agent_view(root, item["snapshot"]["data"]["id"]), "proposal": card, "ai": "model",
+                "testChannelId": None}
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/deny")
+async def deny_proposed_agent(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: views.agent_proposal(
+        root, _decide_card(root, item, False), can_decide=True))
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/ask")
+async def ask_about_proposed_agent(org_id: str, message_id: str, request: Request):
+    """「请管理员决定」：这里只有所有者能决定，而所有者已经看得到这张卡片。"""
+    def run(root, item):
+        raise ValueError("这份提议只有所有者能决定，所有者已经看得到")
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/agent-proposals/{message_id}/routine")
+async def proposed_agent_routine(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("这份提议没有附带例行工作；需要的话请让助理另提一份例行工作提议")
+    return await _agent_proposal_call(request, org_id, message_id, run)
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/create")
+async def create_proposed_team(org_id: str, message_id: str, request: Request):
+    """「创建」：按卡片上这一版批准整张开通单（岗位、agent、部门、例行工作一起登记）。"""
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, True)), "noAi": []}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/deny")
+async def deny_proposed_team(org_id: str, message_id: str, request: Request):
+    return await _agent_proposal_call(request, org_id, message_id, lambda root, item: {
+        "card": views.team_proposal(root, _decide_card(root, item, False))}, kind="bundle")
+
+
+@router.post(_ORG + "/team-proposals/{message_id}/undo")
+async def undo_proposed_team(org_id: str, message_id: str, request: Request):
+    def run(root, item):
+        raise ValueError("登记了就不能一键撤回；要停用这些 agent 或例行工作，请让助理提议")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
+
+
+@router.patch(_ORG + "/team-proposals/{message_id}/agents/{handle}")
+async def adjust_proposed_team_agent(org_id: str, message_id: str, handle: str, request: Request):
+    def run(root, item):
+        raise ValueError("批的是卡片上的这一版；要改内容，请让助理重新提")
+    return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
 
 
 @router.post(_ORG + "/agents")
@@ -3343,7 +4599,7 @@ async def app_socket(websocket: WebSocket):
     """每个空间一条连接。订阅与主助理的私聊后，经桥收到这段会话的消息、运行状态和审批事件；
     实时只是尽力而为，界面在重连和订阅确认后会重新读取，内容以读取为准。"""
     from src.web.auth import ws_token_ok
-    from src.web import app_member_realtime
+    from src.web import app_member_realtime, app_presence
     from src.agents.principal import OWNER, Principal
     root = os.getcwd()
     owner = ws_token_ok(websocket)
@@ -3355,7 +4611,6 @@ async def app_socket(websocket: WebSocket):
         await app_member_realtime.serve(websocket, root, member)
         return
     await websocket.accept()
-    await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=views.owner_id(root)))
     bridge = None
     watches: Dict[str, asyncio.Task] = {}
     actor = Principal(OWNER, views.owner_id(root), root)
@@ -3363,7 +4618,9 @@ async def app_socket(websocket: WebSocket):
     def team_session_valid():
         return app_staff.owner_proof(websocket)
 
+    presence = app_presence.connected(root, actor.id) if team_session_valid() or not views.owner_connection() else None
     try:
+        await websocket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=actor.id))
         while True:
             try:
                 frame = json.loads(await websocket.receive_text())
@@ -3409,6 +4666,8 @@ async def app_socket(websocket: WebSocket):
     except WebSocketDisconnect:
         return
     finally:
+        if presence is not None:
+            app_presence.disconnected(presence)
         for watch in watches.values():
             watch.cancel()
         await asyncio.gather(*watches.values(), return_exceptions=True)

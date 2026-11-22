@@ -15,6 +15,7 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | 变量 | 默认 | 作用 | 读取位置 |
 | --- | --- | --- | --- |
 | `VORTOONE_API_TOKEN` | — | 主 API 与 `/ws` 的管理员鉴权。手机读取使用独立授权，账号管理桥仍需此令牌。对外暴露服务前必须设为强随机值。 | `web/auth.py`、`cli.py`、`gateway/doctor.py` 等 |
+| `VORTOONE_PERSONAL_VAULT_DIR` | — | 显式启用个人 Vault。指向家与状态目录之外的绝对 `.vortoone-personal-vault` 目录，目录由服务用户持有（权限 `0700`），内置同一用户的 32 字节随机 `master.key` 普通文件（权限 `0600`）。部署需已有 `cryptography`。填写目录路径。 | `web/app_personal_vault.py` |
 | `VORTOONE_ALLOW_INSECURE_BIND` | `0` | 没设 API 令牌却绑定非本机地址时，服务默认拒绝启动；设 `1` 显式放行（如前面有已鉴权的反向代理）。 | `web/server.py` |
 | `VORTOONE_ENABLE_SHELL` | `0` | 宿主机命令执行的唯一总开关（`sandbox/policy.py:shell_enabled`）。Web 的 `require_shell`、cron 命令作业、终端都只认它。 | `sandbox/policy.py` 等 |
 | `VORTOONE_SANDBOX` | `auto` | OS 沙箱（seatbelt / bwrap）策略。`off` 只应在可信环境里显式放开宿主机执行。 | `sandbox/policy.py`、`agents/shell.py` 等 |
@@ -43,6 +44,7 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | 变量 | 默认 | 作用 | 读取位置 |
 | --- | --- | --- | --- |
 | `VORTOONE_PROVIDER_<NAME>_BASE` / `_KEY` | — | 登记一个 OpenAI 兼容供应商 `<name>`（小写），之后可以用 `供应商:模型` 点名。想登记几家就设几组。 | `llm/providers.py` |
+| `VORTOONE_PROVIDER_CRED_<ID>_BASE` / `_KEY` | — | 不用手设：所有者在新版界面「AI 密钥」里加的端点，服务启动和每次改动时写进进程环境（`custom:<密钥>:<模型>` 走它）；子进程照样剥掉 `_KEY`。 | `web/app_credentials.py` |
 | `VORTOONE_MODEL_ROLES` | — | 按角色指定模型，如 `review=provider:model`。 | `llm/providers.py` |
 | `VORTOONE_MODEL_CONTEXT_WINDOW` | 按模型目录 | 全局覆盖模型的上下文窗口（token）。 | `llm/client.py` |
 | `VORTOONE_MODEL_CONTEXT_WINDOWS` | — | 按模型名前缀分别指定窗口，优先于全局值。 | `llm/client.py` |

@@ -324,10 +324,64 @@ def test_password_reset_by_whoever_manages_the_member(home):
 def test_a_removed_member_is_out_at_once(home):
     browser = _join(home)
     member_id = browser.get("/api/app/me").json()["user"]["id"]
-    assert home["owner"].delete(f"{home['base']}/members/{member_id}").status_code == 204
+    path = f"{home['base']}/members/{member_id}"
+    owner = TestClient(home["app"])
+    assert owner.post("/api/auth/login", json={"token": TOKEN}, headers=ORIGIN).status_code == 200
+    denied = owner.get(path + "/removal", headers={"Origin": "https://other.example.test"})
+    assert denied.status_code == 403
+    assert denied.headers["cache-control"] == "no-store"
+    preview = owner.get(path + "/removal")
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "no-store"
+    assert preview.json() == {"heir": None, "agents": [], "losePlan": [], "computers": [], "routines": 0}
+    assert home["owner"].get(path + "/removal").json() == preview.json()
+    assert browser.get("/api/app/me").json()["organizations"][0]["id"] == home["org"]
+    assert home["owner"].delete(path).status_code == 204
+    gone = owner.get(path + "/removal")
+    assert gone.status_code == 404
+    assert gone.headers["cache-control"] == "no-store"
     assert browser.get("/api/app/me").status_code == 401
     assert browser.post("/api/auth/sign-in/email",
                         json={"email": "ana@example.com", "password": PASSWORD}).status_code == 401
+
+
+def test_member_removal_preview_matches_existing_delete_permissions(home, monkeypatch):
+    group = _group(home, "成员管理员", ["manage_members"])
+    manager = _join(home, email="manager@example.test", roleIds=[group])
+    member = _join(home, email="target@example.test")
+    target = member.get("/api/app/me").json()["user"]["id"]
+    path = f"{home['base']}/members/{target}"
+    visitor = TestClient(home["app"], headers=ORIGIN)
+    assert visitor.get(path + "/removal").status_code == 401
+    assert visitor.delete(path).status_code == 401
+    for session in (member, manager):
+        assert session.get(path + "/removal").status_code == 403
+        assert session.delete(path).status_code == 403
+
+    monkeypatch.delenv("VORTOONE_API_TOKEN", raising=False)
+    blocked = visitor.get(path + "/removal")
+    assert blocked.status_code == 403
+    assert blocked.headers["cache-control"] == "no-store"
+    assert visitor.delete(path).status_code == 403
+
+
+def test_member_removal_preview_requires_an_existing_joined_target(home):
+    token = _invite(home, email="pending@example.test")
+    pending = TestClient(home["app"], headers=ORIGIN)
+    signed = pending.post("/api/auth/sign-up/email", headers={"x-invitation-token": token}, json={
+        "name": "还没加入的人", "email": "pending@example.test", "password": PASSWORD,
+    })
+    assert signed.status_code == 200
+    me = pending.get("/api/app/me").json()
+    assert me["organizations"] == []
+    owner = home["owner"]
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    for target in ("unknown-member", me["user"]["id"], owner_id):
+        path = f"{home['base']}/members/{target}"
+        preview = owner.get(path + "/removal")
+        assert preview.status_code == 404
+        assert preview.headers["cache-control"] == "no-store"
+        assert owner.delete(path).status_code == 404
 
 
 def test_removal_holds_even_if_the_account_was_not_cleaned_up(home, monkeypatch):

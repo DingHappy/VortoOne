@@ -131,11 +131,20 @@ class BrowserPreview:
     async def take_desktop_control(self) -> str | None:
         if self.kind != "desktop" or not self.begin_control():
             return None
-        result = await self._read("take_control")
-        if result == CONTROL_BUSY:
-            self.controlling = False
-            return "control_busy"
-        return "control_ready" if result == CONTROL_READY and await self.live() else None
+        result = None
+        ready = False
+        try:
+            result = await self._read("take_control")
+            if result == CONTROL_BUSY:
+                return "control_busy"
+            ready = result == CONTROL_READY and await self.live()
+            return "control_ready" if ready else None
+        finally:
+            if not ready:
+                self.controlling = False
+                if result != CONTROL_BUSY:
+                    # Closing this offer closes the publisher socket and releases the connector lease.
+                    self.end()
 
     async def interact_desktop(self, action: object) -> str | None:
         value = desktop_input(action)

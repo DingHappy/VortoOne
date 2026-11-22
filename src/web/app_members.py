@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Mapping, Optional
 from src.agents import identity_groups as rules
 from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE
 from src.agents.principal import Principal
+from src.web import app_prefs
 from src.web import app_views as views
 from src.workflow.members.registry import MemberRegistry, Missing, Refused
 
@@ -188,14 +189,18 @@ def reorder_roles(root: str, actor: Principal, ids: Any) -> None:
 def members(root: str) -> List[Dict[str, Any]]:
     """所有者，加上在册的成员。成员没有邮箱和头像：登记处不存这些。"""
     state = MemberRegistry(root).snapshot()
-    timezone = views.person(root)["timezone"]
-    rows = [views.person(root)]
+    owner = views.person(root)
+    default_timezone = owner["timezone"]
+    timezones = app_prefs.personal_timezones(root) if views.owner_connection() else {}
+    owner["timezone"] = timezones.get(owner["userId"], default_timezone)
+    rows = [owner]
     for member_id, member in sorted(state["members"].items(), key=lambda pair: str(pair[1].get("joined") or "")):
         rows.append({"userId": member_id, "name": str(member.get("name") or member_id),
                      "email": str(member.get("email") or ""), "image": None,
                      "role": "member", "roleIds": [group for group in member.get("groups") or []
                                                    if group in state["groups"]],
-                     "joinedAt": str(member.get("joined") or ""), "handle": member_id, "timezone": timezone})
+                     "joinedAt": str(member.get("joined") or ""), "handle": member_id,
+                     "timezone": timezones.get(member_id, default_timezone)})
     return rows
 
 
@@ -203,6 +208,14 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
     if not isinstance(role_ids, list) or any(not isinstance(item, str) for item in role_ids):
         raise ValueError("roleIds 必须是字符串列表")
     return MemberRegistry(root).set_member_groups(actor, member_id, role_ids)
+
+
+def removal_preview(root: str, actor: Principal, member_id: str) -> Dict[str, Any]:
+    """读已在册成员的移除预览，实际移除仍要重新核对权限。"""
+    if not MemberRegistry(root).manages(actor, member_id):
+        raise Refused("不能移除这个成员")
+    # 当前移除不转交 Agent、不变更模型或例行工作，也不读取成员的私有电脑登记。
+    return {"heir": None, "agents": [], "losePlan": [], "computers": [], "routines": 0}
 
 
 def remove_member(root: str, actor: Principal, member_id: str) -> None:
@@ -227,7 +240,8 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     joined = actor.id in state["members"]
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": None, **views.ui_locale(root, member_auth_key(account))},
+                 "email": str(account["email"]), "image": None,
+                 **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            "showActivity": True, "permissions": permission_keys(root, actor),
                            "memberRoutineProposals": True, "teamChannels": True,
@@ -392,6 +406,17 @@ def invitation_preview(root: str, token: str) -> Optional[Dict[str, Any]]:
             "account": {"exists": exists, "password": exists, "providers": []}}
 
 
+def expired_invitation_state(root: str, token: str) -> Optional[Dict[str, Any]]:
+    """只显示同一令牌原已可见的工作区和邀请人，帮助对方联系原邀请人。"""
+    registry = MemberRegistry(root)
+    item = registry.invitation(token, expired=True)
+    if item is None:
+        return None
+    return {"state": "expired", "orgName": views.overview(root)["name"],
+            "invitedBy": _names(root, registry.snapshot()).get(str(item.get("by") or "")),
+            "at": item["expires"]}
+
+
 def password_link(root: str, actor: Principal, member_id: str, origin: str) -> Dict[str, str]:
     """给一个成员生成一次性的重置密码链接。只有管得了他的人能生成。"""
     from src.workflow.members.accounts import MemberAccounts
@@ -530,11 +555,84 @@ def member_overview(root: str, actor: Principal) -> Dict[str, Any]:
             "proposalsWaitingForMe": 0}
 
 
-def people(root: str) -> List[Dict[str, Any]]:
-    """空间里的人。在线状态没有记录，所有者按在线（服务在跑就是他的），成员按离线。"""
-    now = views.now_iso()
-    return [{**row, "online": row["role"] == "owner", "presence": "online" if row["role"] == "owner" else "offline",
-             "status": None, "lastSeenAt": now if row["role"] == "owner" else None} for row in members(root)]
+def _person_status(row: Dict[str, Any], prefs: Optional[Dict[str, Any]], *, own: bool,
+                   connected: bool) -> Dict[str, Any]:
+    from src.web import app_prefs
+
+    availability = (prefs or {}).get("availability")
+    if availability not in app_prefs.AVAILABILITIES:
+        availability = "auto"
+    if not own and (prefs is None or availability == "hidden"):
+        presence, status = "offline", None
+    else:
+        status = app_prefs.status_line(prefs or {})
+        presence = ("online" if availability == "auto" else availability) if own or connected else "offline"
+    view = {**row, "online": presence in {"online", "away", "busy"}, "presence": presence,
+            "status": status, "lastSeenAt": None}
+    if own:
+        view["availability"] = availability
+    return view
+
+
+def people(root: str, viewer: Principal) -> List[Dict[str, Any]]:
+    """给在册成员看状态。隐身者的可用状态和文字仅本人可见。"""
+    from src.web import app_prefs, app_presence
+
+    connected = app_presence.active_people(root)
+    try:
+        saved = app_prefs.status_preferences(root)
+    except ValueError:
+        # 文件损坏时不能确认谁设了隐身。登录照常，公开状态从严。
+        saved = None
+    return [_person_status(row, saved.get(row["userId"], {}) if saved is not None else None,
+                           own=row["userId"] == viewer.id, connected=row["userId"] in connected)
+            for row in members(root)]
+
+
+def set_person_status(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
+    from src.web import app_prefs
+
+    row = views.person(root) if actor.is_owner else next(
+        (person for person in members(root) if person["userId"] == actor.id), None)
+    if row is None:
+        raise Refused("还不是这个空间的成员")
+    if actor.is_owner and views.owner_connection():
+        row["timezone"] = app_prefs.personal_timezones(root).get(actor.id, row["timezone"])
+    saved = app_prefs.set_status(root, actor.id, body)
+    return _person_status(row, saved, own=True, connected=True)
+
+
+def team_directory(root: str, actor: Principal, *, activity: bool, main_running: bool) -> Dict[str, Any]:
+    """团队页沿用人员和可见 agent 名册，只投影团队列表需要的字段。"""
+    agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
+    running = views.running_staff(root, None if actor.is_owner else actor.id) if activity else set()
+    main = views.main_agent_id(root)
+    return {
+        "agents": [
+            {**{key: agent[key] for key in ("id", "name", "handle", "role", "ownerUserId", "canTalk", "seesDetails")},
+             "appearance": agent.get("appearance"), "capabilities": [],
+             "busy": main_running if agent["id"] == main else agent["handle"] in running}
+            for agent in agents
+        ],
+        "people": [{"id": row["userId"], "name": row["name"], "image": row["image"]} for row in members(root)],
+        # 当前没有在这个家内登记发给其他 agent 的咨询，也没有频道或汇报关系。
+        "consultations": [],
+    }
+
+
+def update_person_timezone(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
+    if body.keys() - {"handle", "timezone"}:
+        raise ValueError("个人资料目前只能更改时区")
+    person = next((row for row in people(root, actor) if row["userId"] == actor.id), None)
+    if person is None:
+        raise Refused("还不是这个空间的成员")
+    # 界面保存时区时也会传回现在的 handle；提及用的标识暂不支持改写。
+    if "handle" in body and body["handle"] != person["handle"]:
+        raise ValueError("目前不支持修改用户名")
+    if "timezone" in body:
+        saved = app_prefs.set_personal_timezone(root, actor.id, body["timezone"])
+        person["timezone"] = saved if saved is not None else views.person(root)["timezone"]
+    return person
 
 
 def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:
