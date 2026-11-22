@@ -1137,6 +1137,12 @@ async def act_team_thread(org_id: str, thread_id: str, request: Request, body: _
     return await _team_call(request, org_id, lambda service, actor: service.change_thread(actor, thread_id, action))
 
 
+@router.post(_THREAD + "/read", status_code=204)
+async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            _team_receipt(lambda: service.mark_thread_read(actor, thread_id)))
+
+
 @router.get(_ORG + "/channels/{channel_id}/members")
 async def channel_members(org_id: str, channel_id: str, request: Request):
     team = await _team_call(request, org_id, lambda service, actor: {"members": [
@@ -1596,12 +1602,17 @@ async def channel_threads(org_id: str, channel_id: str, request: Request, tab: s
     return {"threads": [], "nextCursor": None}
 
 
+@router.get(_ORG + "/unread-threads")
+async def unread_team_threads(org_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor: {"count": service.unread_thread_count(actor)},
+                            empty_listing={"count": 0})
+
+
 # ── 启动时读取、目前没有对应记录的列表：返回空的合法结构 ─────────────────────────
 
 _EMPTY: Dict[str, Any] = {
     "/agent-groups": {"groups": []},
     "/unread-tasks": {"tasks": []},
-    "/unread-threads": {"count": 0},
     "/waiting": {"items": [], "count": 0},
     "/machines/outages": {"outages": [], "targets": []},
     "/task-manager": {"tasks": [], "ended": [], "activity": {}},

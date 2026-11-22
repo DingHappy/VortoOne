@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from heapq import nlargest
 from pathlib import Path
 
-from src.workflow.members import channel_threads
+from src.workflow.members import channel_threads, thread_reads
 from src.workflow.members.registry import Damaged, Missing
 
 OWNER_KEY = "owner"
@@ -195,7 +195,7 @@ class ChannelHistory:
                 conn.row_factory = sqlite3.Row
                 if write:
                     conn.execute("PRAGMA foreign_keys = ON")
-                    conn.executescript("BEGIN;" + _SCHEMA + channel_threads.SCHEMA + "COMMIT;")
+                    conn.executescript("BEGIN;" + _SCHEMA + channel_threads.SCHEMA + thread_reads.SCHEMA + "COMMIT;")
                     _migrate(conn)
                 yield conn
         except sqlite3.Error as error:
@@ -359,7 +359,7 @@ class ChannelHistory:
                     return
             raise ValueError("录音回复尚未完成或重试参数发生变化")
 
-    def thread_summary(self, conn, channel, root, title, *, can_manage=False):
+    def thread_summary(self, conn, channel, root, title, *, reader, can_manage=False):
         def actor(row):
             return {"type": "person", "id": self.person_id(row["author"])}
 
@@ -383,9 +383,10 @@ class ChannelHistory:
                                  "createdAt": latest["created"]} if latest else None),
                 "participants": [{"type": "person", "id": self.person_id(person)} for person in participants],
                 "working": False, "needsYou": False, "openedByReplyAt": opened,
-                "suggestedResolved": False, "canManage": can_manage and reply_count > 0}
+                "suggestedResolved": False, "canManage": can_manage and reply_count > 0,
+                **thread_reads.info(conn, channel, root, reader, archived=bool(state.archived_at))}
 
-    def thread_page(self, titles, *, tab, limit, can_manage, cursor="", query="", person=""):
+    def thread_page(self, titles, *, tab, limit, can_manage, reader_for, cursor="", query="", person=""):
         before = ("9999", "")
         if cursor:
             try:
@@ -428,9 +429,11 @@ class ChannelHistory:
             for row in roots[:limit]:
                 channel, root = row["channel"], self.find_by_id(conn, row["id"])
                 threads.append(self.thread_summary(conn, channel, root, titles[channel],
+                                                   reader=reader_for(channel),
                                                    can_manage=can_manage(channel, root["author"])))
             last = roots[limit - 1] if len(roots) > limit else None
             return {"threads": threads, "nextCursor": f"{last['activity']}/{last['id']}" if last else None}
+
     @staticmethod
     def thread_cursor(conn, channel):
         if not channel_threads.exists(conn):
@@ -445,6 +448,16 @@ class ChannelHistory:
         return conn.execute("SELECT sequence, message, change FROM thread_lifecycle "
                             "WHERE channel = ? AND sequence > ? ORDER BY sequence LIMIT 100",
                             (channel, after)).fetchall()
+
+    def mark_thread_read(self, channel, thread, person):
+        with self.database(write=True) as conn:
+            thread_reads.mark(conn, channel, thread, person)
+
+    def unread_thread_count(self, readers):
+        if not readers:
+            return 0
+        with self.database() as conn:
+            return thread_reads.count(conn, readers)
 
     def mark_read(self, channel, actor):
         with self.database(write=True) as conn:

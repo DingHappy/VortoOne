@@ -13,6 +13,7 @@ from src.gateway.session_store import ChannelNameConflict, channel_metadata, nor
 from src.workflow.members import channel_threads
 from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _stamp
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
+from src.workflow.members.thread_reads import ThreadReader
 
 TEAM_CHANNEL_ID_PATTERN = r"ch_[a-f0-9]{32}"
 CHANNEL_CATEGORY_ID_PATTERN = r"cat_[a-f0-9]{32}"
@@ -485,6 +486,7 @@ class TeamChannels:
                 if row["thread"] is not None:
                     raise Missing("没有这个线程")
                 return self.history.thread_summary(conn, row["channel"], row, channel["title"],
+                                                   reader=self._thread_reader(actor, channel),
                                                    can_manage=self._can_manage_thread(actor, access, row["author"]))
             name = self.owner_name if row["author"] == OWNER_KEY else state["members"].get(row["author"], {}).get("name", "")
             return {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
@@ -507,6 +509,7 @@ class TeamChannels:
                 return []
             return self.history.thread_page(
                 {channel_id: channel["title"]}, tab=tab, limit=min(max(limit, 1), 100),
+                reader_for=lambda _channel: self._thread_reader(actor, channel),
                 can_manage=lambda _channel, author: self._can_manage_thread(actor, access, author),
             )["threads"]
 
@@ -531,6 +534,7 @@ class TeamChannels:
             return self.history.thread_page(
                 titles, tab=tab, limit=min(max(limit, 1), 100), cursor=cursor, query=query,
                 person=self._actor_key(actor) if mine else "",
+                reader_for=lambda cid: self._thread_reader(actor, channels[cid]),
                 can_manage=lambda channel, author: self._can_manage_thread(actor, accesses[channel], author),
             )
 
@@ -551,7 +555,27 @@ class TeamChannels:
                 else:
                     channel_threads.apply(conn, channel["id"], thread_id, self._actor_key(actor), action,
                                           _stamp(datetime.now(timezone.utc)))
-                return self.history.thread_summary(conn, channel["id"], row, channel["title"], can_manage=True)
+                return self.history.thread_summary(conn, channel["id"], row, channel["title"],
+                                                   reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def _thread_reader(self, actor, channel):
+        person = self._actor_key(actor)
+        return ThreadReader(person, channel["joined"][person])
+
+    def mark_thread_read(self, actor, thread_id):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, channel, _ = self._message_access(state, conn, actor, thread_id)
+                if row["thread"] is not None:
+                    raise Missing("没有这个话题")
+            self.history.mark_thread_read(channel["id"], thread_id, self._actor_key(actor))
+
+    def unread_thread_count(self, actor):
+        with self.registry._locked_state() as state:
+            MemberRegistry._actor(state, actor)
+            readers = {cid: self._thread_reader(actor, channel) for cid, channel in state["channels"].items()
+                       if not channel["archived"] and self._access(state, actor, channel).joined}
+            return self.history.unread_thread_count(readers)
 
     def read(self, actor, channel_id):
         with self.registry._locked_state() as state:

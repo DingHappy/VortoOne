@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 229 个，剩 **402** 个：
-- **要做：330**（其中 37 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 230 个，剩 **401** 个：
+- **要做：329**（其中 36 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -288,7 +288,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` |  |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
-### org/threads（10 个，要做 7）
+### org/threads（10 个，要做 6）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -299,7 +299,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 界面代码里没调用 |
 | ☐ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 界面代码里没调用 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
-| ☐ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | 界面代码里没调用 |
+| ☑ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | Desktop 打开话题时调用。已接团队频道话题的个人已读位置及频道、工作区两处列表的未读状态。侧栏只计有权限、已关注且未归档的话题。 |
 | ☐ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` |  |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 

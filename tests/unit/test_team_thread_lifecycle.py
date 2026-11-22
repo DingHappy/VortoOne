@@ -39,7 +39,9 @@ def test_title_tabs_and_archive_preserve_existing_history(home):
     closed = _action(owner, url, "close")
     owner_id = owner.get("/api/app/me").json()["user"]["id"]
     assert closed["state"] == "closed" and closed["closedBy"] == owner_id and closed["closedAt"]
-    assert _action(member, url, "close") == closed
+    assert not closed["following"]
+    member_closed = {**closed, "following": True}
+    assert _action(member, url, "close") == member_closed
     previous = {"body": "原回复", "threadId": root["id"], "clientId": "existing-reply", "openThread": True}
     assert member.post(f"{channel}/messages", json=previous).json() == reply
     assert owner.get(url).json() == closed
@@ -63,8 +65,8 @@ def test_title_tabs_and_archive_preserve_existing_history(home):
     assert member.get(f"{channel}/messages", params={"threadId": root["id"]}).json()["messages"] == [root, reply]
 
     restored = _action(member, url, "unarchive")
-    assert restored == closed
-    lists(member, "closed", [closed])
+    assert restored == member_closed
+    lists(member, "closed", [member_closed])
     assert _action(member, url, "reopen")["state"] == "open"
     _action(member, url, "close")
     assert owner.post(f"{channel}/messages", json={"body": "人回复会重开", "threadId": root["id"]}).status_code == 200
