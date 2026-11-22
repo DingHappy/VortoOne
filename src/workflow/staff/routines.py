@@ -124,7 +124,6 @@ class Routines:
 
     def snapshot(self, data, *, initiator=None):
         item, member, role = self.normalize(data)
-        self.check_unattended(role)        # 提议和批准时就说清，不等到点才失败
         previous = next((x for x in self.definitions() if x['id'] == item['id']), None)
         if initiator is not None:
             if previous is not None:
@@ -174,6 +173,7 @@ class Routines:
         """Trusted owner-approved helper; model tools only prepare proposals."""
         with TASK_STATE_LOCK:
             snapshot = self.snapshot(data)
+            self.check_unattended(snapshot['role_snapshot'])
             return self.apply(self.target(snapshot, instant(self.clock()).isoformat(), owner), snapshot['previous'])
 
     def control(self, routine_id, revision, *, enabled=None, retire=False):
@@ -185,7 +185,8 @@ class Routines:
             if type(retire) is not bool or enabled is not None and type(enabled) is not bool:
                 raise ValueError('启停参数无效')
             if enabled is True:
-                member, _ = self.check_binding(item)
+                member, role = self.check_binding(item)
+                self.check_unattended(role)
                 self.check_creator(item, member)
                 if self.awaiting_takeover_resume(item):
                     once = RoutineSchedule(item['schedule'], item['timezone']).once
