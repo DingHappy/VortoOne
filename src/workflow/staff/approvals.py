@@ -156,6 +156,20 @@ class StaffApprovals:
         return [self._view(item) for item in self._records()
                 if self._is_member_routine(item) and item['status'] in {'pending', 'applying'}]
 
+    def pending_routine_reviews(self):
+        """所有在等主人核对的例行工作提议：成员提交的、助理提议的、主人在界面上新建的。"""
+        return [self._view(item) for item in self._records()
+                if item['snapshot']['kind'] == 'routine' and item['status'] in {'pending', 'applying'}]
+
+    def decide_routine(self, proposal_id, approve, expected_digest, *, nonce, round, instance):
+        """主人核对后批准或拒绝一条例行工作提议；摘要、一次性标识和轮次的核对和 decide 一样。"""
+        require_owner_route(self.registry.root)
+        with TASK_STATE_LOCK:
+            item = next((row for row in self._records() if row['id'] == proposal_id), None)
+            if item is None or item['snapshot']['kind'] != 'routine':
+                raise LookupError('没有这个例行工作提议')
+            return self.decide(proposal_id, approve, expected_digest, nonce=nonce, round=round, instance=instance)
+
     def decide_member_routine(self, proposal_id, approve, expected_digest, *, nonce, round, instance):
         require_owner_route(self.registry.root)
         with TASK_STATE_LOCK:
