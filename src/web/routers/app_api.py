@@ -2887,6 +2887,37 @@ async def dismiss_question(org_id: str, question_id: str, request: Request):
     return await _question_reply(request, org_id, question_id, None)
 
 
+# ── 新建 agent 页面要的几项 ───────────────────────────────────────────────────
+
+@router.get(_ORG + "/agent-setup")
+async def new_agent_setup(org_id: str):
+    """新 agent 从哪套 AI 设置开始：这里不存上一次的设置，新 agent 都用默认模型，所以是 null。"""
+    _root(org_id)
+    return {"setup": None}
+
+
+@router.post(_ORG + "/agent-setup")
+async def apply_agent_setup(org_id: str):
+    """给一批 agent 换 AI：和 agent 的「大脑」页一样，换模型要经提议核对，这里不直接改。"""
+    _root(org_id)
+    return _error(409, "agent_setup.by_proposal", "给 agent 换模型要经提议、在审批里批准，请让助理提议")
+
+
+@router.get(_ORG + "/credentials/platform")
+async def platform_key(org_id: str):
+    """平台有没有现成的模型可用（不用自己填 Key）：就是这台服务有没有接上模型。"""
+    _root(org_id)
+    return {"available": bool(views.model_connected())}
+
+
+@router.post(_ORG + "/agents/{agent_id}/audience/mail-loss")
+async def agent_mail_loss(org_id: str, agent_id: str):
+    """改 agent 服务谁时会失去哪些人的邮箱：这里 agent 不接邮箱，所以没有。"""
+    if _agent(org_id, agent_id) is None:
+        return _error(404, "not_found", "没有这个角色")
+    return {"mailboxes": []}
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)

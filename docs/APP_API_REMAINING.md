@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 244 个，剩 **387** 个：
-- **要做：317**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 248 个，剩 **383** 个：
+- **要做：313**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -106,14 +106,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
 
-### org/agents（35 个，要做 30）
+### org/agents（35 个，要做 29）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | — | PUT | `ORG/agents/{x}/access` | `access.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☐ | GET | `ORG/agents/{x}/approval-rules` | `approvals.rules` |  |
 | ☐ | DELETE | `ORG/agents/{x}/approval-rules/{x}` | `approvals.removeRule` |  |
-| ☐ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` |  |
+| ☑ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` | agent 不接邮箱，回空列表 |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |
 | ☐ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 读已接、写没接 |
@@ -348,13 +348,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/routines/{x}/runs` | `routines.runs` |  |
 | ☐ | POST | `ORG/routines/{x}/stop` | `routines.stop` |  |
 
-### org/credentials（9 个，要做 9）
+### org/credentials（9 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/credentials` | `agents.addCredential` | 读已接、写没接 |
 | ☐ | POST | `ORG/credentials/endpoint-models` | `agents.endpointModels` |  |
-| ☐ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` |  |
+| ☑ | GET | `ORG/credentials/platform` | `agents.platformKeyAvailable` | 服务有没有接上模型 |
 | ☐ | DELETE | `ORG/credentials/{x}` | `agents.removeCredential` |  |
 | ☐ | POST | `ORG/credentials/{x}/check` | `agents.checkCredential` |  |
 | ☐ | POST | `ORG/credentials/{x}/make-default` | `agents.makeDefaultCredential` |  |
@@ -742,12 +742,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/team-templates` | `agents.teamTemplates` |  |
 | ☐ | POST | `ORG/team-templates/{x}/use` | `agents.applyTeamTemplate` |  |
 
-### org/agent-setup（2 个，要做 2）
+### org/agent-setup（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/agent-setup` | `agents.newAgentSetup` |  |
-| ☐ | POST | `ORG/agent-setup` | `agents.applySetup` |  |
+| ☑ | GET | `ORG/agent-setup` | `agents.newAgentSetup` | 不存上一次的设置，新 agent 用默认模型，回 null |
+| ☑ | POST | `ORG/agent-setup` | `agents.applySetup` | 换模型要经提议，回 409 |
 
 ### /api/app/github-app（2 个，要做 2）
 
