@@ -85,6 +85,7 @@ async def test_desktop_share_requires_local_selection_and_checks_authority_for_e
 ):
     home = private_preview
     deny_start_audit = False
+    expire_after_ack = False
     denied_attempts = []
     append_audit = computers.append_audit
 
@@ -97,6 +98,15 @@ async def test_desktop_share_requires_local_selection_and_checks_authority_for_e
         return append_audit(root, event, durable=durable)
 
     monkeypatch.setattr(computers, "append_audit", audit)
+    read_preview = BrowserPreview._read
+
+    async def read(preview, operation, *, action=None):
+        result = await read_preview(preview, operation, action=action)
+        if expire_after_ack and operation == "take_control" and result == CONTROL_READY:
+            preview.expires_at = 0
+        return result
+
+    monkeypatch.setattr(BrowserPreview, "_read", read)
     picker = tmp_path / "picker"
     selected = tmp_path / "selected"
     captured = tmp_path / "captures"
@@ -336,6 +346,21 @@ finally:
                 registry.change_group(OWNER_ACTOR, EVERYONE, computer="own_computer")
                 await no_view(desktop_url)
 
+                await send({"type": START, "generation": generation, "allow_control": True})
+                assert await state("sharing_with_control") == generation
+                expire_after_ack = True
+                async with pairer.ws_connect(desktop_url) as viewer:
+                    await viewer.receive_json(timeout=3)
+                    await pull(viewer)
+                    await viewer.send_json({"type": "take_control"})
+                    assert (await viewer.receive(timeout=3)).type == aiohttp.WSMsgType.CLOSE
+                assert await state("controlling") == generation
+                assert await state("idle") == generation
+                with desktop_lease_file(cwd) as role:
+                    assert claim_desktop(role)
+                expire_after_ack = False
+                await no_view(desktop_url)
+
                 for without_frame in (True, False):
                     await send({"type": START, "generation": generation, "allow_control": True})
                     assert await state("sharing_with_control") == generation
@@ -350,14 +375,17 @@ finally:
                             assert (await viewer.receive(timeout=3)).type == aiohttp.WSMsgType.CLOSE
                     assert await state("idle") == generation
                     await no_view(desktop_url)
-                assert inputs.read_bytes() == b"control\nclick\ntext\ntext\ncontrol\ncontrol\n"
+                assert inputs.read_bytes() == b"control\nclick\ntext\ntext\ncontrol\ncontrol\ncontrol\n"
 
                 audit = (state_dir(home["root"]) / "audit.log").read_text()
                 events = [event for line in audit.splitlines()
                           if (event := json.loads(line)).get("operation_kind") == "interact"]
-                assert [(event["operation"], event["decision"]) for event in events] == [
-                    ("接管私有桌面", "allowed"), ("结束私有桌面接管", "denied"),
-                ] + [("接管私有桌面", "allowed"), ("结束私有桌面接管", "allowed")] * 3
+                attempt = ("接管私有桌面", "allowed")
+                ended = [attempt, ("结束私有桌面接管", "allowed")]
+                refused = [attempt, ("结束私有桌面接管", "denied")]
+                assert [(event["operation"], event["decision"]) for event in events] == (
+                    refused + ended + refused + ended * 2
+                )
                 assert all(set(event) == {"id", "ts", "category", "decision", "decision_source", "operation",
                                           "operation_kind", "actor_id", "connector_id", "surface_id"} for event in events)
         finally:
