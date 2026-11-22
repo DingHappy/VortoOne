@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-62u09a5WQOOL3f1w7Of/mLuWMwrdaob+6qSmT6Ee6I8='; style-src 'sha256-/HL8gnNO0GkcmGXkiCGo5kXa8cyy4476Pxm+CEAN2k8='; img-src data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="x-dns-prefetch-control" content="off">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+body { margin: 0; }
+#preview { padding: 16px; overflow-wrap: anywhere; }
+#preview > :first-child { margin-block-start: 0; }
+pre { overflow: auto; }
+img { max-width: 100%; height: auto; }
+table { border-collapse: collapse; max-width: 100%; }
+th, td { border: 1px solid GrayText; padding: 4px 8px; text-align: start; }
+blockquote { margin-inline: 0; padding-inline-start: 12px; border-inline-start: 3px solid GrayText; }
+</style>
+</head>
+<body>
+<main id="preview"></main>
+<script>
+(() => {
+  if (window === window.parent) return;
+  const parentOrigin = new URL(window.location.href).origin;
+  const preview = document.getElementById("preview");
+  const htmlNamespace = "http://www.w3.org/1999/xhtml";
+  const safeTags = new Set((
+    "a abbr article aside b bdi bdo blockquote br caption cite code col colgroup dd del details div dl dt em " +
+    "figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i img kbd li main mark nav ol p pre q s samp " +
+    "section small span strong sub summary sup table tbody td tfoot th thead time tr u ul var"
+  ).split(" "));
+  const maxHtmlLength = 16 * 1024 * 1024;
+  const maxNodes = 15000;
+  const maxDepth = 96;
+  const rasterData = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/i;
+
+  function render(html) {
+    // Parsing in a template does not activate scripts, navigations or resource loads. Never attach its nodes.
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const fragment = document.createDocumentFragment();
+    let visited = 0;
+
+    function copy(node, destination, depth) {
+      if (++visited > maxNodes || depth > maxDepth) throw new Error("Preview limit reached");
+      if (node.nodeType === Node.TEXT_NODE) {
+        destination.append(document.createTextNode(node.data));
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE || node.namespaceURI !== htmlNamespace || !safeTags.has(node.localName))
+        return;
+      const tag = node.localName;
+      const element = document.createElement(tag === "a" ? "span" : tag);
+      for (const key of ["aria-label", "title", "lang", "dir"]) {
+        const value = node.getAttribute(key);
+        if (value !== null) element.setAttribute(key, value);
+      }
+      if (tag === "img") {
+        const src = node.getAttribute("src");
+        if (!src || !rasterData.test(src)) return;
+        element.setAttribute("src", src);
+        element.setAttribute("alt", node.getAttribute("alt") || "");
+      }
+      if (tag === "td" || tag === "th") {
+        for (const key of ["colspan", "rowspan"]) {
+          const value = node.getAttribute(key);
+          if (value && /^[1-9][0-9]{0,2}$/.test(value)) element.setAttribute(key, value);
+        }
+      }
+      for (const child of node.childNodes) copy(child, element, depth + 1);
+      destination.append(element);
+    }
+
+    for (const node of template.content.childNodes) copy(node, fragment, 0);
+    preview.replaceChildren(fragment);
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window.parent || event.origin !== parentOrigin) return;
+    const message = event.data;
+    function reply(status) {
+      window.parent.postMessage({ vortooneArtifactPreview: status }, parentOrigin);
+    }
+    if (message?.vortooneArtifactPreview === "probe") {
+      reply("ready");
+      return;
+    }
+    if (message?.vortooneArtifactPreview !== "render" || typeof message.html !== "string") return;
+    try {
+      if (message.html.length > maxHtmlLength) throw new Error("Preview limit reached");
+      render(message.html);
+    } catch {
+      preview.replaceChildren();
+      reply("failed");
+    }
+  });
+})();
+</script>
+</body>
+</html>
