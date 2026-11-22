@@ -1,13 +1,13 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 276 个，剩 **355** 个：
-客户端合同里一共 631 个不重复接口，后端已接 277 个，剩 **354** 个：
-- **要做：279**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 279 个，剩 **352** 个：
+- **要做：277**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
-- **按已定决定不做：12**
+- **按已定决定不做：13**
+- **暂缓：4**（投票、选项卡）
 
-表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办或已定不做。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
 ## 怎么核对
 
@@ -112,8 +112,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | — | PUT | `ORG/agents/{x}/access` | `access.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
-| ☐ | GET | `ORG/agents/{x}/approval-rules` | `approvals.rules` |  |
-| ☐ | DELETE | `ORG/agents/{x}/approval-rules/{x}` | `approvals.removeRule` |  |
+| ☑ | GET | `ORG/agents/{x}/approval-rules` | `approvals.rules` | 没有按 agent 存的放行规则（只认主人的授权档位），是空的 |
+| ☑ | DELETE | `ORG/agents/{x}/approval-rules/{x}` | `approvals.removeRule` | 同上，一律 404 |
 | ☑ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` | agent 不接邮箱，回空列表 |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |

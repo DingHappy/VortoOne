@@ -441,11 +441,35 @@ STAFF_PROPOSAL_PREFIX = "staff-proposal-"
 _PROPOSAL_KINDS = {"member": "新建 agent", "role": "岗位", "routine": "例行工作", "department": "部门",
                    "bundle": "开通单", "routine_migration": "例行工作迁移"}
 _OPERATION_WORDS = {"read": "读", "own_data": "改主人自己的资料", "draft": "起草", "write": "写",
-                    "execute": "执行命令", "interact": "操作界面"}
+                    "execute": "执行命令", "interact": "操作界面", "deliver": "对外发送", "irreversible": "做不可撤销的事"}
+STAFF_ACTION_PREFIX = "staff-action-"
+
+
+def staff_action_approval(root: str, task: Any, card: Dict[str, Any], *, status: str = "pending") -> Dict[str, Any]:
+    """agent 在后台干活时停下来等批准的那一步，整理成界面的审批。
+    id 带着摘要前缀：卡片内容变了（比如换成下一步），旧 id 就批不了。"""
+    p = card["payload"]
+    agent = member_agent_id(root, str(p.get("member") or ""))
+    kind = str(p.get("kind") or "")
+    detail = str(p.get("message") or "")
+    if p.get("tainted"):
+        detail = "⚠️ 这件事读取过外部内容（网页、搜索或外部工具），请确认这一步确实是你要它做的。\n\n" + detail
+    detail += f"\n\n这件事：{str(task.prompt or '')[:300]}"
+    return {"id": f"{p['id']}~{card['digest'][:16]}", "runId": task.id, "agentId": agent,
+            "channelId": dm_channel_id(agent), "threadId": message_id(task.id, "user"), "messageId": None,
+            "tool": str(p.get("tool") or ""), "scope": kind,
+            "title": f"{p.get('member_name') or 'agent'} 要{_OPERATION_WORDS.get(kind, kind)}：{p.get('tool') or ''}"[:120],
+            "detail": detail, "params": {}, "status": status,
+            "expiresAt": _iso(p.get("expires_at")), "createdAt": _iso(p.get("created")),
+            "decidedByUserId": owner_id(root) if status != "pending" else None,
+            "decidedAt": now_iso() if status != "pending" else None, "reason": None,
+            "canDecide": status == "pending", "routine": False}
 
 
 def _grants_text(grants: Dict[str, Any]) -> str:
     grants = grants if isinstance(grants, dict) else {}
+    if grants.get("full") is True:
+        return "能做：和主助理一样的全部能力（危险操作按你的授权规则自动放行或等你批准）"
     operations = "、".join(_OPERATION_WORDS.get(str(op), str(op)) for op in grants.get("operations") or []) or "无"
     tools = "、".join(str(tool) for tool in grants.get("tools") or []) or "无"
     return (f"能做：{operations}；工具：{tools}；联网：{'是' if grants.get('web') else '否'}；"
@@ -832,7 +856,8 @@ def member_runs(root: str, member_id: str, conversation: Optional[Dict[str, Any]
     agent = member_agent_id(root, member_id)
     return [{"runId": task["id"], "agentId": agent, "channelId": dm_channel_id(agent),
              "threadId": message_id(task["id"], "user"), "triggerMessageId": message_id(task["id"], "user"),
-             "status": "running" if task.get("status") == "running" else "queued",
+             # 停下来等批准的也是在办（blocked），不是还没开始
+             "status": "running" if task.get("status") in {"running", "blocked"} else "queued",
              "startedAt": _iso(task.get("created")), "createdAt": _iso(task.get("created"))}
             for task in conversation["tasks"] if task.get("status") in ACTIVE_TASK]
 
@@ -1244,6 +1269,8 @@ def agent_access(root: str, agent_id: str) -> Dict[str, Any]:
         return {"all": False, "builtins": [], "connectors": []}
     role = next((r for r in _staff(root).get("roles") or [] if r.get("id") == member.get("role")), None) or {}
     grants = role.get("grants") or {}
+    if grants.get("full") is True:       # 完整能力：和主助理同一套工具，登记里不逐个列
+        return {"all": True, "builtins": [], "connectors": []}
     read_only = set(grants.get("operations") or []) <= {"read"}
     scope = f"role:{role.get('id') or ''}"
     tools = [{"name": str(name), "label": str(name), "description": "", "readOnly": read_only,
