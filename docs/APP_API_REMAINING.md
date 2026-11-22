@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 297 个，剩 **334** 个：
-- **要做：259**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 298 个，剩 **333** 个：
+- **要做：258**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -631,12 +631,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/reminders` | `reminders.create` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 界面代码里没调用 |
 
-### /api/app/me（3 个，要做 2）
+### /api/app/me（3 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `/api/app/me/password` | `account.addPassword` |  |
-| ☐ | GET | `/api/app/me/unread` | `account.unread` |  |
+| ☑ | GET | `/api/app/me/unread` | `account.unread` | 按当前账号汇总未静音频道的新消息和已关注话题。所有者另外计入自己的通知；等待数沿用通知收件箱口径。 |
 | ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
 ### org/deletion（3 个，要做 3）
