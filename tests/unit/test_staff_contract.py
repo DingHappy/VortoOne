@@ -518,9 +518,11 @@ async def test_actual_member_assembly_runs_without_inheriting_owner_memory(tmp_p
             assert execution_ref.task_id == task.id and execution_ref.backend_id == 'vortocode'
             captured.append((prompt, mode))
             return '独立结论'
-    def factory(root, assigned, person, *, check, on_tool_event):
+    def factory(root, assigned, person, *, check, on_tool_event, extra_tools):
         check()
         assert assigned == registry.role('reader') and person == member
+        # 唯一多出来的是问交代人一个问题的工具，不带任何审批或授权
+        assert [tool.name for tool in extra_tools] == ['ask_person'] and extra_tools[0].operation_kind == 'read'
         return Agent()
     monkeypatch.setattr(staff, 'build_staff_member', factory)
     service.execute = lambda current, work, assigned, person, check: staff.execute_staff(
