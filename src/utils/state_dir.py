@@ -231,6 +231,7 @@ _STATE_ENTRIES = [
     "cron_state.json",
     "followups.json",
     "app_prefs.json",
+    "profile-avatars/",
     "board.sqlite3",
     "wiki/",
     "provider_keys.json",

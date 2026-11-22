@@ -25,7 +25,7 @@ from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.web import (
     app_board, app_channels, app_gifs, app_members, app_notice_inbox, app_personal_vault,
-    app_prefs, app_schedule, app_staff, app_voice, member_auth,
+    app_prefs, app_profile_avatar, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
@@ -555,6 +555,99 @@ async def people(org_id: str, request: Request, response: Response):
         return _error(403, "forbidden", _NOT_MEMBER)
     response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: {"people": app_members.people(root, who)})
+
+
+_AVATAR_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+
+
+def _avatar_error(status: int, code: str, message: str) -> JSONResponse:
+    result = _error(status, code, message)
+    result.headers.update(_AVATAR_HEADERS)
+    return result
+
+
+def _avatar_actor(request: Request, root: str):
+    who = _who(request, root)
+    return who if who and (not who.is_owner or app_staff.owner_proof(request)) else None
+
+
+async def _avatar_body(request: Request):
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise ValueError("头像上传需要 JSON 正文")
+    limit = app_profile_avatar.MAX_REQUEST_BYTES
+    try:
+        declared = int(request.headers.get("content-length", "0"))
+    except ValueError as error:
+        raise ValueError("头像正文长度无效") from error
+    if declared < 0:
+        raise ValueError("头像正文长度无效")
+    if declared > limit:
+        raise app_profile_avatar.AvatarTooLarge("头像最大 768 KiB")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > limit:
+            raise app_profile_avatar.AvatarTooLarge("头像最大 768 KiB")
+        raw.extend(chunk)
+    try:
+        return json.loads(raw)
+    except (ValueError, RecursionError) as error:
+        raise ValueError("头像 JSON 无效") from error
+
+
+@router.put(_ORG + "/me/avatar")
+async def set_person_avatar(org_id: str, request: Request, response: Response):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    who = _avatar_actor(request, root)
+    if who is None:
+        return _avatar_error(403, "forbidden", "更改头像需要已认证的空间成员")
+    try:
+        body = await _avatar_body(request)
+        avatar_url = await asyncio.to_thread(app_profile_avatar.set_avatar, root, org_id, who.id, body)
+    except app_profile_avatar.AvatarTooLarge as error:
+        return _avatar_error(413, "avatar_too_large", str(error))
+    except ValueError as error:
+        return _avatar_error(400, "invalid", str(error))
+    except (OSError, HomeMaintenanceError):
+        return _avatar_error(409, "unavailable", "无法保存头像")
+    response.headers.update(_AVATAR_HEADERS)
+    return {"avatarUrl": avatar_url}
+
+
+@router.delete(_ORG + "/me/avatar", status_code=204)
+async def delete_person_avatar(org_id: str, request: Request):
+    from src.utils.home_maintenance import HomeMaintenanceError
+
+    root = _root(org_id)
+    who = _avatar_actor(request, root)
+    if who is None:
+        return _avatar_error(403, "forbidden", "更改头像需要已认证的空间成员")
+    try:
+        await asyncio.to_thread(app_profile_avatar.remove_avatar, root, who.id)
+    except (OSError, HomeMaintenanceError):
+        return _avatar_error(409, "unavailable", "无法删除头像")
+    return Response(status_code=204, headers=_AVATAR_HEADERS)
+
+
+@router.get(_ORG + "/people/{person_id}/avatar")
+async def person_avatar(org_id: str, person_id: str, request: Request, v: str = Query("", max_length=24)):
+    from src.workflow.members.registry import Damaged, Missing
+
+    root = _root(org_id)
+    if _avatar_actor(request, root) is None:
+        return _avatar_error(403, "forbidden", "读取头像需要已认证的空间成员")
+    try:
+        if person_id != views.owner_id(root):
+            await asyncio.to_thread(MemberRegistry(root).standing, person_id)
+        content_type, data = await asyncio.to_thread(app_profile_avatar.media, root, person_id, v)
+    except (Missing, FileNotFoundError):
+        return _avatar_error(404, "not_found", "没有这个头像")
+    except (Damaged, OSError, ValueError):
+        return _avatar_error(409, "unavailable", "无法读取头像")
+    headers = {**_AVATAR_HEADERS, "Cross-Origin-Resource-Policy": "same-origin"}
+    return Response(data, media_type=content_type, headers=headers)
 
 
 @router.put(_ORG + "/me/status")

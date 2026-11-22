@@ -220,9 +220,12 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 
 def me(root: str) -> Dict[str, Any]:
+    from src.web import app_profile_avatar
+
     card = _owner_card(root)
+    avatar = app_profile_avatar.current(root, home_id(root), owner_id(root))
     return {
-        "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
+        "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": avatar,
                  **ui_locale(root, owner_id(root))},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
@@ -241,8 +244,12 @@ def ui_locale(root: str, account_key: str) -> Dict[str, Any]:
 
 
 def person(root: str) -> Dict[str, Any]:
+    from src.web import app_profile_avatar
+
     card = _owner_card(root)
+    avatar = app_profile_avatar.current(root, home_id(root), owner_id(root))
     return {"userId": owner_id(root), "name": card["name"], "email": card["email"], "image": None, "role": "owner",
+            "avatarUrl": avatar,
             "joinedAt": _home_created(root), "handle": "owner", "timezone": _timezone(root)}
 
 
