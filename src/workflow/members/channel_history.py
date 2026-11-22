@@ -330,6 +330,20 @@ class ChannelHistory:
             return [self.message(row, viewer, reactions=reactions.get(row["id"])) for row in rows]
 
     @staticmethod
+    def search(conn, channels, needle, *, after="", before="", oldest=False, limit=20):
+        """在这几个频道里按子串找消息（不分大小写），默认新的在前。语音没有文字，找不到。"""
+        if conn is None or not channels or not needle:
+            return []
+        marks = ",".join("?" * len(channels))
+        escaped = needle.casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = conn.execute(
+            f"SELECT m.*, p.message IS NOT NULL AS pinned FROM messages m LEFT JOIN pins p ON p.message = m.id "
+            f"WHERE m.channel IN ({marks}) AND lower(m.body) LIKE ? ESCAPE '\\' AND m.created >= ? AND m.created < ? "
+            f"ORDER BY m.sequence {'ASC' if oldest else 'DESC'} LIMIT ?",
+            (*channels, f"%{escaped}%", after or "", before or "9999", limit)).fetchall()
+        return list(rows)
+
+    @staticmethod
     def latest_sequence(conn, channel):
         if conn is None:
             return 0

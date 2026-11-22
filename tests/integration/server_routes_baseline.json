@@ -3498,6 +3498,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/questions/{question_id}/answer",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/questions/{question_id}/dismiss",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines/describe-rule",
     "methods": [
       "POST"
@@ -3513,6 +3525,12 @@
     "path": "/api/app/organizations/{org_id}/routines/parse-schedule",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/search",
+    "methods": [
+      "GET"
     ]
   },
   {
