@@ -123,7 +123,7 @@ class ArtifactTrash(ArtifactStore):
                     rows.append((meta, deleted, purge_at))
         return sorted(rows, key=lambda row: (row[1], row[0]["id"]), reverse=True)
 
-    def restore(self, artifact_id: str) -> Literal["not_found", "purged", "restored"]:
+    def restore(self, artifact_id: str) -> Literal["not_found", "expired", "purged", "restored"]:
         aid = self._safe_id(artifact_id)
         if not aid or not self._trash_root.is_dir():
             return "not_found"
@@ -134,11 +134,14 @@ class ArtifactTrash(ArtifactStore):
             entry, deleted = stored
             payload = self._payload(entry)
             active = self._dir(aid)
+            expired = _now() >= deleted + _RETENTION
             if not payload.exists():
                 # A process may have stopped after making the timestamp directory but before the move.
-                return "not_found" if active.exists() else "purged"
-            if _now() >= deleted + _RETENTION:
-                return "purged"
+                if active.exists():
+                    return "not_found"
+                return "expired" if expired else "purged"
+            if expired:
+                return "expired"
             if (self._read_meta(payload) or {}).get("id") != aid:
                 raise OSError("回收站制品没有有效元数据")
             if active.exists() or active.is_symlink():

@@ -66,7 +66,7 @@ def test_owner_purges_only_trashed_artifacts_and_cannot_undo_afterward(home):
     assert not list((store.root.parent / "artifact-trash").rglob("*.html"))
     assert owner.delete(purge).status_code == 404
     rejected = owner.post(restore, json={})
-    assert rejected.status_code == 409 and rejected.json()["error"]["code"] == "artifact.purged"
+    assert rejected.status_code == 410 and rejected.json()["error"]["code"] == "artifact.permanently_deleted"
 
 
 def test_expiry_is_exact_and_reclaims_both_versions_on_next_trash_visit(home, monkeypatch):
@@ -159,7 +159,7 @@ def test_interrupted_permanent_delete_cannot_be_undone_and_can_finish_on_retry(h
         failure.setattr(shutil, "rmtree", fail)
         assert owner.delete(f"{base}/artifacts-trash/report").status_code == 503
         rejected = owner.post(f"{base}/artifacts/report/restore", json={})
-        assert rejected.status_code == 409 and rejected.json()["error"]["code"] == "artifact.purged"
+        assert rejected.status_code == 410 and rejected.json()["error"]["code"] == "artifact.permanently_deleted"
     assert owner.delete(f"{base}/artifacts-trash/report").status_code == 204
     assert owner.get(f"{base}/artifacts-trash").json() == {"files": []}
     assert not list((store.root.parent / "artifact-trash").rglob("*.html"))
@@ -199,7 +199,7 @@ def test_workspace_maintenance_blocks_trash_moves_and_expired_byte_cleanup(home,
             owner.get(f"{base}/artifacts-trash"),
         ]
         assert [(response.status_code, response.json()["error"]["code"]) for response in responses] == [
-            (409, "unavailable"), (409, "unavailable"), (409, "unavailable"), (409, "unavailable"),
+            (423, "unavailable"), (423, "unavailable"), (423, "unavailable"), (423, "unavailable"),
         ]
         assert {path.relative_to(trash_root): path.read_bytes() for path in trash_root.rglob("*.html")} == before
         assert store.html("active") == "<p>active payload</p>"

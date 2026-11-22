@@ -3847,7 +3847,8 @@ def _apply_to_artifact_trash(root: str, action, *args):
 
 
 def _artifact_trash_busy():
-    return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+    # Drive Undo interprets 409 as expiry.
+    return _error(423, "unavailable", "工作区正在处理其他变更，请稍后重试")
 
 
 async def _artifact_trash_owner(request: Request, root: str):
@@ -3891,8 +3892,10 @@ async def restore_artifact(org_id: str, artifact_id: str, request: Request):
         return _error(422, "artifact.restore_id_taken", str(error))
     except OSError:
         return _error(503, "unavailable", "无法恢复这个制品")
+    if outcome == "expired":
+        return _error(409, "artifact.purged", "这个制品已超过 30 天还原期限")
     if outcome == "purged":
-        return _error(409, "artifact.purged", "这个制品已被永久删除")
+        return _error(410, "artifact.permanently_deleted", "这个制品已被永久删除")
     return Response(status_code=204) if outcome == "restored" else _error(404, "not_found", "没有这个制品")
 
 
