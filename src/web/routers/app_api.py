@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 from contextlib import suppress
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
@@ -4372,6 +4373,47 @@ async def duplicate_routine(org_id: str, routine_id: str, body: _RoutineCopyInpu
         return _error(409, "routine.copy_unavailable", str(error))
     except OSError:
         return _error(409, "unavailable", "暂时无法保存例行工作副本")
+
+
+def _routine_row(root: str, routine_id: str):
+    return next((row for row in views.routines(root) if row["id"] == routine_id), None)
+
+
+@router.post(_ORG + "/routines/{routine_id}/run")
+async def run_routine(org_id: str, routine_id: str, request: Request):
+    """立即运行一次：不改排期和启停。先核对再派，点一下按钮不会把它停摆（派发失败会让它等主人核对）。
+    留在事件循环线程里：派活要把任务登记进执行池。"""
+    from src.scheduling.staff_runner import get_staff_service
+    from src.workflow.staff.routines import Routines
+    from src.workflow.tasks.tasks import TaskLedger
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "立即运行例行工作需要已认证的所有者")
+    try:
+        registry = Routines(root)
+        item = next((x for x in registry.list() if x["id"] == routine_id and not x["retired"]), None)
+        if item is None:
+            return _error(404, "not_found", "没有这条例行工作")
+        if item["state"].get("error"):
+            return _error(409, "routine.needs_review", f"它停着等你核对：{item['state']['error']}")
+        if registry.awaiting_takeover_resume(item):
+            return _error(409, "routine.needs_review", "接手以后要先恢复它，才能运行")
+        current = TaskLedger(root).load(item["state"]["task"]) if item["state"].get("task") else None
+        if current is not None and current.status in views.ACTIVE_TASK:
+            return _error(409, "routine.running", "它正在运行，没有再派一次")
+        if (current is not None and current.status == "done" and item["delivery"] == "review"
+                and current.collaboration.get("review") != "accepted"):
+            return _error(409, "routine.awaiting_review", "上一次的结果还等你验收，验收以后才能再运行")
+        registry.check_creator(item)
+        _member, role = registry.check_binding(item)
+        registry.check_unattended(role)
+        started = registry.dispatch(get_staff_service(root), datetime.now().astimezone(), only=routine_id, manual=True)
+        if not started:
+            reason = registry.get(routine_id)["state"].get("error")
+            return _error(409, "routine.not_started", f"没能运行：{reason or '它的状态刚刚变了，请刷新'}")
+        return _routine_row(root, routine_id)
+    except (ValueError, OSError) as error:
+        return _error(409, "routine.unavailable", str(error))
 
 
 @router.get(_ORG + "/routines/proposals/review")

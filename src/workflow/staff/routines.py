@@ -115,6 +115,13 @@ class Routines:
                 'enabled': item.get('enabled', True), 'revision': item.get('revision', 1),
                 'token_budget': item.get('token_budget', 0)}, member, role
 
+    @staticmethod
+    def check_unattended(role):
+        from src.workflow.staff.roles import is_full
+        if is_full(role):
+            raise ValueError('这个 agent 是完整能力，例行工作无人值守、不用完整能力：登记了到点也不会执行。'
+                             '请交给只读或公开资料的 agent（ADR-021）')
+
     def snapshot(self, data, *, initiator=None):
         item, member, role = self.normalize(data)
         previous = next((x for x in self.definitions() if x['id'] == item['id']), None)
@@ -166,6 +173,7 @@ class Routines:
         """Trusted owner-approved helper; model tools only prepare proposals."""
         with TASK_STATE_LOCK:
             snapshot = self.snapshot(data)
+            self.check_unattended(snapshot['role_snapshot'])
             return self.apply(self.target(snapshot, instant(self.clock()).isoformat(), owner), snapshot['previous'])
 
     def control(self, routine_id, revision, *, enabled=None, retire=False):
@@ -177,7 +185,8 @@ class Routines:
             if type(retire) is not bool or enabled is not None and type(enabled) is not bool:
                 raise ValueError('启停参数无效')
             if enabled is True:
-                member, _ = self.check_binding(item)
+                member, role = self.check_binding(item)
+                self.check_unattended(role)
                 self.check_creator(item, member)
                 if self.awaiting_takeover_resume(item):
                     once = RoutineSchedule(item['schedule'], item['timezone']).once

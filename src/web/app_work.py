@@ -46,12 +46,17 @@ def _split(root: str) -> tuple[List[Any], List[Any]]:
     return mine, others
 
 
+def _on_budget(task: Any) -> bool:
+    """停下来等额度：不是在干活，也不是等人。"""
+    return task.status == "blocked" and (task.collaboration.get("quota") or {}).get("status") == "waiting"
+
+
 def _status(task: Any, approving: Collection[str], question: Optional[Dict[str, Any]]) -> Optional[str]:
     """还没完的事现在是什么状态；完了是 None。"""
     if task.status == "queued":
         return "queued"
     if task.status in views.ACTIVE_TASK:
-        return "waiting_approval" if task.id in approving else "running"
+        return "waiting_approval" if task.id in approving else "waiting_input" if _on_budget(task) else "running"
     return "waiting_input" if question is not None else None
 
 
@@ -108,12 +113,15 @@ def task_manager(root: str, main: List[Dict[str, Any]], approving: Collection[st
             created, changed = views._iso(task.created), views._iso(task.updated or task.created)
             place = _place(root, task)
             if status is not None:
-                card = views.message_id(task.id, "assistant") if status == "waiting_input" else None
+                held = status == "waiting_input" and _on_budget(task)
+                card = views.message_id(task.id, "assistant") if status == "waiting_input" and not held else None
                 row = {**place, "status": status, "createdAt": created,
                        "startedAt": None if status == "queued" else created}
-                tasks.append(managed(row, engines.get(str(task.collaboration["dispatch"]["member"])),
-                                     created if status in {"queued", "running"} else changed,
-                                     stop=task.status in views.ACTIVE_TASK, card=card))
+                shown = managed(row, engines.get(str(task.collaboration["dispatch"]["member"])),
+                                created if status in {"queued", "running"} else changed,
+                                stop=task.status in views.ACTIVE_TASK, card=card)
+                # 等额度按界面契约：held 说明在等什么，work 留空（不算等你）
+                tasks.append({**shown, "held": "budget", "work": None} if held else shown)
             elif datetime.fromisoformat(changed.replace("Z", "+00:00")) >= since:
                 how = "done" if task.status in _DONE else "canceled" if task.status == "cancelled" else "failed"
                 finished_ok += how == "done"
