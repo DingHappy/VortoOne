@@ -512,15 +512,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` |  |
 | ☐ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` |  |
 
-### org/storage（5 个，要做 5）
+### org/storage（5 个，要做 4）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/storage` | `storage.get` |  |
-| ☐ | PUT | `ORG/storage` | `storage.save` |  |
-| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` |  |
-| ☐ | GET | `ORG/storage/migration` | `storage.migration` |  |
-| ☐ | POST | `ORG/storage/test` | `storage.test` |  |
+| ☑ | GET | `ORG/storage` | `storage.get` | 显示当前服务器磁盘状态，仅所有者可读 |
+| ☐ | PUT | `ORG/storage` | `storage.save` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☐ | GET | `ORG/storage/migration` | `storage.migration` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☐ | POST | `ORG/storage/test` | `storage.test` | 当前仅用服务器磁盘，接口明确拒绝 |
 
 ### org/notifications（5 个，要做 0）
 
