@@ -550,6 +550,23 @@ class LLMClient:
     """LLM 客户端 - OpenAI 兼容接口，带连接池复用"""
 
     def __init__(self, config: Optional[LLMConfig] = None):
+        from src.llm import endpoints
+        # 地址和 key 必须出自同一刻的环境：所有者可能正在另一个线程里换默认端点
+        with endpoints.LOCK:
+            self._configure(config)
+            self._generation = endpoints.generation()
+            self._default_model = LLMConfig().model
+        # 没给配置 = 用这个家的默认端点：默认换了就跟着换。点名了端点（use_endpoint）就不再跟。
+        self._default_client = config is None
+        self._follows_default = self._default_client
+
+        self._client: Optional[Any] = None  # 懒加载 AsyncOpenAI 单例
+        self._client_lock = asyncio.Lock()
+        # use_endpoint 切走前的原端点；None = 从没切过（reset_endpoint 因此是空操作）。
+        self._home_endpoint: Optional[tuple] = None
+        self._stale_clients: list = []
+
+    def _configure(self, config: Optional[LLMConfig]) -> None:
         self.config = config or LLMConfig()
 
         # 从环境变量读取配置
@@ -566,11 +583,42 @@ class LLMClient:
                 "OPENAI_API_BASE", DEFAULT_LLM_BASE_URL
             )
 
-        self._client: Optional[Any] = None  # 懒加载 AsyncOpenAI 单例
-        self._client_lock = asyncio.Lock()
-        # use_endpoint 切走前的原端点；None = 从没切过（reset_endpoint 因此是空操作）。
-        self._home_endpoint: Optional[tuple] = None
-        self._stale_clients: list = []
+    def _move(self, base_url: str, api_key: str) -> None:
+        if (base_url, api_key) == (self.config.base_url, self.config.api_key):
+            return
+        self.config.base_url, self.config.api_key = base_url, api_key
+        if self._client is not None:
+            self._stale_clients.append(self._client)
+            self._client = None
+
+    def _follow_default(self) -> None:
+        """默认端点换过就跟上。模型名：用着默认模型的跟着换；手动选的同一地址上不动，地址变了也得换
+        （旧端点的模型名在新端点上没有意义）。"""
+        from src.llm import endpoints
+        from src.llm.providers import DEFAULT_PROVIDER, providers
+        with endpoints.LOCK:
+            if not self._follows_default or self._generation == endpoints.generation():
+                return
+            target, model = providers()[DEFAULT_PROVIDER], LLMConfig().model
+            self._generation = endpoints.generation()
+            if (self.config.model == self._default_model
+                    or target.base_url.rstrip("/") != self.config.base_url.rstrip("/")):
+                self.config.model = model
+            self._default_model = model
+            self._move(target.base_url, target.api_key)
+
+    def _prepare_request(self, model: Optional[str] = None) -> None:
+        """每个请求发出之前：端点还有效才发，绝不改发给另一家。"""
+        from src.llm import endpoints
+        self._follow_default()
+        requested = model or self.config.model
+        if endpoints.is_endpoint_model(requested):
+            # 端点模型的写法在 set_model 里解析；还原样留到这里，说明那个端点不能用了
+            raise endpoints.EndpointUnavailable(endpoints.UNAVAILABLE)
+        pair = (self.config.base_url, self.config.api_key)
+        now = endpoints.resolve(pair)
+        if now != pair:
+            self._move(*now)
 
     def use_endpoint(self, base_url: str, api_key: str) -> None:
         """换到另一个端点（另一家供应商）。旧连接池在下次取客户端时关闭。
@@ -578,22 +626,21 @@ class LLMClient:
         记住第一次切走前的端点，`reset_endpoint` 据此切回——不去猜"默认"是什么，
         这样由角色/委派传进来的专属客户端也能原样恢复。
         """
+        # 点名的端点恰好就是当前默认的也算点名：以后默认换了，它不跟着走
+        self._follows_default = False
         if (base_url, api_key) == (self.config.base_url, self.config.api_key):
             return
         if self._home_endpoint is None:
             self._home_endpoint = (self.config.base_url, self.config.api_key)
-        self.config.base_url, self.config.api_key = base_url, api_key
-        if self._client is not None:
-            self._stale_clients.append(self._client)
-            self._client = None
+        self._move(base_url, api_key)
 
     def reset_endpoint(self) -> None:
         """切回 use_endpoint 之前的端点；没切过就什么都不做。"""
-        if self._home_endpoint is None:
-            return
-        home, self._home_endpoint = self._home_endpoint, None
-        self.use_endpoint(*home)
-        self._home_endpoint = None
+        if self._home_endpoint is not None:
+            home, self._home_endpoint = self._home_endpoint, None
+            self._move(*home)
+        self._follows_default = self._default_client
+        self._follow_default()
 
     async def _get_client(self) -> Any:
         """获取或创建 AsyncOpenAI 单例（连接池复用）"""
@@ -649,6 +696,7 @@ class LLMClient:
                     f"且未配置可用的视觉模型（VORTOONE_VISION_MODEL）]")
             return _append_note(stripped, note)
 
+        self._prepare_request(vm)
         client = await self._get_client()
         parts: list = [{"type": "text", "text":
                         "逐张客观描述这些图片：文字原样转录，图表说清结构与数值，"
@@ -682,6 +730,7 @@ class LLMClient:
         给了 tools（OpenAI function schema 列表）则启用原生 function-calling，
         返回里多一个 tool_calls 字段（[{id,name,arguments}, ...] 或 None）。
         """
+        self._prepare_request(model)
         client = await self._get_client()
 
         if client is None:
@@ -757,6 +806,7 @@ class LLMClient:
 
         on_reasoning：可选侧信道回调——推理型模型（DeepSeek-R1/mimo 等）的思维链增量
         （delta.reasoning_content）会走它，不混进正文 yield。通用：靠 getattr 探测，无则不触发。"""
+        self._prepare_request(model)
         client = await self._get_client()
 
         if client is None:
@@ -828,6 +878,7 @@ class LLMClient:
         调用则抑制"对齐；也保证 CLI 的累计偏移只在最终步推进）。思维链增量走 on_reasoning，不混进正文。
         无 openai 库且不带 tools → 回退非流式 chat；带 tools 时明确报依赖缺失，不静默丢工具合同。
         """
+        self._prepare_request(model)
         client = await self._get_client()
         if client is None:                     # 无 openai 库：降级路径不支持流式/原生 tools
             return await self.chat(messages, model, temperature, tools=tools)
@@ -1006,6 +1057,7 @@ class LLMClient:
         """
         import aiohttp
 
+        self._prepare_request()
         url = f"{self.config.base_url}/models"
         headers = {}
         if self.config.api_key:
@@ -1045,6 +1097,7 @@ class LLMClient:
         }
         if voice:
             payload["voice"] = voice
+        self._prepare_request(payload["model"])
         url = f"{self.config.base_url}/chat/completions"
         headers = {"Content-Type": "application/json",
                    "Authorization": f"Bearer {self.config.api_key}"}
@@ -1090,11 +1143,17 @@ def get_llm_client(model_tier: str = "balanced") -> LLMClient:
         return _client_cache[model_tier]
 
     model_info = MODELS.get(model_tier, MODELS["balanced"])
-    config = LLMConfig(
-        base_url=os.getenv("OPENAI_API_BASE", DEFAULT_LLM_BASE_URL),
-        api_key=os.getenv("OPENAI_API_KEY", ""),
-        model=model_info["model"],
-    )
-    client = LLMClient(config)
+    from src.llm import endpoints
+    with endpoints.LOCK:
+        model = model_info["model"]
+        if endpoints.generation() and model == _DEFAULT_CHAT_MODEL:
+            model = LLMConfig().model           # 档位表是导入时读的；默认端点换过就用现在的默认模型
+        config = LLMConfig(
+            base_url=os.getenv("OPENAI_API_BASE", DEFAULT_LLM_BASE_URL),
+            api_key=os.getenv("OPENAI_API_KEY", ""),
+            model=model,
+        )
+        client = LLMClient(config)
+        client._default_client = client._follows_default = True
     _client_cache[model_tier] = client
     return client

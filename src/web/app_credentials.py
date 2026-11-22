@@ -277,10 +277,17 @@ def provider_name(credential_id: str) -> str:
     return (_ENV_TAG + credential_id[5:]).lower()
 
 
+def _registered() -> Dict[str, Tuple[str, str]]:
+    """进程环境里现在登记着的端点：名字 → （地址, key）。"""
+    names = [k[:-5] for k in os.environ if k.startswith(_ENV_PREFIX + _ENV_TAG) and k.endswith("_BASE")]
+    return {name: (os.environ[name + "_BASE"], os.environ.get(name + "_KEY", "")) for name in names}
+
+
 def apply(root: str) -> None:
     """把记录里的端点登记进进程环境：每个有效的一个供应商；默认的那个换掉服务的默认端点。"""
     global _SERVER_ENV
-    with _LOCK:
+    from src.llm import endpoints
+    with _LOCK, endpoints.LOCK:     # 整批一起改：任何客户端都读不到「新地址 + 旧 key」
         try:
             data = _read(root)
         except CredentialError:
@@ -289,6 +296,8 @@ def apply(root: str) -> None:
         for item in data["credentials"]:
             if _active(item):
                 wanted[_env_name(item["id"])] = item
+        before = _registered()
+        default_before = tuple(os.environ.get(k) for k in _DEFAULT_KEYS)
         for name in [k for k in os.environ if k.startswith(_ENV_PREFIX + _ENV_TAG)]:
             if name.endswith("_BASE") and name[:-5] not in wanted or name.endswith("_KEY") and name[:-4] not in wanted:
                 os.environ.pop(name, None)
@@ -311,6 +320,12 @@ def apply(root: str) -> None:
                 else:
                     os.environ[key] = value
             _SERVER_ENV = None
+        after = _registered()
+        active = (os.environ.get("OPENAI_API_BASE", ""), os.environ.get("OPENAI_API_KEY", ""))
+        endpoints.replaced([(pair, after.get(name)) for name, pair in before.items() if after.get(name) != pair],
+                           [*after.values(), active])
+        if tuple(os.environ.get(k) for k in _DEFAULT_KEYS) != default_before:
+            endpoints.default_changed()
     from src.llm.providers import reset_cache
     reset_cache()
 
