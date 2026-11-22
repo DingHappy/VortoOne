@@ -85,6 +85,15 @@ def _change(root: str, who: str, key: str, value: Any) -> None:
         _write(root, data)
 
 
+def person_value(root: str, who: str, key: str) -> Any:
+    """一个人的一项偏好（没有就是 None）。"""
+    return _own(root, who).get(key)
+
+
+def set_person_value(root: str, who: str, key: str, value: Any) -> None:
+    _change(root, who, key, value)
+
+
 def _status_line(value: Any) -> Optional[Dict[str, Any]]:
     if value is None:
         return None
