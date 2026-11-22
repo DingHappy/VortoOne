@@ -42,11 +42,11 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", _ORG + r"/me/sidebar"),
     ("GET", _ORG + r"/me/issues-view"),
     ("PUT", _ORG + r"/me/issues-view"),
-    ("GET", _ORG + r"/wiki/pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?"),
+    ("GET", _ORG + r"/wiki/(?:graph|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
     ("POST", _ORG + r"/wiki/pages"),
     ("PUT", _ORG + r"/wiki/pages/[^/]+"),
     ("DELETE", _ORG + r"/wiki/pages/[^/]+"),
-    ("POST", _ORG + r"/wiki/pages/[^/]+/(?:rename|move|lock|pin|context)"),
+    ("POST", _ORG + r"/wiki/pages/[^/]+/(?:append|rename|move|lock|pin|context)"),
     ("POST", _ORG + r"/wiki/(?:bulk/delete|trash/restore)"),
     # 任务看板：处理函数按可见范围和「编辑资料」「派活」判断（web/app_board.py）
     ("GET", _ORG + r"/issues"),

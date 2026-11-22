@@ -26,9 +26,9 @@ from src.web import app_views as views
 from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
-from src.workflow.members.channels import ChannelCategoryNameConflict, is_team_channel
+from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MemberRegistry
-from src.workflow.wiki import Wiki, WikiError, WikiReader
+from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
 router = APIRouter(tags=["app"])
 
@@ -1591,7 +1591,22 @@ for _path, _payload in _EMPTY.items():
 _WIKI = _ORG + "/wiki"
 
 
-async def _wiki_call(request, org_id, action, *, listing=False):
+class _WikiMessageSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["message"]
+    channelId: str = Field(min_length=1, max_length=128)
+    messageId: str = Field(min_length=1, max_length=128)
+
+
+class _WikiAppend(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    text: str = Field(min_length=1, max_length=MAX_BODY)
+    source: _WikiMessageSource
+
+
+async def _wiki_call(request, org_id, action, *, listing=False, source=None):
+    from src.workflow.members.registry import Damaged, Missing, Refused
+
     root = _root(org_id)
     actor = _who(request, root)
     if actor is None:
@@ -1601,25 +1616,43 @@ async def _wiki_call(request, org_id, action, *, listing=False):
             return {"pages": []}
         return _error(403, "owner_proof_required", "Wiki 需要已认证的同源会话")
 
-    def execute():
+    def wiki_for_reader():
         state = MemberRegistry(root).snapshot()
         if actor.is_member and actor.id not in state["members"]:
-            return _error(403, "forbidden", _NOT_MEMBER)
+            raise WikiError(403, "forbidden", _NOT_MEMBER)
         keys = app_members.permission_keys(root, actor)
         people = frozenset({views.owner_id(root), *state["members"]})
-        return action(Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys)))
+        return Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys,
+                                     TeamChannels.readable_public_names(state, actor)))
+
+    def execute():
+        if source is None:
+            return action(wiki_for_reader())
+        if not is_team_channel(source.channelId):
+            return _error(409, "wiki_source_unsupported", "目前只能从加入的公开团队频道摘录消息")
+        with app_channels.channels(root).public_message(actor, source.channelId, source.messageId) as message:
+            return action(wiki_for_reader(), message)
 
     try:
         return await asyncio.to_thread(execute)
     except WikiError as error:
         return _error(error.status, error.code, str(error))
-    except (OSError, sqlite3.Error, ValueError):
+    except Missing:
+        return _error(404, "wiki_source_not_found", "没有这个来源消息")
+    except Refused as error:
+        return _error(409, "wiki_source_unsupported", str(error))
+    except (Damaged, OSError, sqlite3.Error, ValueError):
         return _error(409, "unavailable", "无法读取或保存 Wiki 记录")
 
 
 @router.get(_WIKI + "/pages")
 async def wiki_pages(org_id: str, request: Request, deleted: bool = False):
     return await _wiki_call(request, org_id, lambda wiki: wiki.listing(deleted=deleted), listing=True)
+
+
+@router.get(_WIKI + "/graph")
+async def wiki_graph(org_id: str, request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
 
 
 @router.post(_WIKI + "/pages", status_code=201)
@@ -1635,6 +1668,12 @@ async def wiki_page(org_id: str, slug: str, request: Request):
 @router.put(_WIKI + "/pages/{slug}")
 async def update_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.update(slug, body))
+
+
+@router.post(_WIKI + "/pages/{slug}/append")
+async def append_wiki_page(org_id: str, slug: str, body: _WikiAppend, request: Request):
+    return await _wiki_call(request, org_id, lambda wiki, message: wiki.append(slug, body.text, message),
+                            source=body.source)
 
 
 @router.delete(_WIKI + "/pages/{slug}", status_code=204)
