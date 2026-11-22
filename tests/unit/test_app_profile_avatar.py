@@ -66,8 +66,12 @@ def test_people_keep_their_own_avatar_and_can_remove_it(home):
     assert {row["userId"]: row["timezone"] for row in people} == {owner_id: "Europe/Paris", member_id: "Asia/Tokyo"}
     assert _avatars(member, base, "members") == {owner_id: owner_url, member_id: member_url}
     assert _avatars(owner, base, "people") == {owner_id: owner_url, member_id: member_url}
-    assert owner.get("/api/app/me").json()["user"]["image"] == owner_url
-    assert member.get("/api/app/me").json()["user"]["image"] == member_url
+    assert owner.put("/api/app/me/work-area", json={"area": "dev"}).status_code == 204
+    assert member.put("/api/app/me/work-area", json={"area": "marketing"}).status_code == 204
+    owner_profile = owner.get("/api/app/me").json()["user"]
+    member_profile = member.get("/api/app/me").json()["user"]
+    assert (owner_profile["image"], owner_profile["workArea"]) == (owner_url, "dev")
+    assert (member_profile["image"], member_profile["workArea"]) == (member_url, "marketing")
     picture = member.get(owner_url)
     assert (picture.status_code, picture.headers["content-type"], picture.content) == (200, "image/png", _png())
     assert picture.headers["cache-control"] == "no-store" and picture.headers["x-content-type-options"] == "nosniff"
@@ -165,3 +169,23 @@ def test_avatar_never_writes_through_a_symlinked_media_directory(home, tmp_path)
     assert owner.put(path, json=_upload()).status_code == 409
     assert owner.delete(path).status_code == 409
     assert not list(destination.iterdir())
+
+
+def test_tokenless_development_does_not_disclose_existing_portrait_urls(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    for client in (owner, member):
+        response = client.put(base + "/me/avatar", json=_upload(portrait=_PORTRAIT))
+        assert response.status_code == 200
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    urls = _avatars(owner, base, "people")
+    assert urls[owner_id].endswith("#px=" + _PORTRAIT)
+    assert urls[member_id].endswith("#px=" + _PORTRAIT)
+
+    monkeypatch.delenv("VORTOONE_API_TOKEN", raising=False)
+    visitor = TestClient(home["app"])
+    assert visitor.get("/api/app/me").json()["user"]["image"] is None
+    assert _avatars(visitor, base, "people") == {owner_id: None, member_id: None}
+    for url in urls.values():
+        assert visitor.get(url).status_code == 403

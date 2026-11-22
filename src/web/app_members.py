@@ -193,14 +193,16 @@ def members(root: str) -> List[Dict[str, Any]]:
     state = MemberRegistry(root).snapshot()
     owner = views.person(root)
     default_timezone = owner["timezone"]
-    timezones = app_prefs.personal_timezones(root) if views.owner_connection() else {}
+    requires_auth = views.owner_connection()
+    timezones = app_prefs.personal_timezones(root) if requires_auth else {}
     owner["timezone"] = timezones.get(owner["userId"], default_timezone)
     org_id = views.home_id(root)
     rows = [owner]
     for member_id, member in sorted(state["members"].items(), key=lambda pair: str(pair[1].get("joined") or "")):
+        avatar = app_profile_avatar.current(root, org_id, member_id) if requires_auth else None
         rows.append({"userId": member_id, "name": str(member.get("name") or member_id),
                      "email": str(member.get("email") or ""), "image": None,
-                     "avatarUrl": app_profile_avatar.current(root, org_id, member_id),
+                     "avatarUrl": avatar,
                      "role": "member", "roleIds": [group for group in member.get("groups") or []
                                                    if group in state["groups"]],
                      "joinedAt": str(member.get("joined") or ""), "handle": member_id,
@@ -212,6 +214,14 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
     if not isinstance(role_ids, list) or any(not isinstance(item, str) for item in role_ids):
         raise ValueError("roleIds 必须是字符串列表")
     return MemberRegistry(root).set_member_groups(actor, member_id, role_ids)
+
+
+def removal_preview(root: str, actor: Principal, member_id: str) -> Dict[str, Any]:
+    """读已在册成员的移除预览，实际移除仍要重新核对权限。"""
+    if not MemberRegistry(root).manages(actor, member_id):
+        raise Refused("不能移除这个成员")
+    # 当前移除不转交 Agent、不变更模型或例行工作，也不读取成员的私有电脑登记。
+    return {"heir": None, "agents": [], "losePlan": [], "computers": [], "routines": 0}
 
 
 def remove_member(root: str, actor: Principal, member_id: str) -> None:
@@ -239,7 +249,8 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     avatar = app_profile_avatar.current(root, views.home_id(root), actor.id) if joined else None
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": avatar, **views.ui_locale(root, member_auth_key(account))},
+                 "email": str(account["email"]), "image": avatar,
+                 **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            "showActivity": True, "permissions": permission_keys(root, actor),
                            "memberRoutineProposals": True, "teamChannels": True,

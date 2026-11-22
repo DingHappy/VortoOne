@@ -267,11 +267,23 @@ def set_sidebar_view(root: str, who: str, view: Any) -> Dict[str, Any]:
     return sidebar_view(root, who)
 
 
-# ── 界面语言（跟着账号）────────────────────────────────────────────────────
+# ── 账号偏好 ────────────────────────────────────────────────────────────────
 
-def locale(root: str, account_key: str) -> Dict[str, Any]:
+# frontend/packages/client/src/lib/work-area.ts 的 WORK_AREA_ANSWERS
+WORK_AREAS = ("dev", "marketing", "sales", "finance", "ops", "support", "other", "skipped")
+
+
+def account_preferences(root: str, account_key: str) -> Dict[str, Any]:
     row = _own(root, account_key)
-    return {"locale": row.get("locale") or DEFAULT_LOCALE, "localeAuto": bool(row.get("localeAuto", False))}
+    area = row.get("workArea")
+    return {"locale": row.get("locale") or DEFAULT_LOCALE, "localeAuto": bool(row.get("localeAuto", False)),
+            "workArea": area if area in WORK_AREAS else None}
+
+
+def set_work_area(root: str, account_key: str, body: Dict[str, Any]) -> None:
+    if set(body) != {"area"} or body["area"] not in WORK_AREAS:
+        raise ValueError("请选择引导中的工作领域或跳过")
+    _change(root, account_key, "workArea", body["area"])
 
 
 def set_locale(root: str, account_key: str, body: Any) -> None:

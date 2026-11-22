@@ -1856,6 +1856,12 @@
     ]
   },
   {
+    "path": "/api/app/me/work-area",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/models",
     "methods": [
       "GET"
@@ -2352,6 +2358,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/logo",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/logo",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/members",
     "methods": [
       "GET"
@@ -2367,6 +2385,12 @@
     "path": "/api/app/organizations/{org_id}/members/{user_id}",
     "methods": [
       "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/removal",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -3651,6 +3675,30 @@
     "path": "/api/app/organizations/{org_id}/search",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/agents/{handle}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/undo",
+    "methods": [
+      "POST"
     ]
   },
   {
