@@ -105,6 +105,33 @@ def test_the_screens_sign_out_works_for_a_member(home):
     assert browser.get("/api/app/me").status_code == 401
 
 
+def test_workspace_mail_provider_catalog_does_not_use_the_host_mailbox(home, monkeypatch):
+    from src.agents import mcp_tools
+    from src.plugins import mail
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("组织邮件目录不应读取或连接本机邮箱")
+
+    monkeypatch.setattr(mcp_tools, "connector_secret_path", unexpected)
+    monkeypatch.setattr(mail.imaplib, "IMAP4_SSL", unexpected)
+    browser = _join(home)
+    url = f"{home['base']}/mail/providers"
+    for client in (home["owner"], browser):
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.json() == {"composio": False, "imap": False, "presets": []}
+        assert client.get("/api/app/organizations/another-home/mail/providers").status_code == 404
+    assert browser.get(url, headers={"Origin": "https://other.example"}).status_code == 403
+    guest = TestClient(home["app"], headers=ORIGIN)
+    assert guest.get(url).status_code == 401
+
+    token = _invite(home, email="invited@example.com")
+    signed = guest.post("/api/auth/sign-up/email", headers={"x-invitation-token": token},
+                        json={"name": "还没加入", "email": "invited@example.com", "password": PASSWORD})
+    assert signed.status_code == 200
+    assert guest.get(url).status_code == 403
+
+
 def test_a_stolen_cookie_dies_with_sign_out(home):
     browser = _join(home)
     stolen = TestClient(home["app"], headers=ORIGIN, cookies=dict(browser.cookies))

@@ -28,7 +28,8 @@ from src.web import app_artifact_upload
 from src.web import app_artifacts
 from src.web import app_views as views
 from src.web import (
-    app_board, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox, app_org_logo,
+    app_board, app_calendar, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox,
+    app_org_logo,
     app_personal_vault, app_prefs, app_profile_avatar, app_schedule, app_staff, app_voice, member_auth,
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
@@ -36,6 +37,7 @@ from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
+from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
 router = APIRouter(tags=["app"])
@@ -2376,7 +2378,6 @@ _EMPTY: Dict[str, Any] = {
     "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
     "/mail/accounts": {"accounts": []},
-    "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
@@ -2667,6 +2668,76 @@ async def vault_update(org_id: str, item_id: str, request: Request):
 @router.delete(_VAULT_ITEM, status_code=204)
 async def vault_remove(org_id: str, item_id: str, request: Request):
     return await _vault_call(request, org_id, lambda vault, _: vault.remove(item_id))
+
+
+@router.get(_ORG + "/mail/providers")
+async def mail_providers(org_id: str, request: Request):
+    root = _root(org_id)
+    if _who(request, root) is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    # 组织的连接目录只公布能从这里添加的服务。旧 IMAP 插件的凭据属于服务的操作系统用户。
+    return {"composio": False, "imap": False, "presets": []}
+
+
+# ── 私人日历 ──────────────────────────────────────────────────────────────
+
+_CALENDAR = _ORG + "/calendar"
+
+
+async def _calendar_call(org_id, request, action, *, listing=False, create=False):
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        if listing and not views.owner_connection():
+            return app_calendar.calendar_range()
+        return _error(403, "owner_proof_required", "私人日历需要已认证的同源会话")
+
+    def execute():
+        if actor.is_member:
+            permissions = app_members.permission_keys(root, actor)
+            if not permissions:
+                return _error(403, "forbidden", _NOT_MEMBER)
+            if create and "post" not in permissions:
+                return _error(403, "forbidden", "你没有创建日程的权限")
+        return action(PrivateCalendar(root, actor), actor)
+
+    try:
+        return await asyncio.to_thread(execute)
+    except CalendarError as error:
+        return _error(error.status, error.code, str(error))
+    except (OSError, sqlite3.Error):
+        return _error(409, "calendar.unavailable", "无法读取或保存日历记录")
+    except OverflowError:
+        return _error(400, "calendar.invalid", "日程日期超出范围")
+    except ValueError as error:
+        return _error(400, "calendar.invalid", str(error))
+
+
+@router.get(_CALENDAR)
+async def calendar_list(org_id: str, request: Request, start: Optional[str] = Query(None, alias="from"),
+                        to: Optional[str] = None):
+    return await _calendar_call(org_id, request, lambda calendar, actor: app_calendar.listing(
+        calendar, actor, *date_range(start, to), app_calendar.workspace_timezone(calendar.root)), listing=True)
+
+
+@router.post(_CALENDAR + "/events", status_code=201)
+async def calendar_create(org_id: str, request: Request, body: Dict[str, Any]):
+    return await _calendar_call(org_id, request, lambda calendar, _actor: calendar.create(
+        body, app_calendar.workspace_timezone(calendar.root)), create=True)
+
+
+@router.patch(_CALENDAR + "/events/{event_id}")
+async def calendar_update(org_id: str, event_id: str, request: Request, body: Dict[str, Any]):
+    return await _calendar_call(org_id, request, lambda calendar, _actor: calendar.update(event_id, body))
+
+
+@router.delete(_CALENDAR + "/events/{event_id}")
+async def calendar_delete(org_id: str, event_id: str, request: Request):
+    series = "scope" in request.query_params or "occurrenceStart" in request.query_params
+    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(event_id, series=series))
+    return result if isinstance(result, Response) else Response(status_code=204)
 
 
 # ── Wiki ───────────────────────────────────────────────────────────────────
@@ -3509,6 +3580,65 @@ async def _sidebar(org_id: str, request: Request, change):
         return await asyncio.to_thread(change, root, who.id)
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+
+
+
+class _MyActivity(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    show: bool
+
+
+class _MyStart(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    page: Literal["home", "last", "channel"]
+    channelId: str | None = Field(default=None, max_length=128)
+
+
+async def _change_my_display(org_id, request, action):
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "请登录后更改界面偏好")
+
+    def update():
+        if actor.is_member and actor.id not in MemberRegistry(root).snapshot()["members"]:
+            return _error(403, "forbidden", _NOT_MEMBER)
+        return action(root, actor)
+
+    try:
+        return await asyncio.to_thread(update)
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.put(_ORG + "/me/activity")
+async def set_my_activity(org_id: str, body: _MyActivity, request: Request):
+    return await _change_my_display(org_id, request, lambda root, actor:
+                                    app_prefs.set_show_activity(root, actor.id, body.show))
+
+
+@router.put(_ORG + "/me/start")
+async def set_my_start(org_id: str, body: _MyStart, request: Request):
+    if (body.page == "channel") != bool(body.channelId) or body.channelId == "":
+        return _error(400, "invalid", "只有频道启动页需要填写频道")
+    def change(root, actor):
+        if body.channelId and not app_channels.channels(root).can_read(actor, body.channelId):
+            return _error(404, "not_found", "没有你能打开的这个频道")
+        return app_prefs.set_start(root, actor.id, body.page, body.channelId)
+
+    return await _change_my_display(org_id, request, change)
+
+
+@router.put(_ORG + "/me/chat")
+async def set_my_chat_look(org_id: str, body: Dict[str, Any], request: Request):
+    def change(root, actor):
+        if "feedbackAuto" in body:
+            return _error(409, "unavailable", "自动发送反馈暂不可用")
+        return app_prefs.set_chat_look(root, actor.id, body)
+
+    return await _change_my_display(org_id, request, change)
 
 
 @router.get(_ORG + "/me/sidebar")

@@ -41,6 +41,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PUT", r"/api/app/me/work-area"),                    # 本人引导里的可选填写项
     ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
+    ("PUT", _ORG + r"/me/(?:activity|start|chat)"),
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
     ("PATCH", _ORG + r"/me/sidebar"),
@@ -51,6 +52,11 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/people/[^/]+/avatar"),
     ("GET", _ORG + r"/me/issues-view"),
     ("PUT", _ORG + r"/me/issues-view"),
+    # 私人日程按调用人隔离，任务截止日期沿用看板的可见范围。
+    ("GET", _ORG + r"/calendar"),
+    ("POST", _ORG + r"/calendar/events"),
+    ("PATCH", _ORG + r"/calendar/events/[^/]+"),
+    ("DELETE", _ORG + r"/calendar/events/[^/]+"),
     ("GET", _ORG + r"/wiki/(?:graph|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
     ("POST", _ORG + r"/wiki/import"),
     ("POST", _ORG + r"/wiki/pages"),
@@ -102,6 +108,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/voice/allowed"),
     ("GET", _ORG + r"/voice/[A-Za-z0-9_-]+/audio"),
     ("POST", _TEAM_CHANNEL + r"/voice"),
+    ("GET", _ORG + r"/mail/providers"),
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
