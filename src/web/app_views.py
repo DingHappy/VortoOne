@@ -220,15 +220,18 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 
 def me(root: str) -> Dict[str, Any]:
+    from src.web import app_profile_avatar
+
     card = _owner_card(root)
     user_id = owner_id(root)
     requires_auth = owner_connection()
     preferences = ui_account_preferences(root, user_id)
+    avatar = app_profile_avatar.current(root, home_id(root), user_id) if requires_auth else None
     if not requires_auth:
         # 未配置令牌的开发服务也可读 /me，个人引导答案在这种模式下不可见。
         preferences["workArea"] = None
     return {
-        "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": None,
+        "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": avatar,
                  **preferences},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
@@ -247,8 +250,12 @@ def ui_account_preferences(root: str, account_key: str) -> Dict[str, Any]:
 
 
 def person(root: str) -> Dict[str, Any]:
+    from src.web import app_profile_avatar
+
     card = _owner_card(root)
+    avatar = app_profile_avatar.current(root, home_id(root), owner_id(root)) if owner_connection() else None
     return {"userId": owner_id(root), "name": card["name"], "email": card["email"], "image": None, "role": "owner",
+            "avatarUrl": avatar,
             "joinedAt": _home_created(root), "handle": "owner", "timezone": _timezone(root)}
 
 
@@ -1232,6 +1239,12 @@ def _artifact(root: str, meta: Dict[str, Any], *, desktop_upload: bool = False) 
     return row
 
 
+def trashed_artifact(root: str, meta: Dict[str, Any], deleted_at: datetime, purge_at: datetime, *,
+                     desktop_upload: bool = False) -> Dict[str, Any]:
+    return {**_artifact(root, meta, desktop_upload=desktop_upload),
+            "deletedAt": deleted_at.isoformat(), "purgeAt": purge_at.isoformat()}
+
+
 def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
               include_uploads: bool = False) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
@@ -1429,27 +1442,67 @@ def agent_activity(root: str, agent_id: str) -> Dict[str, Any]:
             "runsByDay": [{"day": day, **row} for day, row in sorted(by_day.items())]}
 
 
-_ROUTINE_RUN = {"queued": "queued", "running": "running", "blocked": "waiting", "done": "reported"}
+_ROUTINE_RUN = {"queued": "queued", "running": "running", "blocked": "waiting", "waiting": "waiting",
+                "done": "reported", "failed": "failed", "interrupted": "failed", "cancelled": "canceled"}
+_ROUTINE_BRAIN = {"vortocode": "model", "claude": "claude_code", "codex": "codex", "opencode": "opencode"}
+
+
+def _routine_run_rows(root: str, routine_id: Optional[str] = None):
+    """Base the view on retained task records, not schedule slots or reconstructed executions."""
+    from src.workflow.staff.executions import execution_projection
+    from src.workflow.staff.registry import StaffRegistry
+    members = set()
+    if owner_connection():
+        try:
+            members = {row["id"] for row in StaffRegistry(root).members() if row["status"] != "retired"}
+        except (OSError, ValueError):
+            pass  # Preserve saved results when the roster is unavailable, with no conversation links.
+    for task in _staff_tasks(root):
+        dispatch = task.collaboration["dispatch"]
+        routine = dispatch.get("routine")
+        key = routine.get("id") if isinstance(routine, dict) else None
+        status = _ROUTINE_RUN.get(task.status)
+        if task.kind != "delegation" or not isinstance(key, str) or not key or not status:
+            continue
+        if routine_id is not None and key != routine_id:
+            continue
+        active = status in {"queued", "running", "waiting"}
+        observed = execution_projection(task)
+        backend = (observed["snapshot"]["ref"]["backend_id"]
+                   if observed and observed["round"] == task.collaboration.get("round") else None)
+        link = None
+        member = str(dispatch["member"])
+        # The owner's role DM and a member's private role DM are different conversations.
+        if status == "reported" and task.result and dispatch.get("initiator") is None and member in members:
+            agent = member_agent_id(root, member)
+            link = {"channelId": dm_channel_id(agent), "threadId": None,
+                    "messageId": message_id(task.id, "assistant")}
+        yield key, {"id": task.id, "at": _iso(task.created), "status": status, "code": None,
+                    "summary": str(task.result or task.error or "")[:200], "brain": _ROUTINE_BRAIN.get(backend),
+                    "link": link, "finishedAt": None if active else _iso(task.updated or task.created)}
+
+
+def routine_runs(root: str, routine_id: str) -> Optional[List[Dict[str, Any]]]:
+    """Last 30 retained runs, or None when the requested routine is not on the owner's list."""
+    from itertools import islice
+    from src.workflow.staff.routines import Routines
+    definitions = {item["id"]: item for item in Routines(root).list()}
+    record = definitions.get(routine_id)
+    if record is not None:
+        if record["retired"]:
+            return None
+        return [row for _, row in islice(_routine_run_rows(root, routine_id), 30)]
+    return [] if any(item["id"] == routine_id for item in _pending_routines(root, set(definitions))) else None
 
 
 def routine_history(root: str) -> Dict[str, Dict[str, Any]]:
     """每项例行工作最近的运行：任务台账里带着它标记的那些任务。"""
     history: Dict[str, List[Dict[str, Any]]] = {}
-    for task in _staff_tasks(root):
-        routine = task.collaboration["dispatch"].get("routine") or {}
-        if not routine.get("id"):
-            continue
-        active = task.status in ACTIVE_TASK
-        agent = member_agent_id(root, str(task.collaboration["dispatch"]["member"]))
-        history.setdefault(str(routine["id"]), []).append({
-            "id": task.id, "at": _iso(task.created), "status": _ROUTINE_RUN.get(task.status, "failed"),
-            "code": None, "summary": str(task.result or task.error or "")[:200], "brain": "model",
-            "link": {"channelId": dm_channel_id(agent), "threadId": None,
-                     "messageId": message_id(task.id, "user" if active else "assistant")},
-            "finishedAt": None if active else _iso(task.updated or task.created)})
+    for routine_id, run in _routine_run_rows(root):
+        history.setdefault(routine_id, []).append(run)
     out = {}
     for routine_id, rows in history.items():
-        finished = [row for row in rows if row["finishedAt"]]
+        finished = [row for row in rows if row["finishedAt"] and row["status"] != "canceled"]
         streak = 0
         for row in finished:
             if row["status"] != "failed":
