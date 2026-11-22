@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 214 个，剩 **417** 个：
-- **要做：345**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 217 个，剩 **414** 个：
+- **要做：342**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -449,13 +449,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/join-requests/{x}/approve` | `joinRequests.approve` |  |
 | ☐ | POST | `ORG/join-requests/{x}/deny` | `joinRequests.deny` |  |
 
-### org/calendar（6 个，要做 6）
+### org/calendar（6 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/calendar/events` | `calendar.create` |  |
-| ☐ | DELETE | `ORG/calendar/events/{x}` | `calendar.remove` |  |
-| ☐ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` |  |
+| ☑ | POST | `ORG/calendar/events` | `calendar.create` | 已接入仅本人可见的单次本地日程 |
+| ☑ | DELETE | `ORG/calendar/events/{x}` | `calendar.remove` | 仅删除自己的单次日程 |
+| ☑ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` | 仅编辑自己的单次日程 |
 | ☐ | POST | `ORG/calendar/events/{x}/rsvp` | `calendar.respond` |  |
 | ☐ | POST | `ORG/calendar/proposals/{x}/confirm` | `calendar.confirmProposal` |  |
 | ☐ | POST | `ORG/calendar/proposals/{x}/dismiss` | `calendar.dismissProposal` |  |
