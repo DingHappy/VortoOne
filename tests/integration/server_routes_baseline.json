@@ -1850,9 +1850,21 @@
     ]
   },
   {
+    "path": "/api/app/me",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/models",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2154,9 +2166,27 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/sidebar",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar/order",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/order",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2166,9 +2196,21 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/tools",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar/view",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/view",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2289,6 +2331,12 @@
     "path": "/api/app/organizations/{org_id}/settings",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/settings",
+    "methods": [
+      "PATCH"
     ]
   },
   {

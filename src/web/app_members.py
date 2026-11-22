@@ -215,13 +215,18 @@ def remove_member(root: str, actor: Principal, member_id: str) -> None:
 
 # ── 成员自己看到的「我」──────────────────────────────────────────────────────
 
+def member_auth_key(account: Mapping[str, Any]) -> str:
+    """成员账号在界面偏好里的键：跟着账号走，和成员 id、所有者 id 分开。"""
+    return "account:" + str(account["id"])
+
+
 def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any]:
     """登录的成员看到的自己。账号还没加入空间（或已被移除）时没有任何空间。"""
     state = MemberRegistry(root).snapshot()
     joined = actor.id in state["members"]
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": None, "locale": "zh-Hans", "localeAuto": False},
+                 "email": str(account["email"]), "image": None, **views.ui_locale(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            "showActivity": True, "permissions": permission_keys(root, actor),
                            "memberRoutineProposals": True, "teamChannels": True}] if joined else [],

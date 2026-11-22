@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.web import app_channels, app_members, app_staff, member_auth
+from src.web import app_channels, app_members, app_prefs, app_staff, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channels import is_team_channel
 
@@ -379,6 +379,19 @@ async def me(request: Request):
     return await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
 
 
+@router.patch("/api/app/me", status_code=204)
+async def update_me(body: Dict[str, Any], request: Request):
+    """界面语言。只存给调用人自己（所有者或成员各一份），不碰名字、邮箱这些账号资料。"""
+    root = os.getcwd()
+    account = getattr(request.state, "member_account", None)
+    key = views.owner_id(root) if account is None else app_members.member_auth_key(account)
+    try:
+        await asyncio.to_thread(app_prefs.set_locale, root, key, body)
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+    return Response(status_code=204)
+
+
 @router.get("/api/app/models")
 async def models():
     return {"models": [], "defaultModel": ""}
@@ -409,6 +422,60 @@ async def overview(org_id: str, request: Request):
 @router.get(_ORG + "/settings")
 async def settings(org_id: str):
     return views.settings(_root(org_id))
+
+
+# 空间设置里有对应能力的两项：名字（主助理的名字，也就是这个家显示的名字）和默认时区（例行工作用的那个）。
+# 其余开关（GIF、语音、团队巡视……）这里没有对应能力，改了也不会生效，所以拒绝而不是假装存下。
+_SETTINGS_WRITABLE = {"name", "timezone"}
+
+
+def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    from src.memory import assistant_profile
+    from src.workflow.staff.routines import Routines
+    current = views.settings(root)
+    unsupported = sorted(key for key, value in body.items()
+                         if key not in _SETTINGS_WRITABLE and current.get(key, object()) != value)
+    if unsupported:
+        raise ValueError(f"这些设置这里还不能改：{unsupported}")
+    if "name" in body:
+        name = body["name"]
+        if not isinstance(name, str) or not " ".join(name.split()):
+            raise ValueError("名字不能为空")
+        if len(" ".join(name.split())) > assistant_profile.MAX_NAME:
+            raise ValueError(f"名字最多 {assistant_profile.MAX_NAME} 个字")
+    if "timezone" in body and body["timezone"] != current["timezone"]:
+        zone = body["timezone"]
+        if not isinstance(zone, str) or not zone:
+            raise ValueError("时区不能为空")
+        registry = Routines(root)
+        registry.configure_timezone(zone, registry.read()["revision"])     # 时区名不对由登记处拒绝
+    if "name" in body:
+        assistant_profile.save_profile(root, name=body["name"])
+    return views.settings(root)
+
+
+async def _patch_settings(org_id: str, body: Dict[str, Any], request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "空间设置只有所有者能改")
+    if not views.owner_connection():
+        return _error(403, "forbidden", "改空间设置需要已认证的主人连接")
+    try:
+        return await asyncio.to_thread(_write_settings, root, body)
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.patch(_ORG + "/settings")
+async def update_settings(org_id: str, body: Dict[str, Any], request: Request):
+    return await _patch_settings(org_id, body, request)
+
+
+@router.patch(_ORG, status_code=204)
+async def update_home(org_id: str, body: Dict[str, Any], request: Request):
+    """界面「改空间名字与背景」的旧写法，和 PATCH …/settings 同一套规矩。"""
+    result = await _patch_settings(org_id, body, request)
+    return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
 @router.get(_ORG + "/members")
@@ -1325,10 +1392,6 @@ _EMPTY: Dict[str, Any] = {
     "/skill-settings": {"agentsImprove": False},
     "/wiki/pages": {"pages": []},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
-    "/me/sidebar": {"items": {}},
-    "/me/sidebar/order": {"order": views.SIDEBAR_SECTIONS},
-    "/me/sidebar/tools": {"order": views.SIDEBAR_TOOLS},
-    "/me/sidebar/view": {"view": {"agentSort": "workspace", "showAllAgents": True, "pins": None}},
 }
 
 
@@ -1343,6 +1406,80 @@ def _register_empty(path: str, payload: Any) -> None:
 
 for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
+
+
+# ── 每个人自己的侧栏 ──────────────────────────────────────────────────────────
+# 所有者和成员各存各的（app_prefs），只是界面摆放，不涉及权限。账号还没加入或已被移除的成员没有侧栏可存。
+
+async def _sidebar(org_id: str, request: Request, change):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    try:
+        return await asyncio.to_thread(change, root, who.id)
+    except (ValueError, OSError) as error:
+        return _error(400, "invalid", str(error))
+
+
+@router.get(_ORG + "/me/sidebar")
+async def sidebar_items(org_id: str, request: Request):
+    return await _sidebar(org_id, request, lambda root, who: {"items": app_prefs.sidebar_items(root, who)})
+
+
+@router.patch(_ORG + "/me/sidebar")
+async def move_sidebar_item(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"item", "place"}:
+        return _error(400, "invalid", "要给 item 和 place")
+    return await _sidebar(org_id, request, lambda root, who: {
+        "items": app_prefs.set_sidebar_item(root, who, body["item"], body["place"])})
+
+
+@router.put(_ORG + "/me/sidebar")
+async def set_sidebar_items(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"items"}:
+        return _error(400, "invalid", "要给 items")
+    return await _sidebar(org_id, request, lambda root, who: {
+        "items": app_prefs.set_sidebar_items(root, who, body["items"])})
+
+
+@router.get(_ORG + "/me/sidebar/order")
+async def sidebar_order(org_id: str, request: Request):
+    return await _sidebar(org_id, request, lambda root, who: {"order": app_prefs.sidebar_order(root, who)})
+
+
+@router.put(_ORG + "/me/sidebar/order")
+async def set_sidebar_order(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"order"}:
+        return _error(400, "invalid", "要给 order")
+    return await _sidebar(org_id, request, lambda root, who: {
+        "order": app_prefs.set_sidebar_order(root, who, body["order"])})
+
+
+@router.get(_ORG + "/me/sidebar/tools")
+async def sidebar_tools(org_id: str, request: Request):
+    return await _sidebar(org_id, request, lambda root, who: {"order": app_prefs.sidebar_tools(root, who)})
+
+
+@router.put(_ORG + "/me/sidebar/tools")
+async def set_sidebar_tools(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"order"}:
+        return _error(400, "invalid", "要给 order")
+    return await _sidebar(org_id, request, lambda root, who: {
+        "order": app_prefs.set_sidebar_tools(root, who, body["order"])})
+
+
+@router.get(_ORG + "/me/sidebar/view")
+async def sidebar_view(org_id: str, request: Request):
+    return await _sidebar(org_id, request, lambda root, who: {"view": app_prefs.sidebar_view(root, who)})
+
+
+@router.put(_ORG + "/me/sidebar/view")
+async def set_sidebar_view(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"view"}:
+        return _error(400, "invalid", "要给 view")
+    return await _sidebar(org_id, request, lambda root, who: {
+        "view": app_prefs.set_sidebar_view(root, who, body["view"])})
 
 
 # ── 记忆、例行工作、技能、制品 ────────────────────────────────────────────────

@@ -230,6 +230,7 @@ _STATE_ENTRIES = [
     "audit.log",
     "cron_state.json",
     "followups.json",
+    "app_prefs.json",
     "ops_heartbeats.json",
     "cli_session.json",
     "tui_theme",

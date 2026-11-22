@@ -27,9 +27,6 @@ OWNER_PERMISSIONS = [
     "create_channels", "edit_wiki", "upload_files", "act_for_members",
 ]
 
-SIDEBAR_TOOLS = ["waiting", "approvals", "proposals", "threads", "issues", "wiki", "drive", "routines",
-                 "calendar", "team", "dashboards", "taskManager"]
-SIDEBAR_SECTIONS = ["tools", "channels", "agents", "people"]
 
 MAIN_AGENT_HANDLE = "assistant"
 OWNER_NAME = "我"
@@ -225,11 +222,20 @@ def me(root: str) -> Dict[str, Any]:
     card = _owner_card(root)
     return {
         "user": {"id": owner_id(root), "name": card["name"], "email": card["email"], "image": None,
-                 "locale": "zh-Hans", "localeAuto": False},
+                 **ui_locale(root, owner_id(root))},
         "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
                            "showActivity": True, "permissions": list(OWNER_PERMISSIONS),
                            "routineProposalReview": owner_connection(), "teamChannels": owner_connection()}],
     }
+
+
+def ui_locale(root: str, account_key: str) -> Dict[str, Any]:
+    from src.web import app_prefs
+    try:
+        return app_prefs.locale(root, account_key)
+    except ValueError:
+        # 偏好文件坏了不挡登录：语言回到默认，改的时候再如实报错
+        return {"locale": app_prefs.DEFAULT_LOCALE, "localeAuto": False}
 
 
 def person(root: str) -> Dict[str, Any]:

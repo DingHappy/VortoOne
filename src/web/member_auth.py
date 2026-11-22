@@ -33,6 +33,11 @@ _TEAM_CHANNEL = _ORG + r"/channels/" + TEAM_CHANNEL_ID_PATTERN
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
+    ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
+    ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
+    ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
+    ("PATCH", _ORG + r"/me/sidebar"),
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
