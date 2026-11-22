@@ -438,7 +438,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/invitations/{x}/request-new` | `invites.requestNew` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests` | `invites.ask` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` |  |
-| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` |  |
+| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 已接尚未清理的过期邮箱邀请；已接受的令牌已被消费，待有真实回执后补齐 |
 
 ### org/databases（6 个，要做 6）
 
