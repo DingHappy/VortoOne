@@ -2430,6 +2430,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/status",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/roles",
     "methods": [
       "GET"

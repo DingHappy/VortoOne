@@ -14,8 +14,10 @@ import json
 import os
 import threading
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unicodedata import category
 
 from src.utils.state_dir import state_dir
 
@@ -34,6 +36,7 @@ DEFAULT_VIEW = {"agentSort": "workspace", "showAllAgents": True, "pins": None}
 # 界面能选的语言（packages/i18n/src/locale.ts 的 LOCALES）
 LOCALES = ("en", "pt-BR", "es", "fr", "de", "it", "nl", "ja", "ko", "zh-Hans", "id", "tr", "pl", "ru")
 DEFAULT_LOCALE = "zh-Hans"
+AVAILABILITIES = ("auto", "away", "busy", "out", "hidden")
 
 
 def _path(root: str) -> Path:
@@ -80,6 +83,68 @@ def _change(root: str, who: str, key: str, value: Any) -> None:
         if not row:
             data["people"].pop(who, None)
         _write(root, data)
+
+
+def _status_line(value: Any) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) - {"text", "emoji", "until"}:
+        raise ValueError("状态要包含文字，可附表情和到期时间")
+    text, emoji, until = value.get("text"), value.get("emoji"), value.get("until")
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 100 or _has_control(text):
+        raise ValueError("状态文字须为 1 到 100 个可显示字符")
+    if emoji is not None and (not isinstance(emoji, str) or not 1 <= len(emoji) <= 32 or _has_control(emoji)):
+        raise ValueError("状态表情格式不正确")
+    if until is not None:
+        if not isinstance(until, str) or len(until) > 40:
+            raise ValueError("状态到期时间须为带时区的 ISO 时间")
+        try:
+            instant = datetime.fromisoformat(until[:-1] + "+00:00" if until.endswith("Z") else until)
+        except ValueError as error:
+            raise ValueError("状态到期时间须为带时区的 ISO 时间") from error
+        if instant.tzinfo is None or "T" not in until:
+            raise ValueError("状态到期时间须为带时区的 ISO 时间")
+        if instant <= datetime.now(timezone.utc):
+            return None
+    return {"text": text.strip(), "emoji": emoji, "until": until}
+
+
+def _has_control(text: str) -> bool:
+    return any(category(char) in {"Cc", "Cs"} for char in text)
+
+
+def status_preferences(root: str) -> Dict[str, Dict[str, Any]]:
+    return {who: {"availability": row.get("availability"), "status": row.get("status")}
+            for who, row in _read(root)["people"].items() if isinstance(row, dict)}
+
+
+def status_line(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    try:
+        return _status_line(row.get("status"))
+    except ValueError:
+        return None
+
+
+def set_status(root: str, who: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    if not body or set(body) - {"availability", "status"}:
+        raise ValueError("只能更新可用状态或状态文字")
+    if "availability" in body and body["availability"] not in AVAILABILITIES:
+        raise ValueError("未识别的可用状态")
+    line = _status_line(body.get("status"))
+    with _LOCK:
+        data = _read(root)
+        row = data["people"].setdefault(who, {})
+        if not isinstance(row, dict):
+            raise ValueError("界面偏好记录损坏，需要先修复")
+        if "availability" in body:
+            row["availability"] = body["availability"]
+        if "status" in body:
+            if line is None:
+                row.pop("status", None)
+            else:
+                row["status"] = line
+        _write(root, data)
+        return {"availability": row.get("availability"), "status": row.get("status")}
 
 
 def _unique_known(items: Any, known: tuple, what: str) -> List[str]:
