@@ -1,12 +1,12 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 185 个，剩 **446** 个：
-- **要做：374**（其中 50 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 199 个，剩 **432** 个：
+- **要做：360**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
-表里 ☐ 是要做的，— 是不做的。「读已接、写没接」表示后端只有 GET，界面保存会 405。
+表里 ☐ 是待做的，☑ 是已接入的（注明限制），— 是不做的。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
 ## 怎么核对
 
@@ -146,34 +146,34 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 24）
+### org/wiki（24 个，要做 10）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` |  |
-| ☐ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
+| ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
 | ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
 | ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
 | ☐ | GET | `ORG/wiki/graph` | `wiki.graph` |  |
 | ☐ | POST | `ORG/wiki/import` | `wiki.import` |  |
 | ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |
-| ☐ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
-| ☐ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
-| ☐ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
-| ☐ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
+| ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
+| ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
+| ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
+| ☑ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
 | ☐ | POST | `ORG/wiki/pages/{x}/append` | `wiki.append` |  |
 | ☐ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` |  |
-| ☐ | POST | `ORG/wiki/pages/{x}/context` | `wiki.context` |  |
-| ☐ | GET | `ORG/wiki/pages/{x}/history` | `wiki.history` |  |
-| ☐ | POST | `ORG/wiki/pages/{x}/lock` | `wiki.lock` |  |
-| ☐ | POST | `ORG/wiki/pages/{x}/move` | `wiki.move` |  |
-| ☐ | POST | `ORG/wiki/pages/{x}/pin` | `wiki.pin` |  |
-| ☐ | POST | `ORG/wiki/pages/{x}/rename` | `wiki.rename` |  |
-| ☐ | GET | `ORG/wiki/pages/{x}/versions/{x}` | `wiki.version` |  |
+| ☑ | POST | `ORG/wiki/pages/{x}/context` | `wiki.context` | 已接入。开启时返回明确的 409，页面不会进入智能体上下文 |
+| ☑ | GET | `ORG/wiki/pages/{x}/history` | `wiki.history` |  |
+| ☑ | POST | `ORG/wiki/pages/{x}/lock` | `wiki.lock` |  |
+| ☑ | POST | `ORG/wiki/pages/{x}/move` | `wiki.move` |  |
+| ☑ | POST | `ORG/wiki/pages/{x}/pin` | `wiki.pin` |  |
+| ☑ | POST | `ORG/wiki/pages/{x}/rename` | `wiki.rename` |  |
+| ☑ | GET | `ORG/wiki/pages/{x}/versions/{x}` | `wiki.version` |  |
 | ☐ | GET | `ORG/wiki/reads` | `wiki.reads` |  |
 | ☐ | GET | `ORG/wiki/search` | `wiki.search` | 界面代码里没调用 |
-| ☐ | POST | `ORG/wiki/trash/purge` | `wiki.purge` |  |
-| ☐ | POST | `ORG/wiki/trash/restore` | `wiki.restoreMany` |  |
+| ☑ | POST | `ORG/wiki/trash/purge` | `wiki.purge` |  |
+| ☑ | POST | `ORG/wiki/trash/restore` | `wiki.restoreMany` |  |
 
 ### org/devices（21 个，要做 0）
 

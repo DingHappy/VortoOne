@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sqlite3
 from contextlib import suppress
 from typing import Any, Dict, Optional
 
@@ -25,6 +26,8 @@ from src.web import app_views as views
 from src.web import app_board, app_channels, app_gifs, app_members, app_prefs, app_schedule, app_staff, app_voice, member_auth
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channels import is_team_channel
+from src.workflow.members.registry import MemberRegistry
+from src.workflow.wiki import Wiki, WikiError, WikiReader
 
 router = APIRouter(tags=["app"])
 
@@ -33,7 +36,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 6
+API_CONTRACT = 7
 MIN_API = 1
 
 
@@ -1472,7 +1475,6 @@ _EMPTY: Dict[str, Any] = {
     "/calendar": {"events": [], "routines": [], "reminders": [], "deadlines": [], "proposals": []},
     "/team-memories": {"memories": []},
     "/skill-settings": {"agentsImprove": False},
-    "/wiki/pages": {"pages": []},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
 
@@ -1488,6 +1490,108 @@ def _register_empty(path: str, payload: Any) -> None:
 
 for _path, _payload in _EMPTY.items():
     _register_empty(_path, _payload)
+
+
+# ── Wiki ───────────────────────────────────────────────────────────────────
+
+_WIKI = _ORG + "/wiki"
+
+
+async def _wiki_call(request, org_id, action, *, listing=False):
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        if listing and not views.owner_connection():
+            return {"pages": []}
+        return _error(403, "owner_proof_required", "Wiki 需要已认证的同源会话")
+
+    def execute():
+        state = MemberRegistry(root).snapshot()
+        if actor.is_member and actor.id not in state["members"]:
+            return _error(403, "forbidden", _NOT_MEMBER)
+        keys = app_members.permission_keys(root, actor)
+        people = frozenset({views.owner_id(root), *state["members"]})
+        return action(Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys)))
+
+    try:
+        return await asyncio.to_thread(execute)
+    except WikiError as error:
+        return _error(error.status, error.code, str(error))
+    except (OSError, sqlite3.Error, ValueError):
+        return _error(409, "unavailable", "无法读取或保存 Wiki 记录")
+
+
+@router.get(_WIKI + "/pages")
+async def wiki_pages(org_id: str, request: Request, deleted: bool = False):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.listing(deleted=deleted), listing=True)
+
+
+@router.post(_WIKI + "/pages", status_code=201)
+async def create_wiki_page(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.create(body))
+
+
+@router.get(_WIKI + "/pages/{slug}")
+async def wiki_page(org_id: str, slug: str, request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.get(slug))
+
+
+@router.put(_WIKI + "/pages/{slug}")
+async def update_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.update(slug, body))
+
+
+@router.delete(_WIKI + "/pages/{slug}", status_code=204)
+async def remove_wiki_page(org_id: str, slug: str, request: Request):
+    return await _wiki_call(request, org_id, lambda wiki:
+                            _team_receipt(lambda: wiki.remove(slug)))
+
+
+@router.post(_WIKI + "/pages/{slug}/rename")
+@router.post(_WIKI + "/pages/{slug}/move")
+@router.post(_WIKI + "/pages/{slug}/pin")
+@router.post(_WIKI + "/pages/{slug}/lock")
+@router.post(_WIKI + "/pages/{slug}/context")
+async def change_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request: Request):
+    action = request.url.path.rsplit("/", 1)[1]
+    attribute = {"rename": "title", "move": "folder", "pin": "pinned", "lock": "locked", "context": "on"}[action]
+    if set(body) != {attribute}:
+        return _error(400, "invalid", f"必须提供 {attribute}")
+    value = body[attribute]
+    if action == "context":
+        if type(value) is not bool:
+            return _error(400, "invalid", "必须指定是否进入上下文")
+        return await _wiki_call(request, org_id, lambda wiki: wiki.context(slug, value))
+    return await _wiki_call(request, org_id, lambda wiki: wiki.change(slug, attribute, value))
+
+
+@router.get(_WIKI + "/pages/{slug}/history")
+async def wiki_history(org_id: str, slug: str, request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.history(slug))
+
+
+@router.get(_WIKI + "/pages/{slug}/versions/{version}")
+async def wiki_version(org_id: str, slug: str, version: int, request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.version(slug, version))
+
+
+@router.post(_WIKI + "/bulk/delete")
+async def remove_wiki_pages(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.remove_many(body))
+
+
+@router.post(_WIKI + "/trash/restore")
+async def restore_wiki_pages(org_id: str, body: Dict[str, Any], request: Request):
+    if set(body) != {"ids"}:
+        return _error(400, "invalid", "请选择要恢复的页面")
+    return await _wiki_call(request, org_id, lambda wiki: wiki.restore(body["ids"]))
+
+
+@router.post(_WIKI + "/trash/purge")
+async def purge_wiki_pages(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.purge(body))
 
 
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────
