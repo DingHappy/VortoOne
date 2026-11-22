@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 207 个，剩 **424** 个：
-- **要做：352**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 210 个，剩 **421** 个：
+- **要做：349**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -243,21 +243,21 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 12）
+### org/me（12 个，要做 9）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | PATCH | `ORG/me` | `orgs.updateMe` |  |
-| ☐ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
+| ☑ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
 | ☐ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` |  |
 | ☐ | GET | `ORG/me/approval-cover` | `approvals.covers` |  |
 | ☐ | PUT | `ORG/me/approval-cover` | `approvals.setCover` |  |
 | ☐ | DELETE | `ORG/me/avatar` | `orgs.removeAvatar` |  |
 | ☐ | PUT | `ORG/me/avatar` | `orgs.setAvatar` |  |
-| ☐ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
+| ☑ | PUT | `ORG/me/chat` | `orgs.setChatPrefs` |  |
 | ☐ | GET | `ORG/me/right-hand-approvals` | `approvals.rightHand` |  |
 | ☐ | PUT | `ORG/me/right-hand-approvals` | `approvals.setRightHand` |  |
-| ☐ | PUT | `ORG/me/start` | `orgs.setStart` |  |
+| ☑ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☐ | PUT | `ORG/me/status` | `orgs.setStatus` |  |
 
 ### org/artifacts（11 个，要做 11）
