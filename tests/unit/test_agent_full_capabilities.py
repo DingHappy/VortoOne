@@ -73,14 +73,14 @@ def _assembly(kind, prepared, invoked):
         return '不该被调用'
     seen = {}
 
-    def builder(root, ask):
+    def builder(root, ask, agent_id):
         seen['root'] = root
         tools = [Tool.prepared('host_write', '主助理的写工具', {'text': '正文'}, prepare, operation_kind=kind,
                                required_args=('text',)),
                  Tool('staff_assign', '派活', {}, nothing, operation_kind='write'),
                  Tool('team_propose', '开小组', {}, nothing, operation_kind='write'),
                  Tool('request_workspace', '切工作区', {}, nothing, operation_kind='read')]
-        return tools, (lambda: 'ask'), 'external'
+        return tools, (lambda: 'ask'), 'external', {}
     return builder, seen
 
 
@@ -179,7 +179,7 @@ def test_the_service_hands_agents_the_main_assistants_assembly(tmp_path, monkeyp
 
     async def ask(message, kind):
         return False
-    tools, trust_level, profile = _full_tools(str(tmp_path), ask)
+    tools, trust_level, profile, _session = _full_tools(str(tmp_path), ask, 'helper')
     names = {tool.name for tool in tools}
     assert {'web_search', 'web_fetch', 'save_memory'} <= names
     assert not any(name.startswith(('staff_', 'team_', 'routine_')) for name in names)

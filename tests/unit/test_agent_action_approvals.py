@@ -32,9 +32,9 @@ def full_agent(home, monkeypatch):
             return '周报写好了'
         return PreparedToolCall(apply, '写入文件 周报.md：' + frozen['text'], 'write')
 
-    def builder(root, ask):
+    def builder(root, ask, agent_id):
         return [Tool.prepared('host_write', '写文件', {'text': '正文'}, prepare, operation_kind='write',
-                              required_args=('text',))], (lambda: 'ask'), 'external'
+                              required_args=('text',))], (lambda: 'ask'), 'external', {}
     set_full_toolset(builder)
 
     async def execute(task, work, role, member, check):

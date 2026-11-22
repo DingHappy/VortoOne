@@ -18,7 +18,8 @@ def operation(role):
 
 
 # 完整能力的 agent 用主助理那一套工具（主人 2026-11-22 定）。装配在会话层（gateway），这里不反向导入，
-# 由服务启动时登记一个装配函数：builder(root, confirm) -> (tools, trust_level, capability_profile)。
+# 由服务启动时登记一个装配函数：builder(root, confirm, agent_id) -> (tools, trust_level, capability_profile, session)；
+# session 是主助理会话也带着的约束：hook_system、on_tool、on_decision、supervised。
 # 没登记（单测、CLI、没有常驻执行池的入口）就拒绝执行完整能力的 agent，不退回别的工具面。
 _FULL_TOOLSET = None
 
@@ -31,16 +32,19 @@ def set_full_toolset(builder):
 # 完整能力里不给的几样：agent 再派活或开小组会绕成派活链，主助理批自己提议的规矩也跟着乱；
 # 切换工作区要人在 Desktop 上点，后台任务里没人点。
 _FULL_EXCLUDED_PREFIXES = ('staff_', 'team_', 'routine_')
-_FULL_EXCLUDED = frozenset({'request_workspace', 'propose_task', 'propose_codex_message', 'propose_codex_interrupt'})
+_FULL_EXCLUDED = frozenset({'request_workspace', 'propose_task', 'propose_codex_message', 'propose_codex_interrupt',
+                           # 同一件事的别的名字：接着派、替主人验收、改 Codex 的监管与交接、改无人值守的排期
+                           'task_followup', 'task_review', 'codex_supervision', 'codex_handover',
+                           'cron_add', 'cron_toggle', 'cron_set_web', 'cron_set_prompt', 'cron_run'})
 
 
-def _full_tools(root, ask):
+def _full_tools(root, ask, agent_id):
     if _FULL_TOOLSET is None:
         raise ValueError('完整能力的 agent 只在常驻助理的服务里运行；当前入口没有主助理的工具装配')
-    tools, trust_level, profile = _FULL_TOOLSET(root, ask)
+    tools, trust_level, profile, session = _FULL_TOOLSET(root, ask, agent_id)
     kept = [tool for tool in tools
             if tool.name not in _FULL_EXCLUDED and not tool.name.startswith(_FULL_EXCLUDED_PREFIXES)]
-    return kept, trust_level, profile
+    return kept, trust_level, profile, session
 
 
 def build_question_tool(work, task):
@@ -83,14 +87,14 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
         if call is None or call['kind'] != kind:
             raise ValueError('审批缺少可信运行层动作，未执行')
         return await confirm_action(call)
-    trust_level, profile = 'ask', 'external'
+    trust_level, profile, session = 'ask', 'external', {}
     if is_full(role):
         if confirm_action is None:
             raise ValueError('完整能力的 agent 需要常驻助理的人工审批通道')
         if principal is not None and principal.is_member:
             raise ValueError('成员发起的事不用完整能力，按成员的办事级别装配')
         # 和主助理同一套：同样的工具、授权档位和能力档案；确认改走后台任务的审批卡
-        tools, trust_level, profile = _full_tools(root, ask)
+        tools, trust_level, profile, session = _full_tools(root, ask, member['id'])
         if read_delivery is not None:
             from src.agents.tools.deliveries import build_delivery_reader
             tools.append(build_delivery_reader(read_delivery))
@@ -103,7 +107,10 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
         if any(t.operation_kind != READ or set(t.possible_operations) - {READ} for t in tools) and confirm_action is None:
             raise ValueError('岗位工具需要常驻助理的人工审批通道')
     gate = make_confirm_gate(ask if confirm_action is not None else None,
-        can_ask_human=confirm_action is not None, trust_level=trust_level, capability_profile=profile)
+        can_ask_human=confirm_action is not None, trust_level=trust_level, capability_profile=profile,
+        on_decision=session.get('on_decision'))
+    if session.get('supervised'):
+        gate.supervised = True
     for tool in tools:
         tool.confirm = gate
         tool.serial = True
@@ -156,6 +163,7 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
         max_steps=role['max_steps'], native=native_default(), raise_llm_errors=True,
         capabilities=SessionCapabilities.for_profile(profile, root), permissions=load_permissions(root),
         confirm_gate=gate, execution_check=check, auto_recall=False, env_context=False,
+        **{key: session[key] for key in ('hook_system', 'on_tool', 'supervised') if session.get(key)},
         **({'on_tool_event': on_tool_event} if on_tool_event is not None else {}))
     # Host limits cannot be expanded by environment defaults or model settings.
     agent.max_steps = agent.build_max_steps = role['max_steps']

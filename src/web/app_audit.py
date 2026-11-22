@@ -1,7 +1,7 @@
 """新版 Desktop 的「审计」页：把共享审计台账投影成界面要的行。
 
 台账（`src/gateway/audit.py`）只存元数据：工具名、打过码的参数、确认门的放行与拒绝。这里不补造台账里没有的东西：
-- 工具调用来自主要聊天的会话，归到主助理名下；台账不记它成功与否，所以 ``outcome`` 是 null，不写成「完成」
+- 工具调用归到干活的那个：会话是 ``staff:<agent>`` 的归那个 agent，其余归主助理；台账不记它成功与否，所以 ``outcome`` 是 null，不写成「完成」
 - 确认门的决定：用户按的算主人，超时、预授权、系统的算系统；台账里没有对应的任务、频道与审批卡，这几栏留空
 - 事件和 Hook 行是内部记录，不列
 - 「等待中」只看实时确认（审批页），台账里没有正在等的调用，所以筛「等待中」时是空的
@@ -60,12 +60,18 @@ def _decision_row(entry: Dict[str, Any], owner: Dict[str, Any]) -> Dict[str, Any
             "details": details, "outcome": None}
 
 
-def _rows(root: str, owner: Dict[str, Any], agent: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str]:
+def _rows(root: str, owner: Dict[str, Any], agent: Dict[str, Any],
+          agents: Dict[str, Dict[str, Any]]) -> tuple[List[Dict[str, Any]], str]:
     snapshot = audit_snapshot(root, _READ)
     rows = []
     for entry in snapshot["entries"]:             # 新的在前
         if entry["category"] == "tool":
-            rows.append(_tool_row(entry, agent))
+            session = str(entry.get("session") or "")
+            who = agent
+            if session.startswith("staff:"):
+                handle = session[len("staff:"):]
+                who = agents.get(handle) or {"id": None, "name": handle}     # 删掉的 agent 也不算到主助理头上
+            rows.append(_tool_row(entry, who))
         elif entry["category"] == "decision":
             rows.append(_decision_row(entry, owner))
     return rows, snapshot["status"]
@@ -84,10 +90,10 @@ def check_query(*, actor_type: str = "", outcome: str = "", kind: str = "", limi
 
 def page(root: str, *, owner: Dict[str, Any], agent: Dict[str, Any], actor_type: str = "", actor_id: str = "",
          via: str = "", outcome: str = "", waiting: bool = False, kind: str = "", before: str = "",
-         limit: Optional[int] = None) -> Dict[str, Any]:
+         limit: Optional[int] = None, agents: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     """一页审计行，新的在前；``next`` 是下一页的 ``before``。``status`` 为 partial 时台账有读不全的地方。"""
     check_query(actor_type=actor_type, outcome=outcome, kind=kind, limit=limit)
-    rows, status = _rows(root, owner, agent)
+    rows, status = _rows(root, owner, agent, agents or {})
     if waiting:
         rows = []
     if actor_type:
