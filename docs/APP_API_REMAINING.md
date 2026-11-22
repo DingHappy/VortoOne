@@ -2,7 +2,7 @@
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
 客户端合同里一共 631 个不重复接口，后端已接 276 个，剩 **355** 个：
-- **要做：284**（其中 34 个在界面代码里没有调用，可以往后排）
+- **要做：280**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -784,19 +784,19 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `/api/app/machines/device/{x}` | `machines.device` | Codex 连接电脑线 |
 | — | POST | `/api/app/machines/device/{x}/deny` | `machines.denyDevice` | Codex 连接电脑线 |
 
-### org/polls（2 个，要做 2）
+### org/polls（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/polls/{x}` | `artifacts.poll` |  |
-| ☐ | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` |  |
+| — | GET | `ORG/polls/{x}` | `artifacts.poll` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| — | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
 
-### org/choices（2 个，要做 2）
+### org/choices（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/choices/{x}` | `artifacts.choices` |  |
-| ☐ | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` |  |
+| — | GET | `ORG/choices/{x}` | `artifacts.choices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| — | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
 
 ### org/artifacts-trash（2 个，要做 2）
 
