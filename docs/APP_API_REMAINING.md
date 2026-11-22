@@ -47,7 +47,7 @@
 9. **本地门禁**：本机 Python 3.14 下 `test_computer_connector.py::test_real_https_validates_injected_ca_and_rejects_untrusted_peer[True]` 必挂，和改动无关；CI 上的 3.10 和 3.12 是绿的
 10. **端到端验证**要带 `VORTOONE_WORKSPACE_SCOPE=general`，常驻助理和 Desktop 都以这个范围运行
 11. 在 worktree 里不要用 `git stash`：它整个仓库共用，会弹出别人的暂存
-12. 到现在为止都只测了接口，**还没在真实 Desktop 界面里点过**，建议每做完几块就实际点一遍
+12. 每完成两到三块，在 General 作用域的原生 Desktop 验证实际入口，并在对应 PR 记录操作结果和未覆盖的场景。个人 Vault、Markdown 导入和个人状态的验收分别见 #995、#1004、#1002
 
 ## 建议顺序
 
