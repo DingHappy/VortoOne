@@ -3185,6 +3185,54 @@ async def agent_mail_loss(org_id: str, agent_id: str):
     return {"mailboxes": []}
 
 
+# 「右手代批」：新版界面里是主助理替人处理别的 agent 提的新建 agent、改 agent 设置的提议。
+# 这里会提这类提议的只有主助理自己（专员不提议），代批就等于助理批自己的提议，违反「助理不能自己批」
+# （2026-11-22 放开提议时定的）。所以如实是关着的，打开回 409 并说明原因；等专员也能提议再接。
+_RIGHT_HAND_OFF = "现在会提议的只有助理自己，让它代批就是自己批自己的提议，所以不能打开"
+_RIGHT_HAND_FIELDS = {"enabled", "newAgents", "agentChanges", "budgetCapNanoUsd", "guidance"}
+
+
+def _right_hand(root: str, who) -> Dict[str, Any]:
+    main = views.main_agent_id(root)
+    name = next((a["name"] for a in views.agents(root) if a["id"] == main), None)
+    return {"enabled": False, "newAgents": False, "agentChanges": False, "budgetCapNanoUsd": 0, "guidance": "",
+            "pausedAt": None, "rightHand": {"id": main, "name": name} if who.is_owner else None,
+            "mayDecide": {"newAgents": who.is_owner, "agentChanges": who.is_owner},
+            "caps": {"decisionsPerDay": 0, "newAgentsPerDay": 0, "monthNanoUsd": 0},
+            "used": {"decisionsToday": 0, "newAgentsToday": 0, "monthNanoUsd": 0}}
+
+
+@router.get(_ORG + "/me/right-hand-approvals")
+async def right_hand_approvals(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    return await asyncio.to_thread(_right_hand, root, who)
+
+
+@router.put(_ORG + "/me/right-hand-approvals")
+async def set_right_hand_approvals(org_id: str, request: Request):
+    """只接受「保持关着」；要打开的如实拒绝，不存一份不生效的设置。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    body = await _body(request)
+    if not body or set(body) - _RIGHT_HAND_FIELDS:
+        return _error(400, "invalid", "只能改开关、两类提议、预算上限和说明")
+    current = await asyncio.to_thread(_right_hand, root, who)
+    if any(body[key] != current[key] for key in body):
+        return _error(409, "right_hand.unavailable", _RIGHT_HAND_OFF)
+    return current
+
+
+@router.post(_ORG + "/right-hand-decisions/{decision_id}/undo", status_code=204)
+async def undo_right_hand(org_id: str, decision_id: str):
+    _root(org_id)
+    return _error(404, "not_found", "没有这个代批决定（代批没有打开过）")
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)
