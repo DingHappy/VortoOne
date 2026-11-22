@@ -14,7 +14,7 @@ from typing import Literal
 from src.scheduling.notices import MAX_NOTICES, load_notices
 from src.utils.home_maintenance import home_maintenance
 from src.utils.state_dir import ensure_state_gitignore, state_dir
-from src.web.app_views import _id, _iso, dm_channel_id, main_agent_id
+from src.web.app_views import _id, _iso, dm_channel_id, main_agent_id, owner_connection
 
 NoticeFilter = Literal["all", "mentions", "waiting", "unread", "reactions", "done"]
 _FILE = "logs/notice-inbox.json"
@@ -73,6 +73,7 @@ def _snapshot(root):
     path = state_dir(root) / _FILE
     status = _read_status(path)
     agent = main_agent_id(root)
+    can_mark = owner_connection()
     items = {}
     default_reads = {}
     for row in load_notices(root, MAX_NOTICES, strict=True):
@@ -93,6 +94,9 @@ def _snapshot(root):
                     "readAt": default_read, "doneAt": None, "snoozedUntil": None, "createdAt": stamp,
                     "updatedAt": stamp}
             item.update(status.get(notice_id, {}))
+            if not can_mark and item["readAt"] is None:
+                # Without an owner token the history is readable, but inbox actions are unavailable.
+                item["readAt"] = stamp
             items[notice_id] = item
             default_reads[notice_id] = default_read
     return path, items, status, default_reads
