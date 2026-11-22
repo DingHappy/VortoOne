@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
@@ -699,6 +700,74 @@ def skill_detail(root: str, skill_id: str) -> Optional[Dict[str, Any]]:
             "pending": None, "changes": []}
 
 
+def _skill_store(root: str):
+    store = _personal_skills(root)
+    if store is None:
+        raise ValueError("个人技能仅在私人助理范围管理")
+    return store
+
+
+def _new_skill_id(store, name: str) -> str:
+    """技能 id 从名字来：英文名转成小写短横线，其它（如中文名）用名字的摘要；重名就加序号。"""
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40]
+    if not base or not base[0].isalpha():
+        base = "skill-" + hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+    existing = {str(item["id"]) for item in store.list()["items"]}
+    candidate, number = base, 2
+    while candidate in existing:
+        candidate, number = f"{base}-{number}", number + 1
+    return candidate
+
+
+def create_skill(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """主人在界面上写的一条技能。存下时是未启用；因为正文就是主人自己写的，记作已核对，可以直接启用。"""
+    unsupported = set(body) - {"name", "description", "body", "defaultForNewAgents", "personal"}
+    if unsupported or body.get("defaultForNewAgents") not in (None, False):
+        raise ValueError(f"这些选项这里还不支持：{sorted(unsupported) or ['defaultForNewAgents']}")
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("技能名称不能为空")
+    store = _skill_store(root)
+    skill_id = _new_skill_id(store, name.strip())
+    store.save(skill_id, {"name": name, "description": body.get("description") or "",
+                          "instructions": body.get("body") or "", "revision": None})
+    detail = skill_detail(root, skill_id)
+    if detail is None:
+        raise ValueError("技能保存后读不出来")
+    return detail
+
+
+def update_skill(root: str, skill_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """改说明或正文。技能登记处规定改过就要重新核对；改的人就是主人自己，所以原来启用的照旧启用。"""
+    unsupported = set(patch) - {"description", "body", "defaultForNewAgents"}
+    if unsupported or patch.get("defaultForNewAgents") not in (None, False):
+        raise ValueError(f"这些选项这里还不支持：{sorted(unsupported) or ['defaultForNewAgents']}")
+    store = _skill_store(root)
+    try:
+        current = store.get(skill_id, preview=True)
+    except FileNotFoundError:
+        return None
+    if "description" not in patch and "body" not in patch:
+        return skill_detail(root, skill_id)
+    saved = store.save(skill_id, {"name": current["name"],
+                                  "description": patch.get("description", current["description"]),
+                                  "instructions": patch.get("body", current["instructions"]),
+                                  "revision": current["revision"]})
+    if current["enabled"]:
+        store.set_enabled(skill_id, enabled=True, revision=saved["revision"])
+    return skill_detail(root, skill_id)
+
+
+def remove_skill(root: str, skill_id: str) -> bool:
+    store = _skill_store(root)
+    try:
+        store.remove(skill_id)
+    except FileNotFoundError:
+        return False
+    _SHOWN_SKILLS.pop((root, skill_id), None)
+    return True
+
+
 def set_main_skills(root: str, wanted: List[str]) -> List[Dict[str, Any]]:
     """把主助理启用的个人技能改成 wanted。停用随时可以；启用只认主人在界面上看过正文的那个版本——
     没看过、或看过之后内容变了，都拒绝（SkillConflict），要主人重新打开核对。"""
@@ -727,7 +796,7 @@ def _artifact(root: str, meta: Dict[str, Any]) -> Dict[str, Any]:
             "version": int(meta.get("pinned") or meta.get("version") or 1),
             "channelId": dm_channel_id(main_agent_id(root)), "threadId": None, "createdBy": agent,
             "updatedBy": agent, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
-            "canEdit": False, "canDelete": False, "canShare": False,
+            "canEdit": False, "canDelete": owner_connection(), "canShare": False,
             "untrusted": True,       # 制品是助理写的页面：界面按不可信内容隔离展示
             "audience": {"kind": "workspace"}, "sharing": {"mode": "conversation", "userIds": [], "roleIds": []}}
 
