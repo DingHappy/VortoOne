@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 199 个，剩 **432** 个：
-- **要做：360**（其中 42 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 204 个，剩 **427** 个：
+- **要做：355**（其中 42 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：60**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：12**
 
@@ -291,7 +291,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` |  |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` |  |
 
-### org/channels（10 个，要做 10）
+### org/channels（10 个，要做 9）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -303,7 +303,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | PATCH | `ORG/channels/{x}/members/agents/{x}` | `chat.setAutoReply` |  |
 | ☐ | DELETE | `ORG/channels/{x}/mute` | `reads.mute` | 界面代码里没调用 |
 | ☐ | PUT | `ORG/channels/{x}/mute` | `reads.mute` | 界面代码里没调用 |
-| ☐ | PUT | `ORG/channels/{x}/place` | `chat.place` |  |
+| ☑ | PUT | `ORG/channels/{x}/place` | `chat.place` |  |
 | ☐ | GET | `ORG/channels/{x}/reads` | `dms.reads` |  |
 
 ### org/usage（10 个，要做 10）
@@ -565,14 +565,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/runs/{x}/device-wait` | `devices.deviceWait` |  |
 | ☐ | POST | `ORG/runs/{x}/stop-reason` | `agents.stopReason` |  |
 
-### org/channel-categories（4 个，要做 4）
+### org/channel-categories（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/channel-categories` | `chat.createCategory` | 读已接、写没接 |
-| ☐ | DELETE | `ORG/channel-categories/{x}` | `chat.deleteCategory` |  |
-| ☐ | PATCH | `ORG/channel-categories/{x}` | `chat.renameCategory` |  |
-| ☐ | PUT | `ORG/channel-categories/{x}/place` | `chat.placeCategory` |  |
+| ☑ | POST | `ORG/channel-categories` | `chat.createCategory` | 读已接、写没接 |
+| ☑ | DELETE | `ORG/channel-categories/{x}` | `chat.deleteCategory` |  |
+| ☑ | PATCH | `ORG/channel-categories/{x}` | `chat.renameCategory` |  |
+| ☑ | PUT | `ORG/channel-categories/{x}/place` | `chat.placeCategory` |  |
 
 ### org/github-app（4 个，要做 4）
 
