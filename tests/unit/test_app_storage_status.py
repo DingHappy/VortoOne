@@ -9,7 +9,6 @@ _BUCKET_ROUTE_METHODS = (
     ("PUT", ""),
     ("POST", "/test"),
     ("POST", "/migrate"),
-    ("GET", "/migration"),
 )
 
 
@@ -25,11 +24,16 @@ def test_storage_status_describes_the_disk_without_paths_or_capacity(home):
     }
     assert response.headers["cache-control"] == "no-store"
     assert owner.get("/api/app/organizations/another-home/storage").status_code == 404
+    migration = owner.get(f"{home['base']}/storage/migration")
+    assert migration.status_code == 200
+    assert migration.json() is None
+    assert migration.headers["cache-control"] == "no-store"
+    assert owner.get("/api/app/organizations/another-home/storage/migration").status_code == 404
 
 
 def test_storage_requires_owner_proof_on_every_route(home, monkeypatch):
     storage = f"{home['base']}/storage"
-    routes = (("GET", ""), *_BUCKET_ROUTE_METHODS)
+    routes = (("GET", ""), ("GET", "/migration"), *_BUCKET_ROUTE_METHODS)
     configure = _group(home, "配置", ["configure"])
     member = _join(home, roleIds=[configure])
     assert "configure" in member.get("/api/app/me").json()["organizations"][0]["permissions"]
@@ -69,3 +73,4 @@ def test_unsupported_bucket_operations_do_not_use_or_save_secrets(home, monkeypa
 
     assert set(root.rglob("*")) == before
     assert owner.get(storage).json()["s3"] is None
+    assert owner.get(f"{storage}/migration").json() is None

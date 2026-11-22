@@ -456,10 +456,16 @@ async def storage_status(org_id: str, request: Request):
     }, headers={"Cache-Control": "no-store"})
 
 
+@router.get(_STORAGE + "/migration")
+async def storage_migration_status(org_id: str, request: Request):
+    if (refused := _storage_owner(org_id, request)) is not None:
+        return refused
+    return JSONResponse(None, headers={"Cache-Control": "no-store"})
+
+
 @router.put(_STORAGE)
 @router.post(_STORAGE + "/test")
 @router.post(_STORAGE + "/migrate")
-@router.get(_STORAGE + "/migration")
 async def unavailable_s3_storage(org_id: str, request: Request):
     if (refused := _storage_owner(org_id, request)) is not None:
         return refused
