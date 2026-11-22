@@ -3092,6 +3092,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines/{routine_id}/take-over",
     "methods": [
       "GET"
