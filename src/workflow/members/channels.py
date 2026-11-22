@@ -465,7 +465,25 @@ class TeamChannels:
     def threads(self, actor, channel_id, *, tab, limit):
         with self.registry._locked_state() as state:
             channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
-            return self.history.threads(channel_id, channel["title"], limit=min(max(limit, 1), 100)) if tab in ("all", "open") else []
+            if tab not in ("all", "open"):
+                return []
+            return self.history.thread_page({channel_id: channel["title"]}, limit=min(max(limit, 1), 100))["threads"]
+
+    def organization_threads(self, actor, *, tab, channel_id, agent_id, needs_you, mine, query, cursor, limit):
+        with self.registry._locked_state() as state:
+            MemberRegistry._actor(state, actor)
+            if tab not in ("all", "open", "working", "missions", "closed", "archived"):
+                raise ValueError("话题列表分类无效")
+            # Team channel history currently contains open conversations between people.
+            if tab not in ("all", "open") or agent_id or needs_you:
+                return {"threads": [], "nextCursor": None}
+            channels = state["channels"]
+            if channel_id:
+                channels = {channel_id: channels[channel_id]} if channel_id in channels else {}
+            titles = {cid: channel["title"] for cid, channel in channels.items()
+                      if not channel["archived"] and self._access(state, actor, channel).joined}
+            return self.history.thread_page(titles, limit=min(max(limit, 1), 100), cursor=cursor, query=query,
+                                            person=self._actor_key(actor) if mine else "")
 
     def read(self, actor, channel_id):
         with self.registry._locked_state() as state:

@@ -8,6 +8,7 @@ import unicodedata
 import uuid
 from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
+from heapq import nlargest
 from pathlib import Path
 
 from src.workflow.members.registry import Damaged, Missing
@@ -355,16 +356,46 @@ class ChannelHistory:
                 "working": False, "needsYou": False, "openedByReplyAt": opened,
                 "suggestedResolved": False, "canManage": False}
 
-    def threads(self, channel, title, *, limit):
+    def thread_page(self, titles, *, limit, cursor="", query="", person=""):
+        before = ("9999", "")
+        if cursor:
+            try:
+                stamp, thread_id = cursor.split("/")
+                if _before(stamp) != stamp or str(uuid.UUID(thread_id)) != thread_id:
+                    raise ValueError
+            except (ValueError, OverflowError) as error:
+                raise ValueError("话题列表的游标无效") from error
+            before = (stamp, thread_id)
+
+        if not titles:
+            return {"threads": [], "nextCursor": None}
         with self.database() as conn:
             if conn is None:
-                return []
-            roots = conn.execute(
-                "SELECT r.* FROM (SELECT thread, max(sequence) AS latest FROM messages "
-                "WHERE channel = ? AND thread IS NOT NULL GROUP BY thread ORDER BY latest DESC LIMIT ?) t "
-                "JOIN messages r ON r.id = t.thread AND r.channel = ? ORDER BY t.latest DESC", (channel, limit, channel))
-            # Thread management (moving, closing and archiving threads) is not part of this API.
-            return [self.thread_summary(conn, channel, row, title) for row in roots]
+                return {"threads": [], "nextCursor": None}
+            conn.create_function("casefold", 1, str.casefold, deterministic=True)
+            query = query.strip().casefold()
+
+            def candidates():
+                for channel in titles:
+                    yield from conn.execute(
+                        "SELECT r.id, r.channel, t.activity FROM ("
+                        "  SELECT thread, max(created) AS activity FROM messages "
+                        "  WHERE channel = ? AND thread IS NOT NULL GROUP BY thread"
+                        ") t JOIN messages r ON r.id = t.thread AND r.channel = ? "
+                        "WHERE r.thread IS NULL AND (t.activity, r.id) < (?, ?) "
+                        "AND (? = '' OR instr(casefold(r.body), ?) > 0) "
+                        "AND (? = '' OR r.author = ? OR EXISTS ("
+                        "  SELECT 1 FROM messages m WHERE m.channel = r.channel AND m.thread = r.id AND m.author = ?"
+                        ")) ORDER BY t.activity DESC, r.id DESC LIMIT ?",
+                        (channel, channel, *before, query, query, person, person, person, limit + 1),
+                    )
+
+            # Only the selected page needs message bodies, participants and reply counts.
+            roots = nlargest(limit + 1, candidates(), key=lambda row: (row["activity"], row["id"]))
+            threads = [self.thread_summary(conn, row["channel"], self.find_by_id(conn, row["id"]), titles[row["channel"]])
+                       for row in roots[:limit]]
+            last = roots[limit - 1] if len(roots) > limit else None
+            return {"threads": threads, "nextCursor": f"{last['activity']}/{last['id']}" if last else None}
 
     def mark_read(self, channel, actor):
         with self.database(write=True) as conn:

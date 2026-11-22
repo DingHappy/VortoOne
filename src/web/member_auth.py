@@ -120,6 +120,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/messages/[^/]+/reactions"),
     ("POST", _ORG + r"/messages/[^/]+/reactions"),
     ("DELETE", _ORG + r"/messages/[^/]+/reactions"),
+    ("GET", _ORG + r"/threads"),
     ("GET", _ORG + r"/threads/[^/]+"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),

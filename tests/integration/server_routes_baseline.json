@@ -2148,6 +2148,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
     "methods": [
       "GET"
