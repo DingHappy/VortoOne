@@ -255,6 +255,15 @@ class MemberRegistry:
             yield state
             self._save(state)
 
+    @contextmanager
+    def while_member_active(self, actor: Principal) -> Iterator[None]:
+        """Hold the membership check stable while another local store commits."""
+        if not actor.is_member:
+            raise Refused("只有在册成员能执行此操作")
+        with self._locked_state() as state:
+            self._actor(state, actor)
+            yield
+
     # ── 判定用的小工具 ────────────────────────────────────────────────────────
 
     @staticmethod

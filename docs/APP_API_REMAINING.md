@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 298 个，剩 **333** 个：
-- **要做：258**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 299 个，剩 **332** 个：
+- **要做：257**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -107,7 +107,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
 | ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
 
-### org/agents（35 个，要做 29）
+### org/agents（35 个，要做 23）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -256,7 +256,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
 
-### org/me（12 个，要做 9）
+### org/me（12 个，要做 7）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -533,11 +533,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/notifications/{x}/read` | `notifications.read` | 仅所有者的后台通知 |
 | ☑ | POST | `ORG/notifications/{x}/snooze` | `notifications.snooze` | 仅所有者的后台通知 |
 
-### /api/app/feedback（4 个，要做 4）
+### /api/app/feedback（4 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/feedback` | `system.sendFeedback` |  |
+| ☑ | POST | `/api/app/feedback` | `system.sendFeedback` | 已认证成员或所有者提交本地文字反馈，另有仅所有者可读的本地收件箱 |
 | ☐ | POST | `/api/app/feedback/files` | `system.uploadFeedbackFile` |  |
 | ☐ | DELETE | `/api/app/feedback/files/{x}` | `system.dropFeedbackFile` |  |
 | ☐ | POST | `/api/app/feedback/offers/{x}` | `system.decideFeedbackOffer` |  |

@@ -29,7 +29,7 @@ export function FeedbackOfferRow({ message }: { message: Message }) {
   });
   const prefs = useSetChatPrefs(org.id);
   const [open, setOpen] = useState(false);
-  if (!offer) return null;
+  if (!offer || auth?.feedbackLocal === true) return null;
   const always = org.chatPrefs?.feedbackAuto === true;
   const report = (
     <>

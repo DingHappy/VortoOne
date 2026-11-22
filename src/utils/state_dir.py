@@ -242,6 +242,7 @@ _STATE_ENTRIES = [
     "tui_history",
     "web_advanced_agents.json",
     "notices.jsonl",
+    "feedback/",
     "review_threads.json",
     "trust.json",
     "worktree_bindings.json",

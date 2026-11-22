@@ -147,6 +147,7 @@ import type {
   EndpointModel,
   EndpointStyle,
   FeedbackFile,
+  FeedbackInboxPage,
   FeedbackInput,
   FeedbackOffer,
   ForeignMailbox,
@@ -392,8 +393,9 @@ export interface ApiClient {
     /** `null` unless I am the installation's owner (and not on VortoOne itself). */
     telemetry(): Promise<ServerTelemetry | null>;
     setTelemetry(enabled: boolean): Promise<ServerTelemetry>;
-    /** By email to whoever runs the server; only where it takes feedback (`AuthConfig.feedback`). */
+    /** Submits feedback through the mode reported by the server. */
     sendFeedback(input: FeedbackInput): Promise<void>;
+    feedbackInbox(orgId: string, cursor?: number): Promise<FeedbackInboxPage>;
     /** A picture or a video for the feedback being written: kept an hour unless it is sent. */
     uploadFeedbackFile(file: File): Promise<FeedbackFile>;
     dropFeedbackFile(id: string): Promise<void>;

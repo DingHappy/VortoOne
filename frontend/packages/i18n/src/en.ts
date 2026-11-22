@@ -20623,6 +20623,12 @@ export const en = {
     ask: "What was missing, broke or got in your way?",
     goesCloud: "What you write goes by email to the VortoOne team.",
     goesServer: "What you write goes by email to whoever runs this server.",
+    goesLocal: "Only the text you enter goes to this workspace’s owner.",
+    localSaved: "Your feedback is in this workspace’s inbox.",
+    inbox: "Feedback inbox",
+    inboxEmpty: "No feedback yet.",
+    inboxOlder: "Older feedback",
+    inboxNewer: "Newer feedback",
     placeholder: "Write it your way",
     /** The last entry of a right-click menu: it opens this form about what was clicked. */
     report: "Report a problem here",
