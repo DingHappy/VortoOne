@@ -19,7 +19,7 @@ def channels(root: str) -> TeamChannels:
 
 async def subscribe(socket, service, actor, channel_id, *, session_valid, interval=1.0):
     try:
-        cursor = await asyncio.to_thread(service.subscribe, actor, channel_id)
+        cursor, reaction_cursor = await asyncio.to_thread(service.subscribe, actor, channel_id)
     except (Missing, Refused):
         await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
         return None
@@ -32,25 +32,34 @@ async def subscribe(socket, service, actor, channel_id, *, session_valid, interv
         await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
         return None
     await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel_id))
-    return asyncio.create_task(watch(socket, service, actor, channel_id, cursor,
+    return asyncio.create_task(watch(socket, service, actor, channel_id, cursor, reaction_cursor,
                                      session_valid=session_valid, interval=interval))
 
 
-async def watch(socket, service, actor, channel_id, after, *, session_valid, interval=1.0):
-    """Follow committed messages. Recheck channel and session access before each push."""
+async def watch(socket, service, actor, channel_id, after, reaction_after, *, session_valid, interval=1.0):
+    """Follow committed messages and reactions. Recheck access before each push."""
+    async def send(kind, **fields):
+        if not session_valid():
+            return False
+        if not service.can_read(actor, channel_id):
+            raise Missing("没有这个频道")
+        event = F.channel_event(channel_id, kind, **fields)
+        await socket.send_json(F.make_app_frame(F.EVENT, channelId=channel_id, event=event))
+        return True
+
     try:
-        while True:
+        while session_valid():
             batch = await asyncio.to_thread(service.messages, actor, channel_id, after=after)
             for message in batch:
-                if not session_valid():
+                if not await send("message.created", messageId=message["id"], message=message,
+                                  authorUserId=message["author"]["id"], threadId=message["threadId"]):
                     return
-                if not service.can_read(actor, channel_id):
-                    raise Missing("没有这个频道")
-                event = F.channel_event(channel_id, "message.created", messageId=message["id"],
-                                        message=message, authorUserId=message["author"]["id"],
-                                        threadId=message["threadId"])
-                await socket.send_json(F.make_app_frame(F.EVENT, channelId=channel_id, event=event))
                 after = message["sequence"]
+            changes = await asyncio.to_thread(service.reaction_changes, actor, channel_id, reaction_after)
+            for sequence, message_id, reactions in changes:
+                if not await send("message.reactions", messageId=message_id, reactions=reactions):
+                    return
+                reaction_after = sequence
             await asyncio.sleep(interval)
     except (Missing, Refused):
         # No private data follows a lost subscription. The next REST read rechecks access too.

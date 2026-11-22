@@ -1,9 +1,10 @@
-"""Durable human messages, pins, and read markers for team channels."""
+"""Durable human messages, reactions, pins, and read markers for team channels."""
 from __future__ import annotations
 
 import json
 import os
 import sqlite3
+import unicodedata
 import uuid
 from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,16 @@ CREATE TABLE IF NOT EXISTS pins (
     author TEXT NOT NULL,
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS message_reactions (
+    message TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    reaction TEXT NOT NULL,
+    person TEXT NOT NULL,
+    PRIMARY KEY(message, reaction, person)
+);
+CREATE TABLE IF NOT EXISTS message_reaction_changes (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS read_markers (
     channel TEXT NOT NULL,
     person TEXT NOT NULL,
@@ -41,6 +52,28 @@ CREATE TABLE IF NOT EXISTS read_markers (
     PRIMARY KEY(channel, person)
 );
 """
+
+REACTION_MAX_LENGTH = 32
+
+
+def _emoji_symbol(char: str) -> bool:
+    # Keep new pictographs working on Python versions with older Unicode data.
+    return char in "‼⁉" or unicodedata.category(char) == "So" or 0x1F000 <= ord(char) <= 0x1FAFF
+
+
+def _check_reaction(reaction: str) -> None:
+    if reaction in ("+1", "-1"):
+        return
+    if not 0 < len(reaction) <= REACTION_MAX_LENGTH:
+        raise ValueError("表情无效")
+    if reaction[0] in "0123456789#*" and reaction[1:] in ("\u20e3", "\ufe0f\u20e3"):
+        return
+    if _emoji_symbol(reaction[0]) and all(
+        _emoji_symbol(char) or char in "\u200d\ufe0e\ufe0f" or 0xE0020 <= ord(char) <= 0xE007F
+        for char in reaction[1:]
+    ):
+        return
+    raise ValueError("表情无效")
 
 
 def _stamp(moment: datetime) -> str:
@@ -104,7 +137,7 @@ class ChannelHistory:
     def person_id(self, key: str) -> str:
         return self.owner_id if key == OWNER_KEY else key
 
-    def message(self, row, viewer) -> dict:
+    def message(self, row, viewer, *, reactions=None) -> dict:
         result = {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
                   "author": {"type": "person", "id": self.person_id(row["author"])}, "body": row["body"],
                   "mentionedAgentIds": [], "agentRunId": None,
@@ -125,6 +158,8 @@ class ChannelHistory:
             result["clientId"] = row["client"]
         if "pinned" in row.keys() and row["pinned"]:
             result["pinned"] = True
+        if reactions:
+            result["reactions"] = reactions
         return result
 
     @contextmanager
@@ -159,6 +194,61 @@ class ChannelHistory:
             raise Missing("没有这条消息")
         return row
 
+    @staticmethod
+    def _has_reactions(conn):
+        # Old histories stay readable without opening a write transaction to migrate them.
+        return conn is not None and conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'message_reactions'"
+        ).fetchone() is not None
+
+    def reactions(self, conn, message_ids):
+        if not message_ids or not self._has_reactions(conn):
+            return {}
+        grouped = {}
+        for offset in range(0, len(message_ids), 200):
+            batch = message_ids[offset:offset + 200]
+            marks = ",".join("?" for _ in batch)
+            rows = conn.execute(
+                f"SELECT message, reaction, person FROM message_reactions WHERE message IN ({marks}) "
+                "ORDER BY message, reaction, person", batch)
+            for message, reaction, person in rows:
+                grouped.setdefault(message, {}).setdefault(reaction, []).append(self.person_id(person))
+        return {message: [{"reaction": reaction, "count": len(people), "userIds": people}
+                          for reaction, people in reactions.items()]
+                for message, reactions in grouped.items()}
+
+    def set_reaction(self, message_id, person, reaction, enabled):
+        _check_reaction(reaction)
+        with self.database(write=True) as conn:
+            if enabled:
+                changed = conn.execute(
+                    "INSERT INTO message_reactions(message, reaction, person) VALUES (?, ?, ?) "
+                    "ON CONFLICT(message, reaction, person) DO NOTHING", (message_id, reaction, person))
+            else:
+                changed = conn.execute(
+                    "DELETE FROM message_reactions WHERE message = ? AND reaction = ? AND person = ?",
+                    (message_id, reaction, person))
+            if changed.rowcount:
+                # One durable cursor per changed message, coalescing changes rather than growing per toggle.
+                conn.execute("INSERT OR REPLACE INTO message_reaction_changes(message) VALUES (?)", (message_id,))
+            return self.reactions(conn, [message_id]).get(message_id, [])
+
+    def reaction_cursor(self, conn, channel):
+        if not self._has_reactions(conn):
+            return 0
+        return conn.execute(
+            "SELECT coalesce(max(r.sequence), 0) FROM message_reaction_changes r "
+            "JOIN messages m ON m.id = r.message WHERE m.channel = ?", (channel,)).fetchone()[0]
+
+    def reaction_changes(self, conn, channel, after):
+        if not self._has_reactions(conn):
+            return []
+        rows = conn.execute(
+            "SELECT r.sequence, r.message FROM message_reaction_changes r JOIN messages m ON m.id = r.message "
+            "WHERE m.channel = ? AND r.sequence > ? ORDER BY r.sequence LIMIT 100", (channel, after)).fetchall()
+        reactions = self.reactions(conn, [row["message"] for row in rows])
+        return [(row["sequence"], row["message"], reactions.get(row["message"], [])) for row in rows]
+
     def append(self, channel, actor, body, client, thread, reply_to, opened, media=None):
         media = check_media(media)
         stored = json.dumps(media, ensure_ascii=False, sort_keys=True) if media else None
@@ -170,7 +260,8 @@ class ChannelHistory:
                     if (existing["body"], existing["thread"], existing["reply_to"], existing["opened"],
                             existing["media"]) != (body, thread, reply_to, int(opened), stored):
                         raise ValueError("同一条消息的重试内容发生变化")
-                    return self.message(existing, actor)
+                    reactions = self.reactions(conn, [existing["id"]]).get(existing["id"])
+                    return self.message(existing, actor, reactions=reactions)
             if thread is not None and self.find(conn, channel, thread)["thread"] is not None:
                 raise ValueError("线程需要使用频道中的原消息")
             if reply_to is not None:
@@ -210,14 +301,15 @@ class ChannelHistory:
                 ).fetchall()[::-1]
                 if thread and root["created"] < cutoff:
                     rows.insert(0, root)
-            return [self.message(row, viewer) for row in rows]
+            reactions = self.reactions(conn, [row["id"] for row in rows])
+            return [self.message(row, viewer, reactions=reactions.get(row["id"])) for row in rows]
 
-    def latest_sequence(self, channel):
-        with self.database() as conn:
-            if conn is None:
-                return 0
-            return conn.execute("SELECT coalesce(max(sequence), 0) FROM messages WHERE channel = ?",
-                                (channel,)).fetchone()[0]
+    @staticmethod
+    def latest_sequence(conn, channel):
+        if conn is None:
+            return 0
+        return conn.execute("SELECT coalesce(max(sequence), 0) FROM messages WHERE channel = ?",
+                            (channel,)).fetchone()[0]
 
     @staticmethod
     def find_by_id(conn, message_id):
@@ -285,10 +377,10 @@ class ChannelHistory:
             "AND created > ? AND author != ? LIMIT 100)", (channel, read_at, actor)).fetchone()[0]
         return latest, unread, read_at
 
-    def _pin(self, channel, row, actor, stamp, viewer):
+    def _pin(self, channel, row, actor, stamp, viewer, *, reactions=None):
         return {"messageId": row["id"], "channelId": channel, "threadId": row["thread"],
                 "pinnedByUserId": self.person_id(actor), "pinnedAt": stamp,
-                "message": {**self.message(row, viewer), "pinned": True}}
+                "message": {**self.message(row, viewer, reactions=reactions), "pinned": True}}
 
     def pins(self, channel, viewer):
         with self.database() as conn:
@@ -296,8 +388,10 @@ class ChannelHistory:
                 return []
             rows = conn.execute(
                 "SELECT m.*, p.author AS pinned_by, p.created AS pinned_at FROM pins p "
-                "JOIN messages m ON m.id = p.message WHERE m.channel = ? ORDER BY p.created DESC", (channel,))
-            return [self._pin(channel, row, row["pinned_by"], row["pinned_at"], viewer) for row in rows]
+                "JOIN messages m ON m.id = p.message WHERE m.channel = ? ORDER BY p.created DESC", (channel,)).fetchall()
+            reactions = self.reactions(conn, [row["id"] for row in rows])
+            return [self._pin(channel, row, row["pinned_by"], row["pinned_at"], viewer,
+                              reactions=reactions.get(row["id"])) for row in rows]
 
     def set_pin(self, channel, actor, message_id, pinned):
         with self.database(write=True) as conn:
@@ -308,4 +402,5 @@ class ChannelHistory:
             conn.execute("INSERT OR IGNORE INTO pins(message, author, created) VALUES (?, ?, ?)",
                          (message_id, actor, _stamp(datetime.now(timezone.utc))))
             pin = conn.execute("SELECT author, created FROM pins WHERE message = ?", (message_id,)).fetchone()
-            return self._pin(channel, row, pin["author"], pin["created"], actor)
+            return self._pin(channel, row, pin["author"], pin["created"], actor,
+                             reactions=self.reactions(conn, [message_id]).get(message_id))

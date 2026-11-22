@@ -412,9 +412,14 @@ class TeamChannels:
         return True
 
     def subscribe(self, actor, channel_id):
-        with self.registry._locked_state() as state:
+        with self.registry._locked_state() as state, self.history.database() as conn:
             self._find(state, actor, channel_id, archived=False, joined=True)
-            return self.history.latest_sequence(channel_id)
+            return (self.history.latest_sequence(conn, channel_id), self.history.reaction_cursor(conn, channel_id))
+
+    def reaction_changes(self, actor, channel_id, after):
+        with self.registry._locked_state() as state, self.history.database() as conn:
+            self._find(state, actor, channel_id, archived=False, joined=True)
+            return self.history.reaction_changes(conn, channel_id, after)
 
     def messages(self, actor, channel_id, *, before="", limit=100, thread=None, after=None):
         with self.registry._locked_state() as state:
@@ -428,13 +433,17 @@ class TeamChannels:
             return self.history.append(channel_id, self._actor_key(actor), text, client_id, thread, reply_to, opened,
                                        media)
 
+    def _message_access(self, state, conn, actor, message_id):
+        row = self.history.find_by_id(conn, message_id)
+        try:
+            channel, access = self._find(state, actor, row["channel"], archived=False, joined=True)
+        except Refused as error:
+            raise Missing("没有这条消息") from error
+        return row, channel, access
+
     def message_details(self, actor, message_id, *, thread=False):
         with self.registry._locked_state() as state, self.history.database() as conn:
-            row = self.history.find_by_id(conn, message_id)
-            try:
-                channel, _ = self._find(state, actor, row["channel"], archived=False, joined=True)
-            except Refused as error:
-                raise Missing("没有这条消息") from error
+            row, channel, _ = self._message_access(state, conn, actor, message_id)
             if thread:
                 if row["thread"] is not None:
                     raise Missing("没有这个线程")
@@ -442,6 +451,16 @@ class TeamChannels:
             name = self.owner_name if row["author"] == OWNER_KEY else state["members"].get(row["author"], {}).get("name", "")
             return {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
                     "kind": "channel", "name": channel["title"], "author": name}
+
+    def message_reactions(self, actor, message_id, *, reaction=None, enabled=True):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, _, access = self._message_access(state, conn, actor, message_id)
+                if reaction is None:
+                    return self.history.reactions(conn, [row["id"]]).get(row["id"], [])
+            if "post" not in access.permissions:
+                raise Refused("没有发送频道表情的权限")
+            return self.history.set_reaction(row["id"], self._actor_key(actor), reaction, enabled)
 
     def threads(self, actor, channel_id, *, tab, limit):
         with self.registry._locked_state() as state:
