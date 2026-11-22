@@ -205,6 +205,14 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
     return MemberRegistry(root).set_member_groups(actor, member_id, role_ids)
 
 
+def removal_preview(root: str, actor: Principal, member_id: str) -> Dict[str, Any]:
+    """读已在册成员的移除预览，实际移除仍要重新核对权限。"""
+    if not MemberRegistry(root).manages(actor, member_id):
+        raise Refused("不能移除这个成员")
+    # 当前移除不转交 Agent、不变更模型或例行工作，也不读取成员的私有电脑登记。
+    return {"heir": None, "agents": [], "losePlan": [], "computers": [], "routines": 0}
+
+
 def remove_member(root: str, actor: Principal, member_id: str) -> None:
     """移出空间，账号和登录一并作废。先删登记：登记里没有他，他的会话就已经不算成员了。"""
     from src.workflow.ai_apps.store import AiApps

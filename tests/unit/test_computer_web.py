@@ -209,6 +209,27 @@ def test_members_pair_independent_private_computers_with_control_only(home, monk
         home['store'].authenticate(grant['token'])
 
 
+def test_member_removal_preview_does_not_expose_private_pairings(home, monkeypatch):
+    claim_native_home(home, monkeypatch)
+    owner = browser(home, owner=True)
+    member, member_id = join_member(home, owner, 'member@example.test')
+    pairing = member.post(home['base'] + '/computer-pairings', json={})
+    assert pairing.status_code == 201
+    paired_computer = exchange(home, pairing.json(), CONNECTOR, 'Private laptop')
+    assert paired_computer.status_code == 200
+    grant = paired_computer.json()
+
+    path = f"{home['base']}/members/{member_id}"
+    preview = owner.get(path + '/removal')
+    assert preview.status_code == 200 and preview.json()['computers'] == []
+    assert 'Private laptop' not in preview.text and grant['token'] not in preview.text
+    assert home['store'].authenticate(grant['token'])['connector_id'] == CONNECTOR
+
+    assert owner.delete(path).status_code == 204
+    with pytest.raises(ComputerDenied):
+        home['store'].authenticate(grant['token'])
+
+
 def test_device_routes_project_native_pairing_and_only_rename(home):
     grant = paired(home)
     owner = browser(home, cookie=True)
