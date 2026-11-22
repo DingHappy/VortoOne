@@ -940,9 +940,11 @@ def routines(root: str) -> List[Dict[str, Any]]:
     from src.workflow.staff.routines import Routines
     registry = Routines(root)
     rows = []
+    claims = {}
     for item in registry.list():
         if item["retired"]:
             continue
+        claims[item["id"]] = item["state"].get("task")
         creator_issue = registry.creator_issue(item)
         paused_reason = creator_issue.reason if creator_issue else None
         active = item["enabled"] and paused_reason is None
@@ -977,6 +979,9 @@ def routines(root: str) -> List[Dict[str, Any]]:
         if past:
             row.update(past)
             row["usage"]["runs"] = past["health"]["total"]
+            last = past["lastRun"]
+            if last["id"] == claims.get(row["id"]) and last["finishedAt"] is None:
+                row["state"] = "running"
     return rows
 
 
@@ -1429,7 +1434,8 @@ def agent_activity(root: str, agent_id: str) -> Dict[str, Any]:
             "runsByDay": [{"day": day, **row} for day, row in sorted(by_day.items())]}
 
 
-_ROUTINE_RUN = {"queued": "queued", "running": "running", "blocked": "waiting", "done": "reported"}
+_ROUTINE_RUN = {"queued": "queued", "running": "running", "blocked": "waiting", "done": "reported",
+                "cancelled": "canceled"}
 
 
 def routine_history(root: str) -> Dict[str, Dict[str, Any]]:
@@ -1458,6 +1464,7 @@ def routine_history(root: str) -> Dict[str, Dict[str, Any]]:
         out[routine_id] = {
             "lastRun": rows[0], "recentRuns": rows[:10], "failuresInRow": streak,
             "health": {"ok": sum(row["status"] == "reported" for row in finished), "silent": 0,
-                       "failed": sum(row["status"] == "failed" for row in finished), "skipped": 0, "missed": 0,
+                       "failed": sum(row["status"] == "failed" for row in finished),
+                       "skipped": sum(row["status"] == "canceled" for row in finished), "missed": 0,
                        "total": len(finished)}}
     return out

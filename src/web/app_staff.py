@@ -89,6 +89,14 @@ def stop(root: str, task_id: str) -> bool:
     return True
 
 
+def stop_routine(root: str, routine_id: str) -> bool:
+    """调用方已核对所有者证明，停止动作交给原专员执行池。"""
+    from src.workflow.staff.owner_confirmation import owner_route
+
+    with owner_route(root):
+        return _conversations(root).stop_routine(routine_id)
+
+
 async def watch(socket, root: str, member_id: str, *, interval: float = 1.0,
                 viewer: Optional[str] = None) -> None:
     """订阅了某位专员私聊的界面连接：定时看台账，把新出现的消息和运行状态的变化推过去。

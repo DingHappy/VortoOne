@@ -3068,6 +3068,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines/{routine_id}/take-over",
     "methods": [
       "GET"
