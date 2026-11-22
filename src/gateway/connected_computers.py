@@ -445,9 +445,9 @@ class ConnectedComputers:
         row, _ = self._revoke(connector_id, member_id, current_only=False)
         return row
 
-    def revoke_current(self, connector_id, *, member_id=None) -> str:
-        """Revoke an active pairing and return the credential epoch that lost access."""
-        _, retired_epoch = self._revoke(connector_id, member_id, current_only=True)
+    def revoke_epoch(self, connector_id, *, member_id=None, current_only: bool) -> str:
+        """Revoke a pairing and return its credential epoch before the registry changes."""
+        _, retired_epoch = self._revoke(connector_id, member_id, current_only=current_only)
         return retired_epoch
 
     def _revoke(self, connector_id, member_id, *, current_only) -> tuple[dict, str]:
