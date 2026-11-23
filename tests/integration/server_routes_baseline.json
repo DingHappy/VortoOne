@@ -2760,6 +2760,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/graph",
     "methods": [
       "GET"
@@ -2769,6 +2781,12 @@
     "path": "/api/app/organizations/{org_id}/wiki/import",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/import/github",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -2805,6 +2823,12 @@
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/append",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/audience",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2845,6 +2869,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/versions/{version}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/search",
     "methods": [
       "GET"
     ]

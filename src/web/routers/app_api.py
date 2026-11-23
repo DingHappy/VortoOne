@@ -2958,8 +2958,9 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None, rea
         if actor.is_member and actor.id not in state["members"]:
             raise WikiError(403, "forbidden", _NOT_MEMBER)
         keys = app_members.permission_keys(root, actor)
-        people = frozenset({views.owner_id(root), *state["members"]})
-        return Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys,
+        owner_id = views.owner_id(root)
+        people = frozenset({owner_id, *state["members"]})
+        return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
                                      TeamChannels.readable_public_names(state, actor)))
 
     def execute():
@@ -2994,6 +2995,21 @@ async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
 
 
+@router.get(_WIKI + "/search")
+async def search_wiki(org_id: str, request: Request, q: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.search(q))
+
+
+@router.get(_WIKI + "/folder-audience")
+async def wiki_folder_audience(org_id: str, request: Request, folder: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.folder_audience(folder))
+
+
+@router.put(_WIKI + "/folder-audience")
+async def narrow_wiki_folder_audience(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_folder_audience(body))
+
+
 async def _wiki_import_body(request: Request) -> bytearray:
     if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
         raise WikiError(415, "invalid", "Markdown 导入只接受 JSON 请求")
@@ -3017,6 +3033,26 @@ async def import_wiki_notes(org_id: str, request: Request):
         return wiki.import_notes(data)
 
     return await _wiki_call(request, org_id, import_notes, read_body=_wiki_import_body)
+
+
+@router.get(_WIKI + "/import/github")
+async def preview_wiki_github(org_id: str, request: Request, url: str = Query(..., max_length=2048)):
+    from src.web import app_wiki_github
+
+    def plan(wiki):
+        if not wiki.reader.actor.is_owner:
+            raise WikiError(403, "forbidden", "GitHub 导入需要通过认证的工作区所有者")
+        return app_wiki_github.parse_link(url)
+
+    target = await _wiki_call(request, org_id, plan)
+    if isinstance(target, Response):
+        return target
+    try:
+        data = await app_wiki_github.fetch_notes(target)
+    except WikiError as error:
+        return _error(error.status, error.code, str(error))
+    return Response(data, media_type="application/zip",
+                    headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.post(_WIKI + "/pages", status_code=201)
@@ -3062,6 +3098,11 @@ async def change_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request
             return _error(400, "invalid", "必须指定是否进入上下文")
         return await _wiki_call(request, org_id, lambda wiki: wiki.context(slug, value))
     return await _wiki_call(request, org_id, lambda wiki: wiki.change(slug, attribute, value))
+
+
+@router.put(_WIKI + "/pages/{slug}/audience")
+async def narrow_wiki_audience(org_id: str, slug: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_audience(slug, body))
 
 
 @router.get(_WIKI + "/pages/{slug}/history")

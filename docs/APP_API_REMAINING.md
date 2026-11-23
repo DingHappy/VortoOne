@@ -154,23 +154,23 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 8）
+### org/wiki（24 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` |  |
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
-| ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
-| ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
+| ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
+| ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
-| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 已接纯 Markdown 文件。重发相同导入号及批次内容会复用回执；Obsidian、GitHub、笔记别名和 Drive 附件待接。 |
-| ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |
+| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 支持纯 Markdown 文件、Obsidian 笔记和所有者的 GitHub 笔记，保存来源、目录、标签与正文。重发相同导入号及批次内容会复用回执。笔记别名和 Drive 附件待接。 |
+| ☑ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` | 所有者预览公开 GitHub 仓库、分支目录或单个 Markdown 文件。仅返回笔记 ZIP，保存在后续导入确认时执行。私有仓库及附件暂不可用。 |
 | ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
 | ☑ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/append` | `wiki.append` | 支持摘录已加入的公开团队频道消息。私信和受限频道来源暂不可用 |
-| ☐ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` |  |
+| ☑ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` | 所有者可在上级文件夹权限内按成员收紧单页的可见范围，保留原链接。扩大范围、角色、独立编辑授权和智能体授权返回 409。 |
 | ☑ | POST | `ORG/wiki/pages/{x}/context` | `wiki.context` | 已接入。开启时返回明确的 409，页面不会进入智能体上下文 |
 | ☑ | GET | `ORG/wiki/pages/{x}/history` | `wiki.history` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/lock` | `wiki.lock` |  |
@@ -179,7 +179,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/wiki/pages/{x}/rename` | `wiki.rename` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}/versions/{x}` | `wiki.version` |  |
 | ☐ | GET | `ORG/wiki/reads` | `wiki.reads` |  |
-| ☐ | GET | `ORG/wiki/search` | `wiki.search` | 界面代码里没调用 |
+| ☑ | GET | `ORG/wiki/search` | `wiki.search` | 按当前标题搜索，只回调用者可见的未删除页面摘要；界面仍用本地筛选。 |
 | ☑ | POST | `ORG/wiki/trash/purge` | `wiki.purge` |  |
 | ☑ | POST | `ORG/wiki/trash/restore` | `wiki.restoreMany` |  |
 
