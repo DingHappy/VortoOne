@@ -53,14 +53,19 @@ def test_member_can_create_adjust_and_undo_with_source_and_live_cursors_preserve
         assert member.get(workspace_threads, params={"mine": True}).json()["threads"] == [made]
         assert member.get(f"{channel}/threads").json()["threads"] == [made]
 
-        created = socket.receive_json()["event"]
-        assert created["type"] == "message.created" and created["messageId"] == made["id"]
+        # Message and thread cursors are polled separately, so either frame can arrive first.
+        first_event = socket.receive_json()["event"]
+        second_event = socket.receive_json()["event"]
+        events = {event["type"]: event for event in (first_event, second_event)}
+        assert set(events) == {"message.created", "thread.updated"}
+        created = events["message.created"]
+        assert created["messageId"] == made["id"]
         marker = created["message"]
         assert marker["meta"]["threadStart"] == {
             "title": "安排", "contextChannelId": cid, "firstMessageId": first["id"],
             "lastMessageId": last["id"], "count": 2, "moved": False, "movedCount": 0,
         }
-        assert socket.receive_json()["event"] == {
+        assert events["thread.updated"] == {
             "type": "thread.updated", "channelId": cid, "threadId": made["id"], "change": "created",
         }
         assert owner.get(f"{channel}/messages").json()["messages"] == [*original, marker]
