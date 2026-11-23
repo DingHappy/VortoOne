@@ -3314,6 +3314,7 @@ export const en = {
     },
   },
   noAi: {
+    sendFailure: "Connect a model, then retry the message.",
     banner: {
       org: "Your agents don't have an AI\u00a0yet.",
       orgHint: "You can also ask in the chat, like “use my Claude plan”.",

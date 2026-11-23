@@ -1810,9 +1810,9 @@ export interface PostMessageOptions {
   onOptimistic?: (local: Message) => void;
   /**
    * The server refused it, or no answer came (the message turns "failed" either way: with a retry, or waiting in
-   * the `outbox` when `waits`). `clientId` is the failed message's (its optimistic copy's).
+   * the `outbox` when `waits`). `local` identifies the optimistic message whose send was refused.
    */
-  onFailed?: (error: unknown, failed: { clientId: string; waits: boolean }) => void;
+  onFailed?: (error: unknown, failed: { clientId: string; waits: boolean; local?: Message }) => void;
 }
 
 /** `usePostMessage`'s mutation, for a `MutationObserver` outside React (tests). */
@@ -1866,7 +1866,7 @@ export function postMessageMutation(
       // screen is open once the connection is back (`useSendWaiting`).
       const waits = sendWaits(error);
       if (waits && ctx?.local) outbox.add(orgId, ctx.local);
-      options.onFailed?.(error, { clientId, waits });
+      options.onFailed?.(error, { clientId, waits, local: ctx?.local });
       qc.setQueryData<Message[]>(key, (list) =>
         list?.map((m) =>
           m.local && m.clientId === clientId
@@ -2047,7 +2047,7 @@ export function flushOutbox(
   api: ApiClient,
   qc: QueryClient,
   orgId: string,
-  onRefused?: (error: unknown) => void,
+  onRefused?: (error: unknown, local: Message) => void,
 ): Promise<boolean> {
   const running = flushing.get(orgId);
   if (running) return running;
@@ -2073,7 +2073,7 @@ export function flushOutbox(
         qc.setQueryData<Message[]>(keys.messages(orgId, local.channelId), (list) =>
           list?.map((m) => (m.local && m.clientId === clientId ? { ...m, sendFailure: sendFailureOf(error) } : m)),
         );
-        onRefused?.(error);
+        onRefused?.(error, local);
       }
     }
     return false;
@@ -2089,7 +2089,7 @@ export function flushOutbox(
 export function useSendWaiting(
   orgId: string,
   connection: RealtimeConnection | null,
-  onRefused: (error: unknown) => void,
+  onRefused: (error: unknown, local: Message) => void,
 ) {
   const api = useApi();
   const qc = useQueryClient();
@@ -2097,7 +2097,7 @@ export function useSendWaiting(
   refused.current = onRefused;
   useEffect(() => {
     if (!connection) return;
-    return keepSending(connection, () => flushOutbox(api, qc, orgId, (error) => refused.current(error)));
+    return keepSending(connection, () => flushOutbox(api, qc, orgId, (error, local) => refused.current(error, local)));
   }, [api, qc, orgId, connection]);
 }
 
