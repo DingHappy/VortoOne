@@ -2,17 +2,22 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkDevConfig, digestFile, UI_RESOURCES } from "./desktop-dev-model.mjs";
+import { checkDevConfig, checkStableConfig, digestFile, UI_RESOURCES } from "./desktop-dev-model.mjs";
 
 const frontend = fileURLToPath(new URL("..", import.meta.url));
 const repo = fileURLToPath(new URL("../..", import.meta.url));
 const app = join(frontend, "apps", "desktop-dev");
 const tauri = join(app, "src-tauri");
 const sidecarTauri = join(repo, "desktop", "src-tauri");
-const config = checkDevConfig(
-  JSON.parse(readFileSync(join(tauri, "tauri.conf.json"), "utf8")),
-  JSON.parse(readFileSync(join(sidecarTauri, "tauri.conf.json"), "utf8")),
-);
+const readConfig = (path) => JSON.parse(readFileSync(path, "utf8"));
+const stable = process.argv.includes("--stable");
+const development = readConfig(join(tauri, "tauri.conf.json"));
+const legacy = readConfig(join(sidecarTauri, "tauri.conf.json"));
+checkDevConfig(development, legacy);
+const stableConfig = stable
+  ? checkStableConfig(readConfig(join(tauri, "tauri.stable.conf.json")), legacy)
+  : null;
+const config = stableConfig || development;
 const target = {
   win32: { triple: "x86_64-pc-windows-msvc", bundle: "nsis", platform: "windows-x64", extension: ".exe" },
   linux: { triple: "x86_64-unknown-linux-gnu", bundle: "deb", platform: "ubuntu-amd64", extension: ".deb" },
@@ -34,7 +39,12 @@ execFileSync(process.execPath, [join(repo, "desktop", "scripts", "build-sidecar.
 const runtimeManifest = JSON.parse(readFileSync(
   join(sidecarTauri, "target", "sidecar", target.triple, "manifest.json"), "utf8",
 ));
+if (stable && (runtimeManifest.runtimeEnvironment !== "managed" ||
+    runtimeManifest.pythonProvenance?.verifiedArchive !== true)) {
+  throw new Error("Stable installers require the exact managed Python archive for their target");
+}
 const buildDir = join(tauri, "target");
+const channel = stable ? "stable" : "development";
 const resources = {
   ...UI_RESOURCES,
   [join(sidecarTauri, "binaries", "runtime")]: "runtime/",
@@ -42,7 +52,7 @@ const resources = {
 };
 const overlay = join(buildDir, `bundle-${target.platform}.json`);
 mkdirSync(buildDir, { recursive: true });
-writeFileSync(overlay, JSON.stringify({ bundle: { resources } }));
+writeFileSync(overlay, JSON.stringify({ ...stableConfig, bundle: { ...stableConfig?.bundle, resources } }));
 // Pass a config file, so paths with spaces and the Windows separators never pass through shell quoting.
 execFileSync(process.execPath, [
   join(frontend, "node_modules", "@tauri-apps", "cli", "tauri.js"),
@@ -58,15 +68,17 @@ const generated = readdirSync(bundleDir).filter((name) =>
   name.includes(`_${config.version}_`) && name.endsWith(target.extension),
 );
 if (generated.length !== 1) throw new Error(`Expected one ${target.bundle} installer for ${config.version}`);
-const output = join(buildDir, "release", "channel", target.platform);
+const output = stable
+  ? join(buildDir, "release", "channel", "stable", target.platform)
+  : join(buildDir, "release", "channel", target.platform);
 mkdirSync(output, { recursive: true });
-const name = `VortoOne_Dev_${config.version}_${target.platform}${target.extension}`;
+const name = `${stable ? "VortoOne" : "VortoOne_Dev"}_${config.version}_${target.platform}${target.extension}`;
 const installer = join(output, name);
 copyFileSync(join(bundleDir, generated[0]), installer);
 const sha256 = digestFile(installer);
 writeFileSync(join(output, "SHA256SUMS"), `${sha256}  ${name}\n`);
-writeFileSync(join(output, "desktop-dev.json"), JSON.stringify({
-  channel: "development",
+writeFileSync(join(output, stable ? "desktop-release.json" : "desktop-dev.json"), JSON.stringify({
+  channel,
   identifier: config.identifier,
   version: config.version,
   commit,

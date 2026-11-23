@@ -413,6 +413,46 @@ mod tests {
     }
 
     #[test]
+    fn stable_directories_start_a_fresh_home_alongside_legacy_state() {
+        use tauri::utils::config::{AppDirectoriesOverride, Config};
+
+        let dev: Config = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let stable: Config = serde_json::from_str(include_str!("../tauri.stable.conf.json")).unwrap();
+        assert!(dev.app.app_directories_override.is_none());
+        let Some(AppDirectoriesOverride::Directories(directories)) = stable.app.app_directories_override else {
+            panic!("stable configuration must override its own directories");
+        };
+
+        let base = temp("stable-profile");
+        let legacy = base.join("com.vorto.vortoone");
+        fs::create_dir(&legacy).unwrap();
+        let old_model = legacy.join("llm-profile.json");
+        let old_marker = legacy.join(LOCAL_FILE);
+        fs::write(&old_model, b"fixture-model-profile").unwrap();
+        fs::write(&old_marker, br#"{"installed":true,"run":true}"#).unwrap();
+
+        // Tauri substitutes these platform bases. Both may point to the same
+        // directory on macOS, as in this fixture.
+        let scoped_path = |path: Option<PathBuf>, variable| {
+            base.join(path.unwrap().strip_prefix(variable).unwrap())
+        };
+        let config = scoped_path(directories.config, "$CONFIG");
+        let data = scoped_path(directories.data, "$DATA");
+        let local_data = scoped_path(directories.local_data, "$LOCALDATA");
+        for path in [&config, &data, &local_data] {
+            assert_eq!(path, &legacy.join("desktop-home"));
+        }
+        assert_eq!(opening(&read_servers(&config), &read_local(&config, &data), 0), Opening::Welcome);
+        assert!(crate::model_settings::env_file(&config, &data).is_none());
+        prepare_local_home(&data, true, Some("New stable owner")).unwrap();
+        assert!(data.join("home").join(DESKTOP_SETUP).is_file());
+        assert!(!legacy.join("home").exists());
+        assert_eq!(fs::read(old_model).unwrap(), b"fixture-model-profile");
+        assert_eq!(fs::read(old_marker).unwrap(), br#"{"installed":true,"run":true}"#);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn what_opens_first() {
         let installed = LocalState { installed: true, run: true, url: Some("http://127.0.0.1:4000".into()), ..LocalState::default() };
         let none = LocalState::default();

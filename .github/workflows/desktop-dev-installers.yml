@@ -12,12 +12,22 @@ on:
       - "desktop/runtime_entry.py"
       - "src/gateway/supervisor_watchdog.py"
   workflow_dispatch:
+    inputs:
+      channel:
+        type: choice
+        options: [development, stable]
+        default: development
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        default: development
 
 permissions:
   contents: read
 
 concurrency:
-  group: dev-installers-${{ github.ref }}
+  group: desktop-installers-${{ inputs.channel || 'development' }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +45,9 @@ jobs:
     timeout-minutes: 55
     env:
       RUSTUP_TOOLCHAIN: stable
-      INSTALLER_OUTPUT: frontend/apps/desktop-dev/src-tauri/target/release/channel/${{ matrix.platform }}
+      INSTALLER_OUTPUT: frontend/apps/desktop-dev/src-tauri/target/release/channel/${{ inputs.channel == 'stable' && 'stable/' || '' }}${{ matrix.platform }}
+      INSTALLED_BINARY: ${{ inputs.channel == 'stable' && 'vortoone' || 'vortoone-desktop-dev' }}
+      INSTALLER_MANIFEST: ${{ inputs.channel == 'stable' && 'desktop-release.json' || 'desktop-dev.json' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -55,7 +67,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            build-essential file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            build-essential file zstd libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
             libayatana-appindicator3-dev librsvg2-dev
       - name: Install current stable Rust and locked frontend dependencies
         run: |
@@ -79,10 +91,10 @@ jobs:
               child.wait(timeout=5)
           assert not process_alive(child.pid)
           '@ | python -
-      - name: Build native Dev installer and bundled backend
+      - name: Build native installer and bundled backend
         env:
-          VORTOONE_SIDECAR_BOOTSTRAP_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: node frontend/scripts/bundle-desktop-dev-portable.mjs
+          VORTOONE_SIDECAR_BOOTSTRAP_PYTHON: ${{ inputs.channel != 'stable' && steps.python.outputs.python-path || '' }}
+        run: node frontend/scripts/bundle-desktop-dev-portable.mjs ${{ inputs.channel == 'stable' && '--stable' || '' }}
       - name: Install Ubuntu package and check isolated local bootstrap
         if: runner.os == 'Linux'
         shell: bash
@@ -92,7 +104,7 @@ jobs:
           package=(./*.deb)
           test "$(dpkg-deb -f "${package[0]}" Architecture)" = amd64
           sudo apt-get install --yes "${package[0]}"
-          timeout 180s /usr/bin/vortoone-desktop-dev --check-standalone | tee smoke.json
+          timeout 180s "/usr/bin/$INSTALLED_BINARY" --check-standalone | tee smoke.json
           python -c 'import json; assert json.load(open("smoke.json")) == dict(standalone=True, freshProfile=True, login=True, ui=True, inferenceSent=False)'
       - name: Install Windows package and check isolated local bootstrap
         if: runner.os == 'Windows'
@@ -100,7 +112,7 @@ jobs:
         run: |
           $output = Resolve-Path $env:INSTALLER_OUTPUT
           $installer = Get-ChildItem $output -Filter *.exe -File
-          $manifest = Get-Content (Join-Path $output 'desktop-dev.json') -Raw | ConvertFrom-Json
+          $manifest = Get-Content (Join-Path $output $env:INSTALLER_MANIFEST) -Raw | ConvertFrom-Json
           if ((Get-FileHash $installer.FullName -Algorithm SHA256).Hash -ne $manifest.sha256) {
             throw 'Installer SHA-256 mismatch'
           }
@@ -109,7 +121,7 @@ jobs:
           if ($install.ExitCode -ne 0) { throw "NSIS installation failed ($($install.ExitCode))" }
           $stdout = Join-Path $output 'smoke.json'
           $stderr = Join-Path $env:RUNNER_TEMP 'vortoone-smoke-errors.txt'
-          $app = Join-Path $installDir 'vortoone-desktop-dev.exe'
+          $app = Join-Path $installDir ('{0}.exe' -f $env:INSTALLED_BINARY)
           $smoke = Start-Process $app -ArgumentList '--check-standalone' -PassThru `
             -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           if (!$smoke.WaitForExit(180000)) {
@@ -128,7 +140,7 @@ jobs:
           Get-Content $stdout
       - uses: actions/upload-artifact@v4
         with:
-          name: VortoOne-Dev-${{ matrix.platform }}
+          name: VortoOne-${{ inputs.channel == 'stable' && 'Stable' || 'Dev' }}-${{ matrix.platform }}
           path: ${{ env.INSTALLER_OUTPUT }}
           if-no-files-found: error
           retention-days: 14

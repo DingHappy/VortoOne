@@ -1,0 +1,33 @@
+{
+  "productName": "VortoOne",
+  "version": "0.3.0",
+  "identifier": "com.vorto.vortoone",
+  "mainBinaryName": "vortoone",
+  "build": {
+    "beforeBuildCommand": "node ../../scripts/prepare-desktop-dev.mjs --stable",
+    "frontendDist": "../dist-stable"
+  },
+  "app": {
+    "appDirectoriesOverride": {
+      "config": "$CONFIG/com.vorto.vortoone/desktop-home",
+      "data": "$DATA/com.vorto.vortoone/desktop-home",
+      "localData": "$LOCALDATA/com.vorto.vortoone/desktop-home"
+    }
+  },
+  "bundle": {
+    "macOS": {
+      "infoPlist": "Info.stable.plist",
+      "signingIdentity": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3Q0NGMEQ3ODhCMUNDMjkKUldRcHpMR0kxL0RNRjV3bVQ5VXJvb0lDYys3QkVVM2RCVmJ6VS9uMjdXVjBRSXdaampZbFAra0wK",
+      "endpoints": [
+        "https://vorto.oss-cn-hangzhou.aliyuncs.com/vortoone/desktop/latest.json",
+        "https://github.com/DingHappy/VortoOne/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

@@ -259,3 +259,28 @@ def test_the_server_says_which_app_versions_it_serves(client):
     instance = client.get("/api/instance").json()
     assert (instance["minApi"], instance["api"]) == (app_api.MIN_API, app_api.API_CONTRACT)
     assert 1 <= instance["minApi"] <= instance["api"]
+
+
+def test_the_bundled_backend_reports_the_installed_desktop_version(client, monkeypatch):
+    from importlib import metadata
+
+    original = metadata.version
+
+    def version(package):
+        if package == "vortoone":
+            raise metadata.PackageNotFoundError(package)
+        if package == "vortocode":
+            return "0.2.64"
+        return original(package)
+
+    monkeypatch.setattr(metadata, "version", version)
+    monkeypatch.delenv("VORTOONE_BUNDLED_DESKTOP", raising=False)
+    monkeypatch.setenv("VORTOONE_BUNDLED_DESKTOP_VERSION", "0.3.0")
+    assert client.get("/api/instance").json()["version"] == "0.2.64"
+
+    monkeypatch.setenv("VORTOONE_BUNDLED_DESKTOP", "1")
+    assert client.get("/api/instance").json()["version"] == "0.3.0"
+    monkeypatch.setenv("VORTOONE_BUNDLED_DESKTOP_VERSION", "0.3.0-dev.24")
+    assert client.get("/api/instance").json()["version"] == "0.3.0-dev.24"
+    monkeypatch.setenv("VORTOONE_BUNDLED_DESKTOP_VERSION", "invalid")
+    assert client.get("/api/instance").json()["version"] == "0.2.64"

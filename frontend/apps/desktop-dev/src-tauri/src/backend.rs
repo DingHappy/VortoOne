@@ -418,6 +418,7 @@ pub fn bundled_command(
     ui: &Path,
     port: u16,
     token: &str,
+    version: &str,
 ) -> Command {
     let mut command = runtime_command(runtime);
     command
@@ -425,8 +426,13 @@ pub fn bundled_command(
         .arg(port.to_string());
     command.env_remove("PYTHONPATH").env_remove("PYTHONHOME");
     let mut command = configure(command, env_file, home, ui, token);
-    command.env("VORTOONE_BUNDLED_DESKTOP", "1");
+    set_bundled_desktop(&mut command, version);
     command
+}
+
+fn set_bundled_desktop(command: &mut Command, version: &str) {
+    command.env("VORTOONE_BUNDLED_DESKTOP", "1");
+    command.env("VORTOONE_BUNDLED_DESKTOP_VERSION", version);
 }
 
 fn configure(
@@ -452,6 +458,7 @@ fn configure(
     }
     // 经 Tailscale 对外的地址（外壳打开「让别的设备连进来」时写下）：链接、二维码和 AI 应用报这个地址
     command.env_remove("VORTOONE_BUNDLED_DESKTOP");
+    command.env_remove("VORTOONE_BUNDLED_DESKTOP_VERSION");
     command.env_remove("VORTOONE_PUBLIC_URL");
     if let Some(url) = public_url(&home.with_file_name(crate::places::PUBLIC_URL_FILE)) {
         command.env("VORTOONE_PUBLIC_URL", url);
@@ -486,9 +493,10 @@ pub fn start_bundled(
     ui: &Path,
     log: &Path,
     token: &str,
+    version: &str,
 ) -> Result<(Child, u16, String, NativeBootstrap), String> {
     start_with(home, ui, log, token, |port, token| {
-        bundled_command(runtime, env_file, home, ui, port, token)
+        bundled_command(runtime, env_file, home, ui, port, token, version)
     })
 }
 
@@ -665,7 +673,7 @@ fn report_standalone_trace(path: &Path) {
 }
 
 /// 安装验收：在全新的临时家里启动随包后端并完成登录，不读取用户配置，不调用模型。
-pub fn verify_standalone(resources: &Path) -> Result<(), String> {
+pub fn verify_standalone(resources: &Path, version: &str) -> Result<(), String> {
     let runtime = resources.join("runtime").join(BUNDLED_RUNTIME);
     let scratch = std::env::temp_dir().join(format!(
         "vortoone-installed-check-{}-{}",
@@ -692,13 +700,19 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
         let log = scratch.join("backend.log");
         let (mut child, port, token, _native) =
             start_with(&home, &ui, &log, &new_token()?, |port, token| {
-                let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
+                let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token, version);
                 isolate_standalone_environment(&mut cmd, &scratch);
                 cmd = configure(cmd, None, &home, &ui, token);
-                cmd.env("VORTOONE_BUNDLED_DESKTOP", "1").env("VORTOONE_TURN_DIGEST", "0");
+                set_bundled_desktop(&mut cmd, version);
+                cmd.env("VORTOONE_TURN_DIGEST", "0");
                 cmd
             })?;
         let result = (|| {
+            let (status, instance) = request(port, "GET", "/api/instance", None)?;
+            let instance: serde_json::Value = serde_json::from_str(&instance).map_err(|_| "独立后端实例应答无效")?;
+            if status != 200 || instance["version"].as_str() != Some(version) {
+                return Err("随包后端显示的版本与应用不一致".into());
+            }
             let (status, profile) = request(port, "GET", "/api/app/me", Some(&token))?;
             let profile: serde_json::Value = serde_json::from_str(&profile).map_err(|_| "独立后端账号应答无效")?;
             if request(port, "GET", "/api/app/me", None)?.0 != 401
@@ -773,6 +787,7 @@ Authorization: Bearer hidden
                 &dir,
                 4321,
                 "k",
+                "0.3.0",
             )
         };
         assert_eq!(env_of(&build()), None);
@@ -886,6 +901,7 @@ Authorization: Bearer hidden
             Path::new("/App/web"),
             4321,
             "token",
+            "0.3.0-dev.24",
         );
         assert_eq!(command.get_program(), "/App/runtime/vortocode-runtime");
         assert_eq!(
@@ -898,6 +914,10 @@ Authorization: Bearer hidden
         let env: std::collections::HashMap<_, _> = command.get_envs().collect();
         assert!(env[std::ffi::OsStr::new("PYTHONPATH")].is_none());
         assert!(env[std::ffi::OsStr::new("PYTHONHOME")].is_none());
+        assert_eq!(
+            env[std::ffi::OsStr::new("VORTOONE_BUNDLED_DESKTOP_VERSION")],
+            Some(std::ffi::OsStr::new("0.3.0-dev.24")),
+        );
     }
 
     #[test]
@@ -944,6 +964,7 @@ Authorization: Bearer hidden
             })
             .collect();
         assert_eq!(env["VORTOONE_API_TOKEN"].as_deref(), Some("tok"));
+        assert_eq!(env["VORTOONE_BUNDLED_DESKTOP_VERSION"], None);
         assert_eq!(env["VORTOONE_WORKSPACE_SCOPE"].as_deref(), Some("general"));
         assert_eq!(env["VORTOONE_ENABLE_BROWSER_CONTROL"].as_deref(), Some("0"));
         assert_eq!(env["VORTOONE_APP_UI_DIR"].as_deref(), Some("/ui"));

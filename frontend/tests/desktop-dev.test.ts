@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   checkDevConfig,
+  checkStableConfig,
   devReleaseNotes,
   nextDevelopmentVersion,
 } from "../scripts/desktop-dev-model.mjs";
@@ -74,4 +75,27 @@ test("development release notes identify fixtures, the stable version and the ex
     config.version,
   ])
     assert.ok(notes.includes(text));
+});
+
+test("stable builds use the released identity and updater trust while keeping a separate binary", () => {
+  const release = JSON.parse(readFileSync(
+    new URL("../apps/desktop-dev/src-tauri/tauri.stable.conf.json", import.meta.url),
+    "utf8",
+  ));
+  assert.equal(checkStableConfig(release, stable).identifier, stable.identifier);
+  assert.equal(release.mainBinaryName, "vortoone");
+  assert.equal(release.plugins.updater.pubkey, stable.plugins.updater.pubkey);
+  assert.deepEqual(release.plugins.updater.endpoints, stable.plugins.updater.endpoints);
+  assert.equal(release.plugins.updater.requireSignedVersion, true);
+  for (const patch of [
+    { identifier: config.identifier },
+    { productName: config.productName },
+    { version: config.version },
+    { mainBinaryName: "vortoone-desktop-dev" },
+    { plugins: { updater: { ...release.plugins.updater, pubkey: "other-key" } } },
+    { plugins: { updater: { ...release.plugins.updater, requireSignedVersion: false } } },
+    { plugins: { updater: { ...release.plugins.updater, endpoints: ["https://example.com"] } } },
+  ]) {
+    assert.throws(() => checkStableConfig({ ...release, ...patch }, stable));
+  }
 });

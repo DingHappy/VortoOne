@@ -86,13 +86,21 @@ async def instance(request: Request):
     from src.web.auth import get_api_token
     from src.web.routers.ai_apps import server_url      # 设了 VORTOONE_PUBLIC_URL（专用网络里的地址）就报它
     from importlib import metadata
-    version = "dev"
-    for package in ("vortoone", "vortocode"):  # 包名改名（ADR-018 批次 E）前后都认
-        try:
-            version = metadata.version(package)
-            break
-        except metadata.PackageNotFoundError:
-            continue
+    # Native Desktop supplies its package version to the bundled backend.
+    # A server installed separately still reports its Python distribution version.
+    bundled = os.getenv("VORTOONE_BUNDLED_DESKTOP_VERSION", "")
+    if os.getenv("VORTOONE_BUNDLED_DESKTOP") == "1" and re.fullmatch(
+        r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", bundled
+    ):
+        version = bundled
+    else:
+        version = "dev"
+        for package in ("vortoone", "vortocode"):  # 包名改名（ADR-018 批次 E）前后都认
+            try:
+                version = metadata.version(package)
+                break
+            except metadata.PackageNotFoundError:
+                continue
     # 公开信息，不带凭据：Desktop 的首次引导要从它自己的窗口核对一个地址是不是 VortoOne（跨域读取）
     return JSONResponse({"name": "VortoOne", "version": version, "api": API_CONTRACT, "minApi": MIN_API,
                          "url": server_url(request),

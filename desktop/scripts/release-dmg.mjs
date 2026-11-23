@@ -68,13 +68,8 @@ function detachIfAttached(dmg) {
   if (holders) throw new Error(`DMG 仍被占用，不能提交公证：\n${holders}`);
 }
 
-function main() {
-  const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
-  const version = JSON.parse(readFileSync(join(desktop, "src-tauri", "tauri.conf.json"), "utf8")).version;
-  const bundle = join(desktop, "src-tauri", "target", "release", "bundle");
-  const app = join(bundle, "macos", "VortoOne.app");
-  const profile = process.env.VORTOONE_NOTARY_PROFILE || "vortocode-notary";
-  if (!existsSync(app)) throw new Error(`没有找到构建好的 App：${app}（先 npm run bundle:dev-signed）`);
+export function releaseDmg({ app, dmg, version, profile }) {
+  if (!existsSync(app)) throw new Error(`没有找到构建好的 App：${app}`);
   const built = run("plutil", ["-extract", "CFBundleShortVersionString", "raw", join(app, "Contents", "Info.plist")]).trim();
   if (built !== version) throw new Error(`App 是 ${built}，配置是 ${version}：先重新构建`);
   run("xcrun", ["stapler", "validate", app]);          // DMG 里装的 App 必须已经公证并 staple
@@ -82,7 +77,6 @@ function main() {
   const details = spawnSync("codesign", ["-dvv", app], { encoding: "utf8" });
   const identity = developerIdAuthority(`${details.stdout}${details.stderr}`);
 
-  const dmg = join(bundle, "dmg", dmgAssetName(version));
   mkdirSync(dirname(dmg), { recursive: true });
   rmSync(dmg, { force: true });
   const stage = mkdtempSync(join(tmpdir(), "vortocode-dmg-"));
@@ -115,7 +109,17 @@ function main() {
   run("xcrun", ["stapler", "validate", dmg]);
   run("spctl", ["--assess", "--type", "open", "--context", "context:primary-signature", dmg]);
   const digest = createHash("sha256").update(readFileSync(dmg)).digest("hex");
-  console.log(`${dmg}\nsha256 ${digest}`);
+  return { dmg, sha256: digest };
+}
+
+function main() {
+  const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
+  const version = JSON.parse(readFileSync(join(desktop, "src-tauri", "tauri.conf.json"), "utf8")).version;
+  const bundle = join(desktop, "src-tauri", "target", "release", "bundle");
+  const profile = process.env.VORTOONE_NOTARY_PROFILE || "vortocode-notary";
+  const app = join(bundle, "macos", "VortoOne.app");
+  const { dmg, sha256 } = releaseDmg({ app, dmg: join(bundle, "dmg", dmgAssetName(version)), version, profile });
+  console.log(`${dmg}\nsha256 ${sha256}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

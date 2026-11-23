@@ -1,0 +1,21 @@
+name: VortoOne stable installer checks
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-stable-installers.yml"
+      - ".github/workflows/desktop-dev-installers.yml"
+      - "frontend/apps/desktop-dev/**"
+      - "frontend/scripts/**"
+      - "desktop/managed-python-sources.json"
+      - "desktop/scripts/managed-python*.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    uses: ./.github/workflows/desktop-dev-installers.yml
+    with:
+      channel: stable

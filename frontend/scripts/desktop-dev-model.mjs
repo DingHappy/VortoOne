@@ -55,6 +55,22 @@ export function checkDevConfig(config, stable) {
   return config;
 }
 
+export function checkStableConfig(config, previous) {
+  if (config.identifier !== previous.identifier || config.productName !== previous.productName ||
+      config.identifier === DEV_ID || config.productName === DEV_NAME ||
+      config.mainBinaryName !== "vortoone")
+    throw new Error("Stable Desktop must retain the released product identity and have its own executable");
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(config.version))
+    throw new Error("Stable Desktop requires an x.y.z release version");
+  const updater = config.plugins?.updater;
+  const publishedUpdater = previous.plugins?.updater;
+  if (!publishedUpdater?.pubkey || updater?.pubkey !== publishedUpdater.pubkey ||
+      updater?.requireSignedVersion !== true || !Array.isArray(updater?.endpoints) ||
+      JSON.stringify(updater.endpoints) !== JSON.stringify(publishedUpdater.endpoints))
+    throw new Error("Stable Desktop requires the published updater key, endpoint priority and a signed version");
+  return config;
+}
+
 export function digestFile(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }

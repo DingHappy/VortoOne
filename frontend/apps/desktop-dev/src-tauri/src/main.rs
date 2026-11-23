@@ -7,6 +7,8 @@ mod shell;
 mod model_settings;
 mod connector;
 mod connector_secrets;
+#[cfg(target_os = "macos")]
+mod stable_update;
 
 use tauri::{
     menu::{Menu, SubmenuBuilder},
@@ -16,6 +18,31 @@ use tauri::{
 
 const RELEASES: &str = "https://github.com/DingHappy/VortoOne/releases";
 const STABLE: &str = "https://github.com/DingHappy/VortoOne/releases/latest";
+
+fn is_stable_channel(config: &tauri::utils::config::Config) -> bool {
+    config.identifier == "com.vorto.vortoone"
+}
+
+fn desktop_menu_name(config: &tauri::utils::config::Config) -> &'static str {
+    if is_stable_channel(config) { "工作区" } else { "开发版" }
+}
+
+fn desktop_window<'a>(
+    app: &'a tauri::AppHandle,
+    label: &str,
+    url: WebviewUrl,
+) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
+    let window = WebviewWindowBuilder::new(app, label, url);
+    // WKWebView supports separate persistent stores on macOS 14 and later.
+    // Keep a single stable store across this app's windows and releases.
+    if cfg!(target_os = "macos") && is_stable_channel(app.config()) {
+        return window.data_store_identifier([
+            0x05, 0xd6, 0x30, 0x93, 0x9c, 0x2e, 0x4f, 0x95,
+            0xb8, 0x08, 0x64, 0xe0, 0x64, 0xb5, 0xdd, 0x17,
+        ]);
+    }
+    window
+}
 
 fn computer_download(url: &tauri::Url) -> bool {
     url.query().is_none() && url.fragment().is_none()
@@ -63,7 +90,7 @@ fn show(
         window.set_focus()?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(app, label, WebviewUrl::App(path.into()))
+    desktop_window(app, label, WebviewUrl::App(path.into()))
         .title(title)
         .inner_size(width, height)
         .min_inner_size(900.0_f64.min(width), 600.0_f64.min(height))
@@ -121,7 +148,7 @@ fn connect(app: tauri::AppHandle) {
         let Ok(_guard) = gate.0.lock() else { return; };
         if let Err(error) = connect_now(&app) {
             eprintln!("连接后端失败: {error}");
-            let message = format!("VortoOne Dev · 没有连上后端：{error}");
+            let message = format!("{} · 没有连上后端：{error}", app.package_info().name);
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title(&message);
             }
@@ -147,7 +174,10 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     let started = if let Some(config) = config {
         backend::start(&config, &data.join("home"), &ui, &data.join("backend.log"), &key)
     } else {
-        backend::start_bundled(&runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"), &key)
+        backend::start_bundled(
+            &runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"), &key,
+            &app.package_info().version.to_string(),
+        )
     };
     let (mut child, port, token, native) = match started {
         Ok(found) => found,
@@ -201,8 +231,8 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
         let address = handle.state::<LiveAddress>().inner().clone();
         let download_address = address.clone();
         let setup_handle = handle.clone();
-        let builder = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
-            .title("VortoOne Dev")
+        let builder = desktop_window(&handle, LIVE, WebviewUrl::External(url))
+            .title(&handle.package_info().name)
             .initialization_script(desktop_titlebar_script())
             .inner_size(1440.0, 960.0)
             .min_inner_size(900.0, 600.0)
@@ -287,7 +317,7 @@ fn open_consent(app: &tauri::AppHandle, port: u16, id: &str) {
             return;
         }
         let closer = handle.clone();
-        let built = WebviewWindowBuilder::new(&handle, CONSENT, WebviewUrl::External(url))
+        let built = desktop_window(&handle, CONSENT, WebviewUrl::External(url))
             .title("连接 AI 应用")
             .inner_size(560.0, 760.0)
             .center()
@@ -321,15 +351,23 @@ fn main() {
     if std::env::args_os().any(|arg| arg == "--check-standalone") {
         let result = tauri::utils::platform::resource_dir(context.package_info(), &tauri::utils::Env::default())
             .map_err(|error| error.to_string())
-            .and_then(|resources| backend::verify_standalone(&resources));
+            .and_then(|resources| backend::verify_standalone(&resources, &context.package_info().version.to_string()));
         match result {
             Ok(()) => println!("{{\"standalone\":true,\"freshProfile\":true,\"login\":true,\"ui\":true,\"inferenceSent\":false}}"),
             Err(error) => { eprintln!("安装验收失败：{error}"); std::process::exit(1); }
         }
         return;
     }
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    #[cfg(target_os = "macos")]
+    let builder = if is_stable_channel(context.config()) {
+        builder
+            .manage(stable_update::UpdateGate::default())
+            .plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        builder
+    };
+    builder
         .manage(backend::Backend::default())
         .manage(ConnectionGate::default())
         .manage(LiveAddress::default())
@@ -358,30 +396,47 @@ fn main() {
             shell::autostart_set, shell::network_ask, shell::runner_add, shell::pair_link_info, shell::site_fetch,
         ])
         .setup(|app| {
+            let stable = is_stable_channel(app.config());
             let menu = Menu::default(app.handle())?;
-            let preview = SubmenuBuilder::new(app, "开发版")
+            let mut product_menu = SubmenuBuilder::new(app, desktop_menu_name(app.config()))
                 .text("connect", "连接本机后端")
                 .text("models", "模型连接…")
                 .text("computers", "连接的电脑…")
-                .separator()
-                .text("desktop", "桌面界面（示例数据）")
-                .text("characters", "史莱姆外观")
+                .separator();
+            if !stable {
+                product_menu = product_menu
+                    .text("desktop", "桌面界面（示例数据）")
+                    .text("characters", "史莱姆外观");
+            }
+            product_menu = product_menu
                 .text("settings", "偏好设置…")
                 .text("welcome", "添加或切换服务…")
                 .text("move-out", "搬家：导出并停用这里…")
-                .text("move-in", "从搬家包导入…")
-                .text("preferences", "偏好设置预览（示例数据）")
-                .separator()
-                .text("versions", "版本管理")
-                .text("stable", "公开稳定版下载…")
-                .text("releases", "管理 GitHub 发布…")
-                .build()?;
-            menu.append(&preview)?;
+                .text("move-in", "从搬家包导入…");
+            if !stable {
+                product_menu = product_menu.text("preferences", "偏好设置预览（示例数据）");
+            }
+            product_menu = product_menu.separator().text("versions", "版本管理");
+            if stable {
+                #[cfg(target_os = "macos")]
+                {
+                    product_menu = product_menu.text("check-update", "检查更新…");
+                }
+                product_menu = product_menu.text("stable", "下载最新版本…");
+            } else {
+                product_menu = product_menu
+                    .text("stable", "公开稳定版下载…")
+                    .text("releases", "管理 GitHub 发布…");
+            }
+            menu.append(&product_menu.build()?)?;
             app.set_menu(menu)?;
             app.add_capability(shell::capability())?;
-            connector::resume(app.handle().clone());
             let bundled = app.path().resource_dir()?
                 .join("runtime").join(backend::BUNDLED_RUNTIME).is_file();
+            if stable && !bundled {
+                return Err(std::io::Error::other("正式版缺少随包后端，请重新安装 VortoOne").into());
+            }
+            connector::resume(app.handle().clone());
             // 先打开哪个：上次选的服务；什么都还没选就是首次引导（HOME_AND_MEMBERS_DESIGN 第 4 节）
             let (config, data) = (app.path().app_config_dir()?, app.path().app_data_dir()?);
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
@@ -391,7 +446,7 @@ fn main() {
                         app.handle(),
                         "main",
                         if bundled { "starting.html" } else { "index.html?lang=zh-Hans" },
-                        if bundled { "VortoOne Dev" } else { "VortoOne Dev · 界面预览" },
+                        if bundled { &app.package_info().name } else { "VortoOne Dev · 界面预览" },
                         1440.0,
                         960.0,
                     )?;
@@ -409,6 +464,11 @@ fn main() {
         })
         .on_menu_event(|app, event| {
             let result = match event.id().as_ref() {
+                #[cfg(target_os = "macos")]
+                "check-update" if is_stable_channel(app.config()) => {
+                    stable_update::check(app.clone());
+                    return;
+                }
                 "connect" => {
                     connect(app.clone());
                     return;
@@ -432,7 +492,7 @@ fn main() {
                     }
                     return;
                 }
-                "desktop" => show(
+                "desktop" if !is_stable_channel(app.config()) => show(
                     app,
                     "main",
                     "index.html?lang=zh-Hans",
@@ -440,7 +500,7 @@ fn main() {
                     1440.0,
                     960.0,
                 ),
-                "characters" => show(
+                "characters" if !is_stable_channel(app.config()) => show(
                     app,
                     "characters",
                     "character-lab.html",
@@ -448,7 +508,7 @@ fn main() {
                     1280.0,
                     960.0,
                 ),
-                "preferences" => show(
+                "preferences" if !is_stable_channel(app.config()) => show(
                     app,
                     "preferences",
                     "windows/index.html?window=prefs&scenario=selfhost&lang=zh-Hans&bare=1",
@@ -460,7 +520,7 @@ fn main() {
                     app,
                     "versions",
                     "versions.html",
-                    "VortoOne Dev · 版本管理",
+                    &format!("{} · 版本管理", app.package_info().name),
                     900.0,
                     660.0,
                 ),
@@ -478,11 +538,11 @@ fn main() {
                 _ => return,
             };
             if let Err(error) = result {
-                eprintln!("无法打开开发版窗口: {error}");
+                eprintln!("无法打开 VortoOne 窗口: {error}");
             }
         })
         .build(context)
-        .expect("VortoOne Dev failed to start")
+        .expect("VortoOne failed to start")
         .run(|app, event| match event {
             // 退出时带走后端；被强杀时由后端看监护进程 pid 自己退出
             tauri::RunEvent::Exit => {

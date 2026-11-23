@@ -11,7 +11,7 @@ import "./env-names.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REPO = "DingHappy/VortoOne";
@@ -60,11 +60,7 @@ export function updaterManifest({ version, notes = "", pubDate, signature, base 
   };
 }
 
-function main() {
-  const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
-  const version = JSON.parse(readFileSync(join(desktop, "src-tauri", "tauri.conf.json"), "utf8")).version;
-  const bundle = join(desktop, "src-tauri", "target", "release", "bundle");
-  const app = join(bundle, "macos", "VortoOne.app");
+export function releaseUpdater({ app, out, version, notes, sign }) {
   // 状态目录改名前（ADR-018 批次 C）私钥在 ~/.vortocode；还没搬的机器上读旧位置
   const key = process.env.VORTOONE_UPDATER_KEY
     || [".vortoone", ".vortocode"].map((dir) => join(homedir(), dir, "updater.key")).find((path) => existsSync(path))
@@ -77,19 +73,16 @@ function main() {
   // 必须是公证并 staple 过的：更新后的 App 要能直接过 Gatekeeper
   execFileSync("xcrun", ["stapler", "validate", app], { stdio: "ignore" });
 
-  const out = join(bundle, "updater");
   mkdirSync(out, { recursive: true });
   const archive = join(out, updaterAssetName(version));
   rmSync(archive, { force: true });
   rmSync(`${archive}.sig`, { force: true });
-  execFileSync("tar", ["-czf", archive, "-C", join(bundle, "macos"), "VortoOne.app"],
+  execFileSync("tar", ["-czf", archive, "-C", dirname(app), basename(app)],
     { env: { ...process.env, COPYFILE_DISABLE: "1" } });     // 不带 macOS 的 ._ 附属文件
-  execFileSync("npx", ["tauri", "signer", "sign", "--private-key-path", key, "--password", "", archive],
-    { cwd: desktop, stdio: ["ignore", "ignore", "inherit"] });
-  const notesFile = process.argv[2];
+  sign(["signer", "sign", "--private-key-path", key, "--password", "", archive]);
   const fields = {
     version,
-    notes: notesFile ? readFileSync(notesFile, "utf8") : "",
+    notes,
     pubDate: new Date().toISOString(),
     signature: readFileSync(`${archive}.sig`, "utf8"),
   };
@@ -98,7 +91,22 @@ function main() {
   const mirrorLatest = join(out, "oss", "latest.json");
   mkdirSync(dirname(mirrorLatest), { recursive: true });
   writeFileSync(mirrorLatest, `${JSON.stringify(updaterManifest({ ...fields, base: mirrorAssetBase(version) }), null, 2)}\n`);
-  console.log([archive, `${archive}.sig`, latest, mirrorLatest].join("\n"));
+  return { archive, signature: `${archive}.sig`, latest, mirrorLatest };
+}
+
+function main() {
+  const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
+  const version = JSON.parse(readFileSync(join(desktop, "src-tauri", "tauri.conf.json"), "utf8")).version;
+  const bundle = join(desktop, "src-tauri", "target", "release", "bundle");
+  const notesFile = process.argv[2];
+  const artifacts = releaseUpdater({
+    app: join(bundle, "macos", "VortoOne.app"),
+    version,
+    out: join(bundle, "updater"),
+    notes: notesFile ? readFileSync(notesFile, "utf8") : "",
+    sign: (args) => execFileSync("npx", ["tauri", ...args], { cwd: desktop, stdio: ["ignore", "ignore", "inherit"] }),
+  });
+  console.log(Object.values(artifacts).join("\n"));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
