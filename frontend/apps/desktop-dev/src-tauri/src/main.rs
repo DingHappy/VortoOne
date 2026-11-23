@@ -174,7 +174,10 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     let started = if let Some(config) = config {
         backend::start(&config, &data.join("home"), &ui, &data.join("backend.log"), &key)
     } else {
-        backend::start_bundled(&runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"), &key)
+        backend::start_bundled(
+            &runtime, env_file.as_deref(), &data.join("home"), &ui, &data.join("backend.log"), &key,
+            &app.package_info().version.to_string(),
+        )
     };
     let (mut child, port, token, native) = match started {
         Ok(found) => found,
@@ -348,7 +351,7 @@ fn main() {
     if std::env::args_os().any(|arg| arg == "--check-standalone") {
         let result = tauri::utils::platform::resource_dir(context.package_info(), &tauri::utils::Env::default())
             .map_err(|error| error.to_string())
-            .and_then(|resources| backend::verify_standalone(&resources));
+            .and_then(|resources| backend::verify_standalone(&resources, &context.package_info().version.to_string()));
         match result {
             Ok(()) => println!("{{\"standalone\":true,\"freshProfile\":true,\"login\":true,\"ui\":true,\"inferenceSent\":false}}"),
             Err(error) => { eprintln!("安装验收失败：{error}"); std::process::exit(1); }
