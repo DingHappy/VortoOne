@@ -1,9 +1,10 @@
 """真实 WebSocket 上的成员隔离、任务结果推送、重连和撤销；执行器沿用离线 staff fixture。"""
 import asyncio
 from functools import partial
+import json
 
 import pytest
-from starlette.websockets import WebSocketDisconnect
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from src.web import app_member_realtime
 from src.workflow.members.registry import MemberRegistry
@@ -102,6 +103,65 @@ def test_existing_socket_closes_when_session_or_access_is_revoked(home, change):
         with pytest.raises(WebSocketDisconnect) as error:
             socket.receive_json()
         assert error.value.code == 1008
+
+
+@pytest.mark.parametrize("sign_out", [False, True])
+async def test_pending_receive_survives_permission_checks_until_delivery_or_revocation(home, monkeypatch, sign_out):
+    member = _join(home)
+    incoming, outgoing = asyncio.Queue(), asyncio.Queue()
+    frame_received, permission_checked = asyncio.Event(), asyncio.Event()
+    release_frame, receive_finished = asyncio.Event(), asyncio.Event()
+
+    async def receive():
+        frame = await incoming.get()
+        if frame["type"] == "websocket.receive":
+            frame_received.set()
+            try:
+                await release_frame.wait()
+            finally:
+                receive_finished.set()
+        return frame
+
+    headers = [(key.lower(), value) for key, value in member.build_request("GET", "/api/ws").headers.raw]
+    socket = WebSocket({"type": "websocket", "path": "/api/ws", "headers": headers},
+                       receive=receive, send=outgoing.put)
+    identity = app_member_realtime.identity
+    bound = identity(socket, home["root"])
+    assert bound is not None and bound[0] == member.member_id
+
+    def observe_identity(socket, root):
+        found = identity(socket, root)
+        if frame_received.is_set():
+            permission_checked.set()
+        return found
+
+    monkeypatch.setattr(app_member_realtime, "identity", observe_identity)
+    incoming.put_nowait({"type": "websocket.connect"})
+    serving = asyncio.create_task(app_member_realtime.serve(socket, home["root"], bound))
+    try:
+        assert (await asyncio.wait_for(outgoing.get(), timeout=3))["type"] == "websocket.accept"
+        assert (await asyncio.wait_for(outgoing.get(), timeout=3))["type"] == "websocket.send"
+        incoming.put_nowait({"type": "websocket.receive",
+                             "text": json.dumps({"type": "subscribe", "channelId": "unknown"})})
+        await asyncio.wait_for(permission_checked.wait(), timeout=3)
+        assert not receive_finished.is_set()
+        if sign_out:
+            response = await asyncio.to_thread(member.post, "/api/app/device-accounts/sign-out", json={})
+            assert response.status_code == 200
+            closed = await asyncio.wait_for(outgoing.get(), timeout=3)
+            assert (closed["type"], closed["code"]) == ("websocket.close", 1008)
+        else:
+            release_frame.set()
+            sent = await asyncio.wait_for(outgoing.get(), timeout=3)
+            assert sent["type"] == "websocket.send"
+            assert json.loads(sent["text"]) == {"type": "error", "code": "not_found", "channelId": "unknown"}
+            incoming.put_nowait({"type": "websocket.disconnect", "code": 1000})
+        await asyncio.wait_for(serving, timeout=3)
+        assert receive_finished.is_set()
+        assert outgoing.empty()
+    finally:
+        serving.cancel()
+        await asyncio.gather(serving, return_exceptions=True)
 
 
 @pytest.mark.parametrize("origin", [None, "https://elsewhere.example"])
