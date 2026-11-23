@@ -112,7 +112,17 @@ export function stableMirrorCandidate(bundle, { version, identifier }) {
   return { version, commit: evidence.commit, assets, uploads, manifest };
 }
 
-export async function requirePublicStable(candidate, read = publicBytes) {
+// Use the release operator's GitHub CLI for API metadata so a shared-IP
+// rate limit cannot delay a rollout. The updater file is still read publicly.
+function stableReleaseRead(url) {
+  const origin = "https://api.github.com/";
+  if (!url.startsWith(`${origin}repos/${REPO}/`)) return publicBytes(url);
+  return execFileSync("gh", ["api", "--hostname", "github.com", url.slice(origin.length)], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+export async function requirePublicStable(candidate, read = stableReleaseRead) {
   const api = `https://api.github.com/repos/${REPO}`;
   const json = async (path) => JSON.parse((await read(`${api}/${path}`)).toString("utf8"));
   const tag = `v${candidate.version}`;
