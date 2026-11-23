@@ -766,6 +766,17 @@ class Wiki:
             page["deletedAt"] = _now()
             self._save(conn, page)
 
+    def set_agents(self, data: dict) -> None:
+        self._require_writer()
+        if set(data) != {"ids", "agentIds"}:
+            _fail("invalid", "必须提供 Wiki 页面和智能体范围")
+        _ids(data["ids"])
+        agent_ids = data["agentIds"]
+        if agent_ids is not None and (not isinstance(agent_ids, list)
+                                      or any(not isinstance(agent_id, str) or not agent_id for agent_id in agent_ids)):
+            _fail("invalid", "智能体范围无效")
+        _fail("wiki_context_unavailable", "当前 Wiki 页面不会进入智能体上下文", status=409)
+
     def remove_many(self, data: dict) -> dict:
         self._require_writer()
         if set(data) == {"ids"}:

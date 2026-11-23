@@ -54,7 +54,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 12
+API_CONTRACT = 13
 MIN_API = 1
 
 
@@ -3251,6 +3251,12 @@ async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
 
 
+@router.get(_WIKI + "/reads")
+async def wiki_reads(org_id: str, request: Request):
+    # There is no agent Wiki reader, so no agent usage can contribute to this ranking.
+    return await _wiki_call(request, org_id, lambda _wiki: [])
+
+
 @router.get(_WIKI + "/search")
 async def search_wiki(org_id: str, request: Request, q: str = ""):
     return await _wiki_call(request, org_id, lambda wiki: wiki.search(q))
@@ -3369,6 +3375,11 @@ async def wiki_history(org_id: str, slug: str, request: Request):
 @router.get(_WIKI + "/pages/{slug}/versions/{version}")
 async def wiki_version(org_id: str, slug: str, version: int, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.version(slug, version))
+
+
+@router.put(_WIKI + "/bulk/agents")
+async def set_wiki_page_agents(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.set_agents(body))
 
 
 @router.post(_WIKI + "/bulk/delete")
