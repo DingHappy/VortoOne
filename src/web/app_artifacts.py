@@ -44,7 +44,7 @@ def versions(root: str, artifact_id: str) -> JSONResponse:
     for row in reversed(rows):
         version = int(row["v"])
         if store.has_snapshot(artifact_id, version):
-            history.append({"version": version, "author": author, "note": row.get("note"),
+            history.append({"version": version, "author": author, "note": row.get("note") if uploaded else None,
                             "createdAt": views._iso(row.get("ts"))})
     return JSONResponse({
         "versions": history,
