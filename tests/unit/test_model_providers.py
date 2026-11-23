@@ -161,3 +161,30 @@ def test_describe_roles_is_readable(monkeypatch):
     monkeypatch.setenv("VORTOONE_MODEL_ROLES", "review=gpt-5,implement=mimo-v2.5")
     line = describe_roles()
     assert "review=default:gpt-5" in line and "implement=default:mimo-v2.5" in line
+
+
+@pytest.mark.parametrize("base", [
+    "http://127.1/v1", "http://user@127.0.0.1/v1", "http://127.0.0.1:0/v1", "http://127.0.0.1:080/v1",
+    "http://localhost.example.test/v1", "http://192.0.2.1/v1", "http://localhost/v1?", "http://localhost/%76%31",
+])
+def test_ambiguous_or_nonloopback_endpoint_never_accepts_keyless(base, monkeypatch):
+    from src.llm.providers import default_chat_ready
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.setenv("OPENAI_API_BASE", base)
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-model")
+    assert not default_chat_ready()
+
+
+def test_keyless_provider_uses_local_transport_without_redirects(monkeypatch):
+    from src.llm.client import LLMClient
+    from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, default_chat_ready
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:11434/v1")
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-model")
+    monkeypatch.delenv("OPENAI_CUSTOM_HEADERS", raising=False)
+    assert default_chat_ready()
+    client = LLMClient()
+    assert client.config.api_key == LOCAL_MODEL_PLACEHOLDER
+    assert client._keyless_redirect("follow_redirects") == {"follow_redirects": False}
+    monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Api-Key:synthetic")
+    assert not default_chat_ready()

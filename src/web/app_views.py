@@ -104,8 +104,8 @@ def _home_created(root: str) -> str:
 
 
 def model_connected() -> bool:
-    """与主会话入口同一口径（routers/realtime.handle_agent_message）：没有模型凭据就没法回复。"""
-    return bool(os.getenv("OPENAI_API_KEY"))
+    from src.llm.providers import default_chat_ready
+    return default_chat_ready()
 
 
 def _staff(root: str) -> Dict[str, Any]:

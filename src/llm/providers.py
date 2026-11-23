@@ -56,26 +56,40 @@ def _env(name: str) -> str:
     return (os.getenv(name) or "").strip()
 
 
+LOCAL_MODEL_PLACEHOLDER = "not-required"
+
+
 def local_model_endpoint(base_url: str) -> bool:
-    """Exact Desktop loopback policy; no DNS lookup or host-prefix exemptions."""
+    """Check the original direct-loopback spelling before enabling keyless transport."""
+    if not base_url or len(base_url) > 2048 or any(
+        char.isspace() or ord(char) < 33 or ord(char) == 127 or char in "?#\\%" for char in base_url
+    ):
+        return False
     try:
         parsed = urlsplit(base_url)
-        local = (parsed.scheme in ("http", "https")
-                 and parsed.hostname in ("127.0.0.1", "localhost")
-                 and parsed.username is None and parsed.password is None
-                 and not parsed.query and not parsed.fragment)
-        _ = parsed.port
-        return local
+        host = parsed.hostname
+        port = parsed.port
+        authority = host if port is None else f"{host}:{port}"
+        return (parsed.scheme in ("http", "https") and host in ("127.0.0.1", "localhost")
+                and port != 0 and parsed.netloc.lower() == authority)
     except ValueError:
         return False
 
 
-def _provider_key(base_url: str, api_key: str) -> str:
-    """Non-secret SDK placeholder only for loopback; never borrow the default key.
+def default_chat_ready() -> bool:
+    """A key, or a directly configured local OpenAI-compatible chat model."""
+    from src.llm import endpoints
+    with endpoints.LOCK:
+        if _env("OPENAI_API_KEY"):
+            return True
+        model = _env("DEFAULT_MODEL") or _env("OPENAI_MODEL")
+        return (bool(model and not _env("OPENAI_CUSTOM_HEADERS"))
+                and local_model_endpoint(_env("OPENAI_API_BASE")))
 
-    This is not authentication and cannot bypass a server requiring its own token.
-    """
-    return api_key or ("not-required" if local_model_endpoint(base_url) else "")
+
+def _provider_key(base_url: str, api_key: str) -> str:
+    """Non-secret SDK placeholder only for loopback; never borrow the default key."""
+    return api_key or (LOCAL_MODEL_PLACEHOLDER if local_model_endpoint(base_url) else "")
 
 
 def providers() -> Dict[str, ProviderSpec]:

@@ -1257,7 +1257,8 @@ async def handle_agent_message(websocket, message: Dict[str, Any], *, owner_turn
             await websocket.send_json(P.make_event(
                 P.AGENT_ERROR, text=f"待运行队列已满（最多 {_MAX_PROMPT_QUEUE} 条）", rid=rid))
         return
-    if not os.getenv("OPENAI_API_KEY"):
+    from src.llm.providers import default_chat_ready
+    if not default_chat_ready():
         if owner_turn is not None:
             discard_prompt(item["id"])
         await websocket.send_json(P.make_event(

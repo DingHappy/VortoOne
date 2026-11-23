@@ -234,3 +234,19 @@ def test_home_replacement_cannot_resurrect_legacy_setup(installed, tmp_path, rep
         home_backup.restore(str(tmp_path), created["path"])
     assert json.loads(marker.read_text()) == {"step": "inactive"}
     sign_in(spawn(), "/")
+
+
+def test_model_step_uses_chat_readiness_without_exposing_settings(installed, monkeypatch):
+    spawn, marker = installed
+    marker.write_text('{"step":"model","mode":"personal"}', encoding="utf-8")
+    browser = spawn()
+    sign_in(browser)
+
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-openai-model")
+    monkeypatch.setenv("OPENAI_API_BASE", "https://remote.example.test/v1")
+    setup = browser.get("/api/app/me").json()["desktopSetup"]
+    assert setup == {"step": "model", "mode": "personal", "modelConfigured": False}
+    monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:11434/v1")
+    setup = browser.get("/api/app/me").json()["desktopSetup"]
+    assert setup == {"step": "model", "mode": "personal", "modelConfigured": True}
+    assert json.loads(marker.read_text()) == {"step": "model", "mode": "personal"}

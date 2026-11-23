@@ -1128,3 +1128,35 @@ def test_channel_events_are_validated_before_they_leave():
                 lambda: F.channel_event("c", "message.created", messageId="m", message={}, secret=1)):
         with pytest.raises(ProtocolError):
             bad()
+
+
+async def test_explicit_keyless_local_model_starts_the_main_turn(app_home, monkeypatch):
+    from src.llm.providers import default_chat_ready
+    http, base, channel = (app_home[k] for k in ("http", "base", "channel"))
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_CUSTOM_HEADERS", raising=False)
+    monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:11434/v1")
+    monkeypatch.delenv("DEFAULT_MODEL", raising=False)
+    assert not default_chat_ready()
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-local-model")
+    assert default_chat_ready()
+    sent = await http.post(f"{base}/channels/{channel}/messages", json={"body": "本机模型"})
+    assert sent.status_code == 200, sent.text
+    await _until(lambda: app_home["socket"].events("run.finished"))
+    [record, reply] = (await http.get(f"{base}/channels/{channel}/messages")).json()["messages"]
+    assert record["body"] == "本机模型"
+    assert reply["body"] == "收到：本机模型"
+    assert (await http.get(f"{base}/ai-status")).json()["any"] is True
+
+
+async def test_missing_key_on_remote_model_does_not_start_a_turn(app_home, monkeypatch):
+    http, base, channel = (app_home[k] for k in ("http", "base", "channel"))
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.setenv("OPENAI_API_BASE", "https://remote.example.test/v1")
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-remote-model")
+    refused = await http.post(f"{base}/channels/{channel}/messages", json={"body": "不得外发"})
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "no_ai"
+    assert not app_home["agent"].started.is_set()
+    assert (await http.get(f"{base}/ai-status")).json()["any"] is False
