@@ -360,7 +360,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` |  |
 | ☐ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` |  |
 | ☑ | POST | `ORG/routines/{x}/run` | `routines.runNow` | 立即运行一次，不改排期和启停；在跑、等验收、等核对时回 409 说明 |
-| ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录 |
+| ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录。列表显示最近 14 条，健康统计只计最近七天的已结束运行（取消除外）。 |
 | ☑ | POST | `ORG/routines/{x}/stop` | `routines.stop` | 所有者按当前认领停止本次执行，复用专员停止审计和执行池。没有运行、登记不匹配或取消未受理时拒绝；不改排期。 |
 
 ### org/credentials（9 个，要做 0）
@@ -482,11 +482,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ### org/calendar（6 个，要做 3）
 
+日历查询包含所有者已批准且可用的例行工作的未来排期。时区、夏令时和一次性排期沿用调度器的规则。
+仍有执行在途、结果待核对或接手后待恢复的例行工作，等当前状态允许调度才显示未来排期。
+每次最多返回按时间排序的 4,096 条排期，超过时返回 `routinesTruncated: true`。已执行记录仍在例行工作的运行历史里。
+成员只读自己的日程和已有权限可见的到期任务。
+
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | POST | `ORG/calendar/events` | `calendar.create` | 已接入仅本人可见的单次本地日程 |
-| ☑ | DELETE | `ORG/calendar/events/{x}` | `calendar.remove` | 仅删除自己的单次日程 |
-| ☑ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` | 仅编辑自己的单次日程 |
+| ☑ | POST | `ORG/calendar/events` | `calendar.create` | 仅本人可见的本地单次日程及每日、每周重复，按本地时区保留时刻，支持按日期结束。高级规则、按次数结束、共享或外部邀请暂不可用。 |
+| ☑ | DELETE | `ORG/calendar/events/{x}` | `calendar.remove` | 按界面的「仅本次」「此后」「整组」移除自己的日程。后两种范围包含各自被单独编辑的例外。 |
+| ☑ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` | 可编辑自己的日程和重复范围。单次例外保留各自的编辑。有例外时，批量更改时间或规则明确拒绝；修改整组时间或规则从首次日程操作。 |
 | ☐ | POST | `ORG/calendar/events/{x}/rsvp` | `calendar.respond` |  |
 | ☐ | POST | `ORG/calendar/proposals/{x}/confirm` | `calendar.confirmProposal` |  |
 | ☐ | POST | `ORG/calendar/proposals/{x}/dismiss` | `calendar.dismissProposal` |  |
@@ -609,7 +614,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/github-app` | `githubApp.info` |  |
+| ☐ | GET | `ORG/github-app` | `githubApp.info` | Settings 已能显示 App 未配置。仅已认证所有者看到服务器设置状态。安装绑定和可用状态仍待接，见 [接入草案](DESKTOP_GITHUB_APP.md)。 |
 | ☐ | POST | `ORG/github-app/complete` | `githubApp.complete` |  |
 | ☐ | POST | `ORG/github-app/install` | `githubApp.install` |  |
 | ☐ | DELETE | `ORG/github-app/installations/{x}` | `githubApp.remove` |  |
@@ -781,8 +786,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/github/access` | `githubApp.access` |  |
-| ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` |  |
+| ☐ | GET | `ORG/github/access` | `githubApp.access` | 等待工作区绑定的 GitHub 用户授权和组织访问结果。 |
+| ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` | 等待向该工作区验证的 GitHub 用户授权或 App 安装所授予的仓库清单。 |
 
 ### org/memories（2 个，要做 1）
 

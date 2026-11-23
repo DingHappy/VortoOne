@@ -3057,6 +3057,21 @@ async def connector_oauth_start(org_id: str, connector: str, request: Request):
     return await _connector_unsupported(request, org_id)
 
 
+@router.get(_ORG + "/github-app")
+async def github_app_info(org_id: str, request: Request):
+    """Report the unsupported installation state so Desktop can show its off status."""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取服务器的 GitHub App 状态需要已认证的所有者")
+    setup = ({"source": None, "slug": None, "htmlUrl": None, "state": "off", "canCreate": False}
+             if who.is_owner else None)
+    return JSONResponse({"installable": False, "installations": [], "setup": setup, "ownerCreates": False},
+                        headers={"Cache-Control": "no-store"})
+
+
 # ── 个人 Vault：无原值读取，不参与 Agent 工具或共享 ────────────────────────────
 
 _VAULT = _ORG + "/vault"
@@ -3214,9 +3229,10 @@ async def calendar_update(org_id: str, event_id: str, request: Request, body: Di
 
 
 @router.delete(_CALENDAR + "/events/{event_id}")
-async def calendar_delete(org_id: str, event_id: str, request: Request):
-    series = "scope" in request.query_params or "occurrenceStart" in request.query_params
-    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(event_id, series=series))
+async def calendar_delete(org_id: str, event_id: str, request: Request, scope: str | None = None,
+                          occurrence_start: str | None = Query(None, alias="occurrenceStart")):
+    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(
+        event_id, scope=scope, occurrence_start=occurrence_start))
     return result if isinstance(result, Response) else Response(status_code=204)
 
 
