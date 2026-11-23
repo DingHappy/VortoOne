@@ -42,7 +42,7 @@ from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.direct_messages import is_person_dm
-from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
+from src.workflow.members.registry import Damaged, MAX_GROUPS, MAX_MEMBERS, MemberRegistry, Refused
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
@@ -555,6 +555,14 @@ async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
     return JSONResponse(_setup_view(result), headers={"Cache-Control": "no-store"})
 
 
+def _workspace_unread_counts(root: str, actor) -> list[dict[str, Any]]:
+    service = app_channels.channels(root)
+    unread = sum(row.get("unreadCount", 0) for row in service.list(actor) if not row.get("muted"))
+    unread += service.unread_thread_count(actor)
+    notices = app_notice_inbox.count(root) if actor.is_owner else {"unread": 0, "waiting": 0}
+    return [{"orgId": views.home_id(root), "unread": unread + notices["unread"], "waiting": notices["waiting"]}]
+
+
 @router.get("/api/app/device-accounts")
 async def device_accounts(request: Request, response: Response):
     """Report the account of this session. Each browser session holds at most one account."""
@@ -570,16 +578,20 @@ async def device_accounts(request: Request, response: Response):
     if isinstance(profile, JSONResponse):
         return profile
     user = profile["user"]
+    unread = []
+    if profile["organizations"]:
+        try:
+            unread = await asyncio.to_thread(_workspace_unread_counts, root, actor)
+        except (Refused, Damaged, app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
+            # An unavailable badge should not prevent the client from reading the active account.
+            pass
     return {"accounts": [{"current": True, "user": {key: user[key] for key in ("id", "name", "email", "image")},
-                          "organizations": profile["organizations"], "unread": []}]}
+                          "organizations": profile["organizations"], "unread": unread}]}
 
 
 @router.get("/api/app/me/unread")
 async def workspace_unread(request: Request, response: Response):
     """Aggregate only the unread activity this session can already see."""
-    from src.utils.home_maintenance import HomeMaintenanceError
-    from src.workflow.members.registry import Damaged, Refused
-
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     who = _who(request, root)
@@ -588,16 +600,8 @@ async def workspace_unread(request: Request, response: Response):
     if who.is_owner and not app_staff.owner_proof(request):
         return _error(403, "owner_proof_required", "读取工作区未读数需要已认证的同源会话")
 
-    def counts():
-        service = app_channels.channels(root)
-        unread = sum(row.get("unreadCount", 0) for row in service.list(who) if not row.get("muted"))
-        unread += service.unread_thread_count(who)
-        notices = app_notice_inbox.count(root) if who.is_owner else {"unread": 0, "waiting": 0}
-        return {"organizations": [{"orgId": views.home_id(root), "unread": unread + notices["unread"],
-                                  "waiting": notices["waiting"]}]}
-
     try:
-        return await asyncio.to_thread(counts)
+        return {"organizations": await asyncio.to_thread(_workspace_unread_counts, root, who)}
     except Refused:
         return {"organizations": []}
     except (Damaged, app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
@@ -999,15 +1003,15 @@ async def set_person_status(org_id: str, body: Dict[str, Any], request: Request,
 
 
 @router.patch(_ORG + "/me")
-async def update_person_timezone(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+async def update_person_profile(org_id: str, body: Dict[str, Any], request: Request, response: Response):
     root = _root(org_id)
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
     if who.is_owner and not app_staff.owner_proof(request):
-        return _error(403, "owner_proof_required", "保存个人时区需要已认证的同源会话")
+        return _error(403, "owner_proof_required", "保存个人资料需要已认证的同源会话")
     response.headers["Cache-Control"] = "no-store"
-    return await _members_call(lambda: app_members.update_person_timezone(root, who, body))
+    return await _members_call(lambda: app_members.update_person_profile(root, who, body))
 
 
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────

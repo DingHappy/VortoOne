@@ -40,7 +40,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
     ("POST", r"/api/app/me/password"),                    # 本人最近凭密码登录的会话
     ("PUT", r"/api/app/me/work-area"),                    # 本人引导里的可选填写项
-    ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区
+    ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的用户名和时区
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
     ("PUT", _ORG + r"/me/(?:activity|start|chat)"),
     ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
