@@ -38,13 +38,21 @@ CLI_GENERAL_TOOLS = frozenset({'web_search', 'web_fetch', 'read_delivery'})
 # 完整能力（主人 2026-11-22 定）：agent 和主助理用同一套工具与同一套规则——工具由服务按主助理的装配给出，
 # 确认门、污点、授权档位都与主助理一致：读过外部内容后一切危险操作都要问，外发、不可逆、操控每次都问。
 # 登记里不列工具（tools 为空、看得到的来源为空），能做的操作类别是除任务内部协作外的全部。
-# 只给自有框架：本机 CLI 没有确认门；例行工作（无人值守）不用完整能力；成员发起的事按成员级别另算。
+# 只给自有框架：本机 CLI 没有确认门；例行工作（无人值守）降为 unattended_role；成员发起的事按成员级别另算。
 FULL_OPERATIONS = ['read', 'own_data', 'draft', 'write', 'execute', 'interact', 'deliver', 'irreversible']
 FULL_GRANTS = {'operations': FULL_OPERATIONS, 'tools': [], 'sees': [], 'web': True, 'project': False, 'full': True}
 
 
 def is_full(role: dict) -> bool:
     return (role.get('grants') or {}).get('full') is True
+
+
+def unattended_role(role: dict) -> dict:
+    """岗位在例行工作里的样子：完整能力降成离线例行那一档（只读本机状态、不联网）；其它岗位本来就按登记执行。"""
+    if not is_full(role):
+        return role
+    offline = next(x for x in routine_roles() if x['id'] == 'routine-offline')
+    return {**deepcopy(role), 'grants': deepcopy(offline['grants'])}
 
 
 def cli_general_allowed(role: dict) -> bool:

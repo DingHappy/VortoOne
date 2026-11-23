@@ -963,9 +963,11 @@ def routines(root: str) -> List[Dict[str, Any]]:
     from src.workflow.staff.routines import Routines
     registry = Routines(root)
     rows = []
+    claims = {}
     for item in registry.list():
         if item["retired"]:
             continue
+        claims[item["id"]] = item["state"].get("task")
         creator_issue = registry.creator_issue(item)
         paused_reason = creator_issue.reason if creator_issue else None
         active = item["enabled"] and paused_reason is None
@@ -1000,6 +1002,9 @@ def routines(root: str) -> List[Dict[str, Any]]:
         if past:
             row.update(past)
             row["usage"]["runs"] = past["health"]["total"]
+            last = past["lastRun"]
+            if last["id"] == claims.get(row["id"]) and last["finishedAt"] is None:
+                row["state"] = "running"
     return rows
 
 
