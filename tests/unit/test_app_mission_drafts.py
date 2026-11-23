@@ -55,6 +55,7 @@ def test_owner_creates_and_reads_real_draft_without_dispatch_or_channel_post(hom
         "测试草案", "核对测试\n结果", "owner", "proposed")
     assert draft["commandApproval"] == "always" and draft["executor"] == "agent" and draft["machine"] is None
     assert not (draft["canAct"] or draft["canManage"] or draft["resumeTasks"] or draft["runningTasks"])
+    assert draft["canCancelDraft"] is True
     assert draft["plan"] == {"version": 0, "done": 0, "total": 0, "doing": 0, "waiting": 0, "items": []}
     assert draft["startedAt"] is None and draft["closedAt"] is None
     route = f"{base}/missions/{draft['id']}"
@@ -294,7 +295,7 @@ def test_cancel_migrates_old_draft_without_taking_down_original_thread(home, mon
     response = owner.post(route + "/close", json={"outcome": "canceled", "saveToWiki": False, "note": "  暂停这个想法  "})
     assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
     canceled = response.json()
-    assert canceled == {**mission, "status": "canceled",
+    assert canceled == {**mission, "status": "canceled", "canCancelDraft": False,
                         "closedAt": canceled["closedAt"], "closeReason": "暂停这个想法"}
     assert canceled["closedAt"] >= mission["createdAt"]
     assert owner.get(route).json() == canceled

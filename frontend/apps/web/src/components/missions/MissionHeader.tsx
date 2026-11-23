@@ -106,6 +106,7 @@ export function MissionThreadHeader({ thread, mission: m }: { thread: ThreadInfo
     );
   const who = [...(people.data?.owner ? [people.data.owner] : []), ...(people.data?.participants ?? [])];
   const menu = open && (m.canAct || m.canManage);
+  const canClose = open && (m.canManage || m.canCancelDraft);
   const itemsLabel = t("missions.itemsLabel", { done: m.plan.done, count: m.plan.total });
   const strip = (
     <span className="mh__items">
@@ -217,14 +218,14 @@ export function MissionThreadHeader({ thread, mission: m }: { thread: ThreadInfo
               <MenuItem icon="members" description={t("missions.menu.shareHint")} onSelect={() => setDialog("share")}>
                 {t("missions.menu.share")}
               </MenuItem>
-              {open && m.canManage && (
+              {canClose && (
                 <MenuItem
                   icon="archive"
                   danger
-                  description={t("missions.menu.closeHint")}
+                  description={t(m.canCancelDraft ? "missions.close.draftText" : "missions.menu.closeHint")}
                   onSelect={() => setDialog("close")}
                 >
-                  {t("missions.menu.close")}
+                  {t(m.canCancelDraft ? "missions.close.cancelDraft" : "missions.menu.close")}
                 </MenuItem>
               )}
               {open && (
@@ -320,7 +321,7 @@ export function MissionThreadHeader({ thread, mission: m }: { thread: ThreadInfo
         </div>
       )}
       <ShareMissionDialog mission={m} open={dialog === "share"} onOpenChange={(o) => setDialog(o ? "share" : null)} />
-      {m.canManage && (
+      {canClose && (
         <CloseMissionDialog mission={m} open={dialog === "close"} onOpenChange={(o) => setDialog(o ? "close" : null)} />
       )}
       {dialog === "sessions" && <SessionsDialog mission={m} tasks={sessions} onClose={() => setDialog(null)} />}

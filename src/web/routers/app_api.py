@@ -3516,6 +3516,7 @@ def _mission_view(drafts, row):
                     "joinRequests": 0, "commands": 0, "deliveries": 0},
         "joinRequested": False, "runningTasks": 0, "machine": None, "needsComputer": False,
         "role": "owner", "canAct": False, "canManage": False, "createdAt": row["created"],
+        "canCancelDraft": row["current_status"] == "proposed",
         "startedAt": None, "pausedAt": None, "closedAt": row["closed_at"], "closeReason": row["note"],
         "wikiPageId": None,
     }
