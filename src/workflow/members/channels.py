@@ -668,7 +668,7 @@ class TeamChannels:
     def _can_manage_thread(self, actor, access, author):
         return "post" in access.permissions and (author == self._actor_key(actor) or "manage_channels" in access.permissions)
 
-    def message_details(self, actor, message_id, *, thread=False):
+    def message_details(self, actor, message_id, *, thread=False, load_agents=None):
         with self.registry._locked_state() as state, self.history.database() as conn:
             row, channel, access = self._message_access(state, conn, actor, message_id)
             if thread:
@@ -677,9 +677,20 @@ class TeamChannels:
                 return self.history.thread_summary(conn, row["channel"], row, channel["title"],
                                                    reader=self._thread_reader(actor, channel),
                                                    can_manage=self._can_manage_thread(actor, access, row["author"]))
-            name = self.owner_name if row["author"] == OWNER_KEY else state["members"].get(row["author"], {}).get("name", "")
-            return {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
-                    "kind": "channel", "name": channel["title"], "author": name}
+            author = row["author"]
+            card = {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
+                    "kind": "channel", "name": channel["title"], "author": ""}
+            if not author.startswith(AGENT_AUTHOR):
+                card["author"] = self.owner_name if author == OWNER_KEY else state["members"].get(author, {}).get("name", "")
+                return card
+            roster = frozenset(channel.get("agents") or {})
+
+        # The live agent directory can read the task ledger, so resolve the name outside the membership lock.
+        if load_agents is not None and roster:
+            agent_id = author.removeprefix(AGENT_AUTHOR)
+            card["author"] = next((agent["name"] for staff, agent in load_agents().items()
+                                   if staff in roster and agent["id"] == agent_id), "")
+        return card
 
     def message_reactions(self, actor, message_id, *, reaction=None, enabled=True):
         with self.registry._locked_state() as state:
