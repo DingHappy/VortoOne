@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from src.web.auth import SESSION_COOKIE
+from src.web.member_auth import MEMBER_COOKIE
 from src.workflow.desktop_setup import FILE, LEGACY_FILE
 from src.utils.state_dir import state_dir
 
@@ -78,6 +79,21 @@ def test_native_owner_name_is_display_metadata_but_changes_no_credentials(instal
     members = owner.get(f"/api/app/organizations/{org}/members").json()["members"]
     [row] = members
     assert row["name"] == "安装者名字" and row["email"] == ""
+
+
+def test_native_handover_replaces_member_cookie_without_skipping_setup(installed):
+    from src.workflow.members.accounts import MemberAccounts
+
+    spawn, _marker = installed
+    browser = spawn()
+    accounts = MemberAccounts(str(Path.cwd()))
+    account = accounts.create("member@example.test", "测试成员", "fixture-member-password")
+    browser.cookies.set(MEMBER_COOKIE, accounts.open_session(account), domain="127.0.0.1")
+    sign_in(browser)
+
+    assert MEMBER_COOKIE not in browser.cookies
+    assert browser.cookies.get(SESSION_COOKIE)
+    assert browser.get("/api/app/me").json()["desktopSetup"]["step"] == "purpose"
 
 
 def test_claimed_account_name_takes_precedence_over_install_display_name(installed):

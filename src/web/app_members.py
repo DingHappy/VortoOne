@@ -271,7 +271,7 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     workspace_name, mode = views.workspace_identity(root)
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": avatar,
+                 "email": str(account["email"]), "image": avatar, "hasPassword": True,
                  **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": workspace_name, "role": "member",
                            **({"mode": mode} if mode else {}),

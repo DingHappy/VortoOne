@@ -38,6 +38,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
     ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    ("POST", r"/api/app/me/password"),                    # 本人最近凭密码登录的会话
     ("PUT", r"/api/app/me/work-area"),                    # 本人引导里的可选填写项
     ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区
     # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
@@ -314,8 +315,12 @@ def principal(request, root: str) -> Principal:
 
 
 def set_cookie(request, response, token: str) -> None:
+    """A successful member sign-in replaces the browser's active account."""
+    from src.web.auth import SESSION_COOKIE
+
     response.set_cookie(MEMBER_COOKIE, token, httponly=True, samesite="lax",
                         secure=(request.url.scheme == "https"), path="/", max_age=_MAX_AGE)
+    response.delete_cookie(SESSION_COOKIE, path="/")
 
 
 def clear_cookie(response) -> None:

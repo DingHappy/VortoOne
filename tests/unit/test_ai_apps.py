@@ -578,3 +578,24 @@ def test_the_whole_sign_in_works_in_the_general_scope_the_desktop_uses(home, mon
     assert _mcp(home, tokens["access_token"], "tools/list").status_code == 200
     assert home["anon"].get("/.well-known/oauth-authorization-server").status_code == 200
     assert home["owner"].get("/api/app/authorize-requests").status_code == 200
+
+
+def test_person_revocation_removes_unused_oauth_codes_even_after_reconnect(tmp_path):
+    store = AiApps(str(tmp_path), clock=lambda: 1000.0)
+    client = store.register({"redirect_uris": [LOOPBACK]})["client_id"]
+    verifier, challenge = _pkce()
+    query = {"client_id": client, "redirect_uri": LOOPBACK, "response_type": "code", "code_challenge": challenge,
+             "code_challenge_method": "S256"}
+    old_target, old_id = store.decide(store.start(query, "http://h/mcp"), "member", allow=True, access="read")
+    assert store.disconnect(old_id)
+    assert store.disconnect_person("member") == 0
+    new_target, new_id = store.decide(store.start(query, "http://h/mcp"), "member", allow=True, access="read")
+    assert new_id == old_id
+
+    def exchange(target):
+        code = parse_qs(urlsplit(target).query)["code"][0]
+        return store.exchange({"code": code, "client_id": client, "code_verifier": verifier})
+
+    with pytest.raises(OAuthError, match="unknown or expired"):
+        exchange(old_target)
+    assert store.authenticate(exchange(new_target)["access_token"]) is not None
