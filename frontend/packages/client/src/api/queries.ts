@@ -258,7 +258,7 @@ export const invitationQuery = (api: ApiClient, token: string) =>
 export const invitationStateQuery = (api: ApiClient, token: string, viewerId: string | null) =>
   queryOptions({
     queryKey: keys.invitationState(token, viewerId),
-    queryFn: () => api.orgs.invitationState(token),
+    queryFn: () => api.orgs.invitationState(token, viewerId === null ? undefined : { receipt: true }),
     retry: false,
     gcTime: 0,
     refetchOnMount: "always",
@@ -268,10 +268,14 @@ export const invitationStateQuery = (api: ApiClient, token: string, viewerId: st
 
 /** Discard the old session's data, including invitation receipts, and refresh the current preview as a guest. */
 export async function refreshInvitationAfterSignOut(qc: QueryClient, token: string) {
-  const kept = new Set<string>([keys.invitation(token)[0], keys.authConfig[0], keys.me[0]]);
-  qc.removeQueries({ predicate: (query) => !kept.has(String(query.queryKey[0])) });
+  const preview = keys.invitation(token);
+  qc.removeQueries({
+    predicate: ({ queryKey: [kind, keyToken] }) =>
+      kind !== keys.authConfig[0] && kind !== keys.me[0] && (kind !== preview[0] || keyToken !== token),
+  });
   qc.setQueryData(keys.me, null);
-  await qc.invalidateQueries({ queryKey: keys.invitation(token) });
+  // Even the preview can carry the old account's join request. Reset it before it refetches.
+  await qc.resetQueries({ queryKey: preview, exact: true });
 }
 
 // ── Account ─────────────────────────────────────────────────────────────────
