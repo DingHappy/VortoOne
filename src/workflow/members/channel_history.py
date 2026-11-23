@@ -287,6 +287,41 @@ class ChannelHistory:
         reactions = self.reactions(conn, [row["message"] for row in rows])
         return [(row["sequence"], row["message"], reactions.get(row["message"], [])) for row in rows]
 
+    def initialize_task_thread(self, channel, actor, root_id):
+        """Persist a structural task thread root for replies and read markers."""
+        with self.database(write=True) as conn:
+            conn.execute("INSERT INTO messages(id, channel, author, body, created) VALUES (?, ?, ?, '', ?)",
+                         (root_id, channel, actor, _stamp(datetime.now(timezone.utc))))
+
+    def task_thread_overviews(self, conn, roots):
+        """Project task replies and their first five authors from one history snapshot."""
+        if conn is None:
+            return {}
+        roots = list(roots)
+        result = {}
+        for start in range(0, len(roots), 200):
+            batch = roots[start:start + 200]
+            bindings = ", ".join("(?, ?)" for _ in batch)
+            values = [value for entry in batch for value in entry]
+            rows = conn.execute(
+                f"WITH requested(channel, root_id) AS (VALUES {bindings}) "
+                "SELECT root.id, root.channel, count(reply.id) AS count, max(reply.created) AS last_at "
+                "FROM requested JOIN messages root ON root.channel = requested.channel "
+                "AND root.id = requested.root_id AND root.thread IS NULL "
+                "LEFT JOIN messages reply ON reply.channel = root.channel AND reply.thread = root.id "
+                "GROUP BY root.id, root.channel", values,
+            )
+            for row in rows:
+                participants = self.task_thread_authors(conn, row["channel"], row["id"])
+                result[row["id"]] = {"count": row["count"], "lastAt": row["last_at"],
+                                     "participants": participants, "working": False}
+        return result
+
+    def task_thread_authors(self, conn, channel, root_id):
+        return [self.author(row["author"]) for row in conn.execute(
+            "SELECT author FROM messages WHERE channel = ? AND thread = ? GROUP BY author "
+            "ORDER BY min(sequence) LIMIT 5", (channel, root_id))]
+
     def append(self, channel, actor, body, client, thread, reply_to, opened, media=None):
         media = check_media(media)
         stored = json.dumps(media, ensure_ascii=False, sort_keys=True) if media else None

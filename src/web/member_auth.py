@@ -100,7 +100,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/issues/by-number/[^/]+"),
     ("PATCH", _ORG + r"/issues/[^/]+"),
     ("DELETE", _ORG + r"/issues/[^/]+"),
-    ("POST", _ORG + r"/issues/[^/]+/(?:share|comments|ask-agent)"),
+    ("POST", _ORG + r"/issues/[^/]+/(?:share|comments|ask-agent|conversation)"),
     ("PUT", _ORG + r"/issues/[^/]+/(?:audience|criteria/[^/]+)"),
     ("GET", _ORG + r"/issues/[^/]+/activity"),
     ("GET", _ORG + r"/issue-(?:columns|projects)"),

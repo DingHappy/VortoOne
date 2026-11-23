@@ -3982,6 +3982,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/conversation",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/issues/{issue_id}/criteria/{criterion_id}",
     "methods": [
       "PUT"
