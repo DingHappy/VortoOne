@@ -30,6 +30,7 @@ _LOCK = threading.RLock()
 _SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 PASSWORD_MIN, PASSWORD_MAX = 8, 128
 SESSION_DAYS, RESET_HOURS = 30, 24
+PASSWORD_REAUTH = timedelta(minutes=10)
 MAX_ACCOUNTS, MAX_SESSIONS_EACH = 1000, 10
 LOCK_AFTER, LOCK_SECONDS = 5, 15 * 60
 
@@ -52,6 +53,10 @@ class WrongCredentials(PermissionError):
 
 class Locked(PermissionError):
     """输错太多次，暂时不能再试。"""
+
+
+class ReauthenticationRequired(PermissionError):
+    """This session does not provide the required current password proof."""
 
 
 def _now() -> datetime:
@@ -136,31 +141,33 @@ class MemberAccounts:
             temporary.unlink(missing_ok=True)
 
     @contextmanager
-    def _change(self) -> Iterator[Dict[str, Any]]:
+    def _lock_state(self) -> Iterator[None]:
         with _LOCK:
-            handle = None
             try:
                 import fcntl
-                self.directory.mkdir(parents=True, exist_ok=True)
-                handle = open(self.directory / ".accounts.lock", "a+")   # noqa: SIM115 —— 锁要持有到写完
+            except ImportError:
+                yield
+                return
+            self.directory.mkdir(parents=True, exist_ok=True)
+            with (self.directory / ".accounts.lock").open("a+") as handle:
                 fcntl.flock(handle, fcntl.LOCK_EX)
-            except (ImportError, OSError):
-                handle = None
-            try:
-                state = self._load()
-                yield state
-                self._save(state)
-            finally:
-                if handle is not None:
-                    handle.close()
+                yield
+
+    @contextmanager
+    def _change(self) -> Iterator[Dict[str, Any]]:
+        with self._lock_state():
+            state = self._load()
+            yield state
+            self._save(state)
 
     @staticmethod
     def _by_email(state: Dict[str, Any], email: str) -> Optional[str]:
         return next((key for key, item in state["accounts"].items() if item.get("email") == email), None)
 
     @staticmethod
-    def _end_sessions(state: Dict[str, Any], account_id: str) -> None:
-        for key in [key for key, item in state["sessions"].items() if item.get("account") == account_id]:
+    def _end_sessions(state: Dict[str, Any], account_id: str, *, keep: str = "") -> None:
+        for key in [key for key, item in state["sessions"].items()
+                    if item.get("account") == account_id and key != keep]:
             del state["sessions"][key]
 
     # ── 账号 ──────────────────────────────────────────────────────────────────
@@ -171,6 +178,15 @@ class MemberAccounts:
 
     def create(self, email: str, name: str, password: str, *, now: Optional[datetime] = None) -> str:
         """新建账号，返回账号 id。能不能建（有没有有效的邀请）由入口先查好，这里不管。"""
+        account_id, _session = self._register(email, name, password, now=now, activate=False)
+        return account_id
+
+    def create_with_activation_session(self, email: str, name: str, password: str) -> Tuple[str, str]:
+        """Create an invited account and its non-reauthenticated activation session together."""
+        return self._register(email, name, password, now=None, activate=True)
+
+    def _register(self, email: str, name: str, password: str, *, now: Optional[datetime],
+                  activate: bool) -> Tuple[str, str]:
         address, secret = login_name(email), _password(password)
         label = name.strip() if isinstance(name, str) else ""
         if not 1 <= len(label) <= 64 or any(ord(ch) < 32 or ord(ch) == 127 for ch in label):
@@ -183,9 +199,11 @@ class MemberAccounts:
             if len(state["accounts"]) >= MAX_ACCOUNTS:
                 raise ValueError("账号数已到上限")
             account_id = f"a_{uuid.uuid4().hex[:12]}"
+            moment = now or _now()
             state["accounts"][account_id] = {"email": address, "name": label, "password": _sealed(secret),
-                                             "member": "", "created": _iso(now or _now())}
-            return account_id
+                                             "member": "", "created": _iso(moment)}
+            activation = self._issue_session(state, account_id, moment) if activate else ""
+            return account_id, activation
 
     def has_email(self, email: str) -> bool:
         """这个邮箱有没有成员账号（所有者认领时用：所有者的邮箱不能和成员的重）。"""
@@ -266,23 +284,73 @@ class MemberAccounts:
             self._failed(address, tick)
             _RECENT["count"] += 1
             raise WrongCredentials("邮箱或密码不对")
+        with self._change() as state:
+            # A reset or replacement can finish while scrypt is running.
+            current = state["accounts"].get(account_id)
+            if current is None or current.get("email") != address or current.get("password") != sealed:
+                raise WrongCredentials("邮箱或密码不对")
+            token = self._issue_session(state, account_id, now or _now(), password_verified=True)
         _FAILURES.pop(address, None)
-        return account_id, self.open_session(account_id, now=now)
+        return account_id, token
+
+    @staticmethod
+    def _public_account(account_id: str, account: Dict[str, Any]) -> Dict[str, Any]:
+        return {"id": account_id, "email": account["email"], "name": account["name"],
+                "member": str(account.get("member") or "")}
+
+    @classmethod
+    def _issue_session(cls, state: Dict[str, Any], account_id: str, moment: datetime,
+                       *, password_verified: bool = False) -> str:
+        if str(account_id) not in state["accounts"]:
+            raise LookupError("没有这个账号")
+        cls._drop_expired(state, moment)
+        mine = sorted((item.get("created") or "", key) for key, item in state["sessions"].items()
+                      if item.get("account") == account_id)
+        for _created, key in mine[:max(0, len(mine) - MAX_SESSIONS_EACH + 1)]:   # 太多设备：最早的先退出
+            del state["sessions"][key]
+        token = secrets.token_urlsafe(32)
+        session = {"account": str(account_id), "created": _iso(moment),
+                   "expires": _iso(moment + timedelta(days=SESSION_DAYS))}
+        if password_verified:
+            session["password_verified"] = True
+        state["sessions"][_digest(token)] = session
+        return token
 
     def open_session(self, account_id: str, *, now: Optional[datetime] = None) -> str:
-        moment = now or _now()
         with self._change() as state:
-            if str(account_id) not in state["accounts"]:
-                raise LookupError("没有这个账号")
-            self._drop_expired(state, moment)
-            mine = sorted((item.get("created") or "", key) for key, item in state["sessions"].items()
-                          if item.get("account") == account_id)
-            for _created, key in mine[:max(0, len(mine) - MAX_SESSIONS_EACH + 1)]:   # 太多设备：最早的先退出
-                del state["sessions"][key]
-            token = secrets.token_urlsafe(32)
-            state["sessions"][_digest(token)] = {"account": str(account_id), "created": _iso(moment),
-                                                 "expires": _iso(moment + timedelta(days=SESSION_DAYS))}
-            return token
+            return self._issue_session(state, account_id, now or _now())
+
+    @staticmethod
+    def _password_generation(account: Dict[str, Any]) -> str:
+        # Each changed password has a new salt, even if the person later goes back to an older password.
+        return _digest(account["password"]["hash"])
+
+    def mint_one_time(self, token: str, account_id: str) -> Tuple[str, int]:
+        from src.workflow.members.one_time import PENDING
+
+        with self.guard_session(token, account_id) as generation:
+            return PENDING.mint("account:" + account_id, generation=generation)
+
+    def redeem_one_time(self, token: str) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
+        """Consume the code and open its member session under the same local credential lock."""
+        from src.workflow.members.one_time import OWNER, PENDING
+
+        with _LOCK:
+            found = PENDING.redeem_with_generation(token)
+            if found is None:
+                return None, None, {}
+            who, generation = found
+            if who == OWNER:
+                return who, None, {}
+            if not who.startswith("account:"):
+                return None, None, {}
+            account_id = who.removeprefix("account:")
+            with self._change() as state:
+                account = state["accounts"].get(account_id)
+                if account is None or not secrets.compare_digest(generation, self._password_generation(account)):
+                    raise LookupError("登录链接已失效")
+                session = self._issue_session(state, account_id, _now())
+                return who, session, self._public_account(account_id, account)
 
     @staticmethod
     def _drop_expired(state: Dict[str, Any], moment: datetime) -> None:
@@ -299,19 +367,72 @@ class MemberAccounts:
                 state = self._load()
         except (Damaged, OSError):
             return None                                # 读不出来：当作没登录，不放行
-        item = state["sessions"].get(_digest(token))
-        if item is None or str(item.get("expires") or "") <= _iso(now or _now()):
+        item = self._valid_session(state, _digest(token), now or _now())
+        if item is None:
             return None
-        account = state["accounts"].get(str(item.get("account")))
-        return None if account is None else {
-            "id": str(item["account"]), "email": account["email"], "name": account["name"],
-            "member": str(account.get("member") or "")}
+        account_id = str(item["account"])
+        return self._public_account(account_id, state["accounts"][account_id])
+
+    @staticmethod
+    def _valid_session(state: Dict[str, Any], key: str, moment: datetime) -> Optional[Dict[str, Any]]:
+        item = state["sessions"].get(key)
+        if (item is None or str(item.get("expires") or "") <= _iso(moment)
+                or item.get("account") not in state["accounts"]):
+            return None
+        return item
+
+    @contextmanager
+    def guard_session(self, token: str, account_id: str) -> Iterator[str]:
+        """Serialize issuing a new credential with revocation of this browser session."""
+        with self._lock_state():
+            state = self._load()
+            current = self._valid_session(state, _digest(token), _now())
+            if current is None or current["account"] != account_id:
+                raise ReauthenticationRequired("请重新登录")
+            yield self._password_generation(state["accounts"][account_id])
 
     def sign_out(self, token: str) -> None:
         with self._change() as state:
             state["sessions"].pop(_digest(token), None)
 
-    # ── 重置密码 ──────────────────────────────────────────────────────────────
+    # ── 更换和重置密码 ────────────────────────────────────────────────────────
+
+    def _revoke_delegated_credentials(self, account_id: str, account: Dict[str, Any]) -> None:
+        from src.workflow.ai_apps.store import AiApps
+        from src.workflow.members.one_time import PENDING
+
+        if account.get("member"):
+            AiApps(self.root).disconnect_person(account["member"])
+        PENDING.forget("account:" + account_id)
+
+    def change_password(self, account_id: str, token: str, password: str, *, now: Optional[datetime] = None) -> None:
+        """Replace a member password with fresh proof from the exact session to keep."""
+        secret, key = _password(password), _digest(token)
+        with self._change() as state:
+            moment = now or _now()
+            session = self._valid_session(state, key, moment)
+            if session is None or session["account"] != account_id:
+                raise ReauthenticationRequired("请用当前密码重新登录")
+            signed_in = str(session.get("created") or "")
+            if (session.get("password_verified") is not True
+                    or not _iso(moment - PASSWORD_REAUTH) < signed_in <= _iso(moment)):
+                raise ReauthenticationRequired("请用当前密码重新登录")
+            account = state["accounts"][account_id]
+            if session.get("password_replaced"):
+                if _matches(account["password"], secret):
+                    return  # Retry after a lost success response.
+                raise ReauthenticationRequired("请用当前密码重新登录")
+            if account["name"] == secret:
+                raise ValueError("密码不能和名字一样")
+            if _matches(account["password"], secret):
+                raise ValueError("请使用不同的新密码")
+            sealed = _sealed(secret)
+            self._revoke_delegated_credentials(account_id, account)
+            account["password"] = sealed
+            account.pop("reset", None)
+            self._end_sessions(state, account_id, keep=key)
+            session["password_replaced"] = True
+        _FAILURES.pop(str(account["email"]), None)
 
     def reset_link(self, account_id: str, *, now: Optional[datetime] = None) -> Tuple[str, str]:
         """给一个账号开重置令牌，返回（令牌，过期时刻）。谁有权开由入口查；新开的顶掉旧的。"""
@@ -334,7 +455,9 @@ class MemberAccounts:
                         and str(reset.get("expires") or "") > stamp:
                     if account.get("name") == secret:
                         raise ValueError("密码不能和名字一样")
-                    account["password"] = _sealed(secret)
+                    sealed = _sealed(secret)
+                    self._revoke_delegated_credentials(account_id, account)
+                    account["password"] = sealed
                     account.pop("reset", None)
                     self._end_sessions(state, account_id)
                     _FAILURES.pop(str(account.get("email")), None)

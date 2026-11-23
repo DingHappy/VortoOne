@@ -30,13 +30,13 @@ class OneTimeSignIns:
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._lock = threading.Lock()
-        self._pending: Dict[str, Tuple[str, float]] = {}      # 摘要 → (谁, 过期时刻)
+        self._pending: Dict[str, Tuple[str, float, str]] = {}      # 摘要 → (谁, 过期时刻, 密码代次)
 
     def _drop_expired(self, now: float) -> None:
-        for key in [key for key, (_who, expires) in self._pending.items() if expires <= now]:
+        for key in [key for key, (_who, expires, _generation) in self._pending.items() if expires <= now]:
             del self._pending[key]
 
-    def mint(self, who: str) -> Tuple[str, int]:
+    def mint(self, who: str, *, generation: str = "") -> Tuple[str, int]:
         """给 who（``OWNER`` 或成员账号 id）开一个，返回（凭据，有效秒数）。凭据只在这里出现一次。"""
         if not who:
             raise ValueError("不知道是谁")
@@ -44,14 +44,19 @@ class OneTimeSignIns:
         with self._lock:
             self._drop_expired(now)
             if (len(self._pending) >= ALL_MAX
-                    or sum(1 for item, _expires in self._pending.values() if item == who) >= EACH_MAX):
+                    or sum(1 for item, _expires, _generation in self._pending.values() if item == who) >= EACH_MAX):
                 raise TooMany("等着用的登录太多，请稍后再试")
             token = secrets.token_urlsafe(32)
-            self._pending[_digest(token)] = (who, now + SECONDS)
+            self._pending[_digest(token)] = (who, now + SECONDS, generation)
             return token, SECONDS
 
     def redeem(self, token: str) -> Optional[str]:
         """用掉一个：对了返回是谁，不对、过期、用过的都返回 None。"""
+        found = self.redeem_with_generation(token)
+        return found[0] if found is not None else None
+
+    def redeem_with_generation(self, token: str) -> Optional[Tuple[str, str]]:
+        """Consume a code and return the recorded identity and credential generation."""
         if not isinstance(token, str) or not 20 <= len(token) <= 200:
             return None
         now = self._clock()
@@ -59,12 +64,12 @@ class OneTimeSignIns:
             found = self._pending.pop(_digest(token), None)
         if found is None or found[1] <= now:
             return None
-        return found[0]
+        return found[0], found[2]
 
     def forget(self, who: str) -> None:
         """这个人还没用掉的全部作废（被移除、改了密码时）。"""
         with self._lock:
-            for key in [key for key, (item, _expires) in self._pending.items() if item == who]:
+            for key in [key for key, (item, _expires, _generation) in self._pending.items() if item == who]:
                 del self._pending[key]
 
 

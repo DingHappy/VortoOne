@@ -20,6 +20,20 @@ class LoginBody(BaseModel):
     token: str = ""
 
 
+def set_owner_cookie(request: Request, response: Response, token: str) -> None:
+    """A successful owner sign-in replaces the browser's active account."""
+    from src.web.member_auth import clear_cookie
+
+    response.set_cookie(
+        SESSION_COOKIE, token,
+        httponly=True,                                  # JS 读不到 → allow-scripts 制品也偷不走
+        samesite="lax",                                 # 同源子资源/WS 照常带；顶层导航也可用
+        secure=(request.url.scheme == "https"),
+        path="/", max_age=_MAX_AGE,
+    )
+    clear_cookie(response)
+
+
 @router.post("/login")
 async def login(body: LoginBody, request: Request, response: Response):
     expected = get_api_token()
@@ -30,13 +44,7 @@ async def login(body: LoginBody, request: Request, response: Response):
     # 而 97 正是 0.0.0.0 暴露的；那边收紧了，这条登录路径当时用的还是 !=。
     if not ct_eq((body.token or "").strip(), expected):
         return JSONResponse({"ok": False, "detail": "token 不正确"}, status_code=401)
-    response.set_cookie(
-        SESSION_COOKIE, expected,
-        httponly=True,                                  # JS 读不到 → allow-scripts 制品也偷不走
-        samesite="lax",                                 # 同源子资源/WS 照常带；顶层导航也带（分享链接可用）
-        secure=(request.url.scheme == "https"),         # https 才加 Secure（本地 http 仍可用）
-        path="/", max_age=_MAX_AGE,
-    )
+    set_owner_cookie(request, response, expected)
     return {"ok": True}
 
 

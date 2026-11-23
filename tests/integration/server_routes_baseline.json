@@ -1868,6 +1868,12 @@
     ]
   },
   {
+    "path": "/api/app/me/password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/me/unread",
     "methods": [
       "GET"
@@ -2484,6 +2490,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/close",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/files",
     "methods": [
       "GET"
@@ -2766,6 +2778,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/bulk/agents",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/bulk/delete",
     "methods": [
       "POST"
@@ -2881,6 +2899,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/versions/{version}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/reads",
     "methods": [
       "GET"
     ]

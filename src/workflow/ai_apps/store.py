@@ -559,8 +559,21 @@ class AiApps:
 
     def disconnect_person(self, person: str) -> int:
         """这个人的所有连接和个人令牌全部作废（被移出空间、重置密码时）。返回断开的个数。"""
-        ids = [row["id"] for row in self.grants(person)] if person else []
-        return sum(self.disconnect(grant_id) for grant_id in ids)
+        if not person:
+            return 0
+        now = self.clock()
+        with self._change() as state:
+            mine = {grant_id for grant_id, grant in state["grants"].items() if grant["person"] == person}
+            active = {grant_id for grant_id in mine if not state["grants"][grant_id].get("revoked")}
+            for grant_id in active:
+                state["grants"][grant_id]["revoked"] = now
+            for token in state["tokens"].values():
+                if token["grant"] in mine and not token.get("revoked"):
+                    token["revoked"] = now
+            # Reconnecting may reuse a grant ID. Its unused old authorization codes must stay invalid.
+            for key in [key for key, code in state["codes"].items() if code["grant"] in mine]:
+                del state["codes"][key]
+        return len(active)
 
     def create_token(self, person: str, name: Any, access: str,
                      days: Optional[int]) -> Tuple[Dict[str, Any], str]:
