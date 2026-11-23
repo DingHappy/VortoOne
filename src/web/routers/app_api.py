@@ -355,14 +355,14 @@ async def handover_finish(code: str, request: Request):
     """用掉交接码：对了就登录并跳回首页；错的、过期的、用过的一律回登录页，不说明是哪一种。"""
     import time
     from fastapi.responses import RedirectResponse
-    from src.web.auth import SESSION_COOKIE, get_api_token
+    from src.web.auth import get_api_token
+    from src.web.routers.auth_routes import set_owner_cookie
     expires = _HANDOVERS.pop(_handover_key(code), None)
     token = get_api_token()
     if expires is None or expires <= time.monotonic() or not token:
         return RedirectResponse("/login", status_code=303)
     response = RedirectResponse("/", status_code=303)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax",
-                        secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
+    set_owner_cookie(request, response, token)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
@@ -393,7 +393,8 @@ class _OneTime(BaseModel):
 @router.post("/api/auth/sign-in/one-time-token")
 async def one_time_sign_in(body: _OneTime, request: Request, response: Response):
     """另一台设备凭一次性登录换自己的登录。错的、过期的、用过的回同一句话。"""
-    from src.web.auth import SESSION_COOKIE, get_api_token
+    from src.web.auth import get_api_token
+    from src.web.routers.auth_routes import set_owner_cookie
     from src.workflow.members.accounts import MemberAccounts
     from src.workflow.members.one_time import OWNER, PENDING
     refused = JSONResponse({"code": "INVALID_TOKEN", "message": "这个登录链接不对、过期或已经用过"}, status_code=401)
@@ -403,8 +404,7 @@ async def one_time_sign_in(body: _OneTime, request: Request, response: Response)
     who = PENDING.redeem(body.token)
     root = os.getcwd()
     if who == OWNER:
-        response.set_cookie(SESSION_COOKIE, owner_token, httponly=True, samesite="lax",
-                            secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
+        set_owner_cookie(request, response, owner_token)
         return {"redirect": False, "token": None, "user": views.me(root)["user"]}
     if not who or not who.startswith("account:"):
         return refused
