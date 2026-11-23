@@ -3634,6 +3634,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members/agents/{agent_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members/agents/{agent_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/voice",
     "methods": [
       "POST"

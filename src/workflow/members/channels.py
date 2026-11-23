@@ -331,11 +331,68 @@ class TeamChannels:
             # Someone can restrict a channel enough to lose their own access. Return only a receipt.
             return self._describe(channel, access, self._position(state, actor, channel)) if access.visible else None
 
-    def card(self, actor, channel_id):
+    def card(self, actor, channel_id, *, agents=None):
+        """agents：调用方认得、还在团队里的 agent（专员 id → 界面资料），已删掉的不算。"""
         state = self.registry.snapshot()
         channel, access = self._find(state, actor, channel_id)
+        count = sum(1 for staff in channel.get("agents") or {} if staff in (agents or {}))
         return {**self._describe(channel, access, self._position(state, actor, channel)), "archived": bool(channel["archived"]),
-                "people": len(channel["joined"]), "agents": 0}
+                "people": len(channel["joined"]), "agents": count}
+
+    # ── 频道里的 agent（主人 2026-11-22 定：只有所有者能放进、拿出；第一期不做不 @ 自动回答）──
+    # 记在频道记录的 "agents" 里：专员 id → 加入时间。哪些 agent 能进由调用方判定（这里不读专员登记）。
+
+    @staticmethod
+    def _require_owner(state, actor):
+        owner, _ = MemberRegistry._actor(state, actor)
+        if not owner:
+            raise Refused("只有所有者能把 agent 放进或移出频道")
+
+    def set_agent(self, actor, channel_id, staff_id, joined):
+        with self.registry._change() as state:
+            self._require_owner(state, actor)
+            channel, _ = self._find(state, actor, channel_id, archived=False)
+            agents = channel.setdefault("agents", {})
+            if joined:
+                agents.setdefault(staff_id, _stamp(datetime.now(timezone.utc)))
+            elif staff_id not in agents:
+                raise Missing("这个 agent 不在这个频道里")
+            else:
+                del agents[staff_id]
+
+    def require_owner(self, actor):
+        self._require_owner(self.registry.snapshot(), actor)
+
+    def has_agent(self, actor, channel_id, staff_id):
+        state = self.registry.snapshot()
+        self._require_owner(state, actor)
+        channel, _ = self._find(state, actor, channel_id, archived=False)
+        return staff_id in (channel.get("agents") or {})
+
+    def agent_channels(self, actor, staff_id):
+        """这个 agent 所在的、没归档的频道（只给所有者看）。"""
+        state = self.registry.snapshot()
+        self._require_owner(state, actor)
+        return [{"id": channel["id"], "name": channel["title"], "autoReply": False}
+                for channel in self._ordered_channels(state, False) if staff_id in (channel.get("agents") or {})]
+
+    def replace_agent_channels(self, actor, staff_id, channel_ids):
+        """整组替换：先核对全部频道，有一个不对就什么都不改。"""
+        with self.registry._change() as state:
+            self._require_owner(state, actor)
+            wanted = set()
+            for channel_id in channel_ids:
+                self._find(state, actor, channel_id, archived=False)
+                wanted.add(channel_id)
+            stamp = _stamp(datetime.now(timezone.utc))
+            for channel in state["channels"].values():
+                if channel["archived"]:
+                    continue
+                agents = channel.get("agents") or {}
+                if channel["id"] in wanted:
+                    channel.setdefault("agents", agents).setdefault(staff_id, stamp)
+                elif staff_id in agents:
+                    del agents[staff_id]
 
     def archive(self, actor, channel_id, archived):
         with self.registry._change() as state:
@@ -361,9 +418,18 @@ class TeamChannels:
             else:
                 channel["joined"].pop(person, None)
 
-    def roster(self, actor, channel_id):
+    def roster(self, actor, channel_id, *, agents=None):
         state = self.registry.snapshot()
         channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
+        people = self._people(state, channel)
+        for staff, joined_at in (channel.get("agents") or {}).items():
+            agent = (agents or {}).get(staff)
+            if agent is not None:                   # 已删掉、调用方不认得的 agent 不列出
+                people.append({"type": "agent", "id": agent["id"], "name": agent["name"], "handle": agent["handle"],
+                               "autoReply": False, "joinedAt": joined_at})
+        return people
+
+    def _people(self, state, channel):
         people = []
         for person, joined_at in channel["joined"].items():
             name = self.owner_name if person == OWNER_KEY else MemberRegistry._member(state, person)["name"]
@@ -650,7 +716,10 @@ def check_channels(state):
                 or not isinstance(channel.get("joined"), dict) or not isinstance(channel.get("overrides"), list)
                 or any(not isinstance(joined_at, str) for joined_at in channel["joined"].values())
                 or not isinstance(channel.get("creator"), str) or not isinstance(channel.get("created"), str)
-                or (channel.get("archived") is not None and not isinstance(channel["archived"], str))):
+                or (channel.get("archived") is not None and not isinstance(channel["archived"], str))
+                or not isinstance(channel.get("agents", {}), dict)
+                or any(not isinstance(key, str) or not isinstance(value, str)
+                       for key, value in channel.get("agents", {}).items())):
             raise Damaged("频道权限记录无效")
         category_id = channel.get("category_id")
         if category_id is not None and (not isinstance(category_id, str) or category_id not in category_ids):
