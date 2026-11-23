@@ -130,14 +130,16 @@ def _rule(value, start: datetime, zone_name: str, all_day: bool) -> dict | None:
     weekdays = value.get("byWeekday", [])
     if not isinstance(weekdays, list) or any(day not in _WEEKDAYS for day in weekdays):
         raise _unsupported("每周重复只支持普通星期")
-    if value["freq"] == "daily" and weekdays:
-        raise _unsupported("按星期选择请使用每周重复规则")
+    if value["freq"] == "daily" and weekdays and interval != 1:
+        raise _unsupported("按星期筛选的每日规则须使用一天间隔")
     pattern = {
         "freq": value["freq"], "interval": interval, "times": times, "timezone": zone_name,
         "start": day.isoformat(), "until": until.isoformat() if until else None, "count": None,
     }
     if value["freq"] == "weekly":
         pattern["byWeekday"] = [d for d in _WEEKDAYS if d in weekdays] or [_WEEKDAYS[day.weekday()]]
+    elif weekdays:
+        pattern["byWeekday"] = [d for d in _WEEKDAYS if d in weekdays]
     return pattern
 
 
@@ -147,7 +149,8 @@ def _rule_matches(rule: dict, day: date) -> bool:
     if gap < 0 or (rule["until"] and day.isoformat() > rule["until"]):
         return False
     if rule["freq"] == "daily":
-        return gap % rule["interval"] == 0
+        return gap % rule["interval"] == 0 and (
+            not rule.get("byWeekday") or _WEEKDAYS[day.weekday()] in rule["byWeekday"])
     # Anchor to Monday, matching the calendar recurrence picker.
     week = (gap + anchor.weekday()) // 7
     return week % rule["interval"] == 0 and _WEEKDAYS[day.weekday()] in rule["byWeekday"]
