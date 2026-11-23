@@ -125,6 +125,32 @@ def test_draft_brain_reads_the_attached_models_without_execution(home, monkeypat
     assert owner.get(path).status_code == 404
 
 
+def test_draft_brain_rejects_an_outdated_role_binding(home):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "brain-draft-role")
+    initial_thread, _ = _thread(owner, channel)
+    original = _draft(home, initial_thread)
+    path = f"{base}/missions/{original['id']}"
+    assert owner.get(path + "/brain").status_code == 200
+
+    registry = StaffRegistry(home["root"])
+    role_id = home["staff"]["role"]
+    registry.set_role_enabled(role_id, False)
+    disabled = owner.get(path + "/brain")
+    assert disabled.status_code == 409
+    assert disabled.json()["error"]["code"] == "mission.agent_unavailable"
+
+    registry.set_role_enabled(role_id, True)
+    stale = owner.get(path + "/brain")
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "mission.agent_unavailable"
+    assert owner.get(path).json() == original
+    assert _draft(home, initial_thread) == original
+    fresh_thread, _ = _thread(owner, channel)
+    fresh = _draft(home, fresh_thread)
+    assert owner.get(f"{base}/missions/{fresh['id']}/brain").status_code == 200
+
+
 def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch):
     owner, base = home["owner"], home["base"]
     member = _join(home)

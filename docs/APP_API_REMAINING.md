@@ -77,7 +77,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
 | ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
 | ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |
-| ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型；专员版本变化后拒绝。模型配置只读，不探测或启动执行。 |
+| ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型。专员或岗位版本变化、岗位停用后返回 409。模型配置只读，不探测或启动执行。 |
 | ☐ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` |  |
 | ☐ | POST | `ORG/missions/{x}/close` | `missions.close` |  |
 | ☐ | PUT | `ORG/missions/{x}/command-approval` | `missions.setCommandApproval` |  |

@@ -106,18 +106,22 @@ class MissionDrafts:
             return dict(draft)
 
     def assigned_model(self, actor, identifier):
-        """Read only the model from the staff revision recorded by the draft."""
+        """Read the model while the draft's staff and role revisions still match."""
         from src.workflow.staff.registry import StaffRegistry
 
         with TASK_STATE_LOCK:
             draft = self.get(actor, identifier)
+            registry = StaffRegistry(self.channels.registry.root)
             try:
-                staff = StaffRegistry(self.channels.registry.root).member(draft["staff_id"])
+                staff = registry.member(draft["staff_id"])
+                role = registry.role(draft["role_id"])
             except ValueError as error:
-                raise AgentUnavailable("草案绑定的专员登记不可用") from error
+                raise AgentUnavailable("草案绑定的专员或岗位登记不可用") from error
             if (staff.get("revision"), staff.get("role"), staff.get("engine"), staff.get("status")) != (
                     draft["staff_revision"], draft["role_id"], "vortocode", "active"):
                 raise AgentUnavailable("草案绑定的专员已变更，无法读取原配置")
+            if not role["enabled"] or role["revision"] != draft["role_revision"]:
+                raise AgentUnavailable("草案绑定的岗位已变更，无法读取原配置")
             model = staff.get("model", "")
             if not isinstance(model, str) or len(model) > 160:
                 raise AgentUnavailable("草案绑定的专员模型配置无效")
