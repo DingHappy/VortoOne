@@ -407,6 +407,21 @@ class MemberRegistry:
         if act is not None and rules.ACT_LEVELS.index(act) > rules.ACT_LEVELS.index(rules.act_level(held, posts)):
             raise Refused("办事级别不能高于你自己的")
 
+    def _checked_post_change(self, state: Mapping[str, Any], owner: bool, held: List[str],
+                             posts: Mapping[str, Post], current: Post, *, items: frozenset[str] | None,
+                             computer: str | None, act: str | None) -> Post:
+        changed = Post(current.id, current.items if items is None else items,
+                       current.computer if computer is None else str(computer),
+                       current.act if act is None else str(act))
+        rules.check_post(changed)
+        if not rules.may_change_post(held, current.id, posts, state["order"], before=current.items,
+                                     after=changed.items, owner=owner):
+            raise Refused("不能改这个身份组：它要排在你之后，改动的权限项要是你自己有的")
+        self._check_levels(state, held, posts, owner,
+                           computer=None if computer is None else changed.computer,
+                           act=None if act is None else changed.act)
+        return changed
+
     def change_group(self, actor: Principal, group_id: str, *, name: Optional[str] = None,
                      items: Optional[Iterable[str]] = None, computer: Optional[str] = None,
                      act: Optional[str] = None, look: Optional[Mapping[str, Any]] = None) -> None:
@@ -417,24 +432,50 @@ class MemberRegistry:
             if record is None:
                 raise Missing("没有这个身份组")
             posts = self._posts(state)
-            current = posts[group_id]
-            wanted = current.items if items is None else frozenset(str(item) for item in items)
             if group_id == ADMINS and (items is not None or computer is not None or act is not None):
                 raise ValueError("「管理员」身份组的权限是固定的，只能改名字")
-            changed = Post(group_id, wanted, current.computer if computer is None else str(computer),
-                           current.act if act is None else str(act))
-            rules.check_post(changed)
-            if not rules.may_change_post(held, group_id, posts, state["order"], before=current.items, after=wanted,
-                                         owner=owner):
-                raise Refused("不能改这个身份组：它要排在你之后，改动的权限项要是你自己有的")
-            self._check_levels(state, held, posts, owner,
-                               computer=None if computer is None else changed.computer,
-                               act=None if act is None else changed.act)
+            changed = self._checked_post_change(state, owner, held, posts, posts[group_id],
+                                                items=None if items is None else frozenset(str(item) for item in items),
+                                                computer=computer, act=act)
             if name is not None:
                 record["name"] = _name(name, "身份组名字")
             if look is not None:
                 record["look"] = _look({**(record.get("look") or {}), **look})
-            record.update(items=sorted(wanted), computer=changed.computer, act=changed.act)
+            record.update(items=sorted(changed.items), computer=changed.computer, act=changed.act)
+
+    def set_permission_row(self, actor: Principal, item: str | None, everyone: int,
+                           levels: Mapping[str, int]) -> Dict[str, Any]:
+        """Edit one permission or the computer ladder for all writable groups in a single commit."""
+        if not actor.is_owner:
+            raise Refused("只有所有者能批量改身份组权限")
+        if item is not None and (item not in rules.PERMISSIONS or item == ADMIN):
+            raise ValueError("没有这个权限项")
+        max_level = len(rules.COMPUTER_LEVELS) - 1 if item is None else 1
+        if any(type(level) is not int or not 0 <= level <= max_level for level in (*levels.values(), everyone)):
+            raise ValueError("权限级别不在可选范围内")
+
+        with self._change() as state:
+            owner, held = self._actor(state, actor)
+            posts = self._posts(state)
+            for group_id in levels:
+                if group_id not in posts:
+                    raise Missing("没有这个身份组")
+                if group_id == EVERYONE or ADMIN in posts[group_id].items:
+                    raise ValueError("只接受普通的自定义身份组，请单独设置「所有人」")
+            for group_id, current in posts.items():
+                if ADMIN in current.items:
+                    continue
+                level = everyone if group_id == EVERYONE else levels.get(group_id, 0)
+                if item is None:
+                    items, computer = None, rules.COMPUTER_LEVELS[level]
+                else:
+                    items = current.items | {item} if level else current.items - {item}
+                    computer = None
+                changed = self._checked_post_change(state, owner, held, posts, current,
+                                                    items=items, computer=computer, act=None)
+                if changed != current:
+                    state["groups"][group_id].update(items=sorted(changed.items), computer=changed.computer)
+            return state
 
     def delete_group(self, actor: Principal, group_id: str) -> None:
         """删除身份组。持有它的成员随之失去它；带着它的邀请在接受时自动跳过它。"""

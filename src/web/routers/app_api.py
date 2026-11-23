@@ -39,7 +39,7 @@ from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
-from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
+from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
@@ -897,6 +897,34 @@ async def create_role(org_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
     who = member_auth.principal(request, root)
     return await _members_call(lambda: {"id": app_members.create_role(root, who, body)}, write=True)
+
+
+class _PermissionRowHolder(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(min_length=1, max_length=128)
+    level: int
+
+
+class _PermissionRow(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    everyone: int
+    roles: List[_PermissionRowHolder] = Field(max_length=MAX_GROUPS)
+
+
+@router.put(_ORG + "/permissions/{row}")
+async def set_role_permission_row(org_id: str, row: str, body: _PermissionRow, request: Request,
+                                  response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "owner_proof_required", "批量改身份组权限需要已认证的所有者会话")
+    else:
+        result = await _members_call(lambda: app_members.set_role_row(
+            root, who, row, body.everyone, [(holder.id, holder.level) for holder in body.roles]), write=True)
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 # 先于 /roles/{role_id} 登记：否则 "order" 会被当成一个身份组的 id

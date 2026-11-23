@@ -879,11 +879,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | GET | `ORG/audit` | `orgs.audit` | 只给所有者。工具调用与确认门决定来自共享审计台账；台账不记成败与审批卡，`outcome`、`approval` 为 null，「等待中」为空 |
 
-### org/permissions（1 个，要做 1）
+### org/permissions（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/permissions/{x}` | `roles.setRow` |  |
+| ☑ | PUT | `ORG/permissions/{x}` | `roles.setRow` | 与单组编辑一样限所有者。一个请求原子更新所有人和普通身份组的现有权限项或电脑阶梯。管理员组、其他权限项和办事级别保留。 |
 
 ### org/roles（1 个，要做 0）
 
