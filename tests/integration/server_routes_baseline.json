@@ -2724,6 +2724,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/graph",
     "methods": [
       "GET"
