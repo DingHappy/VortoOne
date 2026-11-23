@@ -154,7 +154,8 @@ async def test_notifier_dual_sends_and_an_app_failure_never_breaks_im(tmp_path, 
         sent.append(text)
         return True
 
-    async def app(root, text):
+    async def app(root, text, *, category):
+        assert category is None
         pushed.append(text)
         raise RuntimeError("APNs down")
 

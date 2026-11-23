@@ -15,8 +15,11 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from src.utils.state_dir import state_dir
+
+if TYPE_CHECKING:
+    from src.gateway.mobile_devices import PushCategory
 
 # 实时广播给已连接的客户端（WS）。由传输层启动时注册（见 web/routers/tasks.py）——调度层不
 # 反向依赖 Web。没注册（如命令行单独跑 cron）就只走台账与 IM 两路：那时本来也没有客户端在连。
@@ -376,17 +379,20 @@ def _mark_pushed(repo_root: str, key: str, now: float) -> None:
         pass
 
 
-async def _push_app(repo_root: str, text: str) -> None:
+async def _push_app(repo_root: str, text: str, category: PushCategory | None) -> None:
     """④ 主人的手机 App（APNs，正文加密）。ADR-011 过渡期与 IM 双发：这一路的成败不进 IM 的受理 / 补发记账，
     没配 APNs 或没有登记的设备就什么都不做。"""
     try:
         from src.gateway.mobile_push import push_owner
-        await push_owner(repo_root, text)
+        await push_owner(repo_root, text, category=category)
     except Exception:  # noqa: BLE001 —— 附加通道，任何失败都不影响前三路
         pass
 
 
-def make_notifier(repo_root: str, *, source: str = "scheduler", trigger: str = "", relay: bool = True):
+def make_notifier(
+    repo_root: str, *, source: str = "scheduler", trigger: str = "", relay: bool = True,
+    mobile_category: PushCategory | None = None,
+):
     """造三路通知投递器：①持久台账 ②WS 广播 ③IM 推 owner。每路 best-effort，一路挂不拖另两路。
 
     返回 True 表示 IM/转发已受理，或已保存到本地补发队列；不代表用户已读。
@@ -443,7 +449,7 @@ def make_notifier(repo_root: str, *, source: str = "scheduler", trigger: str = "
                                                     **({"timed": True} if timed else {})))
         except Exception:  # noqa: BLE001
             pass
-        await _push_app(repo_root, str(text))
+        await _push_app(repo_root, str(text), mobile_category)
         if delivered and not urgent:
             _mark_pushed(repo_root, key, stamp)
         if not delivered:
