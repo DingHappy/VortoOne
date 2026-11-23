@@ -9,14 +9,19 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Collection, Dict, List, Optional
 
+from src.gateway import protocol
+from src.gateway.turn_digest import turn_parts
 from src.web import app_views as views
 
 MAX_ENDED, MAX_WAITING = 50, 100
 _DONE = frozenset({"done", "submitted", "review"})
 _BRAIN = {"vortocode": "model", "claude-code": "claude_code", "codex": "codex"}
+_TOOL_NAME = re.compile(r"[A-Za-z0-9_.:-]{1,120}")
+_TOOL_ENDS = {"succeeded", "failed", "blocked", "cancelled", "canceled", "skipped", "denied"}
 
 
 def since_time(value: str) -> datetime:
@@ -25,6 +30,56 @@ def since_time(value: str) -> datetime:
         return datetime.now(timezone.utc) - timedelta(days=1)
     moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def _step_time(value: Any) -> Optional[str]:
+    if not isinstance(value, str) or len(value) > 40:
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment.isoformat() if moment.tzinfo is not None else None
+
+
+def task_steps(root: str, run_id: str, *, running: bool) -> Optional[Dict[str, Any]]:
+    """Project the owner's main-chat tool records without input, output or message text."""
+    view = views._main_view(root, include_activities=True)
+    request, reply = turn_parts(view["transcript"], run_id)
+    created = _step_time(request.get("at")) if request is not None else None
+    if created is None:
+        return None
+    finished = _step_time(reply.get("at")) if reply is not None and not running else None
+    terminal_phase = None
+    steps = []
+    started, ended = set(), set()
+    for event in view.get("activities", []):
+        if event.get("rid") != run_id:
+            continue
+        event_type, status = event.get("type"), event.get("status")
+        timestamp = _step_time(event.get("recorded_at"))
+        if event_type == protocol.AGENT_PHASE and status in ("failed", "cancelled") and timestamp:
+            terminal_phase = timestamp
+        if event_type != protocol.AGENT_TOOL or timestamp is None:
+            continue
+        call_id, name = event.get("id"), event.get("name")
+        if not isinstance(call_id, str) or not 1 <= len(call_id) <= 160:
+            continue
+        if status == "running" and call_id not in started:
+            if not isinstance(name, str) or _TOOL_NAME.fullmatch(name) is None:
+                continue
+            started.add(call_id)
+            kind, fields = "tool_call", {"name": name}
+        elif isinstance(status, str) and status in _TOOL_ENDS and call_id in started and call_id not in ended:
+            ended.add(call_id)
+            kind, fields = "tool_result", {"isError": status != "succeeded"}
+        else:
+            continue
+        steps.append({"seq": len(steps) + 1, "kind": kind, "createdAt": timestamp,
+                      "data": {"toolUseId": call_id, **fields}})
+    if not running:
+        finished = terminal_phase or finished
+    return {"run": {"createdAt": created, "finishedAt": finished}, "steps": steps}
 
 
 def _open_question(task: Any) -> Optional[Dict[str, Any]]:
