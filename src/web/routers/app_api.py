@@ -1171,14 +1171,17 @@ async def invitation_preview(token: str):
 
 
 @router.get("/api/app/invitations/{token}/state")
-async def invitation_state(token: str, request: Request, response: Response):
+async def invitation_state(token: str, request: Request, response: Response, receipt: str = ""):
     from src.web.auth import is_authed
 
     root = os.getcwd()
     response.headers["Cache-Control"] = "no-store"
 
     def read():
-        account = member_auth.account(request) if not is_authed(request) and member_auth.same_origin(request) else None
+        account = None
+        # 旧界面退出时会保留邀请缓存，只对已更新缓存策略的客户端启用回执。
+        if receipt == "1" and not is_authed(request) and member_auth.same_origin(request):
+            account = member_auth.account(request)
         return app_members.invitation_state(root, token, account)
 
     result = await _members_call(read)

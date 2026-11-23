@@ -98,6 +98,7 @@ def test_expired_invitation_state_only_returns_known_preview_metadata(home, monk
     assert gone.status_code == 200 and gone.headers["cache-control"] == "no-store"
     assert gone.json() == {"state": "expired", "orgName": current.json()["orgName"],
                            "invitedBy": current.json()["invitedBy"], "at": current.json()["expiresAt"]}
+    assert guest.get(path + "/state?receipt=1").json() == gone.json()
     assert registry.MemberRegistry(home["root"]).snapshot() == before
     missing = guest.get("/api/app/invitations/unknown-token/state")
     assert missing.status_code == 404 and missing.headers["cache-control"] == "no-store"
@@ -148,7 +149,8 @@ def test_accepted_invitation_state_only_belongs_to_the_member_who_consumed_that_
     guest = TestClient(home["app"], headers=ORIGIN)
     recipient = TestClient(home["app"], headers=ORIGIN)
     invite_path = f"/api/app/invitations/{token}"
-    state_path = invite_path + "/state"
+    legacy_path = invite_path + "/state"
+    state_path = legacy_path + "?receipt=1"
     preview = guest.get(invite_path).json()
     signup = {"name": "受邀人", "email": "recipient@example.com", "password": PASSWORD}
     auth = {"x-invitation-token": token}
@@ -173,7 +175,8 @@ def test_accepted_invitation_state_only_belongs_to_the_member_who_consumed_that_
     for response in (guest.get(state_path), other.get(state_path), home["owner"].get(state_path),
                      recipient.get(state_path, headers={"Origin": "https://elsewhere.example"}),
                      recipient.get(state_path, headers={"Authorization": f"Bearer {TOKEN}"}),
-                     recipient.get("/api/app/invitations/unknown-token/state")):
+                     recipient.get(legacy_path), recipient.get(legacy_path + "?receipt=0"),
+                     recipient.get("/api/app/invitations/unknown-token/state?receipt=1")):
         assert response.status_code == 404 and response.headers["cache-control"] == "no-store"
         assert response.json() == unknown.json()
 
@@ -197,8 +200,8 @@ def test_rotated_invitation_receipt_requires_an_active_session_and_membership(ho
     assert signed.status_code == 200
     assert recipient.post(f"/api/app/invitations/{token}/accept", json={}).status_code == 200
     member_id = recipient.get("/api/app/me").json()["user"]["id"]
-    state_path = f"/api/app/invitations/{token}/state"
-    assert recipient.get(f"/api/app/invitations/{original}/state").status_code == 404
+    state_path = f"/api/app/invitations/{token}/state?receipt=1"
+    assert recipient.get(f"/api/app/invitations/{original}/state?receipt=1").status_code == 404
     assert recipient.get(state_path).status_code == 200
 
     old_session = TestClient(home["app"], headers=ORIGIN, cookies=dict(recipient.cookies))
@@ -233,9 +236,9 @@ def test_accept_retry_reuses_the_receipt_committed_with_the_membership(home, mon
     committed = store.snapshot()
     assert committed["invitations"] == {}
     member, = committed["members"].values()
-    assert recipient.get(invite_path + "/state").status_code == 404
+    assert recipient.get(invite_path + "/state?receipt=1").status_code == 404
     assert recipient.post(invite_path + "/accept", json={}).status_code == 200
-    receipt = recipient.get(invite_path + "/state")
+    receipt = recipient.get(invite_path + "/state?receipt=1")
     assert receipt.status_code == 200 and receipt.json()["at"] == member["joined"]
     assert store.snapshot() == committed
 
