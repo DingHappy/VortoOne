@@ -79,9 +79,7 @@ pub fn private_dir(path: &Path) -> Result<(), String> {
 
 pub fn random_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
-    fs::File::open("/dev/urandom")
-        .and_then(|mut file| file.read_exact(&mut bytes))
-        .map_err(|_| "无法生成电脑身份")?;
+    getrandom::fill(&mut bytes).map_err(|_| "无法生成电脑身份")?;
     bytes[6] = (bytes[6] & 15) | 64;
     bytes[8] = (bytes[8] & 63) | 128;
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();

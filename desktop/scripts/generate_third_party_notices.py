@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import sys
+import sysconfig
 from pathlib import Path
 from typing import Any
 
@@ -97,11 +98,14 @@ def _python_runtime() -> dict[str, Any]:
         metadata_sha256 = hashlib.sha256(metadata_path.read_bytes()).hexdigest()
     else:
         version = f"python{sys.version_info.major}.{sys.version_info.minor}"
-        candidates = [
-            Path(sys.base_prefix) / "lib" / version / "LICENSE.txt",
-            Path(sys.base_prefix) / "LICENSE.txt",
-        ]
-        license_paths = [candidate for candidate in candidates if candidate.is_file()]
+        prefix = Path(sys.base_prefix)
+        candidates = (
+            prefix / "lib" / version / "LICENSE.txt",
+            prefix / "LICENSE.txt",
+            Path(sysconfig.get_path("stdlib")) / "LICENSE.txt",
+            prefix / "share" / "doc" / version / "copyright",
+        )
+        license_paths = list(dict.fromkeys(candidate.resolve() for candidate in candidates if candidate.is_file()))
         if not license_paths:
             raise RuntimeError(f"Could not locate the CPython license below {sys.base_prefix}")
         is_anaconda = "anaconda" in sys.version.casefold()
@@ -137,7 +141,7 @@ def _python_runtime() -> dict[str, Any]:
 def build_inventory(analysis_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     analysis = ast.literal_eval(analysis_path.read_text(encoding="utf-8"))
     frozen_paths = {
-        str(Path(value).resolve())
+        Path(value).resolve()
         for value in _walk_strings(analysis)
         if os.path.isabs(value) and "site-packages" in Path(value).parts
     }
@@ -146,7 +150,7 @@ def build_inventory(analysis_path: Path) -> tuple[dict[str, Any], list[dict[str,
     unresolved: list[str] = []
     for distribution in importlib.metadata.distributions():
         owned_paths = {
-            str(Path(distribution.locate_file(entry)).resolve())
+            Path(distribution.locate_file(entry)).resolve()
             for entry in distribution.files or ()
         }
         included = sorted(frozen_paths.intersection(owned_paths))

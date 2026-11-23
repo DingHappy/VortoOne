@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { cp, copyFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { runNpm } from "./run-npm.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 for (const args of [
   [
     "run",
@@ -16,7 +16,7 @@ for (const args of [
   ],
   ["run", "build", "--workspace", "@vortoone/desktop", "--", "--mode", "desktop-preview"],
 ])
-  execFileSync(npm, args, { cwd: root, stdio: "inherit" });
+  runNpm(args, root);
 
 const output = new URL("../apps/web/dist-preview/", import.meta.url);
 await cp(

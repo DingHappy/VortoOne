@@ -169,8 +169,12 @@ if (action === "status") {
   run("open", [RELEASES]);
 } else if (action === "bundle") {
   mainOnly();
+  if (process.platform === "win32" || process.platform === "linux") {
+    run(process.execPath, [join(root, "scripts", "bundle-desktop-dev-portable.mjs")], { stdio: "inherit" });
+    process.exit(0);
+  }
   if (process.platform !== "darwin" || process.arch !== "arm64")
-    throw new Error("This installer currently targets Apple Silicon macOS");
+    throw new Error("The macOS installer targets Apple Silicon");
   const signing = identity();
   run("node", [join(repo, "desktop/scripts/build-sidecar.mjs")], {stdio: "inherit"});
   const captureDirectory = join(tauri, "target/desktop-capture");

@@ -262,7 +262,7 @@ pub fn consent_url(port: u16, id: &str) -> String {
 
 fn new_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes)).map_err(|e| e.to_string())?;
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -589,21 +589,29 @@ fn good_code(code: &str) -> bool {
     (20..=200).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+fn isolate_standalone_environment(command: &mut Command, scratch: &Path) {
+    command.env_clear().env("HOME", scratch);
+    #[cfg(not(windows))]
+    command.env("PATH", "/usr/bin:/bin");
+    #[cfg(windows)]
+    {
+        for name in ["SystemRoot", "WINDIR"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            command.env("PATH", PathBuf::from(root).join("System32"));
+        }
+        for name in ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"] {
+            command.env(name, scratch);
+        }
+    }
+}
+
 /// 安装验收：在全新的临时家里启动随包后端并完成登录，不读取用户配置，不调用模型。
 pub fn verify_standalone(resources: &Path) -> Result<(), String> {
     let runtime = resources.join("runtime").join(BUNDLED_RUNTIME);
-    let capabilities = Command::new(&runtime)
-        .arg("model-capabilities")
-        .output()
-        .map_err(|_| "内置后端无法运行")?;
-    if !capabilities.status.success() {
-        return Err("内置模型客户端无法启动".into());
-    }
-    let capabilities: serde_json::Value =
-        serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
-    if capabilities["native_tools_client"] != true || capabilities["inference_sent"] != false {
-        return Err("内置模型客户端核验失败".into());
-    }
     let scratch = std::env::temp_dir().join(format!(
         "vortoone-installed-check-{}-{}",
         std::process::id(),
@@ -612,16 +620,27 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
     let outcome = (|| {
         let fixture_name = "Standalone installer fixture";
         crate::places::prepare_local_home(&scratch, true, Some(fixture_name)).map_err(|e| e.to_string())?;
+        let mut probe = Command::new(&runtime);
+        probe.current_dir(&scratch).arg("model-capabilities");
+        isolate_standalone_environment(&mut probe, &scratch);
+        let capabilities = probe.output().map_err(|_| "内置后端无法运行")?;
+        if !capabilities.status.success() {
+            return Err("内置模型客户端无法启动".into());
+        }
+        let capabilities: serde_json::Value =
+            serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
+        if capabilities["native_tools_client"] != true || capabilities["inference_sent"] != false {
+            return Err("内置模型客户端核验失败".into());
+        }
         let ui = resources.join("web");
         let home = scratch.join("home");
         let log = scratch.join("backend.log");
         let (mut child, port, token, _native) =
             start_with(&home, &ui, &log, &new_token()?, |port, token| {
                 let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
-                cmd.env_clear();
+                isolate_standalone_environment(&mut cmd, &scratch);
                 cmd = configure(cmd, None, &home, &ui, token);
-                cmd.env("VORTOONE_BUNDLED_DESKTOP", "1")
-                    .env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
+                cmd.env("VORTOONE_BUNDLED_DESKTOP", "1").env("VORTOONE_TURN_DIGEST", "0");
                 cmd
             })?;
         let result = (|| {
@@ -745,15 +764,24 @@ mod tests {
 
     #[test]
     fn config_needs_absolute_paths() {
-        let ok = parse_config(r#"{"python": "/usr/bin/python3", "source": "/Users/me/Vorto One", "env_file": "/Users/me/.env"}"#).unwrap();
-        assert_eq!(ok.python, PathBuf::from("/usr/bin/python3"));
-        assert_eq!(ok.source, PathBuf::from("/Users/me/Vorto One"));
-        assert_eq!(ok.env_file, Some(PathBuf::from("/Users/me/.env")));
-        assert_eq!(parse_config(r#"{"python":"/p","source":"/s"}"#).unwrap().env_file, None);
-        assert!(parse_config(r#"{"python": "python3", "source": "/s"}"#).is_err());
-        assert!(parse_config(r#"{"python": "/p", "source": "../s"}"#).is_err());
-        assert!(parse_config(r#"{"python": "/p"}"#).is_err());
-        assert!(parse_config(r#"{"python": "/p", "source": "/s", "env_file": "rel"}"#).is_err());
+        let fixture = std::env::current_dir().unwrap();
+        let python = fixture.join("python");
+        let source = fixture.join("Vorto One");
+        let env_file = fixture.join(".env");
+        let config = serde_json::json!({"python": python, "source": source, "env_file": env_file});
+        let parsed = parse_config(&config.to_string()).unwrap();
+        assert_eq!(parsed.python, python);
+        assert_eq!(parsed.source, source);
+        assert_eq!(parsed.env_file, Some(env_file));
+
+        let text = |python: &Path, source: &Path| {
+            serde_json::json!({"python": python, "source": source}).to_string()
+        };
+        assert_eq!(parse_config(&text(&python, &source)).unwrap().env_file, None);
+        assert!(parse_config(&text(Path::new("python"), &source)).is_err());
+        assert!(parse_config(&text(&python, Path::new("../source"))).is_err());
+        assert!(parse_config(&serde_json::json!({"python": python}).to_string()).is_err());
+        assert!(parse_config(&serde_json::json!({"python": python, "source": source, "env_file": "relative"}).to_string()).is_err());
     }
 
     #[test]
