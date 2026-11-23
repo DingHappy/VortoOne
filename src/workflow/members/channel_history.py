@@ -7,6 +7,7 @@ import sqlite3
 import unicodedata
 import uuid
 from contextlib import closing, contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from heapq import nlargest
 from pathlib import Path
@@ -35,6 +36,8 @@ CREATE TABLE IF NOT EXISTS messages (
     reply_to TEXT,
     opened INTEGER NOT NULL DEFAULT 0,
     media TEXT,
+    thread_range TEXT,
+    removed INTEGER NOT NULL DEFAULT 0,
     UNIQUE (channel, author, client)
 );
 CREATE INDEX IF NOT EXISTS messages_in_channel ON messages(channel, sequence);
@@ -151,10 +154,32 @@ def check_media(media):
 
 
 def _migrate(conn) -> None:
-    """建表之前的频道记录没有 media 列：原地补上，老消息的 media 为空。"""
+    """Read-only clients can still read histories that predate these columns."""
     columns = {row[1] for row in conn.execute("PRAGMA table_info(messages)")}
     if "media" not in columns:
         conn.execute("ALTER TABLE messages ADD COLUMN media TEXT")
+    if "thread_range" not in columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN thread_range TEXT")
+    if "removed" not in columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
+    conn.execute("CREATE INDEX IF NOT EXISTS live_thread_ranges ON messages(channel, sequence) "
+                 "WHERE thread_range IS NOT NULL AND removed = 0")
+
+
+def _has_ranges(conn):
+    return conn.execute("SELECT 1 FROM pragma_table_info('messages') WHERE name = 'removed'").fetchone() is not None
+
+
+def _visible(row):
+    return row is not None and not ("removed" in row.keys() and row["removed"])
+
+
+def _context(row):
+    return json.loads(row["thread_range"]) if "thread_range" in row.keys() and row["thread_range"] else None
+
+
+def _visible_sql(conn):
+    return " AND m.removed = 0" if _has_ranges(conn) else ""
 
 
 class ChannelHistory:
@@ -171,7 +196,7 @@ class ChannelHistory:
             return {"type": "agent", "id": key[len(AGENT_AUTHOR):]}
         return {"type": "person", "id": self.person_id(key)}
 
-    def message(self, row, viewer, *, reactions=None) -> dict:
+    def message(self, row, viewer, *, reactions=None, conn=None) -> dict:
         result = {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
                   "author": self.author(row["author"]), "body": row["body"],
                   "mentionedAgentIds": [], "agentRunId": None,
@@ -179,6 +204,11 @@ class ChannelHistory:
         meta = {}
         if row["reply_to"]:
             meta["replyTo"] = row["reply_to"]
+        if (context := _context(row)) is not None:
+            title = channel_threads.read(conn, row["id"]).title if conn is not None else None
+            meta["threadStart"] = {"title": title or row["body"], "contextChannelId": context["channelId"],
+                                   "firstMessageId": context["firstMessageId"], "lastMessageId": context["lastMessageId"],
+                                   "count": context["count"], "moved": False, "movedCount": 0}
         media = row["media"] if "media" in row.keys() else None
         if media:
             media = json.loads(media)
@@ -228,7 +258,7 @@ class ChannelHistory:
         row = conn.execute("SELECT m.*, p.message IS NOT NULL AS pinned FROM messages m "
                            "LEFT JOIN pins p ON p.message = m.id WHERE m.channel = ? AND m.id = ?",
                            (channel, message_id)).fetchone() if conn is not None else None
-        if row is None:
+        if not _visible(row):
             raise Missing("没有这条消息")
         return row
 
@@ -306,19 +336,22 @@ class ChannelHistory:
                 channel_threads.read(conn, thread, initialized=True).allow_reply()
             if reply_to is not None:
                 self.find(conn, channel, reply_to)
-            latest = conn.execute("SELECT created FROM messages WHERE channel = ? ORDER BY sequence DESC LIMIT 1",
-                                  (channel,)).fetchone()
-            now = datetime.now(timezone.utc)
-            if latest is not None:
-                now = max(now, _parse_stamp(latest[0]) + timedelta(microseconds=1))
+            now = self._next_stamp(conn, channel)
             message_id = str(uuid.uuid4())
             conn.execute(
                 "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened, media) "
                 "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (message_id, channel, actor, body, _stamp(now), client, thread, reply_to, int(opened), stored))
+                (message_id, channel, actor, body, now, client, thread, reply_to, int(opened), stored))
             if thread is not None:
-                channel_threads.apply(conn, channel, thread, actor, "reopen", _stamp(now))
+                channel_threads.apply(conn, channel, thread, actor, "reopen", now)
             return self.message(self.find(conn, channel, message_id), actor)
+
+    @staticmethod
+    def _next_stamp(conn, channel):
+        latest = conn.execute("SELECT created FROM messages WHERE channel = ? ORDER BY sequence DESC LIMIT 1",
+                              (channel,)).fetchone()
+        now = datetime.now(timezone.utc)
+        return _stamp(max(now, _parse_stamp(latest[0]) + timedelta(microseconds=1)) if latest else now)
 
     def messages(self, channel, viewer, *, before="", limit=100, thread=None, after=None):
         with self.database() as conn:
@@ -328,23 +361,25 @@ class ChannelHistory:
                     raise Missing("没有这个线程")
             if conn is None:
                 return []
+            visible = _visible_sql(conn)
             if after is not None:
                 # A live watcher follows the committed sequence, including replies.
                 rows = conn.execute(
                     "SELECT m.*, p.message IS NOT NULL AS pinned FROM messages m "
-                    "LEFT JOIN pins p ON p.message = m.id WHERE channel = ? AND sequence > ? ORDER BY sequence LIMIT ?",
+                    "LEFT JOIN pins p ON p.message = m.id WHERE channel = ? AND sequence > ?"
+                    f"{visible} ORDER BY sequence LIMIT ?",
                     (channel, after, limit)).fetchall()
             else:
                 cutoff = _before(before) if before else "9999"
                 rows = conn.execute(
                     "SELECT m.*, p.message IS NOT NULL AS pinned FROM messages m LEFT JOIN pins p ON p.message = m.id "
-                    "WHERE m.channel = ? AND m.thread IS ? AND m.created < ? "
+                    f"WHERE m.channel = ? AND m.thread IS ? AND m.created < ?{visible} "
                     "ORDER BY sequence DESC LIMIT ?", (channel, thread, cutoff, limit)
                 ).fetchall()[::-1]
                 if thread and root["created"] < cutoff:
                     rows.insert(0, root)
             reactions = self.reactions(conn, [row["id"] for row in rows])
-            return [self.message(row, viewer, reactions=reactions.get(row["id"])) for row in rows]
+            return [self.message(row, viewer, reactions=reactions.get(row["id"]), conn=conn) for row in rows]
 
     @staticmethod
     def search(conn, channels, needle, *, after="", before="", oldest=False, limit=20):
@@ -353,9 +388,11 @@ class ChannelHistory:
             return []
         marks = ",".join("?" * len(channels))
         escaped = needle.casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        ordinary_messages = " AND m.thread_range IS NULL" if _has_ranges(conn) else ""
         rows = conn.execute(
             f"SELECT m.*, p.message IS NOT NULL AS pinned FROM messages m LEFT JOIN pins p ON p.message = m.id "
-            f"WHERE m.channel IN ({marks}) AND lower(m.body) LIKE ? ESCAPE '\\' AND m.created >= ? AND m.created < ? "
+            f"WHERE m.channel IN ({marks}) AND lower(m.body) LIKE ? ESCAPE '\\' AND m.created >= ? AND m.created < ?"
+            f"{ordinary_messages} "
             f"ORDER BY m.sequence {'ASC' if oldest else 'DESC'} LIMIT ?",
             (*channels, f"%{escaped}%", after or "", before or "9999", limit)).fetchall()
         return list(rows)
@@ -370,7 +407,7 @@ class ChannelHistory:
     @staticmethod
     def find_by_id(conn, message_id):
         row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone() if conn is not None else None
-        if row is None:
+        if not _visible(row):
             raise Missing("没有这条消息")
         return row
 
@@ -378,6 +415,82 @@ class ChannelHistory:
     def has_thread_replies(conn, channel, thread):
         return conn.execute("SELECT 1 FROM messages WHERE channel = ? AND thread = ? LIMIT 1",
                             (channel, thread)).fetchone() is not None
+
+    @staticmethod
+    def is_range(row):
+        return "thread_range" in row.keys() and row["thread_range"] is not None
+
+    def _range_selection(self, conn, channel, first, last, excluded):
+        start = self.find(conn, channel, first)
+        end = self.find(conn, channel, last)
+        if (start["thread"] is not None or end["thread"] is not None or self.is_range(start) or self.is_range(end)
+                or start["sequence"] > end["sequence"]):
+            raise ValueError("话题的选段必须从频道中的原消息开始和结束")
+        rows = conn.execute(
+            "SELECT id, body FROM messages WHERE channel = ? AND sequence BETWEEN ? AND ? "
+            "AND thread IS NULL AND thread_range IS NULL ORDER BY sequence LIMIT 201",
+            (channel, start["sequence"], end["sequence"]),
+        ).fetchall()
+        selected = {row["id"] for row in rows}
+        if len(rows) > 200 or not set(excluded) <= selected or {first, last} & set(excluded):
+            raise ValueError("选段最多 200 条消息，且不能排除起止消息或选段外的消息")
+        return {"channelId": channel, "firstMessageId": first, "lastMessageId": last,
+                "excludedMessageIds": sorted(set(excluded)), "count": len(rows) - len(set(excluded)),
+                "moved": False}, " ".join(start["body"].split())[:200]
+
+    def create_range(self, conn, channel, actor, first, last, excluded, title):
+        context, excerpt = self._range_selection(conn, channel, first, last, excluded)
+        encoded = json.dumps(context, separators=(",", ":"))
+        old = conn.execute(
+            "SELECT m.* FROM messages m JOIN thread_lifecycle l ON l.message = m.id "
+            "WHERE m.channel = ? AND m.author = ? AND m.thread_range = ? AND m.removed = 0 AND l.title IS ?",
+            (channel, actor, encoded, title),
+        ).fetchone()
+        if old is not None:
+            return old
+        identifier = str(uuid.uuid4())
+        conn.execute("INSERT INTO messages(id, channel, author, body, created, thread_range) VALUES (?, ?, ?, ?, ?, ?)",
+                     (identifier, channel, actor, excerpt, self._next_stamp(conn, channel), encoded))
+        channel_threads.write(conn, channel, identifier, channel_threads.ThreadState(title=title), "created")
+        return self.find(conn, channel, identifier)
+
+    def change_range(self, conn, row, selection, title, *, set_title):
+        if not self.is_range(row):
+            raise ValueError("只有从频道选段建立的话题可以调整选段")
+        channel, thread = row["channel"], row["id"]
+        state = channel_threads.read(conn, thread, initialized=True)
+        state.allow_reply()
+        previous = _context(row)
+        context, excerpt = self._range_selection(
+            conn, channel, selection.get("firstMessageId", previous["firstMessageId"]),
+            selection.get("lastMessageId", previous["lastMessageId"]),
+            selection.get("excludedMessageIds", previous["excludedMessageIds"]),
+        )
+        changed_title = set_title and title != state.title
+        if context != previous or changed_title:
+            conn.execute("UPDATE messages SET thread_range = ?, body = ? WHERE id = ?",
+                         (json.dumps(context, separators=(",", ":")), excerpt, thread))
+            if changed_title:
+                state = replace(state, title=title)
+            channel_threads.write(conn, channel, thread, state, "context")
+        return self.find(conn, channel, thread)
+
+    def remove_range(self, conn, row):
+        channel, thread = row["channel"], row["id"]
+        if not self.is_range(row):
+            raise channel_threads.ThreadInUse("只能撤销从频道选段建立且无人回复的话题")
+        queries = (
+            "SELECT 1 FROM messages WHERE channel = ? AND (thread = ? OR reply_to = ?) AND removed = 0 LIMIT 1",
+            "SELECT 1 FROM pins WHERE message = ?",
+            "SELECT 1 FROM message_reactions WHERE message = ?",
+            "SELECT 1 FROM mission_drafts WHERE thread_id = ?",
+        )
+        if any(conn.execute(sql, params).fetchone() is not None
+               for sql, params in zip(queries, ((channel, thread, thread), (thread,), (thread,), (thread,)))):
+            raise channel_threads.ThreadInUse("这个话题已有回复、引用、标记或任务草案，不能撤销")
+        state = channel_threads.read(conn, thread, initialized=True)
+        conn.execute("UPDATE messages SET removed = 1 WHERE id = ?", (thread,))
+        channel_threads.write(conn, channel, thread, state, "deleted")
 
     def check_thread_voice(self, channel, actor, thread, reply_to, client, existing_clip):
         with self.database() as conn:
@@ -408,18 +521,19 @@ class ChannelHistory:
                                (channel, root["id"])).fetchall()
         participants = dict.fromkeys([root["author"], *(row["author"] for row in authors)])
         state = channel_threads.read(conn, root["id"])
+        context = _context(root)
         return {"id": root["id"], "channelId": channel, "channelName": title, "channelKind": "channel",
                 "title": state.title, "rootText": root["body"], "rootAuthor": actor(root), "state": state.state,
                 "createdBy": self.person_id(root["author"]),
                 "closedBy": self.person_id(state.closed_by) if state.closed_by else None,
                 "closedAt": state.closed_at, "archivedBy": self.person_id(state.archived_by) if state.archived_by else None,
-                "archivedAt": state.archived_at, "context": None, "replyCount": reply_count, "createdAt": root["created"],
+                "archivedAt": state.archived_at, "context": context, "replyCount": reply_count, "createdAt": root["created"],
                 "lastActivityAt": latest["created"] if latest else root["created"],
                 "lastMessage": ({"author": actor(latest), "excerpt": latest["body"][:140],
                                  "createdAt": latest["created"]} if latest else None),
                 "participants": [self.author(person) for person in participants],
                 "working": False, "needsYou": False, "openedByReplyAt": opened,
-                "suggestedResolved": False, "canManage": can_manage and reply_count > 0,
+                "suggestedResolved": False, "canManage": can_manage and (reply_count > 0 or context is not None),
                 **thread_reads.info(conn, channel, root, reader, archived=bool(state.archived_at))}
 
     def thread_page(self, titles, *, tab, limit, can_manage, reader_for, cursor="", query="", person=""):
@@ -443,20 +557,27 @@ class ChannelHistory:
             join, state_filter = channel_threads.list_filter(conn, tab)
             title_match = " OR instr(casefold(coalesce(l.title, '')), ?) > 0" if join else ""
             query_args = (query, query, query) if join else (query, query)
+            have_ranges = _has_ranges(conn)
+            range_roots = (
+                " UNION ALL SELECT m.id, m.created FROM messages m WHERE m.channel = ? AND m.thread_range IS NOT NULL "
+                "AND m.removed = 0 AND NOT EXISTS (SELECT 1 FROM messages reply "
+                "WHERE reply.channel = m.channel AND reply.thread = m.id)"
+            ) if have_ranges else ""
 
             def candidates():
                 for channel in titles:
                     yield from conn.execute(
                         "SELECT r.id, r.channel, t.activity FROM ("
                         "  SELECT thread, max(created) AS activity FROM messages "
-                        "  WHERE channel = ? AND thread IS NOT NULL GROUP BY thread"
+                        "  WHERE channel = ? AND thread IS NOT NULL GROUP BY thread" + range_roots +
                         ") t JOIN messages r ON r.id = t.thread AND r.channel = ?" + join +
                         " WHERE r.thread IS NULL AND (t.activity, r.id) < (?, ?) "
                         "AND " + state_filter + " AND (? = '' OR instr(casefold(r.body), ?) > 0" + title_match + ") "
                         "AND (? = '' OR r.author = ? OR EXISTS ("
                         "  SELECT 1 FROM messages m WHERE m.channel = r.channel AND m.thread = r.id AND m.author = ?"
                         ")) ORDER BY t.activity DESC, r.id DESC LIMIT ?",
-                        (channel, channel, *before, *query_args, person, person, person, limit + 1),
+                        (channel, *((channel,) if have_ranges else ()), channel, *before, *query_args,
+                         person, person, person, limit + 1),
                     )
 
             # Only the selected page needs message bodies, participants and reply counts.
@@ -501,7 +622,8 @@ class ChannelHistory:
 
     def mark_read(self, channel, actor):
         with self.database(write=True) as conn:
-            newest = conn.execute("SELECT max(created) FROM messages WHERE channel = ? AND thread IS NULL",
+            newest = conn.execute("SELECT max(created) FROM messages WHERE channel = ? AND thread IS NULL "
+                                  "AND thread_range IS NULL",
                                   (channel,)).fetchone()[0]
             if newest:
                 conn.execute(
@@ -536,11 +658,13 @@ class ChannelHistory:
         marker = conn.execute("SELECT created FROM read_markers WHERE channel = ? AND person = ?",
                               (channel, actor)).fetchone()
         read_at = max(joined_at, marker[0]) if marker else joined_at
+        ordinary_messages = " AND thread_range IS NULL" if _has_ranges(conn) else ""
         latest = conn.execute(
-            "SELECT * FROM messages WHERE channel = ? AND thread IS NULL ORDER BY created DESC LIMIT 1",
+            f"SELECT * FROM messages WHERE channel = ? AND thread IS NULL{ordinary_messages} "
+            "ORDER BY created DESC LIMIT 1",
             (channel,)).fetchone()
         unread = conn.execute(
-            "SELECT count(*) FROM (SELECT sequence FROM messages WHERE channel = ? AND thread IS NULL "
+            f"SELECT count(*) FROM (SELECT sequence FROM messages WHERE channel = ? AND thread IS NULL{ordinary_messages} "
             "AND created > ? AND author != ? LIMIT 100)", (channel, read_at, actor)).fetchone()[0]
         return latest, unread, read_at
 

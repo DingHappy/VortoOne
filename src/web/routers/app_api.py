@@ -17,7 +17,7 @@ import logging
 import os
 import sqlite3
 from contextlib import suppress
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -37,7 +37,7 @@ from src.web import (
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
-from src.workflow.members.channel_threads import ThreadArchived
+from src.workflow.members.channel_threads import ThreadArchived, ThreadInUse, ThreadRangeUnavailable
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
@@ -1435,6 +1435,10 @@ async def _team_call(request, org_id, action, *, channel_id=None, empty_listing=
         return _error(409, "channel_category.name_taken", str(error))
     except ThreadArchived as error:
         return _error(409, "thread.archived", str(error))
+    except ThreadInUse as error:
+        return _error(409, "thread.in_use", str(error))
+    except ThreadRangeUnavailable as error:
+        return _error(422, "invalid", str(error))
     except ValueError as error:
         return _error(400, "invalid", str(error))
 
@@ -1747,15 +1751,54 @@ async def team_thread_detail(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, thread_id, thread=True))
 
 
-class _ThreadTitle(BaseModel):
+_ThreadMessageId = Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class _ThreadCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    title: str | None = Field(max_length=200)
+    channelId: _ThreadMessageId
+    contextChannelId: _ThreadMessageId | None = None
+    firstMessageId: _ThreadMessageId
+    lastMessageId: _ThreadMessageId
+    excludedMessageIds: list[_ThreadMessageId] = Field(default_factory=list, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
+
+
+@router.post(_ORG + "/threads", status_code=201)
+async def create_team_thread(org_id: str, body: _ThreadCreate, request: Request):
+    return _team_response(await _team_call(
+        request, org_id, lambda service, actor: service.create_thread_range(
+            actor, body.channelId, body.contextChannelId, body.firstMessageId, body.lastMessageId,
+            body.excludedMessageIds, body.title), channel_id=body.channelId,
+    ))
+
+
+class _ThreadPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    firstMessageId: _ThreadMessageId | None = None
+    lastMessageId: _ThreadMessageId | None = None
+    excludedMessageIds: list[_ThreadMessageId] | None = Field(default=None, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
 
 
 @router.patch(_THREAD)
-async def rename_team_thread(org_id: str, thread_id: str, body: _ThreadTitle, request: Request):
+async def rename_team_thread(org_id: str, thread_id: str, body: _ThreadPatch, request: Request):
+    patch = body.model_dump(exclude_unset=True, exclude={"title"})
+    if patch:
+        if None in patch.values():
+            return _error(422, "invalid", "选段起点、终点和排除项不能为 null")
+        return await _team_call(request, org_id, lambda service, actor: service.update_thread_range(
+            actor, thread_id, patch, title=body.title, set_title="title" in body.model_fields_set))
+    if "title" not in body.model_fields_set:
+        return _error(422, "invalid", "需要话题标题或频道选段")
     return await _team_call(request, org_id, lambda service, actor:
                             service.change_thread(actor, thread_id, "title", title=body.title))
+
+
+@router.delete(_THREAD, status_code=204)
+async def undo_team_thread_range(org_id: str, thread_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            _team_receipt(lambda: service.remove_thread_range(actor, thread_id)))
 
 
 class _ThreadAction(BaseModel):

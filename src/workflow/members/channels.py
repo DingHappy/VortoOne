@@ -23,6 +23,13 @@ CATEGORY_NAME_MAX = 40
 MAX_OVERRIDES = 64
 
 
+def _thread_title(title):
+    normalized = " ".join(title.split()) if title else ""
+    if len(normalized) > 200 or any(ord(char) < 32 for char in normalized):
+        raise ValueError("话题名称不能超过 200 字或包含控制字符")
+    return normalized or None
+
+
 class ChannelCategoryNameConflict(ValueError):
     """A category of the same name already exists in this workspace."""
 
@@ -731,21 +738,57 @@ class TeamChannels:
         with self.registry._locked_state() as state:
             with self.history.database() as conn:
                 row, channel, access = self._message_access(state, conn, actor, thread_id)
-                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                if row["thread"] is not None or not (
+                    self.history.is_range(row) or self.history.has_thread_replies(conn, channel["id"], thread_id)
+                ):
                     raise Missing("没有这个话题")
                 if not self._can_manage_thread(actor, access, row["author"]):
                     raise Refused("没有管理这个话题的权限")
             with self.history.database(write=True) as conn:
                 if action == "title":
-                    normalized = " ".join(title.split()) if title else ""
-                    if len(normalized) > 200 or any(ord(char) < 32 for char in normalized):
-                        raise ValueError("话题名称不能超过 200 字或包含控制字符")
-                    channel_threads.rename(conn, channel["id"], thread_id, normalized or None)
+                    channel_threads.rename(conn, channel["id"], thread_id, _thread_title(title),
+                                           change="context" if self.history.is_range(row) else "title")
                 else:
                     channel_threads.apply(conn, channel["id"], thread_id, self._actor_key(actor), action,
                                           _stamp(datetime.now(timezone.utc)))
                 return self.history.thread_summary(conn, channel["id"], row, channel["title"],
                                                    reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def create_thread_range(self, actor, channel_id, context_channel_id, first, last, excluded, title):
+        if context_channel_id not in (None, channel_id):
+            raise ValueError("目前只支持在消息所在的团队频道建立选段话题")
+        with self.registry._locked_state() as state:
+            channel, _ = self._find(state, actor, channel_id, archived=False, joined=True, permission="post")
+            with self.history.database() as conn:
+                self.history.find(conn, channel_id, first)
+                self.history.find(conn, channel_id, last)
+            with self.history.database(write=True) as conn:
+                row = self.history.create_range(conn, channel_id, self._actor_key(actor), first, last, excluded,
+                                                _thread_title(title))
+                return self.history.thread_summary(conn, channel_id, row, channel["title"],
+                                                   reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def update_thread_range(self, actor, thread_id, selection, *, title=None, set_title=False):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, channel, access = self._message_access(state, conn, actor, thread_id)
+                if not self._can_manage_thread(actor, access, row["author"]):
+                    raise Refused("没有管理这个话题的权限")
+                if not self.history.is_range(row):
+                    raise channel_threads.ThreadRangeUnavailable("只有从频道选段建立的话题可以调整选段")
+            with self.history.database(write=True) as conn:
+                changed = self.history.change_range(conn, row, selection, _thread_title(title), set_title=set_title)
+                return self.history.thread_summary(conn, channel["id"], changed, channel["title"],
+                                                   reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def remove_thread_range(self, actor, thread_id):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, _, access = self._message_access(state, conn, actor, thread_id)
+                if not self._can_manage_thread(actor, access, row["author"]):
+                    raise Refused("没有管理这个话题的权限")
+            with self.history.database(write=True) as conn:
+                self.history.remove_range(conn, row)
 
     def _thread_reader(self, actor, channel):
         person = self._actor_key(actor)
@@ -766,7 +809,9 @@ class TeamChannels:
                     row, channel, _ = self._message_access(state, conn, actor, thread_id)
                 except Missing as error:
                     raise Missing("没有这个话题") from error
-                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                if row["thread"] is not None or not (
+                    self.history.is_range(row) or self.history.has_thread_replies(conn, channel["id"], thread_id)
+                ):
                     raise Missing("没有这个话题")
             self.history.set_thread_follow(thread_id, self._actor_key(actor), following)
             return {"threadId": thread_id, "channelId": channel["id"], "following": following}

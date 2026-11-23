@@ -2202,6 +2202,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
     "methods": [
       "GET"
