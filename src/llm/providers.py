@@ -23,7 +23,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -73,21 +73,30 @@ def local_model_endpoint(base_url: str) -> bool:
         return False
 
 
-def direct_keyless_endpoint(base_url: str) -> bool:
-    """Check the original direct-loopback spelling before enabling keyless transport."""
+def keyless_loopback_base(base_url: str) -> str | None:
+    """Validate the configured address and replace the localhost alias before dialing."""
     if not base_url or len(base_url) > 2048 or any(
         char.isspace() or ord(char) < 33 or ord(char) == 127 or char in "?#\\%" for char in base_url
     ):
-        return False
+        return None
     try:
         parsed = urlsplit(base_url)
         host = parsed.hostname
         port = parsed.port
         authority = host if port is None else f"{host}:{port}"
-        return (parsed.scheme in ("http", "https") and host in ("127.0.0.1", "localhost")
-                and port != 0 and parsed.netloc.lower() == authority)
+        if (parsed.scheme not in ("http", "https") or host not in ("127.0.0.1", "localhost")
+                or port == 0 or parsed.netloc.lower() != authority):
+            return None
+        if host == "127.0.0.1":
+            return base_url
+        loopback = "127.0.0.1" if port is None else f"127.0.0.1:{port}"
+        return urlunsplit((parsed.scheme, loopback, parsed.path, "", ""))
     except ValueError:
-        return False
+        return None
+
+
+def direct_keyless_endpoint(base_url: str) -> bool:
+    return keyless_loopback_base(base_url) is not None
 
 
 def default_chat_ready() -> bool:

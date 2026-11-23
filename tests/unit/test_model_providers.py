@@ -189,7 +189,9 @@ async def test_keyless_provider_uses_local_transport_without_redirects(monkeypat
     async with sdk:
         assert sdk._client.trust_env is False
         assert sdk._client.follow_redirects is False
-    assert client._aio_redirect_options() == {"allow_redirects": False}
+    assert client._aio_request("models", {}) == (
+        "http://127.0.0.1:11434/v1/models", {"headers": {}, "allow_redirects": False},
+    )
     monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Api-Key:synthetic")
     assert not default_chat_ready()
 
@@ -208,4 +210,4 @@ async def test_keyed_local_provider_keeps_its_existing_transport(monkeypatch):
     async with sdk:
         assert sdk._client.trust_env is False
         assert sdk._client.follow_redirects is True
-    assert client._aio_redirect_options() == {}
+    assert client._aio_request("models", {}) == (f"{base}/models", {"headers": {}})
