@@ -651,7 +651,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/me/password` | `account.addPassword` |  |
+| ☐ | POST | `/api/app/me/password` | `account.addPassword` | 已支持成员凭 10 分钟内的密码登录更换本人的密码并撤销其它会话；所有者仍由本机认领流程管理。 |
 | ☑ | GET | `/api/app/me/unread` | `account.unread` | 按当前账号汇总未静音频道的新消息和已关注话题。所有者另外计入自己的通知；等待数沿用通知收件箱口径。 |
 | ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
