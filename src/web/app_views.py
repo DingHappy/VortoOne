@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlsplit
 
+from src.agents.tools.artifacts import EDITABLE_ARTIFACT_KINDS
 from src.web.app_artifact_upload import TextUpload
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
@@ -1256,12 +1257,14 @@ def _artifact(root: str, meta: Dict[str, Any], *, desktop_upload: bool = False) 
         agent_id = main_agent_id(root)
         author = {"type": "agent", "id": agent_id}
         channel_id = dm_channel_id(agent_id)
-    kind = "file" if desktop_upload and meta.get("kind") == "file" else "html"
+    private_kinds = EDITABLE_ARTIFACT_KINDS | {"file"}
+    kind = str(meta["kind"]) if desktop_upload and meta.get("kind") in private_kinds else "html"
     row = {"id": str(meta["id"]), "kind": kind, "title": str(meta.get("title") or meta["id"]),
            "version": int(meta.get("pinned") or meta.get("version") or 1),
            "channelId": channel_id, "threadId": None, "createdBy": author,
            "updatedBy": author, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
-           "canEdit": False, "canDelete": owner_connection(), "canShare": False,
+           "canEdit": desktop_upload and kind in EDITABLE_ARTIFACT_KINDS,
+           "canDelete": owner_connection(), "canShare": False,
            "untrusted": True, "audience": {"kind": "workspace"}}
     if not desktop_upload:
         row["sharing"] = {"mode": "conversation", "userIds": [], "roleIds": []}
@@ -1277,7 +1280,8 @@ def trashed_artifact(root: str, meta: Dict[str, Any], deleted_at: datetime, purg
 def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
               include_uploads: bool = False) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
-    if kinds is not None and "html" not in kinds and not (include_uploads and "file" in kinds):
+    supported = {"html", "file"} | EDITABLE_ARTIFACT_KINDS if include_uploads else {"html"}
+    if kinds is not None and not (kinds & supported):
         return {"artifacts": [], "nextCursor": None, "counts": {}}
     needle = query.strip().lower()
     rows = [_artifact(root, meta) for meta in ArtifactStore(root).list() if isinstance(meta, dict) and meta.get("id")]
@@ -1315,6 +1319,16 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
         meta = uploads.meta(artifact_id)
         if meta is not None:
             shown = _artifact(root, meta, desktop_upload=True)
+            if shown["kind"] in EDITABLE_ARTIFACT_KINDS:
+                wanted = shown["version"] if version is None else version
+                if wanted not in {item["v"] for item in meta["versions"]}:
+                    return None
+                content = uploads.structured_content(artifact_id, wanted)
+                if content is None:
+                    return None
+                if content["kind"] != shown["kind"]:
+                    raise ValueError("制品版本格式不符")
+                return _structured_artifact(shown, content, wanted)
             if version is not None and version != shown["version"]:
                 return None
             if shown["kind"] == "file":
@@ -1344,7 +1358,21 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
     return _artifact_content(shown, html, wanted, versioned=len(known_versions) > 1)
 
 
-def upload_artifact(root: str, title: str, content: str | TextUpload) -> Dict[str, Any]:
+def _structured_artifact(shown: dict, content: dict, version: int) -> dict:
+    return {**shown, "shownVersion": version, "content": content, "versioned": True}
+
+
+def append_structured_artifact(root: str, artifact_id: str, base_version: int, content: dict,
+                               note: str | None, title: str | None) -> dict:
+    from src.agents.tools.artifacts import ArtifactStore
+    from src.utils.home_maintenance import home_maintenance
+
+    with home_maintenance(root):
+        meta = ArtifactStore(root, desktop_uploads=True).append_structured(artifact_id, base_version, content, note, title)
+    return _structured_artifact(_artifact(root, meta, desktop_upload=True), content, meta["version"])
+
+
+def upload_artifact(root: str, title: str, content: str | TextUpload | dict) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     from src.utils.home_maintenance import home_maintenance
     from src.utils.state_dir import ensure_state_gitignore
@@ -1352,6 +1380,9 @@ def upload_artifact(root: str, title: str, content: str | TextUpload) -> Dict[st
     with home_maintenance(root):
         ensure_state_gitignore(root)
         store = ArtifactStore(root, desktop_uploads=True)
+        if isinstance(content, dict):
+            meta = store.publish_structured(title, content)
+            return _structured_artifact(_artifact(root, meta, desktop_upload=True), content, meta["version"])
         if isinstance(content, TextUpload):
             meta = store.publish_file(title, content.name, content.content_type, content.data)
             return _uploaded_file_detail(_artifact(root, meta, desktop_upload=True), meta, content.data)

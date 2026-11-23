@@ -7,7 +7,7 @@ from email.parser import BytesParser
 
 from fastapi import Request
 
-from src.agents.tools.artifacts import max_bytes
+from src.agents.tools.artifacts import EDITABLE_ARTIFACT_KINDS, max_bytes, valid_structured_source
 
 _TEXT_MIME = {
     ".txt": ("text/plain",),
@@ -67,51 +67,88 @@ async def read_form(request: Request) -> tuple[str, str | TextUpload]:
     return await asyncio.to_thread(_parse_form, content_type, body, cap, oversized)
 
 
-async def read_json(request: Request) -> tuple[str, str]:
+async def _read_json_payload(request: Request, invalid: UploadError) -> tuple[dict, int]:
     if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
-        raise UploadError(415, "artifact.create_format", "创建制品需要 JSON 正文")
-    invalid = UploadError(400, "invalid", "创建制品需要标题和 HTML 正文")
-    oversized = UploadError(413, "artifact.upload_too_large", "制品的 HTML 超过大小限制")
+        raise UploadError(415, "artifact.create_format", "制品需要 JSON 正文")
     cap = max_bytes()
+    oversized = UploadError(413, "artifact.upload_too_large", "制品超过大小限制")
     body = await _read_body(request, cap, invalid, oversized)
-    return await asyncio.to_thread(_parse_json, body, cap, invalid, oversized)
-
-
-def _parse_json(body: bytes, cap: int, invalid: UploadError, oversized: UploadError) -> tuple[str, str]:
     try:
-        payload = json.loads(body.decode("utf-8"))
+        payload = await asyncio.to_thread(json.loads, body.decode("utf-8"))
     except (ValueError, RecursionError):
         raise invalid from None
-    if not isinstance(payload, dict) or set(payload) - {"title", "channelId", "content"}:
+    if not isinstance(payload, dict):
+        raise invalid
+    return payload, cap
+
+
+async def read_json(request: Request) -> tuple[str, str | dict]:
+    invalid = UploadError(400, "invalid", "创建制品需要标题和有效正文")
+    payload, cap = await _read_json_payload(request, invalid)
+    if set(payload) - {"title", "channelId", "content"}:
         raise invalid
     if payload.get("channelId") is not None:
         raise UploadError(422, "artifact.upload_location", "创建私有制品，暂不支持附到频道")
-    title, content = payload.get("title"), payload.get("content")
-    if not isinstance(title, str) or not isinstance(content, dict) or not isinstance(content.get("kind"), str):
+    title = _title(payload.get("title"), invalid)
+    content = payload.get("content")
+    if not isinstance(content, dict) or not isinstance(content.get("kind"), str):
         raise invalid
-    if content["kind"] != "html":
-        raise UploadError(415, "artifact.upload_format", "通过 JSON 创建制品仅支持 UTF-8 HTML")
-    html = content.get("html")
-    if set(content) != {"kind", "html"} or not isinstance(html, str):
+    if content["kind"] in EDITABLE_ARTIFACT_KINDS:
+        await asyncio.to_thread(_check_structured, content, cap, invalid)
+        result = content
+    elif content["kind"] == "html":
+        result = content.get("html")
+        if set(content) != {"kind", "html"} or not isinstance(result, str) or not result.strip() or "\x00" in result:
+            raise invalid
+        _check_size(result, cap, invalid)
+    else:
+        raise UploadError(415, "artifact.upload_format", "通过 JSON 创建仅支持文档、表格和 HTML")
+    return title, result
+
+
+def _title(value, invalid: UploadError) -> str:
+    if not isinstance(value, str):
         raise invalid
-    title = title.strip()
-    if not _valid_content(title, html):
+    title = value.strip()
+    if not title or len(title) > 200 or any(ord(char) < 32 for char in title):
         raise invalid
+    _check_size(title, 800, invalid)
+    return title
+
+
+async def read_version(request: Request) -> tuple[int, dict, str | None, str | None]:
+    invalid = UploadError(400, "invalid", "保存版本需要原版本编号、有效正文和可选的备注")
+    payload, cap = await _read_json_payload(request, invalid)
+    version, content, note = payload.get("baseVersion"), payload.get("content"), payload.get("note")
+    if set(payload) - {"baseVersion", "content", "note", "title"} or type(version) is not int or version < 1:
+        raise invalid
+    title = _title(payload["title"], invalid) if "title" in payload else None
+    if note is not None:
+        if not isinstance(note, str) or len(note) > 1000 or "\x00" in note:
+            raise invalid
+        _check_size(note, 4000, invalid)
+        note = note.strip() or None
+    await asyncio.to_thread(_check_structured, content, cap, invalid)
+    return version, content, note, title
+
+
+def _check_size(text: str, cap: int, invalid: UploadError) -> None:
     try:
-        title.encode("utf-8")
-        length = len(html.encode("utf-8"))
+        size = len(text.encode("utf-8"))
     except UnicodeEncodeError:
         raise invalid from None
-    if length > cap:
-        raise oversized
-    return title, html
+    if size > cap:
+        raise UploadError(413, "artifact.upload_too_large", "制品超过大小限制")
 
 
-def _valid_content(title: str, html: str) -> bool:
-    return bool(
-        title and len(title) <= 200 and all(ord(char) >= 32 for char in title)
-        and html.strip() and "\x00" not in html
-    )
+def _check_structured(content, cap: int, invalid: UploadError) -> None:
+    if not isinstance(content, dict) or not isinstance(content.get("kind"), str):
+        raise invalid
+    if content["kind"] not in EDITABLE_ARTIFACT_KINDS:
+        raise UploadError(415, "artifact.upload_format", "只支持编辑文档和表格")
+    if not valid_structured_source(content):
+        raise invalid
+    _check_size(json.dumps(content, ensure_ascii=False, separators=(",", ":")), cap, invalid)
 
 
 def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError) -> tuple[str, str | TextUpload]:
