@@ -1910,6 +1910,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/admin-asks",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-groups",
     "methods": [
       "GET"
@@ -2217,6 +2223,18 @@
     "path": "/api/app/organizations/{org_id}/threads",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
+    "methods": [
+      "DELETE"
     ]
   },
   {
@@ -3039,6 +3057,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/artifacts/files",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/files",
     "methods": [
       "POST"
     ]

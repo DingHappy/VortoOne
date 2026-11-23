@@ -11057,7 +11057,7 @@
       "nothingYet": "在你检查之前，不会导入任何内容。",
       "readingText": "目前只在你的浏览器中处理，还没有发送任何内容。",
       "notesRead": "篇笔记已读取",
-      "reviewText": "导入 Wiki 前请先检查。导入后，智能体会立即开始阅读这些页面。",
+      "reviewText": "导入 Wiki 前请先检查。",
       "stat": {
         "notes_other": "篇笔记",
         "folders_other": "个文件夹",
@@ -11098,7 +11098,6 @@
       "creatingPages": "个页面已创建",
       "doneTitle": "完成",
       "pages_other": "Wiki 中有 {{count}} 个页面",
-      "agentsRead_other": "{{names}} 现在可以阅读它们了。新页面会标记为“新”。",
       "newMarked": "新页面会标记为“新”。",
       "uploaded_other": "{{count}} 个附件已存入 Drive。",
       "open": "打开 {{title}}",

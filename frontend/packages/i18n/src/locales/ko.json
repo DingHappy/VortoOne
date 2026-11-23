@@ -10860,7 +10860,7 @@
       "nothingYet": "검토하기 전에는 아무것도 들어가지 않아요.",
       "readingText": "지금은 브라우저에서만 처리해요. 아직 아무것도 보내지 않았어요.",
       "notesRead": "읽은 노트",
-      "reviewText": "Wiki에 넣기 전에 검토하세요. 가져오는 즉시 에이전트가 이 페이지를 읽기 시작해요.",
+      "reviewText": "Wiki에 넣기 전에 검토하세요.",
       "stat": {
         "notes_other": "노트",
         "folders_other": "폴더",
@@ -10901,7 +10901,6 @@
       "creatingPages": "만든 페이지",
       "doneTitle": "완료",
       "pages_other": "Wiki의 페이지 {{count}}개",
-      "agentsRead_other": "이제 {{names}}이(가) 읽을 수 있어요. 새 페이지에는 “새 페이지” 표시가 붙어요.",
       "newMarked": "새 페이지에는 “새 페이지” 표시가 붙어요.",
       "uploaded_other": "첨부 파일 {{count}}개가 Drive에 있어요.",
       "open": "{{title}} 열기",

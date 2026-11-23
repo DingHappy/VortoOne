@@ -11657,7 +11657,7 @@
       "nothingYet": "Nada entra antes de que lo revises.",
       "readingText": "Por ahora solo en tu navegador. Todavía no se envió nada.",
       "notesRead": "notas leídas",
-      "reviewText": "Revísalo antes de que entre en la wiki. Los agentes empiezan a leer estas páginas en cuanto importas.",
+      "reviewText": "Revísalo antes de que entre en la wiki.",
       "stat": {
         "notes_one": "nota",
         "notes_many": "notas",
@@ -11726,9 +11726,6 @@
       "pages_one": "{{count}} página en la wiki",
       "pages_many": "{{count}} páginas en la wiki",
       "pages_other": "{{count}} páginas en la wiki",
-      "agentsRead_one": "{{names}} ya puede leerlas. Las páginas nuevas están marcadas como “nueva”.",
-      "agentsRead_many": "{{names}} ya pueden leerlas. Las páginas nuevas están marcadas como “nueva”.",
-      "agentsRead_other": "{{names}} ya pueden leerlas. Las páginas nuevas están marcadas como “nueva”.",
       "newMarked": "Las páginas nuevas están marcadas como “nueva”.",
       "uploaded_one": "{{count}} adjunto está en el Drive.",
       "uploaded_many": "{{count}} adjuntos están en el Drive.",
