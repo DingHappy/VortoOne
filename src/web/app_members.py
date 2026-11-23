@@ -596,11 +596,12 @@ def agent_member_policy(root: str, actor: Principal, staff_id: str,
 
 def member_agent_detail(root: str, actor: Principal, agent_id: str) -> Optional[Dict[str, Any]]:
     """成员看到的 agent 资料：没有用量、运行次数这些所有者的数字。"""
-    agent = next((row for row in member_agents(root, actor) if row["id"] == agent_id), None)
+    agent = next((row for row in directory_agents(root, actor) if row["id"] == agent_id), None)
     if agent is None:
         return None
     return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
                                            "ownerUserId", "createdAt", "audienceMode", "canTalk", "seesDetails")},
+            **({"reportsToAgentId": agent["reportsToAgentId"]} if "reportsToAgentId" in agent else {}),
             "credentialId": None, "budgetUsedPercent": 0, "tokensThisMonth": 0, "runsThisMonth": 0,
             "failuresThisMonth": 0, "runsByDay": [], "pendingApprovals": 0, "channels": []}
 
@@ -665,20 +666,62 @@ def set_person_status(root: str, actor: Principal, body: Dict[str, Any]) -> Dict
     return _person_status(row, saved, own=True, connected=True)
 
 
+def _agent_line_keys(root: str, agents: List[Dict[str, Any]]) -> Dict[str, str]:
+    main_id = views.main_agent_id(root)
+    return {agent["id"]: "main" if agent["id"] == main_id else f"staff:{agent['handle']}" for agent in agents}
+
+
+def directory_agents(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    """从既有可见名册投影团队图；两端都已经可见才返回汇报连线。"""
+    agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
+    if not views.owner_connection():
+        return agents
+    try:
+        reports_to = app_prefs.agent_lines(root)
+    except (ValueError, OSError):
+        # 展示设置损坏不挡名册；修改时由保存入口报告。
+        return agents
+    keys = _agent_line_keys(root, agents)
+    visible = {key: agent_id for agent_id, key in keys.items()}
+    for agent in agents:
+        supervisor = reports_to.get(keys[agent["id"]])
+        if supervisor in visible:
+            agent["reportsToAgentId"] = visible[supervisor]
+    return agents
+
+
+def set_agent_lines(root: str, changes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    keys = _agent_line_keys(root, views.agents(root))
+    lines = {}
+    for row in changes:
+        agent, supervisor = row["agentId"], row["reportsToAgentId"]
+        if agent not in keys or (supervisor is not None and supervisor not in keys):
+            raise LookupError("没有这个团队智能体")
+        key = keys[agent]
+        if key in lines:
+            raise ValueError("同一批不能重复设置一个智能体")
+        lines[key] = keys[supervisor] if supervisor is not None else None
+    previous = app_prefs.set_agent_lines(root, lines)
+    visible = {key: agent_id for agent_id, key in keys.items()}
+    return {"previous": [{"agentId": visible[agent], "reportsToAgentId": visible.get(old) if old is not None else None}
+                          for agent, old in previous.items()]}
+
+
 def team_directory(root: str, actor: Principal, *, activity: bool, main_running: bool) -> Dict[str, Any]:
     """团队页沿用人员和可见 agent 名册，只投影团队列表需要的字段。"""
-    agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
+    agents = directory_agents(root, actor)
     running = views.running_staff(root, None if actor.is_owner else actor.id) if activity else set()
     main = views.main_agent_id(root)
     return {
         "agents": [
             {**{key: agent[key] for key in ("id", "name", "handle", "role", "ownerUserId", "canTalk", "seesDetails")},
+             **({"reportsToAgentId": agent["reportsToAgentId"]} if "reportsToAgentId" in agent else {}),
              "appearance": agent.get("appearance"), "capabilities": [],
              "busy": main_running if agent["id"] == main else agent["handle"] in running}
             for agent in agents
         ],
         "people": [{"id": row["userId"], "name": row["name"], "image": row["image"]} for row in members(root)],
-        # 当前没有在这个家内登记发给其他 agent 的咨询，也没有频道或汇报关系。
+        # 当前没有在这个家内登记发给其他 agent 的咨询。
         "consultations": [],
     }
 

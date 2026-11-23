@@ -1910,6 +1910,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-lines",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-status",
     "methods": [
       "GET"

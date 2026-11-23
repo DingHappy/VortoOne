@@ -744,7 +744,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | GET | `ORG/team` | `agents.team` | 只读名册，活动沿用自己的会话；不推断频道或汇报关系 |
+| ☑ | GET | `ORG/team` | `agents.team` | 只读名册，活动沿用自己的会话。团队图的汇报关系只显示双方已可见的连线。 |
 | ☐ | POST | `ORG/team/channel-move` | `agents.proposeChannelMove` |  |
 
 ### org/team-templates（2 个，要做 2）
@@ -891,11 +891,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | POST | `ORG/roles/{x}/members/preview` | `roles.mailLoss` | 所有者在授予身份组前预查在册成员与授权。工作区无智能体邮箱绑定，预查不写入。 |
 
-### org/agent-lines（1 个，要做 1）
+### org/agent-lines（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/agent-lines` | `agents.setLines` |  |
+| ☑ | PUT | `ORG/agent-lines` | `agents.setLines` | 所有者可批量保存团队图中最多三层的汇报关系并撤销，包括名册里的主助理。改动只用于界面展示。 |
 
 ### org/autonomy-proposals（1 个，要做 1）
 

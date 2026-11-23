@@ -1198,9 +1198,7 @@ async def agents(org_id: str, request: Request):
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    if who.is_owner:
-        return {"agents": views.agents(root)}
-    return await _members_call(lambda: {"agents": app_members.member_agents(root, who)})
+    return await _members_call(lambda: {"agents": app_members.directory_agents(root, who)})
 
 
 @router.get(_ORG + "/agent-status")
@@ -1225,6 +1223,27 @@ async def agent_team_directory(org_id: str, request: Request, response: Response
     response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: app_members.team_directory(
         root, who, activity=who.is_member or owner_activity, main_running=main_running))
+
+
+class _AgentLineChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    agentId: str = Field(min_length=1, max_length=128)
+    reportsToAgentId: str | None = Field(min_length=1, max_length=128)
+
+
+class _TeamLinesChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    changes: list[_AgentLineChange] = Field(max_length=500)
+
+
+@router.put(_ORG + "/agent-lines")
+async def set_agent_lines(org_id: str, body: _TeamLinesChange, request: Request, response: Response):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "设置团队图的汇报关系需要已认证的所有者")
+    response.headers["Cache-Control"] = "no-store"
+    changes = [row.model_dump() for row in body.changes]
+    return await _members_call(lambda: app_members.set_agent_lines(root, changes))
 
 
 @router.get(_ORG + "/ai-status")
@@ -5310,17 +5329,18 @@ def _known_agent(org_id: str, agent_id: str) -> bool:
 
 @router.get(_ORG + "/agents/{agent_id}")
 async def agent_detail(org_id: str, agent_id: str, request: Request):
+    root = _root(org_id)
     if getattr(request.state, "member_account", None) is not None:
-        root = _root(org_id)
         who = _who(request, root)
         if who is None:
             return _error(403, "forbidden", _NOT_MEMBER)
         detail = await asyncio.to_thread(app_members.member_agent_detail, root, who, agent_id)
         return detail if detail is not None else _error(404, "not_found", "没有这个角色")
-    agent = next((a for a in views.agents(_root(org_id)) if a["id"] == agent_id), None)
+    roster = app_members.directory_agents(root, member_auth.principal(request, root))
+    agent = next((a for a in roster if a["id"] == agent_id), None)
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
-    return views.agent_detail(_root(org_id), agent)
+    return views.agent_detail(root, agent)
 
 
 # ── 新建、修改、归档、恢复、删除 agent（src/workflow/staff/agent_lifecycle.py）──────────
