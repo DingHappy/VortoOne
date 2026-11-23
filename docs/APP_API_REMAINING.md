@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 334 个，剩 **297** 个：
-- **要做：226**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 335 个，剩 **296** 个：
+- **要做：225**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -154,7 +154,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 8）
+### org/wiki（24 个，要做 7）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -163,8 +163,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
 | ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
-| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 已接纯 Markdown 文件和 Obsidian Markdown 笔记，保留 Obsidian 来源、目录、标签与正文。重发相同导入号及批次内容会复用回执。GitHub、笔记别名和 Drive 附件待接。 |
-| ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |
+| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 支持纯 Markdown 文件、Obsidian 笔记和所有者的 GitHub 笔记，保存来源、目录、标签与正文。重发相同导入号及批次内容会复用回执。笔记别名和 Drive 附件待接。 |
+| ☑ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` | 所有者预览公开 GitHub 仓库、分支目录或单个 Markdown 文件。仅返回笔记 ZIP，保存在后续导入确认时执行。私有仓库及附件暂不可用。 |
 | ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |

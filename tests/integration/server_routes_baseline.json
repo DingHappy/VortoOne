@@ -2736,6 +2736,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/import/github",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/pages",
     "methods": [
       "GET"

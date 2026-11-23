@@ -380,8 +380,10 @@ class Wiki:
         if not isinstance(source, dict) or set(source) != {"type", "name"}:
             _fail("invalid", "必须提供 Markdown 文件来源类型和名称")
         source_type = source["type"]
-        if source_type not in ("files", "obsidian"):
-            _fail("wiki_import_unsupported", "目前支持 Markdown 文件和 Obsidian Markdown 笔记", status=409)
+        if source_type not in ("files", "obsidian", "github"):
+            _fail("wiki_import_unsupported", "目前支持 Markdown 文件、Obsidian 和 GitHub 笔记", status=409)
+        if source_type == "github" and not self.reader.actor.is_owner:
+            _fail("forbidden", "GitHub 导入需要工作区所有者", status=403)
         source_name = _text(source["name"], 300, "来源名称", required=True).strip()
         if conflict not in ("keep_both", "skip") or not isinstance(notes, list) or not 1 <= len(notes) <= _IMPORT_NOTE_LIMIT:
             _fail("invalid", "请提供 1 到 200 条笔记和有效的同名处理方式")
