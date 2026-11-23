@@ -77,6 +77,35 @@ def render_markdown_doc(title: str, md_text: str) -> str:
     return _MD_DOC.replace("__TITLE__", _h.escape(title or "制品")).replace("__BODY__", body)
 
 
+EDITABLE_ARTIFACT_KINDS = frozenset({"document", "table"})
+
+
+_INVALID_SOURCE_TEXT = re.compile(r"[\x00\ud800-\udfff]")
+
+
+def _source_text(value) -> bool:
+    return isinstance(value, str) and _INVALID_SOURCE_TEXT.search(value) is None
+
+
+def _source_row(value) -> bool:
+    return isinstance(value, list) and all(_source_text(cell) for cell in value)
+
+
+def valid_structured_source(content) -> bool:
+    if not isinstance(content, dict):
+        return False
+    if content.get("kind") == "document":
+        return set(content) == {"kind", "markdown"} and _source_text(content.get("markdown"))
+    columns, rows = content.get("columns"), content.get("rows")
+    return (content.get("kind") == "table" and set(content) == {"kind", "columns", "rows"}
+            and _source_row(columns) and isinstance(rows, list)
+            and all(_source_row(row) and len(row) == len(columns) for row in rows))
+
+
+class ArtifactVersionConflict(ValueError):
+    pass
+
+
 class ArtifactStore:
     """文件系统制品库：`.vortoone/artifacts/<id>/{index.html, meta.json}`。"""
 
@@ -177,6 +206,91 @@ class ArtifactStore:
             (destination / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
             return meta
 
+    def publish_structured(self, title: str, content: dict) -> dict:
+        """Create an owner-private document or table with its editable source intact."""
+        if content.get("kind") not in EDITABLE_ARTIFACT_KINDS:
+            raise ValueError("该类型的制品不能保存为可编辑源文件")
+        with self._stage_upload() as (destination, aid):
+            destination.mkdir(mode=0o700)
+            return self._write_structured_version(destination, {
+                "id": aid, "kind": content["kind"], "title": title, "version": 0, "pinned": None,
+                "created_at": datetime.now().isoformat(timespec="seconds"), "versions": [],
+            }, content, None)
+
+    def append_structured(self, artifact_id: str, base_version: int, content: dict, note: str | None,
+                          title: str | None = None) -> dict:
+        """Append to the current source version without publishing a partial edit."""
+        if not self._desktop_uploads:
+            raise ValueError("只能编辑私有桌面制品")
+        aid = self._safe_id(artifact_id)
+        if aid is None:
+            raise FileNotFoundError("没有这个制品")
+        with self._mutation():
+            directory = self._dir(aid)
+            if directory.is_symlink() or (directory / "meta.json").is_symlink():
+                raise OSError("制品目录不可用")
+            current = self._read_meta(directory)
+            if current is None:
+                raise FileNotFoundError("没有这个制品")
+            if current.get("kind") not in EDITABLE_ARTIFACT_KINDS or current["kind"] != content.get("kind"):
+                raise ValueError("只能编辑同一类型的文档或表格")
+            if current["version"] != base_version:
+                raise ArtifactVersionConflict("已有更新的制品版本，请重新打开后编辑")
+            if self._structured_path(aid, base_version) is None:
+                raise OSError("制品当前版本不可用")
+            if title is not None:
+                current = {**current, "title": title}
+            return self._write_structured_version(directory, current, content, note)
+
+    @staticmethod
+    def _write_structured_version(directory: Path, meta: dict, content: dict, note: str | None) -> dict:
+        if not valid_structured_source(content):
+            raise ValueError("制品版本格式不符")
+        data = json.dumps(content, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(data) > max_bytes():
+            raise ValueError("制品体积超过上限")
+        version = meta["version"] + 1
+        now = datetime.now().isoformat(timespec="seconds")
+        versions = [*meta["versions"], {"v": version, "ts": now, "bytes": len(data), "note": note}]
+        updated = {**meta, "version": version, "updated_at": now, "bytes": len(data), "versions": versions}
+        snapshot = directory / f"v{version}.json"
+        with tempfile.TemporaryDirectory(prefix=".version-", dir=directory.parent) as temporary:
+            staged = Path(temporary)
+            (staged / "data").write_bytes(data)
+            (staged / "meta").write_text(json.dumps(updated, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(staged / "data", snapshot)
+            try:
+                os.replace(staged / "meta", directory / "meta.json")  # commit the visible version last
+            except OSError:
+                snapshot.unlink()
+                raise
+        return updated
+
+    def _structured_path(self, artifact_id: str, version: int) -> Path | None:
+        aid = self._safe_id(artifact_id)
+        if not self._desktop_uploads or aid is None:
+            return None
+        directory = self._dir(aid)
+        path = directory / f"v{version}.json"
+        return path if not directory.is_symlink() and not path.is_symlink() and path.is_file() else None
+
+    def structured_content(self, artifact_id: str, version: int) -> dict | None:
+        path = self._structured_path(artifact_id, version)
+        if path is None:
+            return None
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes():
+                raise ValueError("制品版本不可用")
+            data = handle.read(info.st_size + 1)
+            if len(data) != info.st_size:
+                raise ValueError("制品版本大小不符")
+            content = json.loads(data)
+        if not valid_structured_source(content):
+            raise ValueError("制品版本格式不符")
+        return content
+
     @staticmethod
     def _publish_at(d: Path, aid: str, title: str, html: str, kind: str) -> dict:
         data = (html or "").encode("utf-8")
@@ -270,7 +384,8 @@ class ArtifactStore:
 
     def has_snapshot(self, artifact_id: str, version: int) -> bool:
         """不用读取正文即可确认这个版本有对应文件。"""
-        return (self._desktop_file_path(artifact_id, version) is not None
+        return (self._structured_path(artifact_id, version) is not None
+                or self._desktop_file_path(artifact_id, version) is not None
                 or self._html_path(artifact_id, version, strict=True) is not None)
 
     def _desktop_file_path(self, artifact_id: str, version: int) -> Optional[Path]:
