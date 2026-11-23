@@ -33,6 +33,8 @@ OUTBOUND: Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
 _RUN = ("threadId", "runId", "agentId")
 EVENTS: Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
     "message.created": (("messageId", "message"), ("threadId", "agentRunId", "authorUserId")),
+    "message.reactions": (("messageId", "reactions"), ()),
+    "thread.updated": (("threadId", "change"), ()),
     "agent.run": ((*_RUN, "status"), ("error", "triggerMessageId", "startedAt")),
     "agent.typing": (_RUN, ()),
     "agent.tool": ((*_RUN, "tool"), ("toolUseId", "detail", "failed")),

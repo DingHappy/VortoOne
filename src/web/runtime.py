@@ -58,6 +58,10 @@ async def runtime_lifespan():
     from src.web.routers.runs import get_run_manager
     from src.web.routers.terminals import get_terminal_manager
     from src.web.routers.realtime import session_actors
+    # 所有者在新界面里加的模型端点：在恢复任务、接 IM 之前登记。晚了的话，恢复的任务会找不到它点名的端点，
+    # 先建好的会话也会拿着服务配置的默认端点。
+    from src.web.app_credentials import apply as apply_credentials
+    apply_credentials(os.getcwd())
     async with host(os.getcwd(), runner=get_runner(), scheduler=scheduler_loop,
                     audit_dependencies=lambda: get_dispatch_service().audit_dependencies(),
                     make_run_manager=get_run_manager, make_terminal_manager=get_terminal_manager,
@@ -80,7 +84,20 @@ async def runtime_lifespan():
             team_runner = TeamRunner(root, get_runner(), on_update=lambda task: notify_transition(root, task))
             set_team_runner(team_runner)
             from src.scheduling.staff_runner import set_staff_service
-            set_staff_service(root, get_runner(), on_update=lambda task: notify_transition(root, task))
+            from src.web import app_channel_agents
+
+            def staff_update(task):
+                notify_transition(root, task)
+                app_channel_agents.on_update(root, task)       # 频道里的事结束了：在话题里交回
+            set_staff_service(root, get_runner(), on_update=staff_update)
+            try:
+                await asyncio.to_thread(app_channel_agents.sweep, root)    # 重启前结束、还没交回的补上
+            except Exception:  # noqa: BLE001 —— 补发失败不挡服务启动
+                logging.getLogger(__name__).warning("频道回答补发失败", exc_info=True)
+            # 完整能力的 agent 用主助理那一套工具（装配在会话层，下层不反向导入）
+            from src.agents.staff import set_full_toolset
+            from src.web.agent_toolset import main_assistant_toolset
+            set_full_toolset(main_assistant_toolset)
             try:
                 await team_runner.recover()
             except Exception:  # noqa: BLE001 —— 恢复失败不挡住服务启动；坏掉的任务在列表里可见
@@ -93,6 +110,8 @@ async def runtime_lifespan():
                 set_team_runner(None)
                 from src.scheduling.staff_runner import set_staff_service
                 set_staff_service(os.getcwd())
+                from src.agents.staff import set_full_toolset
+                set_full_toolset(None)
                 await team_runner.close()
             stop.set()
             for task in (watch, observer):

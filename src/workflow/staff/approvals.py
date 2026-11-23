@@ -17,6 +17,9 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+
+ORIGINS = frozenset({'assistant'})
+
 class StaffApprovals:
     def __init__(self, root, *, clock=None):
         self.registry = StaffRegistry(root)
@@ -116,6 +119,10 @@ class StaffApprovals:
                     keys = ('id', 'snapshot', 'owner', 'reason', 'created_at', 'nonce')
                     if 'submission_digest' in record:
                         keys += ('submission_digest',)
+                    if 'origin' in record:
+                        if record['origin'] not in ORIGINS:
+                            raise ValueError('提议来源无效')
+                        keys += ('origin',)
                     level = self.approval_level(record['snapshot'])
                     if 'requires_desktop_key' in record:
                         # Preserve the original digest and receipt; the retired key file is never read.
@@ -156,6 +163,20 @@ class StaffApprovals:
         return [self._view(item) for item in self._records()
                 if self._is_member_routine(item) and item['status'] in {'pending', 'applying'}]
 
+    def pending_routine_reviews(self):
+        """所有在等主人核对的例行工作提议：成员提交的、助理提议的、主人在界面上新建的。"""
+        return [self._view(item) for item in self._records()
+                if item['snapshot']['kind'] == 'routine' and item['status'] in {'pending', 'applying'}]
+
+    def decide_routine(self, proposal_id, approve, expected_digest, *, nonce, round, instance):
+        """主人核对后批准或拒绝一条例行工作提议；摘要、一次性标识和轮次的核对和 decide 一样。"""
+        require_owner_route(self.registry.root)
+        with TASK_STATE_LOCK:
+            item = next((row for row in self._records() if row['id'] == proposal_id), None)
+            if item is None or item['snapshot']['kind'] != 'routine':
+                raise LookupError('没有这个例行工作提议')
+            return self.decide(proposal_id, approve, expected_digest, nonce=nonce, round=round, instance=instance)
+
     def decide_member_routine(self, proposal_id, approve, expected_digest, *, nonce, round, instance):
         require_owner_route(self.registry.root)
         with TASK_STATE_LOCK:
@@ -164,7 +185,10 @@ class StaffApprovals:
                 raise LookupError('没有这个成员例行工作提议')
             return self.decide(proposal_id, approve, expected_digest, nonce=nonce, round=round, instance=instance)
 
-    def propose(self, owner, kind, data, reason, *, expected=None, initiator=None):
+    def propose(self, owner, kind, data, reason, *, expected=None, initiator=None, origin=None):
+        """origin：'assistant' 表示助理在主要聊天里提的（摘要覆盖它，改不了）；其它入口不写。"""
+        if origin is not None and origin not in ORIGINS:
+            raise ValueError('提议来源无效')
         if not isinstance(owner, str) or not owner or not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
             raise ValueError('提议需要发起会话和明确理由')
         with TASK_STATE_LOCK:
@@ -196,6 +220,8 @@ class StaffApprovals:
                     'round': snapshot['previous']['revision'] + 1 if snapshot['previous'] else 1}
             if submission_digest is not None:
                 item['submission_digest'] = submission_digest
+            if origin is not None:
+                item['origin'] = origin
             item['digest'] = digest(item)
             self.registry._write('proposals.json', {'version': 1, 'proposals': [item, *entries]})
             return self._view(item)

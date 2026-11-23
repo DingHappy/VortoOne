@@ -23,28 +23,122 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from src.agents.principal import MEMBER, OWNER, Principal
-from src.workflow.members.channels import TEAM_CHANNEL_ID_PATTERN
+from src.workflow.members.channels import CHANNEL_CATEGORY_ID_PATTERN, TEAM_CHANNEL_ID_PATTERN
 
 MEMBER_COOKIE = "vortoone_member"
 _MAX_AGE = 30 * 24 * 3600
 _ORG = r"/api/app/organizations/[^/]+"
 _TEAM_CHANNEL = _ORG + r"/channels/" + TEAM_CHANNEL_ID_PATTERN
+_CATEGORIES = _ORG + r"/channel-categories"
+_CATEGORY = _CATEGORIES + r"/" + CHANNEL_CATEGORY_ID_PATTERN
 
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
     ("GET", r"/api/app/me"),
+    ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
+    ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读
+    ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
+    ("PUT", r"/api/app/me/work-area"),                    # 本人引导里的可选填写项
+    ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区
+    # 侧栏怎么摆：每个人各存各的（web/app_prefs.py），不涉及别人的数据
+    ("PUT", _ORG + r"/me/(?:activity|start|chat)"),
+    ("GET", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
+    ("PUT", _ORG + r"/me/sidebar(?:/order|/tools|/view)?"),
+    ("PATCH", _ORG + r"/me/sidebar"),
+    ("PUT", _ORG + r"/me/status"),
+    ("GET", _ORG + r"/notification-prefs"),
+    ("PUT", _ORG + r"/me/avatar"),
+    ("DELETE", _ORG + r"/me/avatar"),
+    ("GET", _ORG + r"/people/[^/]+/avatar"),
+    ("GET", _ORG + r"/me/issues-view"),
+    ("PUT", _ORG + r"/me/issues-view"),
+    # 私人日程按调用人隔离，任务截止日期沿用看板的可见范围。
+    ("GET", _ORG + r"/calendar"),
+    # 频道里 agent 发的投票、选择卡：按卡片所在频道判定（见 channels.TeamChannels._card）
+    ("GET", _ORG + r"/artifacts/blk_[a-f0-9]{32}"),
+    ("GET", _ORG + r"/polls/blk_[a-f0-9]{32}"),
+    ("PUT", _ORG + r"/polls/blk_[a-f0-9]{32}/vote"),
+    ("GET", _ORG + r"/choices/blk_[a-f0-9]{32}"),
+    ("POST", _ORG + r"/choices/blk_[a-f0-9]{32}/answer"),
+    ("POST", _ORG + r"/calendar/events"),
+    ("PATCH", _ORG + r"/calendar/events/[^/]+"),
+    ("DELETE", _ORG + r"/calendar/events/[^/]+"),
+    ("GET", _ORG + r"/wiki/(?:graph|search|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
+    ("POST", _ORG + r"/wiki/import"),
+    ("POST", _ORG + r"/wiki/pages"),
+    ("PUT", _ORG + r"/wiki/pages/[^/]+"),
+    ("DELETE", _ORG + r"/wiki/pages/[^/]+"),
+    ("POST", _ORG + r"/wiki/pages/[^/]+/(?:append|rename|move|lock|pin|context)"),
+    ("POST", _ORG + r"/wiki/(?:bulk/delete|trash/restore)"),
+    # 任务看板：处理函数按可见范围和「编辑资料」「派活」判断（web/app_board.py）
+    ("GET", _ORG + r"/search"),                           # 频道按本人已加入的、卡片按本人可见的
+
+
+    ("POST", _ORG + r"/questions/[^/]+/(answer|dismiss)"),  # 只认被问的那个人
+
+
+    ("GET", _ORG + r"/team-memories"),                    # 所有 agent 都读的那一份
+    ("PATCH", _ORG + r"/memories/[^/]+"),                 # 只有团队记忆，处理函数里按权限核对
+
+
+    ("GET", _ORG + r"/approvals"),                        # 只在替所有者代批时有内容
+    ("GET", _ORG + r"/approvals/[^/]+"),
+    ("POST", _ORG + r"/approvals/[^/]+/(approve|refuse)"),
+    ("POST", _ORG + r"/approvals/decide"),
+    ("GET", _ORG + r"/me/approval-cover"),
+    ("PUT", _ORG + r"/me/approval-cover"),                # 成员这边如实拒绝
+    ("DELETE", _ORG + r"/approval-covers/[^/]+"),
+
+
+    ("GET", _ORG + r"/me/right-hand-approvals"),          # 关着的状态，成员也照实给
+    ("PUT", _ORG + r"/me/right-hand-approvals"),
+
+
+    ("GET", _ORG + r"/agent-groups"),                     # 部门名单，不含所有者的资料
+    ("GET", _ORG + r"/issues"),
+    ("POST", _ORG + r"/issues"),
+    ("GET", _ORG + r"/issues/by-number/[^/]+"),
+    ("PATCH", _ORG + r"/issues/[^/]+"),
+    ("DELETE", _ORG + r"/issues/[^/]+"),
+    ("POST", _ORG + r"/issues/[^/]+/(?:share|comments|ask-agent)"),
+    ("PUT", _ORG + r"/issues/[^/]+/(?:audience|criteria/[^/]+)"),
+    ("GET", _ORG + r"/issues/[^/]+/activity"),
+    ("GET", _ORG + r"/issue-(?:columns|projects)"),
+    ("POST", _ORG + r"/issue-(?:columns|projects)"),
+    ("PATCH", _ORG + r"/issue-(?:columns|projects)/[^/]+"),
+    ("DELETE", _ORG + r"/issue-(?:columns|projects)/[^/]+"),
+    # GIF：搜索和取图（团队频道里发 GIF 用）；密钥只有所有者能管
+    ("GET", _ORG + r"/gifs"),
+    ("GET", _ORG + r"/gifs/[A-Za-z0-9]+/media"),
+    # 语音消息：问能不能发、听录音（看得到那个对话才行）、在团队频道里发；服务商和 Key 只有所有者能管
+    ("GET", _ORG + r"/voice/allowed"),
+    ("GET", _ORG + r"/voice/[A-Za-z0-9_-]+/audio"),
+    ("POST", _TEAM_CHANNEL + r"/voice"),
+    ("GET", _ORG + r"/mail/providers"),
+    ("GET", r"/api/app/device-accounts"),                # 仅列本次会话的账号
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
+    ("GET", _ORG + r"/vault(?:/items/[^/]+)?"),
+    ("POST", _ORG + r"/vault/items"),
+    ("PATCH", _ORG + r"/vault/items/[^/]+"),
+    ("DELETE", _ORG + r"/vault/items/[^/]+"),
     ("GET", _ORG + r"/routines/proposals"),
     ("POST", _ORG + r"/routines/proposals"),
     ("GET", _ORG + r"/members"),
     ("GET", _ORG + r"/invitations"),
     ("POST", _ORG + r"/invitations"),
     ("DELETE", _ORG + r"/invitations/[^/]+"),
+    ("GET", _ORG + r"/invitations/all"),
+    ("POST", _ORG + r"/invitations/batch"),
+    ("PATCH", _ORG + r"/invitations/[^/]+"),
+    ("GET", _ORG + r"/join-requests/mine"),
+    ("POST", _ORG + r"/join-requests/suggest"),
+    ("DELETE", _ORG + r"/join-requests/[^/]+"),            # 只能撤回自己的建议
     ("POST", _ORG + r"/members/[^/]+/password-link"),
     # 成员和 agent：只列他用得了的 agent，私聊里只有他自己发起的事（web/app_members.py）
     ("GET", _ORG + r"/agents"),
+    ("GET", _ORG + r"/team"),
     ("GET", _ORG + r"/agents/[^/]+"),
     ("GET", _ORG + r"/agents/[^/]+/(?:browser(?:/handoff)?|desktop)"),
     ("GET", _ORG + r"/agents/[^/]+/member-action-levels"),
@@ -64,16 +158,34 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/channels"),
     ("POST", _ORG + r"/channels"),
     ("GET", _ORG + r"/archived-channels"),
+    ("GET", _CATEGORIES),
+    ("POST", _CATEGORIES),
+    ("PATCH", _CATEGORY),
+    ("DELETE", _CATEGORY),
+    ("PUT", _CATEGORY + r"/place"),
+    ("PUT", _TEAM_CHANNEL + r"/place"),
     ("PATCH", _TEAM_CHANNEL),
     ("DELETE", _TEAM_CHANNEL),
     ("POST", _TEAM_CHANNEL + r"/(?:join|leave|read|unarchive|members)"),
+    ("PUT", _TEAM_CHANNEL + r"/mute"),
+    ("DELETE", _TEAM_CHANNEL + r"/mute"),
     ("DELETE", _TEAM_CHANNEL + r"/members/people/[^/]+"),
     ("GET", _TEAM_CHANNEL + r"/(?:card|roster|permissions)"),
     ("PUT", _TEAM_CHANNEL + r"/permissions"),
     ("POST", _TEAM_CHANNEL + r"/pins/[^/]+"),
     ("DELETE", _TEAM_CHANNEL + r"/pins/[^/]+"),
     ("GET", _ORG + r"/messages/[^/]+/card"),
+    ("GET", _ORG + r"/messages/[^/]+/reactions"),
+    ("POST", _ORG + r"/messages/[^/]+/reactions"),
+    ("DELETE", _ORG + r"/messages/[^/]+/reactions"),
+    ("GET", _ORG + r"/threads"),
     ("GET", _ORG + r"/threads/[^/]+"),
+    ("PATCH", _ORG + r"/threads/[^/]+"),
+    ("POST", _ORG + r"/threads/[^/]+/(?:close|reopen|archive|unarchive)"),
+    ("POST", _ORG + r"/threads/[^/]+/read"),
+    ("PUT", _ORG + r"/threads/[^/]+/follow"),
+    ("DELETE", _ORG + r"/threads/[^/]+/follow"),
+    ("GET", _ORG + r"/unread-threads"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),
     # AI 应用：只列、只断开他自己的连接和个人令牌（管成员的人能看全部）；授权确认页按他本人答复
@@ -88,6 +200,9 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/dashboards/home"),
     ("GET", _ORG + r"/computer-setup"),
     # 电脑只在配对人的会话里可见。传输和本机自动配对仍使用各自的验权入口。
+    ("GET", _ORG + r"/devices"),
+    ("PATCH", _ORG + r"/devices/computers/[^/]+"),
+    ("DELETE", _ORG + r"/devices/computers/[^/]+"),
     ("GET", _ORG + r"/machines"),
     ("PATCH", _ORG + r"/machines/[^/]+"),
     ("DELETE", _ORG + r"/machines/[^/]+"),
@@ -106,11 +221,12 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (_ORG + r"/routines", {"routines": []}),
     (_ORG + r"/notifications", {"items": [], "counts": {"all": 0, "mentions": 0, "waiting": 0, "unread": 0,
                                                        "reactions": 0}, "nextCursor": None}),
+    (_ORG + r"/notifications/count", {"unread": 0, "waiting": 0}),
     (_ORG + r"/runs", {"runs": []}),
     (_ORG + r"/active-runs", {"runs": []}),
     (_ORG + r"/usage", {"usage": []}),
-    (_ORG + r"/approvals", {"approvals": []}),
     (_ORG + r"/artifacts", {"artifacts": [], "nextCursor": None, "counts": {}}),
+    (_ORG + r"/artifacts-trash", {"files": []}),
     (_ORG + r"/former-agents", {"agents": []}),          # 不在团队里的 agent 是所有者的事
 )
 

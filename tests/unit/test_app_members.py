@@ -107,6 +107,72 @@ def test_bad_requests_are_refused_not_half_applied(home):
     assert client.get(f"{base}/roles").json() == before
 
 
+def test_permission_row_saves_only_that_row_and_drives_effective_member_permissions(home):
+    client, base = home["client"], home["base"]
+    permissions = ["post", "view_usage", "own_computers"]
+    kept = client.post(f"{base}/roles", json={"name": "保留发言", "permissions": permissions,
+                                             "actLevel": "write"}).json()["id"]
+    cleared = client.post(f"{base}/roles", json={"name": "停止发言", "permissions": permissions}).json()["id"]
+    separate_admin = client.post(f"{base}/roles", json={"name": "另一个管理员身份组",
+                                 "permissions": ["administrator", "post"]}).json()["id"]
+    registry = MemberRegistry(home["root"])
+    kept_person = _join(home["root"], "保留成员", groups=[kept])
+    cleared_person = _join(home["root"], "清除成员", groups=[cleared])
+    before = _roles(home)
+
+    response = client.put(f"{base}/permissions/post", json={
+        "everyone": 0, "roles": [{"id": kept, "level": 1}]})
+    assert response.status_code == 200, response.text
+    assert response.headers["Cache-Control"] == "no-store"
+    after = _roles(home)
+    assert response.json() == client.get(f"{base}/roles").json()
+    assert after[kept] == before[kept]
+    assert after[cleared] == {**before[cleared], "permissions": ["view_usage", "own_computers"]}
+    assert after["everyone"] == {**before["everyone"],
+                                   "permissions": [key for key in before["everyone"]["permissions"] if key != "post"]}
+    assert after["admins"] == before["admins"]
+    assert after[separate_admin] == before[separate_admin]
+    assert "chat.speak" in registry.standing(kept_person)["permissions"]
+    assert "chat.speak" not in registry.standing(cleared_person)["permissions"]
+
+
+def test_permission_row_shared_computer_ladder_keeps_other_fields(home):
+    client, base = home["client"], home["base"]
+    group = client.post(f"{base}/roles", json={"name": "配对成员", "permissions": ["post"],
+                                              "actLevel": "none"}).json()["id"]
+    member = _join(home["root"], groups=[group])
+    before = _roles(home)
+    response = client.put(f"{base}/permissions/computers", json={
+        "everyone": 0, "roles": [{"id": group, "level": 3}]})
+    assert response.status_code == 200, response.text
+    after = _roles(home)
+    assert after[group] == {**before[group], "permissions": ["post", "control_browsers"]}
+    assert after["admins"] == before["admins"]
+    assert "own_browsers" not in after["everyone"]["permissions"]
+    assert MemberRegistry(home["root"]).standing(member)["computer"] == "all_browsers"
+
+
+def test_permission_row_invalid_requests_preserve_every_role(home):
+    client, base = home["client"], home["base"]
+    created = client.post(f"{base}/roles", json={"name": "保留", "permissions": ["post"]}).json()["id"]
+    before = _roles(home)
+
+    def save(row, everyone, roles):
+        return client.put(f"{base}/permissions/{row}", json={"everyone": everyone, "roles": roles})
+
+    assert save("administrator", 0, []).status_code == 400
+    assert save("undefined-row", 0, []).status_code == 400
+    assert save("control_browsers", 0, []).status_code == 400
+    assert save("post", 2, []).status_code == 400
+    assert save("computers", 0, [{"id": created, "level": 5}]).status_code == 400
+    assert save("post", 0, [{"id": created, "level": True}]).status_code == 422
+    assert save("post", 0, [{"id": created, "level": 1}, {"id": created, "level": 0}]).status_code == 400
+    assert save("post", 0, [{"id": created, "level": 0}, {"id": "g_removed", "level": 1}]).status_code == 404
+    assert save("post", 0, [{"id": "admins", "level": 1}]).status_code == 400
+    assert save("post", 0, [{"id": "everyone", "level": 1}]).status_code == 400
+    assert _roles(home) == before
+
+
 def test_changing_a_group_level_changes_members_effective_level(home):
     client, base = home["client"], home["base"]
     created = client.post(f"{base}/roles", json={"name": "编辑组", "actLevel": "write"})

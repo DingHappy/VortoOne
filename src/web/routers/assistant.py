@@ -5,7 +5,7 @@ import asyncio
 import os
 import sqlite3
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.memory import assistant_profile
@@ -38,6 +38,8 @@ def _skill_error(error):
         return HTTPException(404, "个人技能不存在")
     if isinstance(error, SkillConflict):
         return HTTPException(409, "技能正在更新或版本已变化，请刷新并重新审阅")
+    if isinstance(error, PermissionError):
+        return HTTPException(403, "导入技能需要经过认证的所有者")
     return HTTPException(400, "个人技能无法处理，请检查格式、长度、版本和存储权限")
 
 
@@ -92,10 +94,15 @@ async def personal_skills_list():
 
 
 @router.get("/api/assistant/skills/{skill_id}")
-async def personal_skill_preview(skill_id: str):
+async def personal_skill_preview(skill_id: str, request: Request = None):
+    from src.web.app_staff import owner_proof
+
     skills = _personal_skills()
     try:
-        return skills.get(skill_id, preview=True)
+        item = skills.get(skill_id, preview=True)
+        if item["source"] == "upload" and (request is None or not owner_proof(request)):
+            raise PermissionError
+        return item
     except Exception as error:
         raise _skill_error(error) from None
 
@@ -110,12 +117,15 @@ async def personal_skill_save(skill_id: str, body: dict):
 
 
 @router.put("/api/assistant/skills/{skill_id}/enabled")
-async def personal_skill_enabled(skill_id: str, body: dict):
+async def personal_skill_enabled(skill_id: str, body: dict, request: Request = None):
+    from src.web.app_staff import owner_proof
+
     skills = _personal_skills()
     try:
         if set(body) != {"enabled", "revision"}:
             raise ValueError("需要明确的状态和版本")
-        return skills.set_enabled(skill_id, enabled=body["enabled"], revision=body["revision"])
+        return skills.set_enabled(skill_id, enabled=body["enabled"], revision=body["revision"],
+                                  owner_verified=request is not None and owner_proof(request))
     except Exception as error:
         raise _skill_error(error) from None
 

@@ -76,6 +76,9 @@ def stop(root: str, task_id: str) -> bool:
     from src.workflow.staff.owner_confirmation import owner_route
     from src.workflow.tasks.tasks import TaskLedger
     task = TaskLedger(root).load(task_id)
+    if ((task.collaboration if task else {}) or {}).get("dispatch", {}).get("channel"):
+        with owner_route(root):                         # 频道里的事不在私聊列表里，按任务本身核对后停止
+            return _conversations(root).stop_channel_task(task_id)
     member_id = str(((task.collaboration if task else {}) or {}).get("dispatch", {}).get("member") or "")
     if not member_id:
         return False
@@ -87,6 +90,14 @@ def stop(root: str, task_id: str) -> bool:
         conversations.act(member_id, task_id, {"verdict": "stop", "note": "主人在对话里停止",
                                                **shown["confirmation"]})
     return True
+
+
+def stop_routine(root: str, routine_id: str) -> bool:
+    """调用方已核对所有者证明，停止动作交给原专员执行池。"""
+    from src.workflow.staff.owner_confirmation import owner_route
+
+    with owner_route(root):
+        return _conversations(root).stop_routine(routine_id)
 
 
 async def watch(socket, root: str, member_id: str, *, interval: float = 1.0,

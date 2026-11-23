@@ -170,10 +170,10 @@ class Connections:
         if pending is not None and not pending[1].done():
             pending[1].set_result(None)
 
-    def revoked(self, root: str, connector_id: str, *, credential_epoch: str | None = None) -> None:
+    def revoked(self, root: str, connector_id: str, *, credential_epoch: str) -> None:
         with self._lock:
             connection = self._current.get((root, connector_id))
-        if connection is not None and (credential_epoch is None or connection.binding["credential_epoch"] == credential_epoch):
+        if connection is not None and connection.binding["credential_epoch"] == credential_epoch:
             self._schedule(connection)
 
     def online(self, root: str, connector_id: str) -> bool:

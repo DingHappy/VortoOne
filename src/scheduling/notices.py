@@ -62,6 +62,7 @@ def record_notice(repo_root: str, text: str, *, source: str = "scheduler",
         ensure_state_gitignore(repo_root)
         p.parent.mkdir(parents=True, exist_ok=True)
         payload: Dict[str, Any] = {
+            "id": uuid.uuid4().hex,
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "source": str(source)[:120], "text": str(text)[:2000]}
         if trigger:

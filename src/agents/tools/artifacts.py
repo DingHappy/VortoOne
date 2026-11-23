@@ -11,9 +11,15 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from hashlib import sha256
 import json
 import os
 import re
+import shutil
+import stat
+import tempfile
+from threading import Lock
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +35,7 @@ def _slugify(title: str) -> str:
 
 # 制品体积上限：默认 16 MiB（对齐 Claude Code），VORTOONE_ARTIFACT_MAX_BYTES 可覆盖。
 DEFAULT_MAX_BYTES = 16 * 1024 * 1024
+_WINDOWS_ARTIFACT_LOCK = Lock()
 
 
 def max_bytes() -> int:
@@ -75,8 +82,11 @@ class ArtifactStore:
 
     _ID_RE = re.compile(r"[A-Za-z0-9_-]{1,80}")
 
-    def __init__(self, repo_root: str) -> None:
-        self.root = state_dir(repo_root) / "artifacts"
+    def __init__(self, repo_root: str, *, desktop_uploads: bool = False) -> None:
+        self._desktop_uploads = desktop_uploads
+        self.root = state_dir(repo_root) / ("desktop-artifacts" if desktop_uploads else "artifacts")
+        if desktop_uploads and self.root.is_symlink():
+            raise ValueError("桌面制品目录不可用")
 
     @classmethod
     def _safe_id(cls, artifact_id: str) -> Optional[str]:
@@ -86,6 +96,34 @@ class ArtifactStore:
 
     def _dir(self, artifact_id: str) -> Path:
         return self.root / artifact_id
+
+    @contextmanager
+    def _mutation(self):
+        """Serialize publishing, pinning and moves of a whole artifact directory."""
+        if self.root.is_symlink():
+            raise OSError("制品目录不能是符号链接")
+        self.root.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.root / ".lock", os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "r+b") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise OSError("制品锁不可用")
+            if os.name != "nt":
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                yield
+                return
+            with _WINDOWS_ARTIFACT_LOCK:
+                import msvcrt
+                if not os.fstat(handle.fileno()).st_size:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
     def exists(self, artifact_id: str) -> bool:
         aid = self._safe_id(artifact_id)
@@ -97,16 +135,56 @@ class ArtifactStore:
 
         超过体积上限（见 max_bytes，默认 16 MiB）抛 ValueError —— 对齐 CC 的大小约束。
         """
+        aid = self._safe_id(artifact_id) if artifact_id else None
+        if not aid:
+            aid = f"{_slugify(title)}-{uuid.uuid4().hex[:6]}"
+        with self._mutation():
+            return self._publish_at(self._dir(aid), aid, title, html, kind)
+
+    @contextmanager
+    def _stage_upload(self):
+        """Commit the complete private upload with a single directory rename."""
+        if not self._desktop_uploads:
+            raise ValueError("文件上传只能写入桌面制品库")
+        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        aid = f"upload-{uuid.uuid4().hex}"
+        with tempfile.TemporaryDirectory(prefix=".upload-", dir=self.root) as temporary:
+            destination = Path(temporary) / aid
+            yield destination, aid
+            with self._mutation():
+                destination.rename(self._dir(aid))
+
+    def publish_new(self, title: str, html: str) -> dict:
+        """Publish a new private HTML artifact only once all initial files are present."""
+        with self._stage_upload() as (destination, aid):
+            return self._publish_at(destination, aid, title, html, "html")
+
+    def publish_file(self, title: str, name: str, content_type: str, data: bytes) -> dict:
+        """Keep the owner's original file bytes separate from renderable HTML."""
+        size = len(data)
+        if size > max_bytes():
+            raise ValueError("制品体积超过上限")
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._stage_upload() as (destination, aid):
+            meta = {
+                "id": aid, "title": title, "kind": "file", "version": 1, "pinned": None,
+                "created_at": now, "updated_at": now, "bytes": size,
+                "name": name, "content_type": content_type, "sha256": sha256(data).hexdigest(),
+                "versions": [{"v": 1, "ts": now, "bytes": size}],
+            }
+            destination.mkdir(mode=0o700)
+            (destination / "upload.bin").write_bytes(data)
+            (destination / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            return meta
+
+    @staticmethod
+    def _publish_at(d: Path, aid: str, title: str, html: str, kind: str) -> dict:
         data = (html or "").encode("utf-8")
         cap = max_bytes()
         if len(data) > cap:
             raise ValueError(f"制品体积 {len(data)} 字节超过上限 {cap} 字节"
                              f"（{cap // (1024 * 1024)} MiB）")
         now = datetime.now().isoformat(timespec="seconds")
-        aid = self._safe_id(artifact_id) if artifact_id else None
-        if not aid:
-            aid = f"{_slugify(title)}-{uuid.uuid4().hex[:6]}"
-        d = self._dir(aid)
         d.mkdir(parents=True, exist_ok=True)
         meta_path = d / "meta.json"
         version, created, versions = 1, now, []
@@ -135,32 +213,36 @@ class ArtifactStore:
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         return meta
 
-    def delete(self, artifact_id: str) -> bool:
+    def delete(self, artifact_id: str, *, strict: bool = False) -> bool:
         """删除一个制品（整目录）。成功 True；id 非法或不存在 False。"""
         aid = self._safe_id(artifact_id)
-        if not aid:
+        if not aid or not self.root.is_dir():
             return False
-        d = self._dir(aid)
-        if not d.is_dir():
-            return False
-        import shutil
-        shutil.rmtree(d, ignore_errors=True)
-        return True
+        with self._mutation():
+            d = self._dir(aid)
+            if not d.is_dir():
+                return False
+            shutil.rmtree(d, ignore_errors=not strict)
+            return True
 
     def meta(self, artifact_id: str) -> Optional[dict]:
         aid = self._safe_id(artifact_id)
         if not aid:
             return None
-        p = self._dir(aid) / "meta.json"
+        return self._read_meta(self._dir(aid))
+
+    @staticmethod
+    def _read_meta(directory: Path) -> Optional[dict]:
+        p = directory / "meta.json"
         if not p.is_file():
             return None
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            meta = json.loads(p.read_text(encoding="utf-8"))
+            return meta if isinstance(meta, dict) else None
         except Exception:  # noqa: BLE001
             return None
 
-    def html(self, artifact_id: str, version: Optional[int] = None) -> Optional[str]:
-        """取制品 HTML。version 给定取该版本快照（缺失则回退当前）；否则取当前(index.html)。"""
+    def _html_path(self, artifact_id: str, version: Optional[int], *, strict: bool) -> Optional[Path]:
         aid = self._safe_id(artifact_id)
         if not aid:
             return None
@@ -171,9 +253,47 @@ class ArtifactStore:
             except (TypeError, ValueError):
                 vp = None
             if vp and vp.is_file():
-                return vp.read_text(encoding="utf-8")
+                return vp
+            if strict:
+                # 只有老格式的单版本制品没有快照；名称或版本不符不能替换成最新。
+                meta = self.meta(aid)
+                if not meta or meta.get("versions") or version != int(meta.get("version", 1)):
+                    return None
         p = d / "index.html"
-        return p.read_text(encoding="utf-8") if p.is_file() else None
+        return p if p.is_file() else None
+
+    def html(self, artifact_id: str, version: Optional[int] = None, *,
+             strict: bool = False) -> Optional[str]:
+        """取制品 HTML。指定版本缺失时，旧调用回退当前，strict 调用只接受对应快照。"""
+        path = self._html_path(artifact_id, version, strict=strict)
+        return path.read_text(encoding="utf-8") if path is not None else None
+
+    def has_snapshot(self, artifact_id: str, version: int) -> bool:
+        """不用读取正文即可确认这个版本有对应文件。"""
+        return (self._desktop_file_path(artifact_id, version) is not None
+                or self._html_path(artifact_id, version, strict=True) is not None)
+
+    def _desktop_file_path(self, artifact_id: str, version: int) -> Optional[Path]:
+        aid = self._safe_id(artifact_id)
+        if not self._desktop_uploads or not aid or version != 1:
+            return None
+        directory = self._dir(aid)
+        path = directory / "upload.bin"
+        return path if not directory.is_symlink() and not path.is_symlink() and path.is_file() else None
+
+    def uploaded_file(self, artifact_id: str, version: int, size: int) -> Optional[bytes]:
+        path = self._desktop_file_path(artifact_id, version)
+        if path is None:
+            return None
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size != size:
+                raise ValueError("制品文件与登记大小不符")
+            data = handle.read(size + 1)
+        if len(data) != size:
+            raise ValueError("制品文件与登记大小不符")
+        return data
 
     def versions(self, artifact_id: str) -> list[dict]:
         """版本清单 [{v, ts, bytes}]，升序。老 meta 无记录则按当前版本合成一条。"""
@@ -191,8 +311,12 @@ class ArtifactStore:
         返回更新后的 meta；id/版本非法返回 None。
         """
         aid = self._safe_id(artifact_id)
-        if not aid:
+        if not aid or not self.root.is_dir():
             return None
+        with self._mutation():
+            return self._pin(aid, version)
+
+    def _pin(self, aid: str, version: Optional[int]) -> Optional[dict]:
         m = self.meta(aid)
         if not m:
             return None

@@ -52,6 +52,28 @@ def _group(home, name, permissions):
     return home["owner"].post(f"{home['base']}/roles", json={"name": name, "permissions": permissions}).json()["id"]
 
 
+def test_permission_row_uses_current_owner_proof_and_denies_existing_member_sessions(home):
+    owner, base = home["owner"], home["base"]
+    ordinary = _join(home)
+    managers = _group(home, "成员管理员", ["manage_roles", "post"])
+    manager = _join(home, "manager@example.com", roleIds=[managers])
+    path = f"{base}/permissions/post"
+    body = {"everyone": 0, "roles": []}
+    before = owner.get(f"{base}/roles").json()
+    for member in (ordinary, manager):
+        assert member.put(path, json=body).status_code == 403
+        assert member.patch(f"{base}/roles/everyone", json={"permissions": []}).status_code == 403
+
+    guest = TestClient(home["app"])
+    assert guest.put(path, json=body).status_code == 401
+    assert guest.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    assert guest.put(path, json=body, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    assert owner.get(f"{base}/roles").json() == before
+    allowed = guest.put(path, json=body, headers=ORIGIN)
+    assert allowed.status_code == 200, allowed.text
+    assert "post" not in ordinary.get("/api/app/me").json()["organizations"][0]["permissions"]
+
+
 # ── 整条路 ────────────────────────────────────────────────────────────────────
 
 def test_invite_sign_up_accept_and_see_myself(home):
@@ -103,6 +125,83 @@ def test_the_screens_sign_out_works_for_a_member(home):
     left = browser.post("/api/app/device-accounts/sign-out", json={})
     assert left.status_code == 200 and left.json() == {"signedIn": False}
     assert browser.get("/api/app/me").status_code == 401
+
+
+def test_workspace_mail_provider_catalog_does_not_use_the_host_mailbox(home, monkeypatch):
+    from src.agents import mcp_tools
+    from src.plugins import mail
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("组织邮件目录不应读取或连接本机邮箱")
+
+    monkeypatch.setattr(mcp_tools, "connector_secret_path", unexpected)
+    monkeypatch.setattr(mail.imaplib, "IMAP4_SSL", unexpected)
+    browser = _join(home)
+    url = f"{home['base']}/mail/providers"
+    for client in (home["owner"], browser):
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.json() == {"composio": False, "imap": False, "presets": []}
+        assert client.get("/api/app/organizations/another-home/mail/providers").status_code == 404
+    assert browser.get(url, headers={"Origin": "https://other.example"}).status_code == 403
+    guest = TestClient(home["app"], headers=ORIGIN)
+    assert guest.get(url).status_code == 401
+
+    token = _invite(home, email="invited@example.com")
+    signed = guest.post("/api/auth/sign-up/email", headers={"x-invitation-token": token},
+                        json={"name": "还没加入", "email": "invited@example.com", "password": PASSWORD})
+    assert signed.status_code == 200
+    assert guest.get(url).status_code == 403
+
+
+def test_device_accounts_lists_only_the_current_signed_in_profile(home):
+    path = "/api/app/device-accounts"
+    owner = home["owner"]
+    first = _join(home, email="first@example.test")
+    second = _join(home, email="second@example.test")
+    seen = []
+    for client, role in ((owner, "owner"), (first, "member"), (second, "member")):
+        profile = client.get("/api/app/me").json()
+        response = client.get(path)
+        assert response.status_code == 200, response.text
+        assert response.headers["Cache-Control"] == "no-store"
+        [account] = response.json()["accounts"]
+        assert account["current"] is True
+        assert account["user"] == {key: profile["user"][key] for key in ("id", "name", "email", "image")}
+        assert account["organizations"] == profile["organizations"]
+        assert [org["role"] for org in account["organizations"]] == [role]
+        assert account["unread"] == []
+        seen.append(account["user"]["id"])
+    assert len(set(seen)) == 3
+
+    assert first.post("/api/app/device-accounts/sign-out", json={}).status_code == 200
+    assert first.get(path).status_code == 401
+    assert second.get(path).json()["accounts"][0]["user"]["id"] == seen[-1]
+
+
+def test_device_accounts_does_not_infer_a_session_or_workspace(home, monkeypatch):
+    from src.web.auth import SESSION_COOKIE
+
+    path = "/api/app/device-accounts"
+    visitor = TestClient(home["app"], headers=ORIGIN)
+    assert visitor.get(path).status_code == 401
+    token = _invite(home)
+    assert visitor.post("/api/auth/sign-up/email", headers={"x-invitation-token": token}, json={
+        "name": "未加入", "email": "ana@example.com", "password": PASSWORD,
+    }).status_code == 200
+    pending = visitor.get(path)
+    assert pending.status_code == 200, pending.text
+    [account] = pending.json()["accounts"]
+    assert account["current"] is True
+    assert account["user"]["email"] == "ana@example.com"
+    assert account["organizations"] == []
+    assert visitor.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
+
+    owner_cookie = TestClient(home["app"], cookies={SESSION_COOKIE: TOKEN})
+    assert owner_cookie.get(path).status_code == 200
+    assert owner_cookie.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert TestClient(home["app"]).get(path).json() == {"accounts": []}
 
 
 def test_a_stolen_cookie_dies_with_sign_out(home):
@@ -174,11 +273,65 @@ def test_accepting_needs_a_signed_in_account_and_our_own_page(home):
     assert browser.get("/api/app/me").json()["organizations"] == []
 
 
+def test_optional_invitation_mail_query_cannot_replace_account_or_invitation(home):
+    token = _invite(home)
+    another_token = _invite(home, "other@example.com")
+    url = f"/api/app/invitations/{token}/accept"
+    mail = {"mail": "p" * 43}
+    guest = TestClient(home["app"], headers=ORIGIN)
+    assert guest.get("/api/app/auth-config").json()["passwordReset"] is False
+    assert guest.post(url, params=mail, json={}).status_code == 401
+    assert home["owner"].post(url, params=mail, json={}, headers=ORIGIN).status_code == 401
+    assert guest.post("/api/auth/sign-up/email", json={"name": "另一人", "email": "other@example.com", "password": PASSWORD},
+                      headers={"x-invitation-token": another_token}).status_code == 200
+    assert guest.post(url, params=mail, json={}).status_code == 403
+    assert guest.get("/api/app/me").json()["organizations"] == []
+    assert guest.get(f"/api/app/invitations/{token}").status_code == 200
+
+    invited = TestClient(home["app"], headers=ORIGIN)
+    assert invited.post("/api/auth/sign-up/email", json={"name": "受邀人", "email": "ana@example.com", "password": PASSWORD},
+                        headers={"x-invitation-token": token}).status_code == 200
+    assert invited.post(f"/api/app/invitations/{'x' * 43}/accept", params=mail, json={}).status_code == 404
+    assert invited.post(url, params=mail, json={}, headers={"Origin": "https://other.invalid"}).status_code == 401
+    for query in (mail, {}):
+        accepted = invited.post(url, params=query, json={})
+        assert accepted.status_code == 200 and accepted.json() == {"orgId": home["org"]}
+    assert guest.get(f"/api/app/invitations/{token}").status_code == 404
+    rows = home["owner"].get(f"{home['base']}/members").json()["members"]
+    assert [row["email"] for row in rows if row["role"] == "member"] == ["ana@example.com"]
+
+
+def test_owner_identity_takes_precedence_when_both_sessions_are_present(home):
+    from src.web.auth import SESSION_COOKIE
+    from src.web.member_auth import MEMBER_COOKIE
+
+    token = _invite(home)
+    browser = TestClient(home["app"], headers=ORIGIN)
+    assert browser.post("/api/auth/sign-up/email", json={"name": "受邀人", "email": "ana@example.com", "password": PASSWORD},
+                        headers={"x-invitation-token": token}).status_code == 200
+    member_session = browser.cookies.get(MEMBER_COOKIE)
+    assert member_session
+    owner = TestClient(home["app"], headers=ORIGIN)
+    assert owner.post("/api/auth/sign-in/email", json={"password": TOKEN}).status_code == 200
+    owner_session = owner.cookies.get(SESSION_COOKIE)
+    assert owner_session
+    both = TestClient(home["app"], headers=ORIGIN,
+                      cookies={SESSION_COOKIE: owner_session, MEMBER_COOKIE: member_session})
+    assert both.get("/api/app/me").json()["organizations"][0]["role"] == "owner"
+    url = f"/api/app/invitations/{token}/accept"
+    assert both.post(url, json={}).status_code == 401
+    assert both.get(f"/api/app/invitations/{token}").status_code == 200
+    assert browser.post(url, json={}).json() == {"orgId": home["org"]}
+
+
 # ── 成员会话只在白名单上算数 ──────────────────────────────────────────────────
 
 def _fill(path, *, team_channel=False):
     if team_channel:
         path = path.replace("{channel_id}", "ch_" + "0" * 32)
+        for name in ("{artifact_id}", "{poll_id}", "{choices_id}"):      # 频道里的投票、选择卡（成员只认这种 id）
+            path = path.replace(name, "blk_" + "0" * 32)
+    path = path.replace("{category_id}", "cat_" + "0" * 32)
     return re.sub(r"\{[^}]+\}", "x", path)
 
 
@@ -320,13 +473,131 @@ def test_password_reset_by_whoever_manages_the_member(home):
                       ).status_code == 200
 
 
+def test_role_mail_loss_preview_unblocks_role_assignment_without_writing(home):
+    role = _group(home, "财务", ["view_usage"])
+    first = _join(home, email="first@example.test")
+    second = _join(home, email="second@example.test", roleIds=[role])
+    first_id = first.get("/api/app/me").json()["user"]["id"]
+    second_id = second.get("/api/app/me").json()["user"]["id"]
+    owner, base = home["owner"], home["base"]
+    members = owner.get(base + "/members").json()
+
+    path = f"{base}/roles/{role}/members/preview"
+    preview = owner.post(path, json={"userIds": [first_id, second_id, first_id]})
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "no-store"
+    assert preview.json() == {"mailboxes": []}
+    assert owner.get(base + "/members").json() == members
+    saved = owner.put(f"{base}/members/{first_id}/roles", json={"roleIds": [role], "mailLossSeen": []})
+    assert saved.status_code == 200
+    assert saved.json() == {"roleIds": [role]}
+    assert owner.post(path, json={"userIds": [first_id]}).json() == {"mailboxes": []}
+
+
+def test_role_mail_loss_preview_uses_the_role_assignment_owner_boundary(home, monkeypatch):
+    role = _group(home, "财务", ["view_usage"])
+    managers = _group(home, "成员管理员", ["manage_members"])
+    manager = _join(home, email="manager@example.test", roleIds=[managers])
+    member = _join(home, email="member@example.test")
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    path = f"{home['base']}/roles/{role}/members/preview"
+    body = {"userIds": [member_id]}
+
+    visitor = TestClient(home["app"])
+    assert visitor.post(path, json=body).status_code == 401
+    for client in (manager, member):
+        assert client.post(path, json=body).status_code == 403
+        assert client.put(f"{home['base']}/members/{member_id}/roles", json={"roleIds": [role]}).status_code == 403
+    owner_cookie = TestClient(home["app"])
+    assert owner_cookie.post("/api/auth/login", json={"token": TOKEN}, headers=ORIGIN).status_code == 200
+    assert owner_cookie.post(path, json=body, headers=ORIGIN).json() == {"mailboxes": []}
+    assert owner_cookie.post(path, json=body).status_code == 403
+    denied = owner_cookie.post(path, json=body, headers={"Origin": "https://other.example.test"})
+    assert denied.status_code == 403
+    assert denied.headers["cache-control"] == "no-store"
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert visitor.post(path, json=body, headers=ORIGIN).status_code == 403
+
+
+def test_role_mail_loss_preview_checks_the_workspace_role_and_each_member(home):
+    role = _group(home, "财务", ["view_usage"])
+    member = _join(home, email="member@example.test")
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    owner, base = home["owner"], home["base"]
+    path = f"{base}/roles/{role}/members/preview"
+    assert owner.post(path, json={"userIds": [member_id, "unknown-member"]}).status_code == 404
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    assert owner.post(path, json={"userIds": [owner_id]}).status_code == 404
+    assert owner.post(f"{base}/roles/unknown-role/members/preview", json={"userIds": [member_id]}).status_code == 404
+    other = f"/api/app/organizations/unknown-workspace/roles/{role}/members/preview"
+    assert owner.post(other, json={"userIds": [member_id]}).status_code == 404
+    assert owner.post(path, json={"userIds": member_id}).status_code == 422
+    assert owner.post(path, json={"userIds": [1]}).status_code == 422
+    assert owner.post(path, json={"userIds": [member_id], "roleIds": [role]}).status_code == 422
+    assert owner.post(path, json={"userIds": [member_id] * 501}).status_code == 422
+
+
 def test_a_removed_member_is_out_at_once(home):
     browser = _join(home)
     member_id = browser.get("/api/app/me").json()["user"]["id"]
-    assert home["owner"].delete(f"{home['base']}/members/{member_id}").status_code == 204
+    path = f"{home['base']}/members/{member_id}"
+    owner = TestClient(home["app"])
+    assert owner.post("/api/auth/login", json={"token": TOKEN}, headers=ORIGIN).status_code == 200
+    denied = owner.get(path + "/removal", headers={"Origin": "https://other.example.test"})
+    assert denied.status_code == 403
+    assert denied.headers["cache-control"] == "no-store"
+    preview = owner.get(path + "/removal")
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "no-store"
+    assert preview.json() == {"heir": None, "agents": [], "losePlan": [], "computers": [], "routines": 0}
+    assert home["owner"].get(path + "/removal").json() == preview.json()
+    assert browser.get("/api/app/me").json()["organizations"][0]["id"] == home["org"]
+    assert home["owner"].delete(path).status_code == 204
+    gone = owner.get(path + "/removal")
+    assert gone.status_code == 404
+    assert gone.headers["cache-control"] == "no-store"
     assert browser.get("/api/app/me").status_code == 401
     assert browser.post("/api/auth/sign-in/email",
                         json={"email": "ana@example.com", "password": PASSWORD}).status_code == 401
+
+
+def test_member_removal_preview_matches_existing_delete_permissions(home, monkeypatch):
+    group = _group(home, "成员管理员", ["manage_members"])
+    manager = _join(home, email="manager@example.test", roleIds=[group])
+    member = _join(home, email="target@example.test")
+    target = member.get("/api/app/me").json()["user"]["id"]
+    path = f"{home['base']}/members/{target}"
+    visitor = TestClient(home["app"], headers=ORIGIN)
+    assert visitor.get(path + "/removal").status_code == 401
+    assert visitor.delete(path).status_code == 401
+    for session in (member, manager):
+        assert session.get(path + "/removal").status_code == 403
+        assert session.delete(path).status_code == 403
+
+    monkeypatch.delenv("VORTOONE_API_TOKEN", raising=False)
+    blocked = visitor.get(path + "/removal")
+    assert blocked.status_code == 403
+    assert blocked.headers["cache-control"] == "no-store"
+    assert visitor.delete(path).status_code == 403
+
+
+def test_member_removal_preview_requires_an_existing_joined_target(home):
+    token = _invite(home, email="pending@example.test")
+    pending = TestClient(home["app"], headers=ORIGIN)
+    signed = pending.post("/api/auth/sign-up/email", headers={"x-invitation-token": token}, json={
+        "name": "还没加入的人", "email": "pending@example.test", "password": PASSWORD,
+    })
+    assert signed.status_code == 200
+    me = pending.get("/api/app/me").json()
+    assert me["organizations"] == []
+    owner = home["owner"]
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    for target in ("unknown-member", me["user"]["id"], owner_id):
+        path = f"{home['base']}/members/{target}"
+        preview = owner.get(path + "/removal")
+        assert preview.status_code == 404
+        assert preview.headers["cache-control"] == "no-store"
+        assert owner.delete(path).status_code == 404
 
 
 def test_removal_holds_even_if_the_account_was_not_cleaned_up(home, monkeypatch):

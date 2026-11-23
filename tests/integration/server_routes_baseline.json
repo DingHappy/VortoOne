@@ -1844,15 +1844,51 @@
     ]
   },
   {
+    "path": "/api/app/feedback",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/feedback",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/me",
     "methods": [
       "GET"
     ]
   },
   {
+    "path": "/api/app/me",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/me/unread",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/me/work-area",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/models",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -1865,6 +1901,18 @@
     "path": "/api/app/organizations/{org_id}/agent-groups",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-groups",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-lines",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -1968,6 +2016,30 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channel-categories",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories/{category_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories/{category_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channel-categories/{category_id}/place",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels",
     "methods": [
       "POST"
@@ -2058,9 +2130,27 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/place",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/read",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/mute",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/mute",
+    "methods": [
+      "DELETE"
     ]
   },
   {
@@ -2088,9 +2178,93 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/reactions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/reactions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/messages/{message_id}/reactions",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/archive",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/close",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/follow",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/follow",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/mission",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/read",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/reopen",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/tasks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/unarchive",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2109,6 +2283,24 @@
     "path": "/api/app/organizations/{org_id}/dashboards/home",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2136,6 +2328,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/issues",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/machines",
     "methods": [
       "GET"
@@ -2148,9 +2346,27 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2160,7 +2376,25 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/order",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/sidebar/tools",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/tools",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/sidebar/view",
     "methods": [
       "GET"
     ]
@@ -2168,7 +2402,19 @@
   {
     "path": "/api/app/organizations/{org_id}/me/sidebar/view",
     "methods": [
-      "GET"
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/logo",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/logo",
+    "methods": [
+      "DELETE"
     ]
   },
   {
@@ -2184,6 +2430,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/members/{user_id}/removal",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/members/{user_id}/roles",
     "methods": [
       "PUT"
@@ -2191,6 +2449,60 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/missions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/brain",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/files",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/plan",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/settings",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/summary",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notification-prefs",
     "methods": [
       "GET"
     ]
@@ -2208,6 +2520,36 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/notifications/done-all",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/read-all",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/{notice_id}/done",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/{notice_id}/read",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/notifications/{notice_id}/snooze",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/overview",
     "methods": [
       "GET"
@@ -2220,6 +2562,30 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/people/{person_id}/avatar",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/avatar",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/avatar",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/status",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/roles",
     "methods": [
       "GET"
@@ -2229,6 +2595,12 @@
     "path": "/api/app/organizations/{org_id}/roles",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/permissions/{row}",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2250,9 +2622,21 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/roles/{role_id}/members/preview",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2292,7 +2676,55 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/settings",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage/migrate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage/migration",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/storage/test",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/task-manager",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/task-manager/{run_id}/steps",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/tasks/{task_id}/output",
     "methods": [
       "GET"
     ]
@@ -2322,9 +2754,141 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/bulk/delete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/graph",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/import/github",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/pages",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/append",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/context",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/history",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/lock",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/move",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/pin",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/rename",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/versions/{version}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/search",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/trash/purge",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/trash/restore",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2396,6 +2960,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/runs/{run_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/runs/{run_id}/cancel",
     "methods": [
       "POST"
@@ -2420,7 +2990,43 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/files",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/versions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/download",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/file",
     "methods": [
       "GET"
     ]
@@ -2444,7 +3050,25 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/skill-settings",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/skills",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team",
     "methods": [
       "GET"
     ]
@@ -2498,9 +3122,33 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/calendar/events",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/connectors",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2510,13 +3158,31 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/connectors/custom",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/credentials",
     "methods": [
       "GET"
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/credentials",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/mail/accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/providers",
     "methods": [
       "GET"
     ]
@@ -2540,6 +3206,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/runs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/routines/{routine_id}/take-over",
     "methods": [
       "GET"
@@ -2555,6 +3233,24 @@
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/skills/{skill_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2579,6 +3275,12 @@
     "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2624,6 +3326,12 @@
     ]
   },
   {
+    "path": "/api/app/device-accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/device-accounts/sign-out",
     "methods": [
       "POST"
@@ -2639,6 +3347,12 @@
     "path": "/api/app/invitations/{token}/accept",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/state",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -2824,6 +3538,78 @@
     ]
   },
   {
+    "path": "/api/app/gif-key",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/gif-key",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/gif-key",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-groups/{group_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-groups/{group_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-proposals/{message_id}/routine",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-setup",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agent-setup",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents",
     "methods": [
       "POST"
@@ -2842,6 +3628,48 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/approval-rules",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/approval-rules/{rule_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/audience/mail-loss",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/channels",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/channels",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/group",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/learned-skills",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/unarchive",
     "methods": [
       "POST"
@@ -2849,6 +3677,72 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/setup/{step}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approval-covers/{user_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/approvals/decide",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts-trash",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts-trash/{artifact_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/restore",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/audit",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members/agents/{agent_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/members/agents/{agent_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/voice",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/choices/{choices_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/choices/{choices_id}/answer",
     "methods": [
       "POST"
     ]
@@ -2863,6 +3757,264 @@
     "path": "/api/app/organizations/{org_id}/computer-pairings/{pairing_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom/{server_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom/{server_id}/refresh",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/custom/{server_id}/tools",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/oauth/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/{connector}/oauth/start",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/{server_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/connectors/{server_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/endpoint-models",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/platform",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/check",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/make-default",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/models",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/remove-copies",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/credentials/{credential_id}/rotate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/gifs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/gifs/{gif_id}/media",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/all",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/batch",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invitations/{invitation_id}/resend",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns/{column_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-columns/{column_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects/{project_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issue-projects/{project_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/by-number/{number}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/activity",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/ask-agent",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/comments",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/criteria/{criterion_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/share",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/mine",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/suggest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/join-requests/{suggestion_id}/deny",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2884,6 +4036,216 @@
   {
     "path": "/api/app/organizations/{org_id}/machines/{machine_id}/desktop-preview",
     "methods": []
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/activity",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/approval-cover",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/chat",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/issues-view",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/issues-view",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/right-hand-approvals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/right-hand-approvals",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/me/start",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/memories/{memory_id}/team",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/polls/{poll_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/polls/{poll_id}/vote",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/questions/{question_id}/answer",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/questions/{question_id}/dismiss",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/right-hand-decisions/{decision_id}/undo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/describe-rule",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/parse-rule",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/parse-schedule",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/duplicate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/run",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/search",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/agents/{handle}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-proposals/{message_id}/undo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/items",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/items/{item_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/items/{item_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/items/{item_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/voice/allowed",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/voice/{clip_id}/audio",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/speech-key",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/speech-key",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/speech-key",
+    "methods": [
+      "PUT"
+    ]
   },
   {
     "path": "/api/computers/browser-preview",

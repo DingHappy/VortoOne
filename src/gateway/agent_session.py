@@ -83,6 +83,29 @@ PROACTIVE_NOTE = (
 )
 
 
+def custom_connectors_allowed(*, kind: str, scope: str, profile: str, untrusted_input: bool = False) -> bool:
+    """自定义连接器带着所有者的账号：只进有人能批的、通用范围（没有文件 / 命令 / Git）的所有者会话。
+    手机（owner_device）、IM、AI 应用、无人值守、项目会话都没有。"""
+    from src.gateway.workspace_scope import GENERAL
+    return kind == "web" and scope == GENERAL and profile == "external" and not untrusted_input
+
+
+def sync_custom_connector_tools(agent, repo_root: str, *, scope: str) -> None:
+    """长期活着的主要聊天每回合开始时对一次：所有者刚接、刚停的连接器下一句话就生效。没变就一个字节都不动。"""
+    from src.agents.tools.custom_connectors import PREFIX, build_custom_connector_tools
+    capabilities = getattr(agent, "_capabilities", None)
+    if capabilities is None:
+        return
+    allowed = custom_connectors_allowed(kind="web", scope=scope, profile=capabilities.profile,
+                                        untrusted_input=agent.untrusted_input)
+    wanted = build_custom_connector_tools(repo_root, agent.confirm_gate) if allowed else []
+    current = [tool for name, tool in agent.tools.items() if name.startswith(PREFIX)]
+    shape = lambda tools: sorted((t.name, t.description, t.operation_kind, repr(t.input_schema)) for t in tools)
+    if shape(wanted) != shape(current):
+        agent.remove_tools({tool.name for tool in current})
+        agent.add_tools(wanted)
+
+
 def build_session(repo_root: str, *, kind: str, confirm=None, on_progress=None,
                   on_tool=None, on_tool_event=None, on_plan=None, llm=None, max_steps=None,
                   capability_profile=None, auto_approve: bool = False,
@@ -262,6 +285,10 @@ def build_session(repo_root: str, *, kind: str, confirm=None, on_progress=None,
             from src.plugins import build_plugin_tools, enabled_plugins
             active_plugins = enabled_plugins()
             tools += build_plugin_tools(active_plugins, confirm=gated_confirm)
+            if custom_connectors_allowed(kind=kind, scope=workspace_scope, profile=profile,
+                                         untrusted_input=bool(untrusted_input)):
+                from src.agents.tools.custom_connectors import build_custom_connector_tools
+                tools += build_custom_connector_tools(repo_root, gated_confirm)
     else:
         tools = build_agent_tools(repo_root, confirm=gated_confirm, on_progress=on_progress,
                                   with_artifacts=(kind == "web"),   # 制品查看页只有 Web 有

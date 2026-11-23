@@ -427,7 +427,7 @@ class ConnectedComputers:
     def _scope_rows(data, member_id):
         return data["computers"] if member_id is None else data["member_computers"]
 
-    def rename(self, connector_id, name, *, member_id=None):
+    def rename(self, connector_id, name, *, member_id=None, current_only=False):
         name = _name(name)
         if member_id is not None:
             self._require_member(member_id)
@@ -435,13 +435,22 @@ class ConnectedComputers:
             data = self._load()
             item = next((item for item in self._scope_rows(data, member_id) if item["connector_id"] == connector_id
                          and item.get("paired_member_id") == member_id), None)
-            if item is None:
+            if item is None or (current_only and not self._current(item, self.identity())):
                 raise KeyError(connector_id)
             item["name"] = name
             self._save(data)
             return self._public(item)
 
     def revoke(self, connector_id, *, member_id=None) -> dict:
+        row, _ = self._revoke(connector_id, member_id, current_only=False)
+        return row
+
+    def revoke_epoch(self, connector_id, *, member_id=None, current_only: bool) -> str:
+        """Revoke a pairing and return its credential epoch before the registry changes."""
+        _, retired_epoch = self._revoke(connector_id, member_id, current_only=current_only)
+        return retired_epoch
+
+    def _revoke(self, connector_id, member_id, *, current_only) -> tuple[dict, str]:
         if member_id is not None:
             self._require_member(member_id)
         with self._lock():
@@ -449,8 +458,9 @@ class ConnectedComputers:
             rows = self._scope_rows(data, member_id)
             item = next((item for item in rows if item["connector_id"] == connector_id
                          and item.get("paired_member_id") == member_id), None)
-            if item is None:
+            if item is None or (current_only and not self._current(item, self.identity())):
                 raise KeyError(connector_id)
+            retired_epoch = item["credential_epoch"]
             if item["revoked_at"] is None:
                 item["revoked_at"] = int(self.clock())
                 if member_id is not None:
@@ -458,7 +468,7 @@ class ConnectedComputers:
                 else:
                     item["credential_epoch"] = uuid.uuid4().hex
                 self._save(data)
-            return self._public(item)
+            return self._public(item), retired_epoch
 
     def _check_binding(self, binding, *, pairer=_ANY_PAIRER) -> bool:
         if not isinstance(binding, dict) or any(not _id(binding.get(k)) for k in _BINDING):

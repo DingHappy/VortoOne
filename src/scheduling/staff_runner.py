@@ -11,9 +11,16 @@ def set_staff_service(root, runner=None, *, on_update=None):
         _SERVICES.pop(key, None)
         return None
     from src.agents.staff import execute_staff
+    from src.gateway.computer_file_authority import without_owner_turn
     from src.workflow.staff.service import StaffService
     service = StaffService(key, runner, execute=None, on_update=on_update)
-    service.execute = partial(execute_staff, key, approval_service=service)
+    run = partial(execute_staff, key, approval_service=service)
+
+    async def execute(*args, **kwargs):
+        # 任务活得比派活那一回合久：不继承主人在主要聊天里的电脑、浏览器授权
+        with without_owner_turn():
+            return await run(*args, **kwargs)
+    service.execute = execute
     service.actions.recover()
     service.recover_quotas()
     service.recover()

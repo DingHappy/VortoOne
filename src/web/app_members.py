@@ -10,13 +10,15 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Mapping, Optional
 
 from src.agents import identity_groups as rules
 from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE
 from src.agents.principal import Principal
+from src.web import app_prefs
 from src.web import app_views as views
-from src.workflow.members.registry import MemberRegistry, Missing, Refused
+from src.workflow.members.registry import JoinSuggestionConflict, MemberRegistry, Missing, Refused
 
 # 界面的权限键 → 内核的权限项
 _KEYS: Dict[str, str] = {
@@ -114,7 +116,10 @@ def permission_keys(root: str, actor: Principal) -> List[str]:
 
 
 def roles(root: str, actor: Principal) -> Dict[str, Any]:
-    state = MemberRegistry(root).snapshot()
+    return _roles_view(MemberRegistry(root).snapshot(), actor)
+
+
+def _roles_view(state: Mapping[str, Any], actor: Principal) -> Dict[str, Any]:
     owner, mine, posts = _standing(state, actor)
     manages = rules.has("space.manage_posts", mine, posts, owner=owner)
     held = [set(member.get("groups") or []) for member in state["members"].values()]
@@ -174,6 +179,18 @@ def change_role(root: str, actor: Principal, role_id: str, body: Mapping[str, An
     MemberRegistry(root).change_group(actor, role_id, **change)
 
 
+def set_role_row(root: str, actor: Principal, row: str, everyone: int,
+                 holders: List[tuple[str, int]]) -> Dict[str, Any]:
+    item = _KEYS.get(row)
+    if row != "computers" and (item is None or item == ADMIN):
+        raise ValueError("没有这个权限项")
+    levels = dict(holders)
+    if len(levels) != len(holders):
+        raise ValueError("身份组不能重复")
+    state = MemberRegistry(root).set_permission_row(actor, item, everyone, levels)
+    return _roles_view(state, actor)
+
+
 def delete_role(root: str, actor: Principal, role_id: str) -> None:
     MemberRegistry(root).delete_group(actor, role_id)
 
@@ -185,16 +202,26 @@ def reorder_roles(root: str, actor: Principal, ids: Any) -> None:
 
 
 def members(root: str) -> List[Dict[str, Any]]:
-    """所有者，加上在册的成员。成员没有邮箱和头像：登记处不存这些。"""
+    """所有者与在册成员，附界面使用的个人头像和时区。"""
+    from src.web import app_profile_avatar
+
     state = MemberRegistry(root).snapshot()
-    timezone = views.person(root)["timezone"]
-    rows = [views.person(root)]
+    owner = views.person(root)
+    default_timezone = owner["timezone"]
+    requires_auth = views.owner_connection()
+    timezones = app_prefs.personal_timezones(root) if requires_auth else {}
+    owner["timezone"] = timezones.get(owner["userId"], default_timezone)
+    org_id = views.home_id(root)
+    rows = [owner]
     for member_id, member in sorted(state["members"].items(), key=lambda pair: str(pair[1].get("joined") or "")):
+        avatar = app_profile_avatar.current(root, org_id, member_id) if requires_auth else None
         rows.append({"userId": member_id, "name": str(member.get("name") or member_id),
                      "email": str(member.get("email") or ""), "image": None,
+                     "avatarUrl": avatar,
                      "role": "member", "roleIds": [group for group in member.get("groups") or []
                                                    if group in state["groups"]],
-                     "joinedAt": str(member.get("joined") or ""), "handle": member_id, "timezone": timezone})
+                     "joinedAt": str(member.get("joined") or ""), "handle": member_id,
+                     "timezone": timezones.get(member_id, default_timezone)})
     return rows
 
 
@@ -202,6 +229,20 @@ def set_member_roles(root: str, actor: Principal, member_id: str, role_ids: Any)
     if not isinstance(role_ids, list) or any(not isinstance(item, str) for item in role_ids):
         raise ValueError("roleIds 必须是字符串列表")
     return MemberRegistry(root).set_member_groups(actor, member_id, role_ids)
+
+
+def role_mail_loss(root: str, actor: Principal, role_id: str, member_ids: List[str]) -> Dict[str, Any]:
+    MemberRegistry(root).check_group_grants(actor, role_id, member_ids)
+    # 工作区没有 agent 邮箱绑定。本机 IMAP 是独立能力，授予身份组不会撤掉它的访问。
+    return {"mailboxes": []}
+
+
+def removal_preview(root: str, actor: Principal, member_id: str) -> Dict[str, Any]:
+    """读已在册成员的移除预览，实际移除仍要重新核对权限。"""
+    if not MemberRegistry(root).manages(actor, member_id):
+        raise Refused("不能移除这个成员")
+    # 当前移除不转交 Agent、不变更模型或例行工作，也不读取成员的私有电脑登记。
+    return {"heir": None, "agents": [], "losePlan": [], "computers": [], "routines": 0}
 
 
 def remove_member(root: str, actor: Principal, member_id: str) -> None:
@@ -215,17 +256,67 @@ def remove_member(root: str, actor: Principal, member_id: str) -> None:
 
 # ── 成员自己看到的「我」──────────────────────────────────────────────────────
 
+def member_auth_key(account: Mapping[str, Any]) -> str:
+    """成员账号在界面偏好里的键：跟着账号走，和成员 id、所有者 id 分开。"""
+    return "account:" + str(account["id"])
+
+
 def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any]:
     """登录的成员看到的自己。账号还没加入空间（或已被移除）时没有任何空间。"""
+    from src.web import app_profile_avatar
+
     state = MemberRegistry(root).snapshot()
     joined = actor.id in state["members"]
+    avatar = app_profile_avatar.current(root, views.home_id(root), actor.id) if joined else None
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": None, "locale": "zh-Hans", "localeAuto": False},
+                 "email": str(account["email"]), "image": avatar,
+                 **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
-                           "showActivity": True, "permissions": permission_keys(root, actor),
-                           "memberRoutineProposals": True, "teamChannels": True}] if joined else [],
+                           **views.workspace_display(root, actor), "permissions": permission_keys(root, actor),
+                           "memberRoutineProposals": True, "teamChannels": True,
+                           "channelCategories": True}] if joined else [],
     }
+
+
+# ── 加入建议 ──────────────────────────────────────────────────────────────────
+
+def join_suggestions(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    pending = MemberRegistry(root).join_suggestions(actor)
+    rows = [{"id": key, "email": item["email"], "note": item["note"] or None, "createdAt": item["created"]}
+            for key, item in sorted(pending.items(), key=lambda row: row[1]["created"])]
+    if actor.is_owner:
+        for row in rows:
+            item = pending[row["id"]]
+            row.update(name=item["email"], verified=False, confirmed=False, suggestedBy=item["suggested_by"],
+                       link=None, expiresAt=item["expires"])
+    return rows
+
+
+def suggest_join(root: str, actor: Principal, body: Mapping[str, Any]) -> Dict[str, str]:
+    if set(body) - {"email", "note"}:
+        raise ValueError("加入建议只接受邮箱和备注")
+    email = body.get("email")
+    if not isinstance(email, str) or not _EMAIL.fullmatch(email.strip()):
+        raise JoinSuggestionConflict("join.invalid_email", "邮箱格式不对")
+    return {"id": MemberRegistry(root).suggest_join(actor, email, body.get("note", ""))}
+
+
+def deny_join_suggestion(root: str, actor: Principal, suggestion_id: str, body: Mapping[str, Any]) -> None:
+    if set(body) - {"reason"} or not isinstance(body.get("reason", ""), str):
+        raise ValueError("拒绝建议只接受可选文字理由")
+    if body.get("reason", "").strip():
+        raise ValueError("此处无法向对方发送文字理由，请清空理由后拒绝建议")
+    MemberRegistry(root).close_join_suggestion(actor, suggestion_id, review=True)
+
+
+def approve_join_suggestion(root: str, actor: Principal, suggestion_id: str, body: Mapping[str, Any],
+                            origin: str) -> Dict[str, Any]:
+    grants = {"roleIds", "channelIds", "agentIds"}
+    if set(body) - grants or any(body.get(field, []) != [] for field in grants):
+        raise ValueError("通过加入建议只发送默认成员邀请，请在对方加入后设置额外权限")
+    token = MemberRegistry(root).approve_join_suggestion(actor, suggestion_id)
+    return {"outcome": "invited", "url": f"{origin}/invite/{token}", "emailed": False}
 
 
 # ── 邀请 ──────────────────────────────────────────────────────────────────────
@@ -279,6 +370,97 @@ def invite(root: str, actor: Principal, body: Mapping[str, Any], origin: str) ->
     return {"invitation": invitation, "url": invitation["url"]}
 
 
+def all_invitations(root: str, actor: Principal, *, owner_proven: bool = False) -> List[Dict[str, Any]]:
+    """没用掉的邀请，过期的也列出来（status=expired），直到登记处下次清理。"""
+    from datetime import datetime, timezone
+    state = MemberRegistry(root).snapshot()
+    if not _may_see_invitations(state, actor):
+        raise Refused("没有查看邀请的权限")
+    names, moment = _names(root, state), datetime.now(timezone.utc)
+    stamp = moment.isoformat(timespec="seconds")
+    rows = []
+    for invitation_id, item in state["invitations"].items():
+        row = _invitation(invitation_id, item, names)
+        row.pop("url", None)
+        row["status"] = "pending" if str(item.get("expires") or "") > stamp else "expired"
+        row["canRegenerateLink"] = bool(owner_proven and actor.is_owner and row["status"] == "pending"
+                                        and MemberRegistry.can_rotate_email_invitation(state, invitation_id, moment))
+        rows.append(row)
+    return sorted(rows, key=lambda row: row["createdAt"], reverse=True)
+
+
+_EMAIL = re.compile(r"\A[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{1,63}\Z")
+MAX_BATCH = 50
+
+
+def invite_many(root: str, actor: Principal, body: Mapping[str, Any], origin: str) -> List[Dict[str, Any]]:
+    """一次邀请几个人：每一份照单发邀请的规矩来。加进频道、预先给 agent 这里没有对应能力，拒绝。"""
+    if set(body) - {"emails", "invites", "roleIds", "channelIds", "agentIds", "note"}:
+        raise ValueError("不认识的字段")
+    if body.get("channelIds") or body.get("agentIds"):
+        raise ValueError("邀请时加进频道、预先给 agent 这里还不支持；对方加入后再加")
+    shared = body.get("roleIds") or []
+    wanted: List[tuple] = [(email, shared) for email in body.get("emails") or []]
+    for item in body.get("invites") or []:
+        if not isinstance(item, Mapping) or set(item) - {"email", "roleIds"}:
+            raise ValueError("invites 的每一项只能有 email 和 roleIds")
+        wanted.append((item.get("email"), item.get("roleIds") or shared))
+    if not wanted:
+        raise ValueError("要写至少一个邮箱")
+    if len(wanted) > MAX_BATCH:
+        raise ValueError(f"一次最多邀请 {MAX_BATCH} 人")
+    members = {str(member.get("email") or "") for member in MemberRegistry(root).snapshot()["members"].values()}
+    results, seen = [], set()
+    for email, role_ids in wanted:
+        address = email.strip().lower() if isinstance(email, str) else ""
+        if not _EMAIL.match(address):
+            results.append({"email": str(email or ""), "status": "invalid_email"})
+            continue
+        if address in seen:                                # 同一批里写了两次
+            results.append({"email": address, "status": "already_invited"})
+            continue
+        seen.add(address)
+        if address in members:
+            results.append({"email": address, "status": "already_member"})
+            continue
+        try:
+            made = invite(root, actor, {"email": address, "roleIds": role_ids}, origin)
+        except Refused:
+            raise
+        except ValueError as error:
+            if "已经是成员" in str(error):
+                results.append({"email": address, "status": "already_member"})
+                continue
+            raise
+        results.append({"email": address, "status": "invited", "invitationId": made["invitation"]["id"],
+                        "url": made["url"]})
+    return results
+
+
+def update_invitation(root: str, actor: Principal, invitation_id: str, body: Mapping[str, Any]) -> Dict[str, Any]:
+    if set(body) - {"roleIds", "channelIds", "agentIds"}:
+        raise ValueError("不认识的字段")
+    if body.get("channelIds") or body.get("agentIds"):
+        raise ValueError("邀请时加进频道、预先给 agent 这里还不支持；对方加入后再加")
+    registry = MemberRegistry(root)
+    if "roleIds" in body:
+        role_ids = body["roleIds"]
+        if not isinstance(role_ids, list) or any(not isinstance(item, str) for item in role_ids):
+            raise ValueError("roleIds 必须是字符串列表")
+        groups = registry.update_invitation(actor, invitation_id, role_ids)
+    else:
+        found = registry.snapshot()["invitations"].get(invitation_id)
+        if found is None:
+            raise LookupError("没有这份邀请")
+        groups = list(found.get("groups") or [])
+    return {"roleIds": groups, "channelIds": [], "agentIds": []}
+
+
+def resend_invitation(root: str, actor: Principal, invitation_id: str, origin: str) -> Dict[str, str]:
+    token, expires_at = MemberRegistry(root).rotate_email_invitation(actor, invitation_id)
+    return {"url": f"{origin}/invite/{token}", "expiresAt": expires_at}
+
+
 def revoke_invitation(root: str, actor: Principal, invitation_id: str) -> None:
     MemberRegistry(root).revoke_invitation(actor, invitation_id)
 
@@ -300,6 +482,17 @@ def invitation_preview(root: str, token: str) -> Optional[Dict[str, Any]]:
                       if role["id"] in (item.get("groups") or [])],
             "agents": [], "yours": 0, "expiresAt": str(item.get("expires") or ""),
             "account": {"exists": exists, "password": exists, "providers": []}}
+
+
+def expired_invitation_state(root: str, token: str) -> Optional[Dict[str, Any]]:
+    """只显示同一令牌原已可见的工作区和邀请人，帮助对方联系原邀请人。"""
+    registry = MemberRegistry(root)
+    item = registry.invitation(token, expired=True)
+    if item is None:
+        return None
+    return {"state": "expired", "orgName": views.overview(root)["name"],
+            "invitedBy": _names(root, registry.snapshot()).get(str(item.get("by") or "")),
+            "at": item["expires"]}
 
 
 def password_link(root: str, actor: Principal, member_id: str, origin: str) -> Dict[str, str]:
@@ -418,11 +611,12 @@ def agent_member_policy(root: str, actor: Principal, staff_id: str,
 
 def member_agent_detail(root: str, actor: Principal, agent_id: str) -> Optional[Dict[str, Any]]:
     """成员看到的 agent 资料：没有用量、运行次数这些所有者的数字。"""
-    agent = next((row for row in member_agents(root, actor) if row["id"] == agent_id), None)
+    agent = next((row for row in directory_agents(root, actor) if row["id"] == agent_id), None)
     if agent is None:
         return None
     return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
                                            "ownerUserId", "createdAt", "audienceMode", "canTalk", "seesDetails")},
+            **({"reportsToAgentId": agent["reportsToAgentId"]} if "reportsToAgentId" in agent else {}),
             "credentialId": None, "budgetUsedPercent": 0, "tokensThisMonth": 0, "runsThisMonth": 0,
             "failuresThisMonth": 0, "runsByDay": [], "pendingApprovals": 0, "channels": []}
 
@@ -440,11 +634,126 @@ def member_overview(root: str, actor: Principal) -> Dict[str, Any]:
             "proposalsWaitingForMe": 0}
 
 
-def people(root: str) -> List[Dict[str, Any]]:
-    """空间里的人。在线状态没有记录，所有者按在线（服务在跑就是他的），成员按离线。"""
-    now = views.now_iso()
-    return [{**row, "online": row["role"] == "owner", "presence": "online" if row["role"] == "owner" else "offline",
-             "status": None, "lastSeenAt": now if row["role"] == "owner" else None} for row in members(root)]
+def _person_status(row: Dict[str, Any], prefs: Optional[Dict[str, Any]], *, own: bool,
+                   connected: bool) -> Dict[str, Any]:
+    from src.web import app_prefs
+
+    availability = (prefs or {}).get("availability")
+    if availability not in app_prefs.AVAILABILITIES:
+        availability = "auto"
+    if not own and (prefs is None or availability == "hidden"):
+        presence, status = "offline", None
+    else:
+        status = app_prefs.status_line(prefs or {})
+        presence = ("online" if availability == "auto" else availability) if own or connected else "offline"
+    view = {**row, "online": presence in {"online", "away", "busy"}, "presence": presence,
+            "status": status, "lastSeenAt": None}
+    if own:
+        view["availability"] = availability
+    return view
+
+
+def people(root: str, viewer: Principal) -> List[Dict[str, Any]]:
+    """给在册成员看状态。隐身者的可用状态和文字仅本人可见。"""
+    from src.web import app_prefs, app_presence
+
+    connected = app_presence.active_people(root)
+    try:
+        saved = app_prefs.status_preferences(root)
+    except ValueError:
+        # 文件损坏时不能确认谁设了隐身。登录照常，公开状态从严。
+        saved = None
+    return [_person_status(row, saved.get(row["userId"], {}) if saved is not None else None,
+                           own=row["userId"] == viewer.id, connected=row["userId"] in connected)
+            for row in members(root)]
+
+
+def set_person_status(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
+    from src.web import app_prefs
+
+    row = views.person(root) if actor.is_owner else next(
+        (person for person in members(root) if person["userId"] == actor.id), None)
+    if row is None:
+        raise Refused("还不是这个空间的成员")
+    if actor.is_owner and views.owner_connection():
+        row["timezone"] = app_prefs.personal_timezones(root).get(actor.id, row["timezone"])
+    saved = app_prefs.set_status(root, actor.id, body)
+    return _person_status(row, saved, own=True, connected=True)
+
+
+def _agent_line_keys(root: str, agents: List[Dict[str, Any]]) -> Dict[str, str]:
+    main_id = views.main_agent_id(root)
+    return {agent["id"]: "main" if agent["id"] == main_id else f"staff:{agent['handle']}" for agent in agents}
+
+
+def directory_agents(root: str, actor: Principal) -> List[Dict[str, Any]]:
+    """从既有可见名册投影团队图；两端都已经可见才返回汇报连线。"""
+    agents = views.agents(root) if actor.is_owner else member_agents(root, actor)
+    if not views.owner_connection():
+        return agents
+    try:
+        reports_to = app_prefs.agent_lines(root)
+    except (ValueError, OSError):
+        # 展示设置损坏不挡名册；修改时由保存入口报告。
+        return agents
+    keys = _agent_line_keys(root, agents)
+    visible = {key: agent_id for agent_id, key in keys.items()}
+    for agent in agents:
+        supervisor = reports_to.get(keys[agent["id"]])
+        if supervisor in visible:
+            agent["reportsToAgentId"] = visible[supervisor]
+    return agents
+
+
+def set_agent_lines(root: str, changes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    keys = _agent_line_keys(root, views.agents(root))
+    lines = {}
+    for row in changes:
+        agent, supervisor = row["agentId"], row["reportsToAgentId"]
+        if agent not in keys or (supervisor is not None and supervisor not in keys):
+            raise LookupError("没有这个团队智能体")
+        key = keys[agent]
+        if key in lines:
+            raise ValueError("同一批不能重复设置一个智能体")
+        lines[key] = keys[supervisor] if supervisor is not None else None
+    previous = app_prefs.set_agent_lines(root, lines)
+    visible = {key: agent_id for agent_id, key in keys.items()}
+    return {"previous": [{"agentId": visible[agent], "reportsToAgentId": visible.get(old) if old is not None else None}
+                          for agent, old in previous.items()]}
+
+
+def team_directory(root: str, actor: Principal, *, activity: bool, main_running: bool) -> Dict[str, Any]:
+    """团队页沿用人员和可见 agent 名册，只投影团队列表需要的字段。"""
+    agents = directory_agents(root, actor)
+    running = views.running_staff(root, None if actor.is_owner else actor.id) if activity else set()
+    main = views.main_agent_id(root)
+    return {
+        "agents": [
+            {**{key: agent[key] for key in ("id", "name", "handle", "role", "ownerUserId", "canTalk", "seesDetails")},
+             **({"reportsToAgentId": agent["reportsToAgentId"]} if "reportsToAgentId" in agent else {}),
+             "appearance": agent.get("appearance"), "capabilities": [],
+             "busy": main_running if agent["id"] == main else agent["handle"] in running}
+            for agent in agents
+        ],
+        "people": [{"id": row["userId"], "name": row["name"], "image": row["image"]} for row in members(root)],
+        # 当前没有在这个家内登记发给其他 agent 的咨询。
+        "consultations": [],
+    }
+
+
+def update_person_timezone(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
+    if body.keys() - {"handle", "timezone"}:
+        raise ValueError("个人资料目前只能更改时区")
+    person = next((row for row in people(root, actor) if row["userId"] == actor.id), None)
+    if person is None:
+        raise Refused("还不是这个空间的成员")
+    # 界面保存时区时也会传回现在的 handle；提及用的标识暂不支持改写。
+    if "handle" in body and body["handle"] != person["handle"]:
+        raise ValueError("目前不支持修改用户名")
+    if "timezone" in body:
+        saved = app_prefs.set_personal_timezone(root, actor.id, body["timezone"])
+        person["timezone"] = saved if saved is not None else views.person(root)["timezone"]
+    return person
 
 
 def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:

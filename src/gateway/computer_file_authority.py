@@ -48,6 +48,17 @@ def discard_prompt(prompt_id: str) -> None:
 
 
 @contextmanager
+def without_owner_turn():
+    """后台任务会复制创建它那一刻的上下文；主人那一回合的电脑与浏览器授权不跟着进去。"""
+    turn, confirmation = current_owner_turn.set(None), current_file_confirmation.set(None)
+    try:
+        yield
+    finally:
+        current_file_confirmation.reset(confirmation)
+        current_owner_turn.reset(turn)
+
+
+@contextmanager
 def owner_prompt(root: str, session: str, item: dict):
     record = _queued.get(item["id"])
     owner = None

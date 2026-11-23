@@ -88,6 +88,7 @@ class StaffConversations:
             member, role = self._identity(member_id)
             inventory = self.ledger.scan()
             tasks = sorted((t for t in inventory.tasks if self._matches(t, member_id)
+                            and not t.collaboration.get('dispatch', {}).get('channel')    # 频道里的事不进私聊
                             and (initiator is ANYONE or _initiator(t) == initiator)),
                            key=lambda t: (t.created, t.id), reverse=True)
             all_tasks = tasks
@@ -196,6 +197,45 @@ class StaffConversations:
             else:
                 raise ValueError('不支持的角色任务操作')
             return {'task': self._view(task)}
+
+    def stop_channel_task(self, task_id: str) -> bool:
+        """所有者停止频道里交给 agent 的一件事。走和私聊停止同一条有审计的路径。"""
+        require_owner_route(self.root)
+        with TASK_STATE_LOCK:
+            task = self.ledger.load(task_id)
+            dispatch = (task.collaboration or {}).get('dispatch', {}) if task is not None else {}
+            if task is None or not dispatch.get('channel') or not dispatch.get('member'):
+                raise LookupError('没有这件事')
+            if task.status not in {'queued', 'running', 'blocked'}:
+                return False
+            decision = self.act(dispatch['member'], task_id, {
+                'verdict': 'stop', 'note': '主人停止频道里交给 agent 的事', **self._view(task)['confirmation']})
+            return decision['stop_requested'] is True
+
+    def stop_routine(self, routine_id: str) -> bool:
+        """Request a stop for the occurrence held by the routine's current claim."""
+        from src.workflow.staff.routines import Routines
+
+        require_owner_route(self.root)
+        with TASK_STATE_LOCK:
+            routine = next((item for item in Routines(self.root).list()
+                            if item['id'] == routine_id and not item['retired']), None)
+            if routine is None:
+                raise LookupError('没有这条例行工作')
+            task_id = routine['state'].get('task')
+            if not task_id:
+                return False
+            task = self._task(routine['member'], task_id)
+            reference = task.collaboration['dispatch'].get('routine')
+            if not isinstance(reference, dict) or reference.get('id') != routine_id:
+                raise ValueError('当前例行工作与任务的认领记录不一致')
+            if task.status not in {'queued', 'running', 'blocked'}:
+                return False
+            decision = self.act(routine['member'], task_id, {
+                'verdict': 'stop', 'note': '主人停止这条例行工作的当前执行',
+                **self._view(task)['confirmation'],
+            })
+            return decision['stop_requested'] is True
 
     def propose_member(self, body):
         require_owner_route(self.root)

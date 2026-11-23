@@ -83,6 +83,84 @@ def test_a_member_sees_the_agents_they_can_use_and_never_the_main_assistant(home
     assert member.post(f"{home['base']}/channels/{main_channel}/messages", json={"body": "你好"}).status_code == 404
 
 
+def test_team_directory_uses_existing_visible_rosters(home):
+    ana = _join(home, name="安")
+    url = f"{home['base']}/team"
+    owner = home["owner"].get(url)
+    assert owner.status_code == 200
+    assert owner.headers["cache-control"] == "no-store"
+    names = {row["id"]: row["name"] for row in owner.json()["agents"]}
+    assert names == {agent["id"]: agent["name"] for agent in (home["main"], home["agent"])}
+    assert owner.json()["consultations"] == []
+    for agent in owner.json()["agents"]:
+        assert "channelIds" not in agent and "reportsToAgentId" not in agent and "instructions" not in agent
+
+    data = ana.get(url).json()
+    assert [agent["id"] for agent in data["agents"]] == [home["agent"]["id"]]
+    assert data["agents"][0]["seesDetails"] is False
+    assert data["agents"][0]["capabilities"] == []
+    assert {person["name"] for person in data["people"]} == {"我", "安"}
+    assert all(set(person) == {"id", "name", "image"} for person in data["people"])
+    assert ana.get(url, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    assert TestClient(home["app"]).get(url).status_code == 401
+    assert ana.get("/api/app/organizations/other/team").status_code == 404
+    assert home["owner"].post(url + "/channel-move", json={}).status_code == 404
+    # agent 所在频道的接口已经有了（见 test_app_agent_detail_rest.py）：只接受空列表，坏请求 400
+    assert home["owner"].put(f"{home['base']}/agents/{home['agent']['id']}/channels", json={}).status_code == 400
+
+    MemberRegistry(home["root"]).set_act_level_on(OWNER_P, home["staff"]["id"], ana.member_id, "none")
+    assert ana.get(url).json()["agents"] == []
+    assert home["owner"].get(url).json()["agents"][1]["id"] == home["agent"]["id"]
+
+
+def test_team_directory_only_shows_the_callers_current_run(home, monkeypatch):
+    from types import SimpleNamespace
+
+    from src.workflow.tasks.tasks import TaskLedger
+
+    ana = _join(home)
+    lee = _join(home, "lee@example.com", "李")
+    url = f"{home['base']}/team"
+    ledger = TaskLedger(home["root"])
+    staff_handle = home["staff"]["id"]
+
+    def save(status, initiator=None):
+        dispatch = {"source": "staff", "member": staff_handle, "delivery": "notify"}
+        task = home["service"].collaboration("sid-owner").create("private fixture prompt", staff_handle,
+                                                               dispatch=dispatch)
+        task.status = status
+        if initiator is not None:
+            task.collaboration["dispatch"]["initiator"] = initiator
+        assert ledger.save(task)
+        return task
+
+    def busy(client):
+        answer = client.get(url)
+        assert answer.status_code == 200, answer.text
+        return {agent["handle"]: agent["busy"] for agent in answer.json()["agents"]}
+
+    save("queued", {"kind": "member", "id": lee.member_id})
+    save("blocked")
+    save("running", {"kind": "invalid", "id": lee.member_id})
+    own_run = save("running")
+    ana_run = save("running", {"kind": "member", "id": ana.member_id})
+    assert busy(home["owner"]) == {"assistant": False, staff_handle: True}
+    assert busy(ana) == {staff_handle: True}
+    assert busy(lee) == {staff_handle: False}
+
+    own_run.status = ana_run.status = "done"
+    ledger.save(own_run)
+    ledger.save(ana_run)
+    assert busy(ana) == {staff_handle: False}
+    monkeypatch.setattr("src.web.routers.app_api.existing_bridge",
+                        lambda root: SimpleNamespace(active_runs=lambda: [{"status": "running"}]))
+    assert busy(home["owner"]) == {"assistant": True, staff_handle: False}
+    assert busy(lee) == {staff_handle: False}
+
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert busy(TestClient(home["app"])) == {"assistant": False, staff_handle: False}
+
+
 def test_screen_status_checks_live_computer_clearance_and_agent_visibility(home):
     member = _join(home)
     registry = MemberRegistry(home["root"])
@@ -589,8 +667,9 @@ def test_owner_data_lists_are_empty_for_members_without_running_their_handlers(h
     def boom(_org_id):
         raise AssertionError("成员的空回答不该进处理函数")
     monkeypatch.setattr("src.web.routers.app_api._root", boom)
+    # approvals 不在这里：替所有者代批的成员要进处理函数（没在代批时是空的，见 test_approval_cover.py）
     paths = ["memories", f"agents/{home['agent']['id']}/memories", "skills", "routines", "notifications", "runs",
-             "usage", "approvals", "artifacts", "active-runs"]
+             "usage", "artifacts", "active-runs"]
     for path in paths:
         url = f"{home['base']}/{path}"
         answer = member.get(url)
