@@ -361,7 +361,8 @@ def test_device_routes_hide_stale_pairings_after_trust_change(home):
         home['store'].authenticate(grant['token'])
 
 
-def test_device_revoke_does_not_close_a_replacement_credential(home, monkeypatch):
+@pytest.mark.parametrize("route", ["/devices/computers/", "/machines/"])
+def test_computer_revoke_does_not_close_a_replacement_credential(home, monkeypatch, route):
     from src.gateway.computer_connections import connections
 
     grant = paired(home)
@@ -387,7 +388,7 @@ def test_device_revoke_does_not_close_a_replacement_credential(home, monkeypatch
     monkeypatch.setattr(connections, '_schedule', scheduled.append)
     monkeypatch.setattr(connections, 'revoked', new_connection_before_notify)
     owner = browser(home, owner=True)
-    response = owner.delete(home['base'] + '/devices/computers/' + CONNECTOR)
+    response = owner.delete(home['base'] + route + CONNECTOR)
     assert response.status_code == 204
     assert notified == [grant['credential_epoch']]
     assert scheduled == []

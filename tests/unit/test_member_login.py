@@ -52,6 +52,28 @@ def _group(home, name, permissions):
     return home["owner"].post(f"{home['base']}/roles", json={"name": name, "permissions": permissions}).json()["id"]
 
 
+def test_permission_row_uses_current_owner_proof_and_denies_existing_member_sessions(home):
+    owner, base = home["owner"], home["base"]
+    ordinary = _join(home)
+    managers = _group(home, "成员管理员", ["manage_roles", "post"])
+    manager = _join(home, "manager@example.com", roleIds=[managers])
+    path = f"{base}/permissions/post"
+    body = {"everyone": 0, "roles": []}
+    before = owner.get(f"{base}/roles").json()
+    for member in (ordinary, manager):
+        assert member.put(path, json=body).status_code == 403
+        assert member.patch(f"{base}/roles/everyone", json={"permissions": []}).status_code == 403
+
+    guest = TestClient(home["app"])
+    assert guest.put(path, json=body).status_code == 401
+    assert guest.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    assert guest.put(path, json=body, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    assert owner.get(f"{base}/roles").json() == before
+    allowed = guest.put(path, json=body, headers=ORIGIN)
+    assert allowed.status_code == 200, allowed.text
+    assert "post" not in ordinary.get("/api/app/me").json()["organizations"][0]["permissions"]
+
+
 # ── 整条路 ────────────────────────────────────────────────────────────────────
 
 def test_invite_sign_up_accept_and_see_myself(home):
@@ -130,6 +152,56 @@ def test_workspace_mail_provider_catalog_does_not_use_the_host_mailbox(home, mon
                         json={"name": "还没加入", "email": "invited@example.com", "password": PASSWORD})
     assert signed.status_code == 200
     assert guest.get(url).status_code == 403
+
+
+def test_device_accounts_lists_only_the_current_signed_in_profile(home):
+    path = "/api/app/device-accounts"
+    owner = home["owner"]
+    first = _join(home, email="first@example.test")
+    second = _join(home, email="second@example.test")
+    seen = []
+    for client, role in ((owner, "owner"), (first, "member"), (second, "member")):
+        profile = client.get("/api/app/me").json()
+        response = client.get(path)
+        assert response.status_code == 200, response.text
+        assert response.headers["Cache-Control"] == "no-store"
+        [account] = response.json()["accounts"]
+        assert account["current"] is True
+        assert account["user"] == {key: profile["user"][key] for key in ("id", "name", "email", "image")}
+        assert account["organizations"] == profile["organizations"]
+        assert [org["role"] for org in account["organizations"]] == [role]
+        assert account["unread"] == []
+        seen.append(account["user"]["id"])
+    assert len(set(seen)) == 3
+
+    assert first.post("/api/app/device-accounts/sign-out", json={}).status_code == 200
+    assert first.get(path).status_code == 401
+    assert second.get(path).json()["accounts"][0]["user"]["id"] == seen[-1]
+
+
+def test_device_accounts_does_not_infer_a_session_or_workspace(home, monkeypatch):
+    from src.web.auth import SESSION_COOKIE
+
+    path = "/api/app/device-accounts"
+    visitor = TestClient(home["app"], headers=ORIGIN)
+    assert visitor.get(path).status_code == 401
+    token = _invite(home)
+    assert visitor.post("/api/auth/sign-up/email", headers={"x-invitation-token": token}, json={
+        "name": "未加入", "email": "ana@example.com", "password": PASSWORD,
+    }).status_code == 200
+    pending = visitor.get(path)
+    assert pending.status_code == 200, pending.text
+    [account] = pending.json()["accounts"]
+    assert account["current"] is True
+    assert account["user"]["email"] == "ana@example.com"
+    assert account["organizations"] == []
+    assert visitor.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
+
+    owner_cookie = TestClient(home["app"], cookies={SESSION_COOKIE: TOKEN})
+    assert owner_cookie.get(path).status_code == 200
+    assert owner_cookie.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert TestClient(home["app"]).get(path).json() == {"accounts": []}
 
 
 def test_a_stolen_cookie_dies_with_sign_out(home):

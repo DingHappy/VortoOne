@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from src.workflow.members import channel_threads
 from src.workflow.members.channel_history import OWNER_KEY, _stamp
 from src.workflow.members.channels import TeamChannels
 from src.workflow.members.registry import Missing, Refused
@@ -72,6 +73,8 @@ class MissionDrafts:
                     if (previous["staff_id"], previous["title"], previous["goal"]) != (staff_id, title, goal):
                         raise DraftConflict("这个线程已经有另一份任务草案")
                     return dict(previous)
+                # Thread archive and draft insertion share the outer registry lock.
+                channel_threads.read(conn, thread_id).allow_reply()
 
             try:
                 service = get_staff_service(registry.root)
@@ -101,6 +104,24 @@ class MissionDrafts:
             if draft is None or not self._can_read(state, actor, draft["channel_id"]):
                 raise Missing("没有这个任务草案")
             return dict(draft)
+
+    def assigned_model(self, actor, identifier):
+        """Read only the model from the staff revision recorded by the draft."""
+        from src.workflow.staff.registry import StaffRegistry
+
+        with TASK_STATE_LOCK:
+            draft = self.get(actor, identifier)
+            try:
+                staff = StaffRegistry(self.channels.registry.root).member(draft["staff_id"])
+            except ValueError as error:
+                raise AgentUnavailable("草案绑定的专员登记不可用") from error
+            if (staff.get("revision"), staff.get("role"), staff.get("engine"), staff.get("status")) != (
+                    draft["staff_revision"], draft["role_id"], "vortocode", "active"):
+                raise AgentUnavailable("草案绑定的专员已变更，无法读取原配置")
+            model = staff.get("model", "")
+            if not isinstance(model, str) or len(model) > 160:
+                raise AgentUnavailable("草案绑定的专员模型配置无效")
+            return model
 
     def listing(self, actor, *, channel_id=None, staff_id=None, query="", limit=50, include_drafts=True):
         self._owner(actor)

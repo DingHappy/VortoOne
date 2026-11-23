@@ -39,7 +39,7 @@ from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
-from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
+from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
@@ -446,18 +446,40 @@ async def device_sign_out(request: Request, response: Response):
 
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
+async def _current_profile(root: str, request: Request, actor):
+    if actor.is_owner:
+        result = views.me(root)
+    else:
+        result = await _members_call(lambda: app_members.me(root, actor, request.state.member_account))
+    if isinstance(result, dict) and result["organizations"] and (not actor.is_owner or app_staff.owner_proof(request)):
+        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
+    return result
+
+
 @router.get("/api/app/me")
 async def me(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
-    account = getattr(request.state, "member_account", None)
-    if account is None:
-        result = views.me(root)
-    else:
-        result = await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
-    if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
-        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
-    return result
+    return await _current_profile(root, request, member_auth.principal(request, root))
+
+
+@router.get("/api/app/device-accounts")
+async def device_accounts(request: Request, response: Response):
+    """Report the account of this session. Each browser session holds at most one account."""
+    response.headers["Cache-Control"] = "no-store"
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not views.owner_connection():
+            return {"accounts": []}
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", "读取当前账号需要已认证的同源会话")
+    profile = await _current_profile(root, request, actor)
+    if isinstance(profile, JSONResponse):
+        return profile
+    user = profile["user"]
+    return {"accounts": [{"current": True, "user": {key: user[key] for key in ("id", "name", "email", "image")},
+                          "organizations": profile["organizations"], "unread": []}]}
 
 
 @router.get("/api/app/me/unread")
@@ -877,6 +899,34 @@ async def create_role(org_id: str, body: Dict[str, Any], request: Request):
     return await _members_call(lambda: {"id": app_members.create_role(root, who, body)}, write=True)
 
 
+class _PermissionRowHolder(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(min_length=1, max_length=128)
+    level: int
+
+
+class _PermissionRow(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    everyone: int
+    roles: List[_PermissionRowHolder] = Field(max_length=MAX_GROUPS)
+
+
+@router.put(_ORG + "/permissions/{row}")
+async def set_role_permission_row(org_id: str, row: str, body: _PermissionRow, request: Request,
+                                  response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "owner_proof_required", "批量改身份组权限需要已认证的所有者会话")
+    else:
+        result = await _members_call(lambda: app_members.set_role_row(
+            root, who, row, body.everyone, [(holder.id, holder.level) for holder in body.roles]), write=True)
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
+
+
 # 先于 /roles/{role_id} 登记：否则 "order" 会被当成一个身份组的 id
 @router.put(_ORG + "/roles/order", status_code=204)
 async def reorder_roles(org_id: str, body: Dict[str, Any], request: Request):
@@ -1176,9 +1226,7 @@ async def agents(org_id: str, request: Request):
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    if who.is_owner:
-        return {"agents": views.agents(root)}
-    return await _members_call(lambda: {"agents": app_members.member_agents(root, who)})
+    return await _members_call(lambda: {"agents": app_members.directory_agents(root, who)})
 
 
 @router.get(_ORG + "/agent-status")
@@ -1203,6 +1251,27 @@ async def agent_team_directory(org_id: str, request: Request, response: Response
     response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: app_members.team_directory(
         root, who, activity=who.is_member or owner_activity, main_running=main_running))
+
+
+class _AgentLineChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    agentId: str = Field(min_length=1, max_length=128)
+    reportsToAgentId: str | None = Field(min_length=1, max_length=128)
+
+
+class _TeamLinesChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    changes: list[_AgentLineChange] = Field(max_length=500)
+
+
+@router.put(_ORG + "/agent-lines")
+async def set_agent_lines(org_id: str, body: _TeamLinesChange, request: Request, response: Response):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "设置团队图的汇报关系需要已认证的所有者")
+    response.headers["Cache-Control"] = "no-store"
+    changes = [row.model_dump() for row in body.changes]
+    return await _members_call(lambda: app_members.set_agent_lines(root, changes))
 
 
 @router.get(_ORG + "/ai-status")
@@ -1702,6 +1771,13 @@ async def act_team_thread(org_id: str, thread_id: str, request: Request, body: _
     return await _team_call(request, org_id, lambda service, actor: service.change_thread(actor, thread_id, action))
 
 
+@router.put(_THREAD + "/follow")
+@router.delete(_THREAD + "/follow")
+async def follow_team_thread(org_id: str, thread_id: str, request: Request, body: _ThreadAction | None = None):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.set_thread_follow(actor, thread_id, request.method == "PUT"))
+
+
 @router.post(_THREAD + "/read", status_code=204)
 async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor:
@@ -1889,6 +1965,23 @@ async def task_manager(org_id: str, request: Request, since: str = "", doneToday
     view = await asyncio.to_thread(app_work.task_manager, root, main, approving, after, staff=staff,
                                    done_today=doneToday == "true")
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/task-manager/{run_id}/steps")
+async def task_manager_steps(org_id: str, run_id: str, request: Request):
+    from src.web import app_work
+
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "任务步骤只有已认证的所有者能看")
+    if len(run_id) > 160:
+        return _error(404, "not_found", "没有此回合的任务步骤记录")
+    bridge = existing_bridge(root)
+    running = bridge is not None and any(row["runId"] == run_id for row in bridge.active_runs())
+    value = await asyncio.to_thread(app_work.task_steps, root, run_id, running=running)
+    if value is None:
+        return _error(404, "not_found", "没有此回合的任务步骤记录")
+    return JSONResponse(value, headers={"Cache-Control": "no-store"})
 
 
 @router.get(_ORG + "/waiting")
@@ -2865,8 +2958,9 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None, rea
         if actor.is_member and actor.id not in state["members"]:
             raise WikiError(403, "forbidden", _NOT_MEMBER)
         keys = app_members.permission_keys(root, actor)
-        people = frozenset({views.owner_id(root), *state["members"]})
-        return Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys,
+        owner_id = views.owner_id(root)
+        people = frozenset({owner_id, *state["members"]})
+        return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
                                      TeamChannels.readable_public_names(state, actor)))
 
     def execute():
@@ -2901,6 +2995,21 @@ async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
 
 
+@router.get(_WIKI + "/search")
+async def search_wiki(org_id: str, request: Request, q: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.search(q))
+
+
+@router.get(_WIKI + "/folder-audience")
+async def wiki_folder_audience(org_id: str, request: Request, folder: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.folder_audience(folder))
+
+
+@router.put(_WIKI + "/folder-audience")
+async def narrow_wiki_folder_audience(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_folder_audience(body))
+
+
 async def _wiki_import_body(request: Request) -> bytearray:
     if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
         raise WikiError(415, "invalid", "Markdown 导入只接受 JSON 请求")
@@ -2924,6 +3033,26 @@ async def import_wiki_notes(org_id: str, request: Request):
         return wiki.import_notes(data)
 
     return await _wiki_call(request, org_id, import_notes, read_body=_wiki_import_body)
+
+
+@router.get(_WIKI + "/import/github")
+async def preview_wiki_github(org_id: str, request: Request, url: str = Query(..., max_length=2048)):
+    from src.web import app_wiki_github
+
+    def plan(wiki):
+        if not wiki.reader.actor.is_owner:
+            raise WikiError(403, "forbidden", "GitHub 导入需要通过认证的工作区所有者")
+        return app_wiki_github.parse_link(url)
+
+    target = await _wiki_call(request, org_id, plan)
+    if isinstance(target, Response):
+        return target
+    try:
+        data = await app_wiki_github.fetch_notes(target)
+    except WikiError as error:
+        return _error(error.status, error.code, str(error))
+    return Response(data, media_type="application/zip",
+                    headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.post(_WIKI + "/pages", status_code=201)
@@ -2969,6 +3098,11 @@ async def change_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request
             return _error(400, "invalid", "必须指定是否进入上下文")
         return await _wiki_call(request, org_id, lambda wiki: wiki.context(slug, value))
     return await _wiki_call(request, org_id, lambda wiki: wiki.change(slug, attribute, value))
+
+
+@router.put(_WIKI + "/pages/{slug}/audience")
+async def narrow_wiki_audience(org_id: str, slug: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_audience(slug, body))
 
 
 @router.get(_WIKI + "/pages/{slug}/history")
@@ -3086,6 +3220,8 @@ async def _mission_request(org_id, request, action, *, status=200):
         return _error(409, "mission.thread_in_use", str(error))
     except AgentUnavailable as error:
         return _error(409, "mission.agent_unavailable", str(error))
+    except ThreadArchived as error:
+        return _error(409, "thread.archived", str(error))
     except (Damaged, OSError, ValueError):
         return _error(409, "mission.unavailable", "读取或保存任务草案失败")
     return value if isinstance(value, Response) else JSONResponse(value, status_code=status,
@@ -3182,6 +3318,34 @@ async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
         row = drafts.get(actor, mission_id)
         return {"missionId": row["id"], "text": row["goal"], "plan": _mission_progress(),
                 "running": 0, "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/brain")
+async def mission_draft_brain(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        from src.llm import endpoints
+        from src.llm.client import LLMConfig
+        from src.llm.providers import DEFAULT_PROVIDER, chat_target, providers
+        from src.memory.write_policy import redact_secret_like
+
+        configured = drafts.assigned_model(actor, mission_id)
+        with endpoints.LOCK:
+            target = chat_target(configured)
+            if target is not None:
+                available, model = True, target[1]
+            elif endpoints.is_endpoint_model(configured):
+                available, model = False, None
+            else:
+                available = providers()[DEFAULT_PROVIDER].usable
+                model = configured or LLMConfig().model
+        display_model = redact_secret_like(model)[0][:160] if model else None
+        return {"missionId": mission_id, "brain": None, "model": None,
+                "effectiveBrain": "model", "effectiveModel": display_model,
+                "options": [{"kind": "model", "available": available, "defaultModel": display_model,
+                             "models": [{"value": display_model, "label": display_model}] if display_model else []}],
+                "canSetBrain": False, "canSetModel": False}
 
     return await _mission_request(org_id, request, read)
 
@@ -4941,20 +5105,28 @@ async def artifacts(org_id: str, request: Request, response: Response, q: str = 
 
 @router.post(_ORG + "/artifacts/files", status_code=201)
 async def upload_artifact(org_id: str, request: Request, response: Response):
-    from src.utils.home_maintenance import HomeMaintenanceError
+    return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_form)
 
+
+@router.post(_ORG + "/artifacts", status_code=201)
+async def create_artifact(org_id: str, request: Request, response: Response):
+    """Create a private HTML artifact without the multipart upload envelope."""
+    return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_json)
+
+
+async def _create_private_artifact(org_id: str, request: Request, response: Response, read):
     root = _root(org_id)
     if not _may_access_desktop_uploads(request, root):
-        return _error(403, "owner_proof_required", "上传 HTML 制品需要已认证的所有者")
+        return _error(403, "owner_proof_required", "创建或上传制品需要已认证的所有者")
     try:
-        title, html = await app_artifact_upload.read_form(request)
-        artifact = await asyncio.to_thread(views.upload_artifact, root, title, html)
+        title, content = await read(request)
+        artifact = await asyncio.to_thread(views.upload_artifact, root, title, content)
     except app_artifact_upload.UploadError as error:
         return _error(error.status, error.code, str(error))
     except HomeMaintenanceError:
         return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
     except (OSError, ValueError):
-        return _error(503, "unavailable", "暂时无法保存 HTML 制品")
+        return _error(503, "unavailable", "暂时无法保存上传文件")
     response.headers["Cache-Control"] = "no-store"
     return artifact
 
@@ -5234,17 +5406,18 @@ def _known_agent(org_id: str, agent_id: str) -> bool:
 
 @router.get(_ORG + "/agents/{agent_id}")
 async def agent_detail(org_id: str, agent_id: str, request: Request):
+    root = _root(org_id)
     if getattr(request.state, "member_account", None) is not None:
-        root = _root(org_id)
         who = _who(request, root)
         if who is None:
             return _error(403, "forbidden", _NOT_MEMBER)
         detail = await asyncio.to_thread(app_members.member_agent_detail, root, who, agent_id)
         return detail if detail is not None else _error(404, "not_found", "没有这个角色")
-    agent = next((a for a in views.agents(_root(org_id)) if a["id"] == agent_id), None)
+    roster = app_members.directory_agents(root, member_auth.principal(request, root))
+    agent = next((a for a in roster if a["id"] == agent_id), None)
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
-    return views.agent_detail(_root(org_id), agent)
+    return views.agent_detail(root, agent)
 
 
 # ── 新建、修改、归档、恢复、删除 agent（src/workflow/staff/agent_lifecycle.py）──────────

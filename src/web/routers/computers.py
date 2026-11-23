@@ -291,7 +291,7 @@ async def remove_device(org_id: str, machine_id: str, request: Request):
     root, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
-    retired_epoch = await _call(store.revoke_current, machine_id, member_id=member_id)
+    retired_epoch = await _call(store.revoke_epoch, machine_id, member_id=member_id, current_only=True)
     # Notify only the connection that used the now-revoked credential.
     connections.revoked(root, machine_id, credential_epoch=retired_epoch)
     return Response(status_code=204, headers=_PRIVATE)
@@ -342,9 +342,9 @@ async def remove(org_id: str, machine_id: str, request: Request):
     root, store, member_id, _ = _pairer(request, org_id)
     if not _ID.fullmatch(machine_id):
         raise _error(404, 'not_found')
-    revoked = await _call(store.revoke, machine_id, member_id=member_id)
+    retired_epoch = await _call(store.revoke_epoch, machine_id, member_id=member_id, current_only=False)
     # A replacement registration never receives the old credential's revocation.
-    connections.revoked(root, machine_id, credential_epoch=revoked['credential_epoch'] if member_id else None)
+    connections.revoked(root, machine_id, credential_epoch=retired_epoch)
     return Response(status_code=204, headers=_PRIVATE)
 
 

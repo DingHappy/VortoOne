@@ -77,6 +77,91 @@ def test_wiki_private_notes_never_appear_in_outsider_lists_links_or_versions(hom
     }}).status_code == 403
 
 
+def _wiki_audience(*people):
+    return {"audience": {"roleIds": [], "userIds": list(people)}}
+
+
+def test_wiki_owner_narrows_page_without_losing_its_url_and_history(home):
+    owner, member, outsider = home["owner"], _join(home), _join(home, "outer@example.com", "外部")
+    base = home["base"]
+    wiki = base + "/wiki"
+    public = _page(owner, base, title="公开索引")
+    page = _page(owner, base, title="值班说明", body="值班资料，见 [[公开索引]]。")
+    url = f"{wiki}/pages/{page['slug']}"
+    change = url + "/audience"
+    payload = _wiki_audience(member.member_id)
+
+    assert outsider.get(url).status_code == 200
+    assert member.put(change, json=payload).status_code == 403
+    assert TestClient(home["app"]).put(change, json=payload).status_code == 401
+    assert owner.put(change.replace(base, "/api/app/organizations/other"), json=payload).status_code == 404
+    saved = owner.put(change, json=payload)
+    assert saved.status_code == 200 and saved.headers["cache-control"] == "no-store", saved.text
+    assert saved.json()["audience"] == payload["audience"]
+    assert saved.json()["slug"] == page["slug"] and saved.json()["agentContext"] is False
+    assert saved.json()["agentIds"] == []
+    assert saved.json()["version"] == 2
+    assert owner.put(change, json=payload).json() == saved.json()
+    assert member.get(url).json()["body"] == page["body"]
+    assert member.get(url + "/versions/1").json() == {"version": 1, "body": page["body"]}
+
+    for path in (url, url + "/history", url + "/versions/1"):
+        assert outsider.get(path).status_code == 404
+    assert [row["id"] for row in outsider.get(wiki + "/pages").json()["pages"]] == [public["id"]]
+    assert outsider.get(f"{wiki}/pages/{public['slug']}").json()["backlinks"] == []
+    assert outsider.get(wiki + "/graph").json()["edges"] == []
+
+    for expanded in ({"audience": None}, _wiki_audience(member.member_id, outsider.member_id)):
+        refused = owner.put(change, json=expanded)
+        assert refused.status_code == 409 and refused.json()["error"]["code"] == "wiki_audience_expansion"
+    assert owner.get(url).json()["version"] == 2
+    only_me = owner.get("/api/app/me").json()["user"]["id"]
+    narrowed = owner.put(change, json=_wiki_audience(only_me))
+    assert narrowed.status_code == 200 and narrowed.json()["audience"] == _wiki_audience(only_me)["audience"]
+    assert member.get(url).status_code == 404
+
+
+def test_wiki_audience_validates_axes_and_current_page(home):
+    owner, member = home["owner"], _join(home)
+    base = home["base"]
+    made = _page(owner, base)
+    url = f"{base}/wiki/pages/{made['slug']}"
+    change = url + "/audience"
+    payload = _wiki_audience(member.member_id)
+    for body in ({}, _wiki_audience("unknown"), {"audience": {"userIds": []}}):
+        assert owner.put(change, json=body).status_code == 400
+    for body in (
+        {"audience": {"roleIds": ["admin"], "userIds": []}},
+        payload | {"agentIds": ["unknown"]},
+        payload | {"editors": {"roleIds": [], "userIds": []}},
+        payload | {"agentEditorIds": ["unknown"]},
+    ):
+        response = owner.put(change, json=body)
+        assert response.status_code == 409 and response.json()["error"]["code"] == "wiki_audience_unsupported"
+    assert owner.get(url).json() == made
+    neutral = {"agentIds": [], "editors": None, "agentEditorIds": []}
+    assert owner.put(change, json=payload | neutral).status_code == 200
+    assert owner.delete(url).status_code == 204
+    assert owner.put(change, json=payload).status_code == 404
+
+
+def test_wiki_audience_checks_previous_grants_under_the_write_lock(home):
+    member, other = _join(home), _join(home, "other@example.com", "其他")
+    made = _page(home["owner"], home["base"])
+    change = f"{home['base']}/wiki/pages/{made['slug']}/audience"
+
+    def narrow(person):
+        client = TestClient(home["app"], headers={"Authorization": f"Bearer {TOKEN}"})
+        return client.put(change, json=_wiki_audience(person))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(narrow, [member.member_id, other.member_id]))
+    accepted, denied = sorted(responses, key=lambda response: response.status_code)
+    assert [accepted.status_code, denied.status_code] == [200, 409]
+    assert denied.json()["error"]["code"] == "wiki_audience_expansion"
+    assert home["owner"].get(change.removesuffix("/audience")).json()["audience"] == accepted.json()["audience"]
+
+
 def test_wiki_graph_uses_visible_pages_and_current_slugs_for_both_directions(home):
     owner, member, base = home["owner"], _join(home), home["base"]
     wiki = f"{base}/wiki"
@@ -109,6 +194,45 @@ def test_wiki_graph_uses_visible_pages_and_current_slugs_for_both_directions(hom
         {"kind": "page", "slug": referring["slug"], "title": referring["title"]}]
     assert TestClient(home["app"]).get(f"{wiki}/graph").status_code == 401
     assert owner.get("/api/app/organizations/other/wiki/graph").status_code == 404
+
+
+def test_wiki_search_returns_current_matching_titles_in_visible_page_shape(home):
+    owner, member, outsider = home["owner"], _join(home), _join(home, "reader@example.com", "读者")
+    wiki = f"{home['base']}/wiki"
+    prefix = _page(owner, home["base"], title="Release guide", tags=["维护"])
+    other = _page(owner, home["base"], title="Monthly release notes")
+    private = _page(member, home["base"], title="Release draft", audience={
+        "mode": "people", "userIds": [member.member_id],
+    })
+    deleted = _page(owner, home["base"], title="Release old")
+    unrelated = _page(owner, home["base"], title="Checklist", body="Release")
+    assert owner.delete(f"{wiki}/pages/{deleted['slug']}").status_code == 204
+    MemberRegistry(home["root"]).change_group(OWNER_P, "everyone", items=[])
+
+    search = f"{wiki}/search"
+    params = {"q": "  ReLEaSe  "}
+    for reader in (owner, member):
+        result = reader.get(search, params=params)
+        assert result.status_code == 200
+        assert result.headers["cache-control"] == "no-store"
+        listed = {page["id"]: page for page in reader.get(f"{wiki}/pages").json()["pages"]}
+        returned = result.json()["pages"]
+        assert {page["id"] for page in returned[:2]} == {prefix["id"], private["id"]}
+        assert returned[2:] == [listed[other["id"]]]
+        assert returned == [listed[page["id"]] for page in returned]
+        assert all("body" not in page for page in returned)
+        assert reader.get(search).json() == reader.get(f"{wiki}/pages").json()
+
+    assert [page["id"] for page in outsider.get(search, params=params).json()["pages"]] == [
+        prefix["id"], other["id"],
+    ]
+    for part in ("draft", "old", "unmatched"):
+        assert outsider.get(search, params={"q": part}).json() == {"pages": []}
+    assert owner.get(search, params={"q": "checklist"}).json()["pages"][0]["id"] == unrelated["id"]
+    assert owner.get(search, params={"q": "x" * 201}).status_code == 400
+    assert owner.get(search, params={"q": "\0"}).status_code == 400
+    assert TestClient(home["app"]).get(search, params=params).status_code == 401
+    assert owner.get("/api/app/organizations/other/wiki/search", params=params).status_code == 404
 
 
 def _quote(client, channel, body):

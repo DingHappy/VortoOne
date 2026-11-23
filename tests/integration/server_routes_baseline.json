@@ -1910,6 +1910,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-lines",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-status",
     "methods": [
       "GET"
@@ -2220,6 +2226,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/follow",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/follow",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}/mission",
     "methods": [
       "GET"
@@ -2448,6 +2466,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/brain",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/files",
     "methods": [
       "GET"
@@ -2574,6 +2598,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/permissions/{row}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/roles/order",
     "methods": [
       "PUT"
@@ -2688,6 +2718,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/task-manager/{run_id}/steps",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/tasks/{task_id}/output",
     "methods": [
       "GET"
@@ -2724,6 +2760,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/folder-audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/graph",
     "methods": [
       "GET"
@@ -2733,6 +2781,12 @@
     "path": "/api/app/organizations/{org_id}/wiki/import",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/import/github",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -2769,6 +2823,12 @@
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/append",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/audience",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2809,6 +2869,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/versions/{version}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/search",
     "methods": [
       "GET"
     ]
@@ -2921,6 +2987,12 @@
     "path": "/api/app/organizations/{org_id}/artifacts",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -3251,6 +3323,12 @@
     "path": "/api/app/sign-in-options",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/device-accounts",
+    "methods": [
+      "GET"
     ]
   },
   {

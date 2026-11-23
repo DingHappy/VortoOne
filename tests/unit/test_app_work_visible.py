@@ -84,6 +84,13 @@ async def _send(client, work, body):
     assert sent.status_code == 200, sent.text
 
 
+def test_task_manager_steps_are_not_available_to_members(home):
+    member = _join(home)
+    path = f"{home['base']}/task-manager/staff-example/steps"
+    assert member.get(path).status_code == 403
+    assert home["owner"].get(path).status_code == 404
+
+
 async def _task(client, work, status):
     async def found():
         tasks = (await _get(client, work, "task-manager"))["tasks"]

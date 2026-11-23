@@ -1845,13 +1845,16 @@ async def client_message(client, message: Dict[str, Any], *, owner_turn: OwnerTu
         await handle_websocket_message(client, message, owner_turn=owner_turn, owner_confirmation=owner_confirmation)
 
 
-def live_session_view(key: str) -> Optional[Dict[str, Any]]:
+def live_session_view(key: str, *, include_activities: bool = False) -> Optional[Dict[str, Any]]:
     """内存里这段会话的对话记录与排队中的输入；会话不在内存时返回 None（调用方改读存盘）。"""
     from src.gateway.session_actor import public_prompt_item
     sess = _SESSIONS.get(key)
     if sess is None:
         return None
-    return {"transcript": [dict(item) for item in sess.get("transcript") or [] if isinstance(item, dict)],
+    view = {"transcript": [dict(item) for item in sess.get("transcript") or [] if isinstance(item, dict)],
             "queued": [public_prompt_item(item, index)
                        for index, item in enumerate(sess.get("prompt_queue") or []) if isinstance(item, dict)],
             "busy": _ACTORS.busy(key)}
+    if include_activities:
+        view["activities"] = [dict(item) for item in sess.get("activities") or [] if isinstance(item, dict)]
+    return view
