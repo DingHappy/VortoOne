@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS import_batches (
     receipt TEXT NOT NULL,
     PRIMARY KEY (actor_kind, actor_id, import_id, digest)
 );
+CREATE TABLE IF NOT EXISTS folder_audiences (
+    folder TEXT PRIMARY KEY,
+    people TEXT NOT NULL
+);
 """
 _TRASH_WINDOW = timedelta(days=30)
 _PAGE_LINK = re.compile(r"(?<!!)\[\[([^\[\]\n]+)\]\]")
@@ -71,6 +75,7 @@ class WikiError(ValueError):
 @dataclass(frozen=True)
 class WikiReader:
     actor: Principal
+    owner_id: str
     known_people: frozenset[str]
     can_write: bool
     can_manage: bool
@@ -80,12 +85,16 @@ class WikiReader:
     def author(self) -> dict[str, str]:
         return {"type": "person", "id": self.actor.id}
 
-    def sees(self, page: dict) -> bool:
-        audience = page["audience"]
-        return self.actor.is_owner or audience is None or self.actor.id in audience["userIds"]
+    def sees(self, page: dict, folders: dict[str, frozenset[str]]) -> bool:
+        people = _page_people(page, folders)
+        return self.actor.is_owner or people is None or self.actor.id in people
 
     def edits(self, page: dict) -> bool:
         return self.can_write and (not page["locked"] or self.can_manage)
+
+    def member_readers(self, page: dict, folders: dict[str, frozenset[str]]) -> frozenset[str] | None:
+        people = _page_people(page, folders)
+        return None if people is None else people - {self.owner_id}
 
 
 def _fail(code: str, message: str, *, status: int = 400) -> None:
@@ -125,6 +134,37 @@ def _folder(value: Any) -> str:
     return "/".join(parts)
 
 
+def _folder_chain(folder: str):
+    """The folder itself, its ancestors, and the Wiki root."""
+    while folder:
+        yield folder
+        folder = folder.rpartition("/")[0]
+    yield ""
+
+
+def _in_folder(folder: str, target: str) -> bool:
+    return not target or folder == target or folder.startswith(target + "/")
+
+
+def _folder_people(folder: str, rules: dict[str, frozenset[str]]) -> frozenset[str] | None:
+    limits = [rules[node] for node in _folder_chain(folder) if node in rules]
+    return limits[0].intersection(*limits[1:]) if limits else None
+
+
+def _nearest_limited_folder(
+    folder: str, rules: dict[str, frozenset[str]], *, include_self: bool = True,
+) -> str | None:
+    return next((path for path in _folder_chain(folder) if path in rules and (include_self or path != folder)), None)
+
+
+def _page_people(page: dict, rules: dict[str, frozenset[str]]) -> frozenset[str] | None:
+    inherited = _folder_people(page["folder"], rules)
+    if page["audience"] is None:
+        return inherited
+    direct = frozenset(page["audience"]["userIds"])
+    return direct if inherited is None else direct & inherited
+
+
 def _tags(value: Any) -> list[str]:
     if not isinstance(value, list) or len(value) > 32:
         _fail("invalid", "标签最多 32 个")
@@ -142,9 +182,9 @@ def _slug(title: str, page_id: str) -> str:
     return slug or f"page-{page_id}"
 
 
-def _page_slug(page: dict) -> str:
+def _page_slug(page: dict, rules: dict[str, frozenset[str]]) -> str:
     slug = _slug(page["title"], page["id"])
-    return slug if page["audience"] is None else f"{slug}-{page['id'][:8]}"
+    return slug if _page_people(page, rules) is None else f"{slug}-{page['id'][:8]}"
 
 
 def _recently_deleted(page: dict) -> bool:
@@ -236,6 +276,90 @@ class Wiki:
         if not self.reader.can_write:
             _fail("forbidden", "没有编辑 Wiki 的权限", status=403)
 
+    def _require_folder_owner(self) -> None:
+        if not self.reader.actor.is_owner:
+            _fail("forbidden", "只有所有者能管理 Wiki 文件夹的可见范围", status=403)
+
+    @staticmethod
+    def _folder_rules(conn) -> dict[str, frozenset[str]]:
+        rules = {}
+        for row in conn.execute("SELECT folder, people FROM folder_audiences"):
+            people = json.loads(row["people"])
+            if (not isinstance(people, list)
+                    or any(not isinstance(person, str) or not person for person in people)):
+                raise ValueError("Wiki 文件夹权限记录无效")
+            rules[row["folder"]] = frozenset(people)
+        return rules
+
+    def _folder_view(self, folder: str, rules: dict[str, frozenset[str]], *, include_self: bool = True) -> dict | None:
+        path = _nearest_limited_folder(folder, rules, include_self=include_self)
+        if path is None:
+            return None
+        people = _folder_people(path, rules)
+        active = sorted(self.reader.known_people.intersection(people or ()))
+        return {"folder": path, "audience": {"roleIds": [], "userIds": active},
+                "agentIds": [], "editors": None, "agentEditorIds": None}
+
+    @staticmethod
+    def _check_folder(folder: str, rules: dict[str, frozenset[str]], pages: list[dict]) -> None:
+        if folder and folder not in rules and not any(
+                not page.get("deletedAt") and _in_folder(page["folder"], folder) for page in pages):
+            _fail("not_found", "没有这个 Wiki 文件夹", status=404)
+
+    def folder_audience(self, folder: str) -> dict:
+        self._require_folder_owner()
+        folder = _folder(folder)
+        with self._database() as conn:
+            rules = self._folder_rules(conn)
+            self._check_folder(folder, rules, self._all(conn))
+            return {"own": self._folder_view(folder, rules) if folder in rules else None,
+                    "above": self._folder_view(folder, rules, include_self=False)}
+
+    def narrow_folder_audience(self, data: dict) -> dict:
+        self._require_folder_owner()
+        _fields(data, {"folder", "audience", "agentIds", "editors", "agentEditorIds"})
+        folder = _folder(data.get("folder"))
+        if "audience" not in data:
+            _fail("invalid", "必须提供 Wiki 文件夹的可见范围")
+        audience = data["audience"]
+        if (data.get("editors") is not None
+                or any(data.get(key) not in (None, []) for key in ("agentIds", "agentEditorIds"))):
+            _fail("wiki_audience_unsupported", "目前只支持按成员收紧文件夹可见范围", status=409)
+        if audience is not None:
+            if not isinstance(audience, dict) or set(audience) != {"roleIds", "userIds"}:
+                _fail("invalid", "Wiki 文件夹可见范围无效")
+            if audience["roleIds"] != []:
+                _fail("wiki_audience_unsupported", "目前只支持按成员收紧文件夹可见范围", status=409)
+            users = audience["userIds"]
+            if users == []:
+                users = [self.reader.actor.id]
+            audience = _audience({"mode": "people", "userIds": users}, self.reader)
+
+        with self._database(write=True) as conn:
+            rules, pages = self._folder_rules(conn), self._all(conn)
+            self._check_folder(folder, rules, pages)
+            people = None if audience is None else frozenset(audience["userIds"])
+            current = _folder_people(folder, rules)
+            owner = {self.reader.actor.id}
+            if current is not None and (people is None or people - owner - current):
+                _fail("wiki_audience_expansion", "此处只能收紧文件夹可见范围", status=409)
+            if people is None or people == rules.get(folder):
+                return {"folder": folder, "pages": 0}
+            updated_rules = rules | {folder: people}
+            changed = sum(
+                self.reader.member_readers(page, rules) != self.reader.member_readers(page, updated_rules)
+                for page in pages if not page.get("deletedAt") and _in_folder(page["folder"], folder)
+            )
+            conn.execute("INSERT INTO folder_audiences(folder, people) VALUES (?, ?) "
+                         "ON CONFLICT(folder) DO UPDATE SET people = excluded.people",
+                         (folder, json.dumps(sorted(people))))
+            return {"folder": folder, "pages": changed}
+
+    def _require_destination(self, folder: str, rules: dict[str, frozenset[str]]) -> None:
+        people = _folder_people(folder, rules)
+        if not self.reader.actor.is_owner and people is not None and self.reader.actor.id not in people:
+            _fail("not_found", "没有这个 Wiki 文件夹", status=404)
+
     def _page(self, conn, slug: str, *, edit: bool = False) -> dict:
         row = conn.execute(
             "SELECT snapshot FROM slugs JOIN pages ON pages.id = slugs.page_id WHERE slugs.slug = ?", (slug,)
@@ -243,7 +367,7 @@ class Wiki:
         if row is None:
             _missing()
         page = json.loads(row["snapshot"])
-        if page.get("deletedAt") or not self.reader.sees(page):
+        if page.get("deletedAt") or not self.reader.sees(page, self._folder_rules(conn)):
             _missing()
         if edit and not self.reader.edits(page):
             _fail("forbidden", "没有编辑这张 Wiki 页面的权限", status=403)
@@ -258,6 +382,11 @@ class Wiki:
         hidden = {"body", "createdBy", "createdAt"}
         return {**{key: item for key, item in page.items() if key not in hidden},
                 "excerpt": " ".join(page["body"].split())[:200], "agentContext": False}
+
+    @staticmethod
+    def _with_folder_path(page: dict, rules: dict[str, frozenset[str]]) -> dict:
+        folder = _nearest_limited_folder(page["folder"], rules)
+        return page if folder is None else page | {"audienceFolder": folder}
 
     def _detail(self, conn, page: dict) -> dict:
         authors = list(dict.fromkeys(row["author"] for row in conn.execute(
@@ -277,9 +406,16 @@ class Wiki:
                                   "messageId": source["message_id"],
                                   "channelName": self.reader.source_names[source["channel_id"]],
                                   "excerpt": source["excerpt"], "at": source["at"]})
-        return {**self._summary(page), "body": page["body"], "createdAt": page["createdAt"],
-                "createdBy": page["createdBy"], "authors": [json.loads(author) for author in authors],
-                "backlinks": backlinks, "canEdit": self.reader.edits(page)}
+        rules = self._folder_rules(conn)
+        detail = {**self._summary(self._with_folder_path(page, rules)), "body": page["body"],
+                  "createdAt": page["createdAt"],
+                  "createdBy": page["createdBy"], "authors": [json.loads(author) for author in authors],
+                  "backlinks": backlinks, "canEdit": self.reader.edits(page)}
+        if self.reader.actor.is_owner:
+            inherited = self._folder_view(page["folder"], rules)
+            if inherited is not None:
+                detail["folderAudience"] = inherited
+        return detail
 
     @staticmethod
     def _attach_slug(conn, page: dict) -> None:
@@ -301,13 +437,17 @@ class Wiki:
 
     def listing(self, *, deleted: bool = False) -> dict:
         with self._database() as conn:
-            pages = [self._summary(page) for page in self._all(conn) if self.reader.sees(page)
+            rules = self._folder_rules(conn)
+            pages = [self._summary(self._with_folder_path(page, rules))
+                     for page in self._all(conn) if self.reader.sees(page, rules)
                      and (_recently_deleted(page) if deleted else not page.get("deletedAt"))]
         sort_key = "deletedAt" if deleted else "updatedAt"
         return {"pages": sorted(pages, key=lambda page: page[sort_key], reverse=True)}
 
     def _visible_pages(self, conn) -> list[dict]:
-        pages = (page for page in self._all(conn) if not page.get("deletedAt") and self.reader.sees(page))
+        rules = self._folder_rules(conn)
+        pages = (self._with_folder_path(page, rules)
+                 for page in self._all(conn) if not page.get("deletedAt") and self.reader.sees(page, rules))
         return sorted(pages, key=lambda page: page["updatedAt"], reverse=True)
 
     @staticmethod
@@ -349,12 +489,15 @@ class Wiki:
     def _insert(
         self, conn, *, title: str, folder: str, tags: list[str], body: str,
         audience: dict | None = None, provenance: dict | None = None,
+        rules: dict[str, frozenset[str]] | None = None,
     ) -> dict:
         page_id = uuid.uuid4().hex
         page = {"id": page_id, "title": title, "folder": folder, "tags": tags, "body": body,
                 "audience": audience, "locked": False, "pinned": False,
                 "version": 0, "createdAt": _now(), "createdBy": self.reader.author, "deletedAt": None}
-        page["slug"] = _page_slug(page)
+        rules = self._folder_rules(conn) if rules is None else rules
+        self._require_destination(folder, rules)
+        page["slug"] = _page_slug(page, rules)
         if provenance is not None:
             page.update(provenance)
             # The returned URL must not depend on slugs held by hidden or trashed pages.
@@ -406,9 +549,11 @@ class Wiki:
             return self._import_result(conn, notes, receipt)
 
     def _import_batch(self, conn, notes, conflict, provenance):
-        pages = (json.loads(row["snapshot"]) for row in conn.execute("SELECT snapshot FROM pages"))
-        visible = {_fold(page["title"]) for page in pages
-                   if not page.get("deletedAt") and self.reader.sees(page)}
+        rules = self._folder_rules(conn)
+        for folder in {note["folder"] for note in notes if isinstance(note, dict)}:
+            self._require_destination(folder, rules)
+        visible = {_fold(page["title"]) for page in self._all(conn)
+                   if not page.get("deletedAt") and self.reader.sees(page, rules)}
         receipt = {"created": [], "skipped": [], "failed": []}
         for index, note in enumerate(notes):
             if isinstance(note, str):
@@ -424,17 +569,18 @@ class Wiki:
                 suffix = f" ({count})"
                 note["title"] = title[:200 - len(suffix)].rstrip() + suffix
             visible.add(_fold(note["title"]))
-            receipt["created"].append(self._insert(conn, **note, provenance=provenance)["id"])
+            receipt["created"].append(self._insert(conn, **note, provenance=provenance, rules=rules)["id"])
         return receipt
 
     def _import_result(self, conn, notes, receipt):
+        rules = self._folder_rules(conn)
         created = []
         for page_id in receipt["created"]:
             row = conn.execute("SELECT snapshot FROM pages WHERE id = ?", (page_id,)).fetchone()
             if row is not None:
                 page = json.loads(row["snapshot"])
-                if not page.get("deletedAt") and self.reader.sees(page):
-                    created.append(self._summary(page))
+                if not page.get("deletedAt") and self.reader.sees(page, rules):
+                    created.append(self._summary(self._with_folder_path(page, rules)))
         return {"created": created, "skipped": [notes[index]["title"] for index in receipt["skipped"]],
                 "failed": [{"title": notes[index]["title"], "reason": reason} for index, reason in receipt["failed"]]}
 
@@ -476,11 +622,20 @@ class Wiki:
             return self._detail(conn, page)
 
     def _change(self, conn, page: dict, data: dict, note: str | None = None) -> dict:
+        rules = self._folder_rules(conn)
+        if "folder" in data:
+            folder = _folder(data["folder"])
+            self._require_destination(folder, rules)
+            before = self.reader.member_readers(page, rules)
+            after = self.reader.member_readers(page | {"folder": folder}, rules)
+            if before is not None and (after is None or after - before):
+                _fail("wiki_audience_expansion", "移动页面会扩大可见范围", status=409)
+            if before != after and not self.reader.actor.is_owner:
+                _fail("forbidden", "只有所有者能移动页面并收紧可见范围", status=403)
+            page["folder"] = folder
         if "title" in data:
             page["title"] = _title(data["title"])
-            page["slug"] = _page_slug(page)
-        if "folder" in data:
-            page["folder"] = _folder(data["folder"])
+            page["slug"] = _page_slug(page, rules)
         if "tags" in data:
             page["tags"] = _tags(data["tags"])
         self._save(conn, page, note)
@@ -515,9 +670,9 @@ class Wiki:
         else:
             _fail("wiki_import_unavailable", "当前只支持按页面或文件夹移入回收站", status=409)
         with self._database(write=True) as conn:
-            pages = [page for page in self._all(conn) if not page.get("deletedAt") and self.reader.sees(page)
-                     and (page["id"] in ids if ids is not None else
-                          not folder or page["folder"] == folder or page["folder"].startswith(folder + "/"))]
+            rules = self._folder_rules(conn)
+            pages = [page for page in self._all(conn) if not page.get("deletedAt") and self.reader.sees(page, rules)
+                     and (page["id"] in ids if ids is not None else _in_folder(page["folder"], folder))]
             changed = 0
             for page in pages:
                 if self.reader.edits(page):
@@ -530,10 +685,11 @@ class Wiki:
         self._require_writer()
         selected = _ids(ids)
         with self._database(write=True) as conn:
+            rules = self._folder_rules(conn)
             restored = 0
             failed = []
             for page in self._all(conn):
-                if page["id"] not in selected or not self.reader.sees(page) or not _recently_deleted(page):
+                if page["id"] not in selected or not self.reader.sees(page, rules) or not _recently_deleted(page):
                     continue
                 if not self.reader.edits(page):
                     failed.append({"id": page["id"], "title": page["title"], "code": "forbidden"})

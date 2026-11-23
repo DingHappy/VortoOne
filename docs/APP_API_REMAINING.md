@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 330 个，剩 **301** 个：
-- **要做：226**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 332 个，剩 **299** 个：
+- **要做：224**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -154,14 +154,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 8）
+### org/wiki（24 个，要做 6）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` |  |
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
-| ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
-| ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
+| ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
+| ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
 | ☐ | POST | `ORG/wiki/import` | `wiki.import` | 已接纯 Markdown 文件。重发相同导入号及批次内容会复用回执；Obsidian、GitHub、笔记别名和 Drive 附件待接。 |
 | ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |

@@ -2864,8 +2864,9 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None, rea
         if actor.is_member and actor.id not in state["members"]:
             raise WikiError(403, "forbidden", _NOT_MEMBER)
         keys = app_members.permission_keys(root, actor)
-        people = frozenset({views.owner_id(root), *state["members"]})
-        return Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys,
+        owner_id = views.owner_id(root)
+        people = frozenset({owner_id, *state["members"]})
+        return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
                                      TeamChannels.readable_public_names(state, actor)))
 
     def execute():
@@ -2898,6 +2899,16 @@ async def wiki_pages(org_id: str, request: Request, deleted: bool = False):
 @router.get(_WIKI + "/graph")
 async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
+
+
+@router.get(_WIKI + "/folder-audience")
+async def wiki_folder_audience(org_id: str, request: Request, folder: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.folder_audience(folder))
+
+
+@router.put(_WIKI + "/folder-audience")
+async def narrow_wiki_folder_audience(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_folder_audience(body))
 
 
 async def _wiki_import_body(request: Request) -> bytearray:
