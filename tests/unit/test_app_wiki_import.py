@@ -4,9 +4,10 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
 from fastapi.testclient import TestClient
 
+from src.agents.tools.artifacts import ArtifactStore
+from src.utils.home_maintenance import home_maintenance
 from src.workflow.members.registry import MemberRegistry
 from src.workflow.wiki import Wiki
 from tests.unit.test_app_wiki import _page
@@ -97,13 +98,94 @@ def test_obsidian_markdown_import_preserves_source_and_links(home):
     ]
 
 
-@pytest.mark.parametrize("extra", [{"aliases": ["别名"]}, {"attachments": {"preview.png": "artifact-id"}}])
-def test_obsidian_import_refuses_unusable_aliases_or_attachments(home, extra):
+def test_obsidian_import_refuses_unusable_aliases(home):
     owner, wiki = home["owner"], home["base"] + "/wiki"
     good = {"title": "供导入", "body": "正文"}
-    payload = _batch(good, good | extra, source={"type": "obsidian", "name": "项目笔记"})
+    payload = _batch(good, good | {"aliases": ["别名"]}, source={"type": "obsidian", "name": "项目笔记"})
     response = owner.post(wiki + "/import", json=payload)
     assert response.status_code == 409, response.text
+    assert owner.get(wiki + "/pages").json() == {"pages": []}
+
+
+def test_obsidian_import_embeds_private_upload_for_owner_without_sharing_it(home):
+    owner, member, base = home["owner"], _join(home), home["base"]
+    wiki, drive = base + "/wiki", base + "/artifacts"
+    original = b"type,total\nrelease,7\n"
+    upload = owner.post(drive + "/files", files={"file": ("report.csv", original, "text/csv")})
+    assert upload.status_code == 201, upload.text
+    aid = upload.json()["id"]
+    source = {"type": "obsidian", "name": "项目笔记"}
+    body, bindings = "周报：\n\n![[资料/report.csv]]", {"资料/report.csv": aid}
+    payload = _batch({"title": "发布事项", "body": body, "attachments": bindings}, source=source)
+    imported = owner.post(wiki + "/import", json=payload)
+    assert imported.status_code == 200, imported.text
+    [page] = imported.json()["created"]
+    assert "attachments" not in page and "source" not in page
+    path = wiki + "/pages/" + page["slug"]
+    detail = owner.get(path)
+    assert detail.headers["cache-control"] == "no-store"
+    assert detail.json()["source"] == {"type": "obsidian", "id": "项目笔记", "attachments": bindings}
+    assert detail.json()["body"] == member.get(path).json()["body"] == body
+    for response in (owner.get(wiki + "/pages"), owner.get(wiki + "/search?q=发布"),
+                     owner.get(wiki + "/graph"), member.get(path),
+                     owner.get(path + "/history"), owner.get(path + "/versions/1")):
+        assert response.status_code == 200, response.text
+        assert aid not in response.text
+
+    file_path = f"{drive}/{aid}/file?version=1"
+    assert owner.get(file_path).content == original
+    assert member.get(file_path).status_code == 403
+    assert member.post(wiki + "/import", json=payload).status_code == 403
+    assert owner.post(wiki + "/import", json=payload).json() == imported.json()
+
+    assert owner.delete(f"{drive}/{aid}").status_code == 204
+    assert owner.get(file_path).status_code == 404
+    assert "source" not in owner.get(path).json()
+    assert owner.post(wiki + "/import", json=payload).json() == imported.json()
+    assert owner.get(file_path).status_code == 404
+    assert owner.post(f"{drive}/{aid}/restore").status_code == 204
+    assert owner.get(path).json()["source"]["attachments"] == bindings
+
+    store = ArtifactStore(home["root"], desktop_uploads=True).root
+    unavailable = store.with_suffix(".unavailable")
+    store.rename(unavailable)
+    store.symlink_to(unavailable, target_is_directory=True)
+    detail = owner.get(path)
+    assert detail.status_code == 200 and detail.json()["body"] == body
+    assert "source" not in detail.json()
+
+
+def test_wiki_attachment_import_refuses_unknown_non_file_or_busy_drive_atomically(home):
+    owner, root, base = home["owner"], home["root"], home["base"]
+    wiki, drive = base + "/wiki", base + "/artifacts"
+    upload = owner.post(drive + "/files", files={"file": ("page.html", "<p>HTML</p>", "text/html")})
+    assert upload.status_code == 201, upload.text
+    aid = upload.json()["id"]
+    good = {"title": "保留正文", "body": "普通笔记"}
+    attached = {"title": "带附件", "body": "![[page.html]]", "attachments": {"page.html": aid}}
+    for item, status in ((attached, 409), (attached | {"attachments": {"unknown.txt": "upload-" + "0" * 32}}, 409),
+                         (attached | {"attachments": {"bad.txt": "../invalid"}}, 400),
+                         (attached | {"attachments": []}, 400)):
+        response = owner.post(wiki + "/import", json=_batch(good, item))
+        assert response.status_code == status, response.text
+    assert owner.get(wiki + "/pages").json() == {"pages": []}
+
+    upload = owner.post(drive + "/files", files={"file": ("report.csv", b"release,7\n", "text/csv")})
+    assert upload.status_code == 201, upload.text
+    aid = upload.json()["id"]
+    attached = {"title": "带附件", "body": "![[report.csv]]", "attachments": {"report.csv": aid}}
+    with home_maintenance(root):
+        busy = owner.post(wiki + "/import", json=_batch(good, attached))
+        assert busy.status_code == 409 and busy.json()["error"]["code"] == "unavailable"
+    assert owner.get(wiki + "/pages").json() == {"pages": []}
+
+    # A linked metadata file cannot make an arbitrary local file count as a Drive upload.
+    metadata = ArtifactStore(root, desktop_uploads=True).root / aid / "meta.json"
+    target = metadata.with_suffix(".copy")
+    metadata.rename(target)
+    metadata.symlink_to(target)
+    refused = owner.post(wiki + "/import", json=_batch(good, attached))
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "wiki_attachment_unavailable"
     assert owner.get(wiki + "/pages").json() == {"pages": []}
 
 
@@ -155,7 +237,7 @@ def test_import_refuses_unsupported_payloads_and_checks_current_permissions(home
     for batch, code in (
         (_batch(good, source={"type": "unsupported", "name": "store"}), 409),
         (_batch(good, good | {"aliases": ["别名"]}), 409),
-        (_batch(good, good | {"attachments": {"preview.png": "artifact-id"}}), 409),
+        (_batch(good, good | {"attachments": {"preview.png": "artifact-id"}}), 400),
         (_batch(good, good | {"folder": "../目录"}), 400),
         (_batch(good, good | {"audience": {"mode": "everyone"}}), 400),
         (_batch(good, good | {"body": {"text": ""}}), 400),

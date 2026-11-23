@@ -9,12 +9,14 @@ import re
 import sqlite3
 import unicodedata
 import uuid
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.agents.principal import Principal
+from src.agents.tools.artifacts import ArtifactStore
+from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.utils.state_dir import ensure_state_gitignore, state_dir
 
 _SCHEMA = """
@@ -60,9 +62,11 @@ CREATE TABLE IF NOT EXISTS folder_audiences (
 """
 _TRASH_WINDOW = timedelta(days=30)
 _PAGE_LINK = re.compile(r"(?<!!)\[\[([^\[\]\n]+)\]\]")
+_UPLOAD_ID = re.compile(r"upload-[a-f0-9]{32}")
 MAX_BODY = 262144
 _IMPORT_NOTE_LIMIT = 200
 _IMPORT_BODY_LIMIT = 200_000
+_IMPORT_ATTACHMENT_LIMIT = 300
 
 
 class WikiError(ValueError):
@@ -232,8 +236,8 @@ def _import_note(note: Any, folder: str) -> dict | str:
     if not isinstance(note, dict):
         _fail("invalid", "每条 Markdown 笔记必须是对象")
     _fields(note, {"title", "folder", "body", "tags", "aliases", "attachments"})
-    if note.get("aliases", []) != [] or note.get("attachments", {}) != {}:
-        _fail("wiki_import_unsupported", "Markdown 导入暂不支持笔记别名或 Drive 附件", status=409)
+    if note.get("aliases", []) != []:
+        _fail("wiki_import_unsupported", "Markdown 导入暂不支持笔记别名", status=409)
     if not isinstance(note.get("title"), str) or not isinstance(note.get("body"), str):
         _fail("invalid", "Markdown 笔记必须提供标题和正文")
     destination = _folder("/".join(filter(None, (folder, _folder(note.get("folder", ""))))))
@@ -244,7 +248,14 @@ def _import_note(note: Any, folder: str) -> dict | str:
         return "title"
     if len(note["body"]) > _IMPORT_BODY_LIMIT:
         return "too_long"
-    return {"title": title, "folder": destination, "tags": tags, "body": _text(note["body"], MAX_BODY, "正文")}
+    body = _text(note["body"], MAX_BODY, "正文")
+    attachments = note.get("attachments", {})
+    if not isinstance(attachments, dict) or len(attachments) > _IMPORT_ATTACHMENT_LIMIT:
+        _fail("invalid", "Drive 附件须按名称提供，每页最多 300 项")
+    if any(not isinstance(name, str) or not name.strip() or len(name) > 300 or any(ord(c) < 32 for c in name)
+           or not isinstance(aid, str) or not _UPLOAD_ID.fullmatch(aid) for name, aid in attachments.items()):
+        _fail("invalid", "Drive 附件名称或编号无效")
+    return {"title": title, "folder": destination, "tags": tags, "body": body, "attachments": attachments}
 
 
 class Wiki:
@@ -379,7 +390,7 @@ class Wiki:
 
     @staticmethod
     def _summary(page: dict) -> dict:
-        hidden = {"body", "createdBy", "createdAt"}
+        hidden = {"body", "createdBy", "createdAt", "attachments"}
         return {**{key: item for key, item in page.items() if key not in hidden},
                 "excerpt": " ".join(page["body"].split())[:200], "agentContext": False, "agentIds": []}
 
@@ -415,6 +426,14 @@ class Wiki:
             inherited = self._folder_view(page["folder"], rules)
             if inherited is not None:
                 detail["folderAudience"] = inherited
+            if page.get("attachments"):
+                try:
+                    uploads = ArtifactStore(self.root, desktop_uploads=True)
+                    live = {name: aid for name, aid in page["attachments"].items() if uploads.has_uploaded_file(aid, 1)}
+                except (OSError, ValueError):
+                    live = {}
+                if live:
+                    detail["source"] = {"type": page["sourceType"], "id": page["sourceName"], "attachments": live}
         return detail
 
     @staticmethod
@@ -498,7 +517,7 @@ class Wiki:
     def _insert(
         self, conn, *, title: str, folder: str, tags: list[str], body: str,
         audience: dict | None = None, provenance: dict | None = None,
-        rules: dict[str, frozenset[str]] | None = None,
+        rules: dict[str, frozenset[str]] | None = None, attachments: dict[str, str] | None = None,
     ) -> dict:
         page_id = uuid.uuid4().hex
         page = {"id": page_id, "title": title, "folder": folder, "tags": tags, "body": body,
@@ -511,6 +530,8 @@ class Wiki:
             page.update(provenance)
             # The returned URL must not depend on slugs held by hidden or trashed pages.
             page["slug"] = f"{page['slug']}-{page_id}"
+        if attachments:
+            page["attachments"] = attachments
         conn.execute("INSERT INTO pages VALUES (?, ?)", (page_id, "{}"))
         self._save(conn, page)
         return page
@@ -543,22 +564,36 @@ class Wiki:
         folder = _folder(data.get("folder", ""))
         prepared = [_import_note(note, folder) for note in notes]
         actor = self.reader.actor
+        attachments = {aid for note in prepared if isinstance(note, dict) for aid in note["attachments"].values()}
+        if attachments and not actor.is_owner:
+            _fail("forbidden", "只有工作区所有者能引用私有 Drive 附件", status=403)
+        if len(attachments) > _IMPORT_ATTACHMENT_LIMIT:
+            _fail("invalid", "每批最多引用 300 个 Drive 附件")
         digest = _import_digest(data)
         batch = (actor.kind, actor.id, import_id, digest)
         group_id = _import_digest([actor.kind, actor.id, import_id]) if import_id is not None else uuid.uuid4().hex
         provenance = {"sourceType": source_type, "sourceName": source_name, "importId": group_id}
-        with self._database(write=True) as conn:
-            previous = None if import_id is None else conn.execute(
-                "SELECT receipt FROM import_batches WHERE actor_kind = ? AND actor_id = ? AND import_id = ? AND digest = ?",
-                batch,
-            ).fetchone()
-            if previous is None:
-                receipt = self._import_batch(conn, prepared, conflict, provenance)
-                if import_id is not None:
-                    conn.execute("INSERT INTO import_batches VALUES (?, ?, ?, ?, ?)", (*batch, json.dumps(receipt)))
-            else:
-                receipt = json.loads(previous["receipt"])
-            return self._import_result(conn, notes, receipt)
+        # The existing Drive upload and trash operations use the same outer lock.
+        lease = home_maintenance(self.root) if attachments else nullcontext()
+        try:
+            with lease, self._database(write=True) as conn:
+                previous = None if import_id is None else conn.execute(
+                    "SELECT receipt FROM import_batches WHERE actor_kind = ? AND actor_id = ? AND import_id = ? AND digest = ?",
+                    batch,
+                ).fetchone()
+                if previous is None:
+                    if attachments:
+                        uploads = ArtifactStore(self.root, desktop_uploads=True)
+                        if not all(uploads.has_uploaded_file(aid, 1) for aid in attachments):
+                            _fail("wiki_attachment_unavailable", "部分 Drive 附件不存在或暂不可引用", status=409)
+                    receipt = self._import_batch(conn, prepared, conflict, provenance)
+                    if import_id is not None:
+                        conn.execute("INSERT INTO import_batches VALUES (?, ?, ?, ?, ?)", (*batch, json.dumps(receipt)))
+                else:
+                    receipt = json.loads(previous["receipt"])
+                return self._import_result(conn, notes, receipt)
+        except HomeMaintenanceError:
+            _fail("unavailable", "工作区正在处理其他变更，请稍后重试", status=409)
 
     def _import_batch(self, conn, notes, conflict, provenance):
         rules = self._folder_rules(conn)
