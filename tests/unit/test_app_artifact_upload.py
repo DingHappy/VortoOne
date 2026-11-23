@@ -97,7 +97,8 @@ def test_private_drive_uploads_offer_text_preview_and_original_attachment(home, 
     aid = detail["id"]
     assert detail["kind"] == "file" and detail["title"] == name
     assert detail["version"] == detail["shownVersion"] == 1
-    assert detail["untrusted"] is True and detail["canEdit"] is False and detail["canShare"] is False
+    assert detail["untrusted"] is True and detail["canEdit"] is True and detail["canShare"] is False
+    assert detail["versioned"] is True
     assert detail["content"] == {"kind": "file", "name": name, "contentType": expected, "size": len(original),
                                  "sha256": sha256(original).hexdigest(), "text": original.decode()}
     assert owner.get(f"{path}/{aid}?version=1").json() == detail

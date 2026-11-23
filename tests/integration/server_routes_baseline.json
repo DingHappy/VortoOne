@@ -3002,6 +3002,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/files",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}",
     "methods": [
       "GET"

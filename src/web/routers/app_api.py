@@ -5108,6 +5108,26 @@ async def upload_artifact(org_id: str, request: Request, response: Response):
     return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_form)
 
 
+@router.post(_ORG + "/artifacts/{artifact_id}/files", status_code=201)
+async def upload_artifact_version(org_id: str, artifact_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    if not _may_access_desktop_uploads(request, root):
+        return _error(403, "owner_proof_required", "上传制品版本需要已认证的所有者")
+    try:
+        note, content = await app_artifact_upload.read_form(request, for_version=True)
+        if not isinstance(content, app_artifact_upload.FileUpload):
+            return _error(415, "artifact.upload_format", "只可追加私有文本制品的版本")
+        saved = await asyncio.to_thread(app_artifacts.upload_version, root, artifact_id, content, note or None)
+    except (app_artifact_upload.UploadError, app_artifacts.ArtifactReadError) as error:
+        return _error(error.status, error.code, str(error))
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+    except (OSError, ValueError, KeyError, TypeError):
+        return _error(503, "unavailable", "暂时无法保存制品版本")
+    response.headers["Cache-Control"] = "no-store"
+    return saved
+
+
 @router.post(_ORG + "/artifacts", status_code=201)
 async def create_artifact(org_id: str, request: Request, response: Response):
     """Create a private HTML artifact without the multipart upload envelope."""
