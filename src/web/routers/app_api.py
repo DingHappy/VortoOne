@@ -3979,6 +3979,21 @@ async def all_memories(org_id: str):
 _INBOX = _ORG + "/notifications"
 
 
+class _AgentCreationAsk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    what: Literal["create_agents"]
+
+
+@router.post(_ORG + "/admin-asks")
+async def ask_about_agent_creation(org_id: str, body: _AgentCreationAsk, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_member or not views.owner_connection():
+        return _error(403, "forbidden", "只有当前在册成员能向所有者发送申请")
+    result = await _members_call(lambda: MemberRegistry(root).request_agent_creation(who), write=True)
+    return result if isinstance(result, JSONResponse) else {"sent": 1}
+
+
 class _ReadNotice(BaseModel):
     model_config = ConfigDict(extra="forbid")
     read: StrictBool

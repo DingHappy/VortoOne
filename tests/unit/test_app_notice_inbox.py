@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from src.scheduling.notices import record_notice
 from src.utils.state_dir import state_dir
-from tests.unit.test_member_agents import ORIGIN, TOKEN, _join, home  # noqa: F401 - pytest fixture
+from src.workflow.members.registry import MemberRegistry
+from tests.unit.test_member_agents import ORIGIN, OWNER_P, TOKEN, _join, home  # noqa: F401 - pytest fixture
 
 
 def _seed(home):
@@ -41,6 +42,80 @@ def test_new_scheduler_notices_have_distinct_ids_and_start_unread(home):
     assert owner.get(f"{url}/count").json()["unread"] == 2
     assert owner.post(f"{url}/read-all", json={}).json() == {"ids": [item["id"] for item in items]}
     assert owner.get(f"{url}/count").json()["unread"] == 0
+
+
+def _without_agent_creation(home):
+    roles = home["owner"].get(f"{home['base']}/roles").json()["roles"]
+    everyone = next(role for role in roles if role["id"] == "everyone")
+    kept = [permission for permission in everyone["permissions"] if permission != "create_agents"]
+    assert home["owner"].patch(f"{home['base']}/roles/everyone", json={"permissions": kept}).status_code == 204
+
+
+def test_member_request_to_create_agent_is_delivered_only_to_the_owner_inbox(home):
+    _without_agent_creation(home)
+    member = _join(home)
+    owner, base = home["owner"], home["base"]
+    inbox, ask = f"{base}/notifications", f"{base}/admin-asks"
+    before_agents = owner.get(f"{base}/agents").json()
+    before_roles = owner.get(f"{base}/roles").json()
+    body = {"what": "create_agents"}
+    for _ in range(2):
+        received = member.post(ask, json=body)
+        assert received.status_code == 200 and received.json() == {"sent": 1}
+
+    reply = owner.get(inbox, params={"filter": "unread"}).json()
+    item, = reply["items"]
+    assert item["kind"] == "admin_ask"
+    assert item["actors"] == [{"type": "person", "id": member.member_id}]
+    assert item["source"] == {} and item["latest"] == {"reason": "create_agents"}
+    assert reply["counts"]["unread"] == 1
+    assert member.get(inbox).json()["items"] == []
+    assert member.get(f"{inbox}/count").json()["unread"] == 0
+    assert owner.get(f"{base}/agents").json() == before_agents
+    assert owner.get(f"{base}/roles").json() == before_roles
+    assert owner.post(f"{inbox}/{item['id']}/done", json={"done": True}).status_code == 200
+    assert owner.get(f"{inbox}/count").json()["unread"] == 0
+    assert owner.get(inbox, params={"filter": "done"}).json()["items"][0]["id"] == item["id"]
+
+
+def test_member_request_checks_identity_scope_and_support_before_writing(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    ask = f"{base}/admin-asks"
+    body = {"what": "create_agents"}
+    assert member.post(ask, json=body).status_code == 403  # the default role still advertises creation
+    assert owner.post(ask, json=body).status_code == 403
+    assert TestClient(home["app"]).post(ask, json=body).status_code == 401
+    _without_agent_creation(home)
+    assert member.post(ask, json=body, headers={"Origin": "https://other.example"}).status_code == 403
+    assert member.post(ask, json={**body, "userId": "someone-else"}).status_code == 422
+    assert member.post(ask, json={"what": "webhook", "provider": "github"}).status_code == 422
+    assert owner.get(f"{base}/notifications").json()["items"] == []
+    assert member.post(ask, json=body).status_code == 200
+    MemberRegistry(home["root"]).remove_member(OWNER_P, member.member_id)
+    assert member.post(ask, json=body).status_code == 403
+    assert owner.get(f"{base}/notifications").json()["items"] == []
+
+
+def test_agent_creation_request_can_be_renewed_and_expires(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    _without_agent_creation(home)
+    member = _join(home)
+    now = datetime(2026, 11, 23, tzinfo=timezone.utc)
+    monkeypatch.setattr("src.workflow.members.registry._now", lambda: now)
+    ask, inbox = f"{base}/admin-asks", f"{base}/notifications"
+    body = {"what": "create_agents"}
+    assert member.post(ask, json=body).status_code == 200
+    first, = owner.get(inbox).json()["items"]
+    now += timedelta(hours=23, minutes=59)
+    assert member.post(ask, json=body).status_code == 200
+    assert owner.get(inbox).json()["items"] == [first]
+    now += timedelta(minutes=1)
+    assert member.post(ask, json=body).status_code == 200
+    replacement, = owner.get(inbox).json()["items"]
+    assert replacement["id"] != first["id"]
+    now += timedelta(days=7)
+    assert owner.get(inbox).json()["items"] == []
 
 
 def test_notice_actions_update_inbox_and_preserve_the_original_ledger(home):

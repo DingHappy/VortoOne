@@ -42,6 +42,8 @@ INVITE_DAYS_DEFAULT, INVITE_DAYS_MAX = 7, 30
 _JOIN_ID = re.compile(r"j_[a-f0-9]{32}")
 _MAX_JOIN_SUGGESTIONS, _MAX_JOIN_SUGGESTIONS_PER_MEMBER = 200, 10
 _JOIN_SUGGESTION_DAYS = 7
+_AGENT_CREATE_ASK_COOLDOWN = timedelta(days=1)
+_AGENT_CREATE_ASK_TTL = timedelta(days=7)
 
 
 def is_member_id(value: object) -> bool:
@@ -95,6 +97,7 @@ def _fresh() -> Dict[str, Any]:
         "members": {},
         "invitations": {},
         "join_suggestions": {},
+        "agent_create_asks": {},
         "agent_levels": {},
         "plans_shared": {},
         "agent_audiences": {},
@@ -180,6 +183,7 @@ class MemberRegistry:
         value.setdefault("channels", {})
         value.setdefault("channel_categories", [])
         value.setdefault("join_suggestions", {})
+        value.setdefault("agent_create_asks", {})
         if any(not isinstance(value[key], dict) for key in ("plans_shared", "agent_audiences", "agent_policies", "channels")):
             raise Damaged("成员登记文件结构无效")
         try:
@@ -215,6 +219,15 @@ class MemberRegistry:
                     or login_name(item["email"]) != item["email"] or len(item["note"]) > 200
                     or not is_member_id(item["by"])):
                 raise ValueError("加入建议登记无效")
+        asks = state["agent_create_asks"]
+        if not isinstance(asks, dict) or len(asks) > MAX_MEMBERS:
+            raise ValueError("创建角色申请登记无效")
+        for member_id, created in asks.items():
+            if not is_member_id(member_id) or member_id not in state["members"] or not isinstance(created, str):
+                raise ValueError("创建角色申请登记无效")
+            moment = datetime.fromisoformat(created)
+            if moment.utcoffset() != timedelta(0) or moment.isoformat(timespec="seconds") != created:
+                raise ValueError("创建角色申请登记无效")
         from src.workflow.members.channels import check_channels
         check_channels(state)
 
@@ -563,6 +576,7 @@ class MemberRegistry:
             del state["members"][str(member_id)]
             state["join_suggestions"] = {key: item for key, item in state["join_suggestions"].items()
                                          if item["by"] != str(member_id)}
+            state["agent_create_asks"].pop(str(member_id), None)
             for agent_id in list(state["agent_levels"]):
                 state["agent_levels"][agent_id].pop(str(member_id), None)
                 if not state["agent_levels"][agent_id]:
@@ -574,6 +588,27 @@ class MemberRegistry:
                 channel["joined"].pop(str(member_id), None)
                 channel["overrides"] = [item for item in channel["overrides"]
                                         if item["target"] != {"type": "person", "id": str(member_id)}]
+
+    def request_agent_creation(self, actor: Principal) -> None:
+        """Deliver an inbox request without creating a role, changing an identity group, or granting anything."""
+        with self._locked_state() as state:
+            owner, held = self._actor(state, actor)
+            if owner or rules.has("roles.create_own", held, self._posts(state)):
+                raise Refused("你已有创建角色入口，无须发送申请")
+            now = _now()
+            asks = state["agent_create_asks"]
+            previous = asks.get(actor.id)
+            if previous is not None and now - datetime.fromisoformat(previous) < _AGENT_CREATE_ASK_COOLDOWN:
+                return
+            asks[actor.id] = _iso(now)
+            self._save(state)
+
+    def agent_creation_requests(self) -> dict[str, str]:
+        """Local inbox projection for the owner. Records have no email or request body."""
+        state = self.snapshot()
+        oldest = _iso(_now() - _AGENT_CREATE_ASK_TTL)
+        return {member_id: created for member_id, created in state["agent_create_asks"].items()
+                if created > oldest}
 
     # ── 邀请 ──────────────────────────────────────────────────────────────────
 

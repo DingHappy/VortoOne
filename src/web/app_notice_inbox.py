@@ -1,4 +1,4 @@
-"""The owner's Desktop inbox over the existing scheduler notice ledger."""
+"""The owner's Desktop inbox over the scheduler ledger and member requests."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from src.scheduling.notices import MAX_NOTICES, load_notices
 from src.utils.home_maintenance import home_maintenance
 from src.utils.state_dir import ensure_state_gitignore, state_dir
 from src.web.app_views import _id, _iso, dm_channel_id, main_agent_id, owner_connection
+from src.workflow.members.registry import Damaged, MAX_MEMBERS, MemberRegistry
 
 NoticeFilter = Literal["all", "mentions", "waiting", "unread", "reactions", "done"]
 _FILE = "logs/notice-inbox.json"
@@ -55,7 +56,7 @@ def _read_status(path):
         return {}
     except (UnicodeError, ValueError) as error:
         raise InboxUnavailable("通知状态记录损坏") from error
-    if not isinstance(data, dict) or len(data) > MAX_NOTICES:
+    if not isinstance(data, dict) or len(data) > MAX_NOTICES + MAX_MEMBERS:
         raise InboxUnavailable("通知状态记录无效")
     for row in data.values():
         if not isinstance(row, dict) or row.keys() != set(_STATUS_FIELDS):
@@ -99,7 +100,23 @@ def _snapshot(root):
                 item["readAt"] = stamp
             items[notice_id] = item
             default_reads[notice_id] = default_read
-    return path, items, status, default_reads
+    if can_mark:
+        try:
+            asks = MemberRegistry(root).agent_creation_requests()
+        except Damaged as error:
+            raise InboxUnavailable("创建角色申请不可用") from error
+        for member_id, created in asks.items():
+            notice_id = _id("admin-ask", member_id, created)
+            stamp = _iso(created)
+            item = {"id": notice_id, "kind": "admin_ask", "waiting": False,
+                    "actors": [{"type": "person", "id": member_id}], "count": 1,
+                    "source": {}, "latest": {"reason": "create_agents"},
+                    "readAt": None, "doneAt": None, "snoozedUntil": None, "createdAt": stamp, "updatedAt": stamp}
+            item.update(status.get(notice_id, {}))
+            items[notice_id] = item
+            default_reads[notice_id] = None
+    ordered = dict(sorted(items.items(), key=lambda entry: entry[1]["createdAt"], reverse=True))
+    return path, ordered, status, default_reads
 
 
 def _visible(item, now: str) -> bool:
@@ -113,7 +130,7 @@ def _select(items, filter_name: NoticeFilter, now: datetime):
         return sorted((item for item in items if (item["doneAt"] or "") >= oldest),
                       key=lambda item: item["doneAt"], reverse=True)
     if filter_name not in {"all", "unread"}:
-        # The existing ledger contains only background notices.
+        # Background notices and requests to create an agent have no inline reply.
         return []
     return [item for item in items if _visible(item, stamp)
             and (filter_name == "all" or item["readAt"] is None)]

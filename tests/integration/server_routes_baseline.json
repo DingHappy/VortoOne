@@ -1898,6 +1898,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/admin-asks",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agent-groups",
     "methods": [
       "GET"

@@ -37,6 +37,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", r"/api/app/me"),
     ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
     ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读
+    ("POST", _ORG + r"/admin-asks"),                       # 成员只提交申请，所有者另行决定
     ("PATCH", r"/api/app/me"),                            # 只改调用人自己的界面语言
     ("PUT", r"/api/app/me/work-area"),                    # 本人引导里的可选填写项
     ("PATCH", _ORG + r"/me"),                             # 只改调用人在这个空间的个人时区

@@ -961,7 +961,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/admin-asks` | `notifications.askAdmins` |  |
+| ☐ | POST | `ORG/admin-asks` | `notifications.askAdmins` | 无创建角色权限的在册成员可通知已配置的所有者。24 小时内重复提交合并，收件箱显示最近七天有效申请。申请不更改权限。添加频道角色、Webhook 请求待接。 |
 
 ### org/proposals${filter（1 个，要做 0）
 
