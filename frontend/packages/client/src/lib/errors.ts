@@ -20,6 +20,7 @@ export const REAUTH_PASSWORD = "reauth.password";
  * takes `untranslatedText`; a guard test (`error-words.test.ts`) fails on a new code that isn't here or on its list.
  */
 const KNOWN = {
+  no_ai: "noAi.sendFailure",
   // A new-password link an owner can't make (ADR 0158).
   "password_link.email": "errors.passwordLink.email",
   "password_link.server_owner": "errors.passwordLink.serverOwner",

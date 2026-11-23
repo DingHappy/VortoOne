@@ -858,12 +858,13 @@ export function staleProvisional(state: StreamsState, now: number, maxAgeMs: num
   return Object.values(state.runs).filter((r) => r.provisional && now - (r.since ?? now) >= maxAgeMs);
 }
 
-/** Drops provisional rows of these threads. */
-export function dropProvisional(state: StreamsState, threadIds: Set<string>): StreamsState {
-  const runs = Object.fromEntries(
-    Object.entries(state.runs).filter(([, r]) => !(r.provisional && threadIds.has(r.threadId))),
+/** Drops guesses for these messages while keeping confirmed work and other sends in the same thread. */
+export function dropProvisional(state: StreamsState, messageIds: ReadonlySet<string>, channelId?: string): StreamsState {
+  const current = Object.entries(state.runs);
+  const kept = current.filter(([, run]) =>
+    !(run.provisional && messageIds.has(guessedFrom(run)) && (channelId === undefined || run.channelId === channelId)),
   );
-  return { ...state, runs };
+  return kept.length === current.length ? state : { ...state, runs: Object.fromEntries(kept) };
 }
 
 /**
