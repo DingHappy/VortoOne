@@ -1888,6 +1888,12 @@
   {
     "path": "/api/app/organizations/{org_id}",
     "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}",
+    "methods": [
       "PATCH"
     ]
   },

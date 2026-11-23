@@ -563,6 +563,30 @@ def _who(request: Request, root: str):
 _NOT_MEMBER = "还不是这个空间的成员"
 
 
+@router.get(_ORG)
+async def workspace_details(org_id: str, request: Request, response: Response):
+    """Return the caller's workspace summary and show its context to the owner."""
+    from src.memory.assistant_profile import load_home_context
+
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取空间详情需要已认证的同源会话")
+    profile = await _current_profile(root, request, who)
+    if isinstance(profile, JSONResponse):
+        return profile
+    summary = next((org for org in profile["organizations"] if org["id"] == org_id), None)
+    if summary is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    result = dict(summary)
+    if who.is_owner:
+        result["context"] = await asyncio.to_thread(load_home_context, root)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
 @router.get(_ORG + "/overview")
 async def overview(org_id: str, request: Request):
     root = _root(org_id)
