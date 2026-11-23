@@ -281,3 +281,18 @@ def test_a_link_in_another_worker_cannot_outlive_a_password_change(accounts, mon
     new_link, _ = accounts.mint_one_time(current, account)
     _, redeemed, profile = accounts.redeem_one_time(new_link)
     assert redeemed and profile["id"] == account
+
+
+def test_activated_account_is_not_published_when_session_creation_fails(accounts, monkeypatch):
+    def unavailable(*args):
+        raise OSError("injected activation failure")
+
+    with monkeypatch.context() as mocked:
+        mocked.setattr(MemberAccounts, "_issue_session", unavailable)
+        with pytest.raises(OSError, match="injected"):
+            accounts.create_with_activation_session("a@b.c", "小王", PASSWORD)
+    assert not accounts.exists("a@b.c")
+    account, activation = accounts.create_with_activation_session("a@b.c", "小王", PASSWORD)
+    assert accounts.session(activation)["id"] == account
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, activation, "a brand new password")

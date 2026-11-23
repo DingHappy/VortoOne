@@ -178,6 +178,15 @@ class MemberAccounts:
 
     def create(self, email: str, name: str, password: str, *, now: Optional[datetime] = None) -> str:
         """新建账号，返回账号 id。能不能建（有没有有效的邀请）由入口先查好，这里不管。"""
+        account_id, _session = self._register(email, name, password, now=now, activate=False)
+        return account_id
+
+    def create_with_activation_session(self, email: str, name: str, password: str) -> Tuple[str, str]:
+        """Create an invited account and its non-reauthenticated activation session together."""
+        return self._register(email, name, password, now=None, activate=True)
+
+    def _register(self, email: str, name: str, password: str, *, now: Optional[datetime],
+                  activate: bool) -> Tuple[str, str]:
         address, secret = login_name(email), _password(password)
         label = name.strip() if isinstance(name, str) else ""
         if not 1 <= len(label) <= 64 or any(ord(ch) < 32 or ord(ch) == 127 for ch in label):
@@ -190,9 +199,11 @@ class MemberAccounts:
             if len(state["accounts"]) >= MAX_ACCOUNTS:
                 raise ValueError("账号数已到上限")
             account_id = f"a_{uuid.uuid4().hex[:12]}"
+            moment = now or _now()
             state["accounts"][account_id] = {"email": address, "name": label, "password": _sealed(secret),
-                                             "member": "", "created": _iso(now or _now())}
-            return account_id
+                                             "member": "", "created": _iso(moment)}
+            activation = self._issue_session(state, account_id, moment) if activate else ""
+            return account_id, activation
 
     def has_email(self, email: str) -> bool:
         """这个邮箱有没有成员账号（所有者认领时用：所有者的邮箱不能和成员的重）。"""

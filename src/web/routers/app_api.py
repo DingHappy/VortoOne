@@ -244,8 +244,9 @@ async def sign_up(body: _SignUp, request: Request, response: Response):
         if invitation is None or (invitation.get("email") and invitation["email"] != login_name(body.email)):
             return closed
         accounts = MemberAccounts(root)
-        account_id = await asyncio.to_thread(accounts.create, body.email, body.name, body.password)
-        token = accounts.open_session(account_id)
+        account_id, token = await asyncio.to_thread(
+            accounts.create_with_activation_session, body.email, body.name, body.password,
+        )
     except ValueError as error:
         return JSONResponse({"code": "INVALID_SIGN_UP", "message": str(error)}, status_code=422)
     except OSError:
