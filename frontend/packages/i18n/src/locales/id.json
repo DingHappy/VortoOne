@@ -10919,7 +10919,7 @@
       "nothingYet": "Tidak ada yang masuk sebelum kamu meninjaunya.",
       "readingText": "Untuk sekarang hanya ada di browsermu. Belum ada yang dikirim.",
       "notesRead": "catatan dibaca",
-      "reviewText": "Tinjau dulu sebelum masuk ke wiki. Agen langsung mulai membaca halaman-halaman ini begitu kamu mengimpornya.",
+      "reviewText": "Tinjau dulu sebelum masuk ke wiki.",
       "stat": {
         "notes_other": "catatan",
         "folders_other": "folder",
@@ -10960,7 +10960,6 @@
       "creatingPages": "halaman dibuat",
       "doneTitle": "Selesai",
       "pages_other": "{{count}} halaman di wiki",
-      "agentsRead_other": "{{names}} sekarang bisa membacanya. Halaman baru ditandai “baru”.",
       "newMarked": "Halaman baru ditandai “baru”.",
       "uploaded_other": "{{count}} lampiran ada di Drive.",
       "open": "Buka {{title}}",

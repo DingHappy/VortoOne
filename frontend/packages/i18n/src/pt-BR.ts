@@ -11692,7 +11692,7 @@ export const ptBR = {
       nothingYet: "Nada entra antes de você revisar.",
       readingText: "Só no seu navegador por enquanto. Nada foi enviado ainda.",
       notesRead: "notas lidas",
-      reviewText: "Revise antes de entrar na wiki. Os agentes passam a ler essas páginas assim que você importar.",
+      reviewText: "Revise estas páginas antes de importá-las para a wiki.",
       stat: {
         notes_one: "nota",
         notes_other: "notas",
@@ -11747,8 +11747,6 @@ export const ptBR = {
       doneTitle: "Pronto",
       pages_one: "{{count}} página na wiki",
       pages_other: "{{count}} páginas na wiki",
-      agentsRead_one: "{{names}} já pode consultar. As novas aparecem marcadas como “novo”.",
-      agentsRead_other: "{{names}} já podem consultar. As novas aparecem marcadas como “novo”.",
       newMarked: "As novas aparecem marcadas como “novo”.",
       uploaded_one: "{{count}} anexo está no Drive.",
       uploaded_other: "{{count}} anexos estão no Drive.",
