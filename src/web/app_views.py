@@ -310,19 +310,22 @@ def main_chat_key(root: str) -> Optional[str]:
     return registered(root)
 
 
-def _main_view(root: str) -> Dict[str, Any]:
+def _main_view(root: str, *, include_activities: bool = False) -> Dict[str, Any]:
     """主要聊天的记录与排队中的输入。会话在内存里就读内存（回合进行中存盘会落后），否则读存盘。"""
     key = main_chat_key(root)
     if not key:
         return {"transcript": [], "queued": []}
     from src.web.routers.realtime import live_session_view
-    live = live_session_view(key)
+    live = live_session_view(key, include_activities=True) if include_activities else live_session_view(key)
     if live is not None:
         return live
     from src.gateway.session_store import load_session
     data = load_session(root, key) or {}
-    return {"transcript": [item for item in data.get("transcript") or [] if isinstance(item, dict)],
+    view = {"transcript": [item for item in data.get("transcript") or [] if isinstance(item, dict)],
             "queued": [item for item in data.get("prompt_queue") or [] if isinstance(item, dict)]}
+    if include_activities:
+        view["activities"] = [item for item in data.get("activities") or [] if isinstance(item, dict)]
+    return view
 
 
 def message_id(rid: str, role: str, ordinal: int = 0) -> str:

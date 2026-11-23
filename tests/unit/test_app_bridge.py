@@ -25,6 +25,8 @@ class _Agent:
 
     def __init__(self):
         self.started = asyncio.Event()
+        self.finish_tools = asyncio.Event()
+        self.tool_status = "failed"
         self.confirmed = None
         self.cancelled = False
 
@@ -41,6 +43,13 @@ class _Agent:
             self.confirmed = await realtime.turn_bindings(self).confirm("删除 notes.txt？", "write")
             emit("已删除" if self.confirmed else "没有删除")
             return
+        if text == "查看步骤":
+            binding = realtime.turn_bindings(self)
+            call = {"id": "demo-call", "name": "read_file", "args": {"path": "synthetic-private-path"}}
+            binding.emit_tool_event("start", call)
+            binding.emit_tool_event("progress", {**call, "summary": "synthetic-private-progress"})
+            await self.finish_tools.wait()
+            binding.emit_tool_event("finish", {**call, "status": self.tool_status, "result": "synthetic-private-result"})
         emit("收到：" + text)
 
 
@@ -105,6 +114,73 @@ async def _until(check, seconds=3.0):
             return
         await asyncio.sleep(0.01)
     raise AssertionError("等待的状态没有出现")
+
+
+@pytest.mark.parametrize("tool_status", ["failed", "blocked", "succeeded"])
+async def test_task_manager_steps_use_live_and_archived_main_chat_records(app_home, monkeypatch, tool_status):
+    from src.gateway.session_store import load_session
+    from src.web.auth import SESSION_COOKIE
+    from src.web.routers import realtime
+    from src.web.server import app
+
+    token = "synthetic-desktop-owner"
+    monkeypatch.setenv("VORTOONE_API_TOKEN", token)
+    http, base, channel, socket, agent, bridge = (app_home[k] for k in
+                                                  ("http", "base", "channel", "socket", "agent", "bridge"))
+    agent.tool_status = tool_status
+    headers = {"Authorization": f"Bearer {token}"}
+    sent = await http.post(f"{base}/channels/{channel}/messages", json={"body": "查看步骤"}, headers=headers)
+    assert sent.status_code == 200, sent.text
+    await _until(lambda: len(socket.events("agent.tool")) >= 2)
+    [run] = (await http.get(f"{base}/task-manager", headers=headers)).json()["tasks"]
+    path = f"{base}/task-manager/{run['runId']}/steps"
+    response = await http.get(path, headers=headers)
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store", response.text
+    live = response.json()
+    [call] = live["steps"]
+    assert call["kind"] == "tool_call" and call["seq"] == 1
+    assert call["data"] == {"name": "read_file", "toolUseId": "demo-call"}
+    assert live["run"]["createdAt"] and live["run"]["finishedAt"] is None
+    assert "synthetic-private" not in response.text and "查看步骤" not in response.text
+    assert (await http.get(path)).status_code == 401
+    assert (await http.get(f"{base}/task-manager/missing/steps", headers=headers)).status_code == 404
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://home",
+                                 cookies={SESSION_COOKIE: token}, headers={"Origin": "http://other.test"}) as browser:
+        assert (await browser.get(path)).status_code == 403
+
+    agent.finish_tools.set()
+    await _until(lambda: socket.events("run.finished"))
+    await _until(lambda: bool(load_session(bridge.root, bridge.key)))
+    monkeypatch.setattr(realtime, "live_session_view", lambda *args, **kwargs: None)
+    saved = await http.get(path, headers=headers)
+    assert saved.status_code == 200, saved.text
+    assert "synthetic-private" not in saved.text and "查看步骤" not in saved.text
+    assert saved.json()["run"]["finishedAt"] is not None
+    started, finished = saved.json()["steps"]
+    assert started == call
+    assert finished["kind"] == "tool_result" and finished["seq"] == 2
+    assert finished["data"] == {"toolUseId": "demo-call", "isError": tool_status != "succeeded"}
+
+
+async def test_task_manager_steps_use_terminal_phase_for_cancelled_run(app_home, monkeypatch):
+    token = "synthetic-desktop-owner"
+    monkeypatch.setenv("VORTOONE_API_TOKEN", token)
+    headers = {"Authorization": f"Bearer {token}"}
+    http, base, channel, socket = (app_home[k] for k in ("http", "base", "channel", "socket"))
+    sent = await http.post(f"{base}/channels/{channel}/messages", json={"body": "查看步骤"}, headers=headers)
+    assert sent.status_code == 200, sent.text
+    await _until(lambda: len(socket.events("agent.tool")) >= 2)
+    [run] = (await http.get(f"{base}/task-manager", headers=headers)).json()["tasks"]
+    run_id = run["runId"]
+    response = await http.post(f"{base}/runs/{run_id}/cancel", json={}, headers=headers)
+    assert response.status_code == 204, response.text
+    await _until(lambda: socket.events("run.finished"))
+    assert socket.events("run.finished")[0]["status"] == "canceled"
+    response = await http.get(f"{base}/task-manager/{run_id}/steps", headers=headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["run"]["finishedAt"] is not None
+    assert [step["kind"] for step in payload["steps"]] == ["tool_call"]
 
 
 async def test_a_message_runs_a_turn_and_the_reply_arrives(app_home):

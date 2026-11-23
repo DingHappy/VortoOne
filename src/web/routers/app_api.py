@@ -1913,6 +1913,23 @@ async def task_manager(org_id: str, request: Request, since: str = "", doneToday
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
 
 
+@router.get(_ORG + "/task-manager/{run_id}/steps")
+async def task_manager_steps(org_id: str, run_id: str, request: Request):
+    from src.web import app_work
+
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "任务步骤只有已认证的所有者能看")
+    if len(run_id) > 160:
+        return _error(404, "not_found", "没有此回合的任务步骤记录")
+    bridge = existing_bridge(root)
+    running = bridge is not None and any(row["runId"] == run_id for row in bridge.active_runs())
+    value = await asyncio.to_thread(app_work.task_steps, root, run_id, running=running)
+    if value is None:
+        return _error(404, "not_found", "没有此回合的任务步骤记录")
+    return JSONResponse(value, headers={"Cache-Control": "no-store"})
+
+
 @router.get(_ORG + "/waiting")
 async def waiting_on_me(org_id: str, request: Request, channelId: str = ""):  # noqa: N803 —— 界面的查询参数名
     """等所有者处理的：审批页里那些，加上问他的问题。"""

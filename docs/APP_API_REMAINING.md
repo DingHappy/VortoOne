@@ -712,12 +712,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/action-cards/{x}` | `actionCards.get` | 界面代码里没调用 |
 | ☐ | POST | `ORG/action-cards/{x}/{x}` | `actionCards.decide` | 界面代码里没调用 |
 
-### org/task-manager（2 个，要做 2）
+### org/task-manager（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` |  |
-| ☐ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 界面代码里没调用 |
+| ☑ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 所有者的任务详情读取主聊天已记录的工具名称、调用开始与结果状态。专员无逐步记录时返回 404。 |
 
 ### /api/app/telemetry（2 个，要做 0）
 

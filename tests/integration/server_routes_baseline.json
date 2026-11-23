@@ -2694,6 +2694,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/task-manager/{run_id}/steps",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/tasks/{task_id}/output",
     "methods": [
       "GET"
