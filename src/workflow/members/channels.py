@@ -50,6 +50,9 @@ class TeamChannels:
     def __init__(self, root: str, owner_id: str, owner_name: str = "我"):
         self.registry = MemberRegistry(root)
         self.history = ChannelHistory(self.registry.directory, owner_id)
+        from src.workflow.members.channel_cards import ChannelCards
+        self.cards = ChannelCards(self.registry.directory)
+        self.history.cards = self.cards
         self.owner_id = owner_id
         self.owner_name = owner_name
 
@@ -371,14 +374,87 @@ class TeamChannels:
         _, access = self._find(state, actor, channel_id, archived=False, joined=True)
         return "talk_to_agents" in access.permissions
 
-    def post_as_agent(self, channel_id, staff_id, agent_id, text, *, thread, client):
+    def post_as_agent(self, channel_id, staff_id, agent_id, text, *, thread, client, cards_of=None):
         """agent 交回的话。发之前再核对一次：频道还在、没归档、agent 还在里面；不满足就不发（抛 Missing）。
         client 让同一件事的回答只发一次（重试、重启后补发都落到同一条）。"""
         with self.registry._locked_state() as state:
             channel = state["channels"].get(channel_id)
             if channel is None or channel["archived"] or staff_id not in (channel.get("agents") or {}):
                 raise Missing("agent 已不在这个频道里，没有发出回答")
-            return self.history.append(channel_id, AGENT_AUTHOR + agent_id, text, client, thread, None, False)
+            message = self.history.append(channel_id, AGENT_AUTHOR + agent_id, text, client, thread, None, False)
+            if cards_of is not None:                # 这件事发的投票、选择卡：和回答同时出现，不留空档
+                self.cards.attach(cards_of, message["id"])
+                message = self.history.messages(channel_id, None, thread=thread, after=message["sequence"] - 1,
+                                                limit=1)[0]
+            return message
+
+    # ── agent 在频道里发的投票和选择卡 ──
+    def _card(self, state, actor, card_id, *, permission=None):
+        card = self.cards.get(card_id)
+        if card is None or card["message"] is None:              # 还没跟着回答发出来的卡片谁也看不到
+            raise Missing("没有这张卡片")
+        channel, access = self._find(state, actor, card["channel"], joined=True, permission=permission)
+        return card, channel, access
+
+    def card_view(self, actor, card_id):
+        state = self.registry.snapshot()
+        card, channel, _ = self._card(state, actor, card_id)
+        people = sum(1 for _ in channel["joined"])
+        return {**card, "people": people, "votes": self.cards.votes(card_id) if card["kind"] == "poll" else [],
+                "answer": self.cards.answer(card_id) if card["kind"] == "choices" else None}
+
+    def vote(self, actor, card_id, options):
+        """替换这个人的选择；空列表是收回。截止以后不能再投。"""
+        with self.registry._locked_state() as state:
+            card, channel, _ = self._card(state, actor, card_id, permission="post")
+            if card["kind"] != "poll":
+                raise Missing("没有这个投票")
+            if channel["archived"] or card["closes"] <= _stamp(datetime.now(timezone.utc)):
+                from src.workflow.members.channel_cards import CardConflict
+                raise CardConflict("poll.closed", "投票已经截止")
+            content = card["content"]
+            if (not isinstance(options, list) or any(type(o) is not int or not 0 <= o < len(content["options"])
+                                                     for o in options) or len(set(options)) != len(options)
+                    or (not content["multiple"] and len(options) > 1)):
+                raise ValueError("投票的选项无效")
+            self.cards.set_votes(card_id, self._actor_key(actor), sorted(options))
+
+    def answer_choices(self, actor, card_id, picks, others, client):
+        """先答的算。答案作为这个人的一条消息发在话题里，返回 (卡片, 消息)；调用方再把它交给 agent。"""
+        with self.registry._locked_state() as state:
+            card, channel, _ = self._card(state, actor, card_id, permission="post")
+            if card["kind"] != "choices" or channel["archived"]:
+                raise Missing("没有这张选择卡")
+            _, access = self._find(state, actor, card["channel"], joined=True)
+            if "talk_to_agents" not in access.permissions:
+                raise Refused("你在这个频道里没有叫 agent 办事的权限")
+            questions = card["content"]["questions"]
+            if (not isinstance(picks, list) or len(picks) != len(questions)
+                    or any(type(p) is not int or not 0 <= p <= len(q["options"]) for p, q in zip(picks, questions))):
+                raise ValueError("选择卡的答案无效")
+            written = others if isinstance(others, list) else []
+            if len(written) > len(questions) or any(o is not None and not isinstance(o, str) for o in written):
+                raise ValueError("选择卡的答案无效")
+            written = [*written, *[None] * (len(questions) - len(written))]
+            lines = []
+            for index, (pick, question) in enumerate(zip(picks, questions)):
+                if pick == len(question["options"]):
+                    text = " ".join(str(written[index] or "").split())[:1000]
+                    if not text:
+                        raise ValueError("写下的答案不能为空")
+                    written[index] = text
+                    lines.append(f"{question['question']}：{text}")
+                else:
+                    written[index] = None
+                    lines.append(f"{question['question']}：{chr(65 + pick)}. {question['options'][pick]['label']}")
+            if not self.cards.claim_answer(card_id, self._actor_key(actor), picks,
+                                           written if any(written) else None):
+                from src.workflow.members.channel_cards import CardConflict
+                raise CardConflict("choices.answered", "这张选择卡已经有人答过了")
+            message = self.history.append(card["channel"], self._actor_key(actor), "\n".join(lines), client,
+                                          card["thread"], None, False)
+            self.cards.answer_message(card_id, message["id"])
+            return card, message
 
     def require_owner(self, actor):
         self._require_owner(self.registry.snapshot(), actor)

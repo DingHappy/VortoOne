@@ -98,6 +98,48 @@ def _start(root: str, service, actor, channel_id: str, message: Dict[str, Any], 
                                    channel={"id": channel_id, "thread": thread, "message": message["id"]})
 
 
+def answered(root: str, service, actor, card: Dict[str, Any], message: Dict[str, Any]) -> None:
+    """有人答了选择卡：答案那条消息交给发卡的 agent 接着做（不用再 @）。要在事件循环线程里调用。"""
+    from src.workflow.members.registry import Damaged, Missing, Refused
+    thread = message["threadId"] or message["id"]
+    try:
+        _start(root, service, actor, card["channel"], message, thread, card["staff"])
+    except (ValueError, Refused, Missing, Damaged, OSError) as error:
+        _say(root, card["channel"], card["staff"], thread, f"没能接这件事：{error}", f"refused:{message['id']}:{card['staff']}")
+
+
+def artifact(root: str, card: Dict[str, Any]) -> Dict[str, Any]:
+    """界面的制品卡片：投票、选择卡的题目和选项。只读、不进 Drive。"""
+    author = {"type": "agent", "id": views.member_agent_id(root, card["staff"])}
+    content = card["content"]
+    title = content["question"] if content["kind"] == "poll" else content["questions"][0]["question"]
+    return {"id": card["id"], "kind": card["kind"], "title": title[:120], "version": 1, "channelId": card["channel"],
+            "threadId": card["thread"], "createdBy": author, "updatedBy": author, "createdAt": card["created"],
+            "updatedAt": card["created"], "canEdit": False, "untrusted": True, "canDelete": False, "inDrive": False,
+            "audience": {"mode": "conversation", "userIds": [], "roleIds": []}, "canShare": False,
+            "shownVersion": 1, "content": content, "versioned": False}
+
+
+def poll(service, card: Dict[str, Any]) -> Dict[str, Any]:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return {"id": card["id"], "closesAt": card["closes"], "closedAt": card["closes"] if card["closes"] <= now else None,
+            "people": card["people"],
+            "votes": [{"userId": service.history.person_id(vote["person"]), "option": vote["option"]}
+                      for vote in card["votes"]]}
+
+
+def choices(service, card: Dict[str, Any]) -> Dict[str, Any]:
+    answer = card["answer"]
+    if answer is None:
+        return {"id": card["id"], "answer": None}
+    shown = {"userId": service.history.person_id(answer["person"]), "picks": answer["picks"],
+             "messageId": answer["message"], "at": answer["created"]}
+    if answer["others"]:
+        shown["others"] = answer["others"]
+    return {"id": card["id"], "answer": shown}
+
+
 def call(root: str, service, actor, channel_id: str, message: Dict[str, Any]) -> None:
     """人刚发的一条：叫到的 agent 各接一件。要在事件循环线程里调用（派活要把任务登记进执行池）。
     接不了的，agent 在话题里说一句为什么，不静默吞掉。"""
@@ -111,13 +153,14 @@ def call(root: str, service, actor, channel_id: str, message: Dict[str, Any]) ->
             _say(root, channel_id, staff, thread, f"没能接这件事：{error}", f"refused:{message['id']}:{staff}")
 
 
-def _say(root: str, channel_id: str, staff: str, thread: str, text: str, client: str) -> None:
+def _say(root: str, channel_id: str, staff: str, thread: str, text: str, client: str, *, cards_of=None):
     from src.workflow.members.registry import Damaged, Missing
     try:
-        app_channels.channels(root).post_as_agent(channel_id, staff, views.member_agent_id(root, staff), text[:20000],
-                                                  thread=thread, client=client)
+        return app_channels.channels(root).post_as_agent(channel_id, staff, views.member_agent_id(root, staff),
+                                                         text[:20000], thread=thread, client=client, cards_of=cards_of)
     except (Missing, Damaged, OSError, ValueError):
         log.info("频道里的 agent 回答没有发出", exc_info=True)
+        return None
 
 
 def deliver(root: str, task: Any) -> None:
@@ -133,7 +176,9 @@ def deliver(root: str, task: Any) -> None:
     else:
         text = "没能完成：" + (" ".join(str(task.error or "执行中断").split())[:300])
     round_number = (task.collaboration or {}).get("round") or 1
-    _say(root, where["id"], str(dispatch["member"]), where["thread"], text, f"{task.id}:{round_number}")
+    # 做完了：这件事发的投票、选择卡跟着回答一起出现；没做完的不发卡片
+    _say(root, where["id"], str(dispatch["member"]), where["thread"], text, f"{task.id}:{round_number}",
+         cards_of=task.id if task.status == "done" else None)
 
 
 def on_update(root: str, task: Any) -> None:

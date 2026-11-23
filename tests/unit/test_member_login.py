@@ -257,6 +257,8 @@ def test_owner_identity_takes_precedence_when_both_sessions_are_present(home):
 def _fill(path, *, team_channel=False):
     if team_channel:
         path = path.replace("{channel_id}", "ch_" + "0" * 32)
+        for name in ("{artifact_id}", "{poll_id}", "{choices_id}"):      # 频道里的投票、选择卡（成员只认这种 id）
+            path = path.replace(name, "blk_" + "0" * 32)
     path = path.replace("{category_id}", "cat_" + "0" * 32)
     return re.sub(r"\{[^}]+\}", "x", path)
 

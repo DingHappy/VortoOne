@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import os
 import sqlite3
@@ -4958,8 +4959,95 @@ async def upload_artifact(org_id: str, request: Request, response: Response):
     return artifact
 
 
+_CARD = re.compile(r"blk_[a-f0-9]{32}")
+
+
+async def _card_call(request: Request, org_id: str, card_id: str, action):
+    """频道里的投票、选择卡：按卡片所在频道判定谁能看、能投、能答。"""
+    from src.workflow.members.channel_cards import CardConflict
+    if not _CARD.fullmatch(card_id):
+        return _error(404, "not_found", "没有这张卡片")
+
+    def guarded(service, actor):
+        try:
+            return action(service, actor)
+        except CardConflict as error:
+            return _error(409, error.code, str(error))
+    result = await _team_call(request, org_id, guarded)
+    if isinstance(result, dict):
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    return result
+
+
+@router.get(_ORG + "/polls/{poll_id}")
+async def channel_poll(org_id: str, poll_id: str, request: Request):
+    def read(service, actor):
+        card = service.card_view(actor, poll_id)
+        if card["kind"] != "poll":
+            raise LookupError("没有这个投票")
+        return app_channel_agents.poll(service, card)
+    return await _card_call(request, org_id, poll_id, read)
+
+
+class _PollVote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    options: list[int] = Field(max_length=10)
+
+
+@router.put(_ORG + "/polls/{poll_id}/vote")
+async def vote_channel_poll(org_id: str, poll_id: str, body: _PollVote, request: Request):
+    def vote(service, actor):
+        service.vote(actor, poll_id, body.options)
+        return app_channel_agents.poll(service, service.card_view(actor, poll_id))
+    return await _card_call(request, org_id, poll_id, vote)
+
+
+@router.get(_ORG + "/choices/{choices_id}")
+async def channel_choices(org_id: str, choices_id: str, request: Request):
+    def read(service, actor):
+        card = service.card_view(actor, choices_id)
+        if card["kind"] != "choices":
+            raise LookupError("没有这张选择卡")
+        return app_channel_agents.choices(service, card)
+    return await _card_call(request, org_id, choices_id, read)
+
+
+class _ChoicesAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    picks: list[int] = Field(max_length=4)
+    clientId: str = Field(min_length=1, max_length=120)
+    others: list[str | None] | None = Field(default=None, max_length=4)
+
+
+@router.post(_ORG + "/choices/{choices_id}/answer")
+async def answer_channel_choices(org_id: str, choices_id: str, body: _ChoicesAnswer, request: Request):
+    """先答的算：答案作为这个人的消息发在话题里，再交给发卡的 agent 接着做。"""
+    answered = {}
+
+    def answer(service, actor):
+        card, message = service.answer_choices(actor, choices_id, body.picks, body.others, body.clientId)
+        answered.update(card=card, message=message, actor=actor, service=service)
+        return {"choices": app_channel_agents.choices(service, service.card_view(actor, choices_id)),
+                "messageId": message["id"]}
+    result = await _card_call(request, org_id, choices_id, answer)
+    if answered:
+        root = _root(org_id)
+        try:
+            await _dispatch_ready(root)
+            app_channel_agents.answered(root, answered["service"], answered["actor"], answered["card"],
+                                        answered["message"])
+        except Exception:  # noqa: BLE001 —— 答案已存好；交给 agent 失败时它会在话题里说明，或在下一次 @ 时接上
+            logging.getLogger(__name__).warning("选择卡的答案没能交给 agent", exc_info=True)
+    return result
+
+
 @router.get(_ORG + "/artifacts/{artifact_id}")
 async def artifact(org_id: str, artifact_id: str, request: Request, response: Response, version: int | None = None):
+    if _CARD.fullmatch(artifact_id):                    # 频道里 agent 发的投票、选择卡
+        if version not in (None, 1):
+            return _error(404, "not_found", "没有这个制品")
+        return await _card_call(request, org_id, artifact_id, lambda service, actor: app_channel_agents.artifact(
+            _root(org_id), service.card_view(actor, artifact_id)))
     root = _root(org_id)
     include_uploads = _may_access_desktop_uploads(request, root)
     if include_uploads:
