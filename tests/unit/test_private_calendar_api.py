@@ -219,6 +219,19 @@ def test_weekly_all_day_series_anchors_to_monday_and_keeps_civil_dates(home):
     assert sum(row["id"] == event["id"] for row in rows) == 3
 
 
+def test_weekday_picker_preset_skips_weekends(home):
+    owner = home["owner"]
+    calendar = home["base"] + "/calendar"
+    event = _create(owner, calendar, timezone="America/New_York",
+                    rule=_series_rule(byWeekday=["MO", "TU", "WE", "TH", "FR"]))
+    rows = _fetch(owner, calendar)["events"]
+    assert rows[0] == event
+    assert [row["start"] for row in rows] == [
+        "2027-03-12T14:00:00.000Z", "2027-03-15T13:00:00.000Z",
+        "2027-03-16T13:00:00.000Z", "2027-03-17T13:00:00.000Z",
+    ]
+
+
 def test_series_edit_and_delete_scopes_apply_only_to_selected_occurrences(home):
     owner = home["owner"]
     calendar = home["base"] + "/calendar"
