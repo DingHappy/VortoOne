@@ -431,9 +431,14 @@ async def test_incomplete_phone_turn_is_consistent_in_display_context_and_saved_
     from src.web.routers import realtime
 
     events = []
+    reported_terminal = []
 
     async def capture(key, event, *, fallback=None):
         events.append(event)
+        if event["type"] in {"agent_cancelled", "agent_error"}:
+            view = realtime.live_session_view(key)
+            [related] = [item for item in view["transcript"] if item["role"] == "user"]
+            reported_terminal.append(related.get("outcome"))
 
     monkeypatch.setattr(realtime, "_publish_session_event", capture)
     key = "sid-incomplete-phone"
@@ -462,6 +467,7 @@ async def test_incomplete_phone_turn_is_consistent_in_display_context_and_saved_
         assert saved["transcript"][-1]["text"] == message
         assert saved["transcript"][-1]["source"] == "telegram"
         assert saved["transcript"][-2]["outcome"]["status"] == ("canceled" if cancelled else "failed")
+        assert reported_terminal == [saved["transcript"][-2]["outcome"]]
         assert any(event["type"] == ("agent_cancelled" if cancelled else "agent_error") for event in events)
         assert not realtime._ACTORS.busy(key)
     finally:

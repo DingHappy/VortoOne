@@ -829,8 +829,8 @@ def _record(websocket, role: str, text: str, *, rid: Optional[str] = None,
 
 
 def _finish_transcript_turn(item: Optional[Dict[str, Any]], status: str) -> None:
-    """Record only a terminal result from the runtime, never infer it from a reply."""
-    if item is not None and item.get("rid"):
+    """Record the first terminal result, before the client can refresh task history."""
+    if item is not None and item.get("rid") and "outcome" not in item:
         from datetime import datetime, timezone
         item["outcome"] = {"status": status, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
@@ -1119,7 +1119,6 @@ async def _run_main_conversation_turn(*, key: str, source: str, user_text: str, 
         if agent is not None:
             restore_agent_compression(agent, agent_compression(sess['agent']))
         request = _append_transcript(sess, "user", user_text, rid=rid, source=source)
-        terminal = None
 
         def record_incomplete(message: str) -> None:
             _append_transcript(sess, "assistant", message, rid=rid, source=source)
@@ -1138,23 +1137,21 @@ async def _run_main_conversation_turn(*, key: str, source: str, user_text: str, 
                     restore_agent_compression(sess['agent'], compression)
             _append_transcript(sess, "assistant", reply, rid=rid, source=source)
             outcome["reply"] = str(reply)
-            terminal = "done"
+            _finish_transcript_turn(request, "done")
             _schedule_turn_digest(key, rid)
         except asyncio.CancelledError:
-            terminal = "canceled"
+            _finish_transcript_turn(request, "canceled")
             message = "本轮已取消，未确认完成；可能已有部分操作，请核对结果后再继续。"
             record_incomplete(message)
             await _publish_session_event(key, P.make_event(P.AGENT_CANCELLED, rid=rid, text=message))
             raise
         except Exception:
-            terminal = "failed"
+            _finish_transcript_turn(request, "failed")
             message = "本轮执行失败，未确认完成；可能已有部分操作，请核对结果后再继续。"
             record_incomplete(message)
             await _publish_session_event(key, P.make_event(P.AGENT_ERROR, rid=rid, text=message))
             raise
         finally:
-            if terminal is not None:
-                _finish_transcript_turn(request, terminal)
             _keep_external_activities(sess, rid, activities or [])
             context.persist()
             await _publish_session_event(key, P.make_event(P.AGENT_HISTORY, items=list(sess["transcript"])))
@@ -1785,6 +1782,7 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
             raise
         except Exception as e:  # noqa: BLE001
             outcome = "failed"
+            _finish_transcript_turn(turn_record, "failed")
             q.put_nowait(P.make_event(P.AGENT_ERROR, text=str(e)))
         finally:
             slow_notice.cancel()
@@ -1795,7 +1793,6 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
             finish_phase("working", f"执行任务{suffix}", outcome)
             finish_phase("responding", f"整理回复{suffix}", outcome)
             q.put_nowait(None)
-        return "done" if outcome == "completed" else outcome
 
     inner = asyncio.create_task(_run())
     try:
@@ -1807,8 +1804,8 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
                 evt.setdefault("rid", rid)
             _record_activity(websocket, evt)
             await _publish_session_event(_session_key(websocket), evt, fallback=websocket)
-        terminal = await inner
-        _finish_transcript_turn(turn_record, terminal)
+        await inner
+        _finish_transcript_turn(turn_record, "done")
         await _publish_session_event(
             _session_key(websocket), P.make_event(P.AGENT_DONE, rid=rid), fallback=websocket)
     except asyncio.CancelledError:            # 收到「停止」：连同在飞的 LLM 调用一起取消

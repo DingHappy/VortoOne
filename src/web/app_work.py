@@ -37,16 +37,26 @@ def _step_time(value: Any) -> Optional[str]:
         return None
     try:
         moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        return moment.astimezone(timezone.utc).isoformat() if moment.tzinfo is not None else None
+    except (OverflowError, ValueError):
         return None
-    return moment.isoformat() if moment.tzinfo is not None else None
+
+
+def _main_outcome(request: Dict[str, Any]) -> Optional[tuple[str, str]]:
+    record = request.get("outcome")
+    if not isinstance(record, dict) or record.get("status") not in ("done", "failed", "canceled"):
+        return None
+    finished = _step_time(record.get("at"))
+    return (record["status"], finished) if finished is not None else None
 
 
 def task_steps(root: str, run_id: str, *, running: bool) -> Optional[Dict[str, Any]]:
     """Project the owner's main-chat tool records without input, output or message text."""
     view = views._main_view(root, include_activities=True)
     request, reply = turn_parts(view["transcript"], run_id)
-    created = _step_time(request.get("at")) if request is not None else None
+    if request is None:
+        return None
+    created = _step_time(request.get("at"))
     if created is None:
         return None
     finished = _step_time(reply.get("at")) if reply is not None and not running else None
@@ -78,7 +88,8 @@ def task_steps(root: str, run_id: str, *, running: bool) -> Optional[Dict[str, A
         steps.append({"seq": len(steps) + 1, "kind": kind, "createdAt": timestamp,
                       "data": {"toolUseId": call_id, **fields}})
     if not running:
-        finished = terminal_phase or finished
+        outcome = _main_outcome(request)
+        finished = outcome[1] if outcome is not None else terminal_phase or finished
     return {"run": {"createdAt": created, "finishedAt": finished}, "steps": steps}
 
 
@@ -136,17 +147,18 @@ def _ended_main(root: str, active: Collection[str], since: datetime) -> List[Dic
     channel = views.dm_channel_id(agent)
     rows = {}
     for item in views._main_view(root)["transcript"]:
-        rid, record = item.get("rid"), item.get("outcome")
-        if item.get("role") != "user" or not isinstance(rid, str) or not rid or rid in active:
+        rid = item.get("rid")
+        if item.get("role") != "user" or not isinstance(rid, str) or not 1 <= len(rid) <= 160 or rid in active:
             continue
-        if not isinstance(record, dict) or record.get("status") not in ("done", "failed", "canceled"):
+        outcome = _main_outcome(item)
+        if outcome is None:
             continue
-        finished = _step_time(record.get("at"))
-        if finished is None or datetime.fromisoformat(finished) < since:
+        status, finished = outcome
+        if datetime.fromisoformat(finished) < since:
             continue
         started = _step_time(item.get("at"))
         rows[rid] = {"runId": rid, "agentId": agent, "channelId": channel, "channelKind": "dm",
-                     "channelName": None, "threadId": None, "status": record["status"], "label": None,
+                     "channelName": None, "threadId": None, "status": status, "label": None,
                      "background": False, "routine": None, "startedAt": views._iso(started) if started else None,
                      "finishedAt": views._iso(finished), "stoppedBy": None}
     return list(rows.values())
