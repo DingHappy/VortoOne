@@ -82,6 +82,49 @@ def test_owner_creates_and_reads_real_draft_without_dispatch_or_channel_post(hom
     assert saved == ("owner", home["staff"]["id"], home["staff"]["revision"], role["id"], role["revision"], 1)
 
 
+@pytest.mark.parametrize(("assigned", "expected_model", "ready"), [
+    ("", "fixture-default-model", False),
+    ("qwen-fixture:7b", "qwen-fixture:7b", False),
+    ("fixture:endpoint-model", "endpoint-model", True),
+    ("custom:cred-0123456789ab:removed-model", None, False),
+])
+def test_draft_brain_reads_the_attached_models_without_execution(home, monkeypatch, assigned, expected_model, ready):
+    monkeypatch.setenv("OPENAI_API_BASE", "https://models.example.invalid/v1")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("DEFAULT_MODEL", "fixture-default-model")
+    monkeypatch.setenv("VORTOONE_PROVIDER_FIXTURE_BASE", "https://private-models.example.invalid/v1")
+    monkeypatch.setenv("VORTOONE_PROVIDER_FIXTURE_KEY", "fixture-provider-secret")
+    monkeypatch.setattr(home["service"], "assign", lambda *args, **kwargs: pytest.fail("草案详情不派活"))
+    monkeypatch.setattr("src.llm.client.LLMClient", lambda *args, **kwargs: pytest.fail("草案详情不构造模型客户端"))
+    staff = StaffRegistry(home["root"]).register_member({**home["staff"], "model": assigned})
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "brain-draft")
+    thread, _ = _thread(owner, channel)
+    draft = _draft(home, thread)
+    path = f"{base}/missions/{draft['id']}/brain"
+
+    model_options = [] if expected_model is None else [{"value": expected_model, "label": expected_model}]
+    response = owner.get(path)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {"missionId": draft["id"], "brain": None, "model": None,
+                               "effectiveBrain": "model", "effectiveModel": expected_model,
+                               "options": [{"kind": "model", "available": ready, "defaultModel": expected_model,
+                                            "models": model_options}],
+                               "canSetBrain": False, "canSetModel": False}
+    assert owner.put(path, json={"model": "changed"}).status_code == 405
+    assert home["pool"].jobs == {} and TaskLedger(home["root"]).list() == []
+    assert owner.get(f"{base}/missions/{draft['id']}").json() == draft
+
+    StaffRegistry(home["root"]).register_member({**staff, "model": "changed"})
+    stale = owner.get(path)
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "mission.agent_unavailable"
+    assert owner.get(f"{base}/missions/{draft['id']}").json() == draft
+    assert owner.get(f"{base}/missions/unknown/brain").status_code == 404
+    assert owner.delete(channel).status_code == 204
+    assert owner.get(path).status_code == 404
+
+
 def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch):
     owner, base = home["owner"], home["base"]
     member = _join(home)
@@ -94,7 +137,7 @@ def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch
     draft = _draft(home, thread_id)
     route = f"{base}/missions/{draft['id']}"
     reads = [base + "/missions", route, route + "/plan", route + "/summary", route + "/participants",
-             f"{base}/threads/{thread_id}/mission"]
+             route + "/brain", f"{base}/threads/{thread_id}/mission"]
     assert member.get(f"{base}/threads/{thread_id}").status_code == 200
     for path in reads:
         assert member.get(path).status_code == 403
@@ -105,9 +148,11 @@ def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch
     browser = TestClient(home["app"], headers=ORIGIN)
     assert browser.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
     assert browser.get(route).status_code == 200
+    assert browser.get(route + "/brain").status_code == 200
     assert browser.post(base + "/missions", json=_input(home, thread_id)).status_code == 201
     hostile = {"Origin": "https://elsewhere.example"}
     assert browser.get(route, headers=hostile).status_code == 403
+    assert browser.get(route + "/brain", headers=hostile).status_code == 403
     assert browser.post(base + "/missions", json=_input(home, thread_id), headers=hostile).status_code == 403
     monkeypatch.delenv("VORTOONE_API_TOKEN")
     assert browser.get(route).status_code == 403

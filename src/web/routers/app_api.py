@@ -3188,6 +3188,34 @@ async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
     return await _mission_request(org_id, request, read)
 
 
+@router.get(_ORG + "/missions/{mission_id}/brain")
+async def mission_draft_brain(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        from src.llm import endpoints
+        from src.llm.client import LLMConfig
+        from src.llm.providers import DEFAULT_PROVIDER, chat_target, providers
+        from src.memory.write_policy import redact_secret_like
+
+        configured = drafts.assigned_model(actor, mission_id)
+        with endpoints.LOCK:
+            target = chat_target(configured)
+            if target is not None:
+                available, model = True, target[1]
+            elif endpoints.is_endpoint_model(configured):
+                available, model = False, None
+            else:
+                available = providers()[DEFAULT_PROVIDER].usable
+                model = configured or LLMConfig().model
+        display_model = redact_secret_like(model)[0][:160] if model else None
+        return {"missionId": mission_id, "brain": None, "model": None,
+                "effectiveBrain": "model", "effectiveModel": display_model,
+                "options": [{"kind": "model", "available": available, "defaultModel": display_model,
+                             "models": [{"value": display_model, "label": display_model}] if display_model else []}],
+                "canSetBrain": False, "canSetModel": False}
+
+    return await _mission_request(org_id, request, read)
+
+
 @router.get(_ORG + "/missions/{mission_id}/participants")
 async def mission_draft_participants(org_id: str, mission_id: str, request: Request):
     def read(drafts, actor):

@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 334 个，剩 **297** 个：
-- **要做：226**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 335 个，剩 **296** 个：
+- **要做：225**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -69,7 +69,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 33）
+### org/missions（40 个，要做 32）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -77,7 +77,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
 | ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
 | ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |
-| ☐ | GET | `ORG/missions/{x}/brain` | `missions.brain` |  |
+| ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型；专员版本变化后拒绝。模型配置只读，不探测或启动执行。 |
 | ☐ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` |  |
 | ☐ | POST | `ORG/missions/{x}/close` | `missions.close` |  |
 | ☐ | PUT | `ORG/missions/{x}/command-approval` | `missions.setCommandApproval` |  |

@@ -105,6 +105,24 @@ class MissionDrafts:
                 raise Missing("没有这个任务草案")
             return dict(draft)
 
+    def assigned_model(self, actor, identifier):
+        """Read only the model from the staff revision recorded by the draft."""
+        from src.workflow.staff.registry import StaffRegistry
+
+        with TASK_STATE_LOCK:
+            draft = self.get(actor, identifier)
+            try:
+                staff = StaffRegistry(self.channels.registry.root).member(draft["staff_id"])
+            except ValueError as error:
+                raise AgentUnavailable("草案绑定的专员登记不可用") from error
+            if (staff.get("revision"), staff.get("role"), staff.get("engine"), staff.get("status")) != (
+                    draft["staff_revision"], draft["role_id"], "vortocode", "active"):
+                raise AgentUnavailable("草案绑定的专员已变更，无法读取原配置")
+            model = staff.get("model", "")
+            if not isinstance(model, str) or len(model) > 160:
+                raise AgentUnavailable("草案绑定的专员模型配置无效")
+            return model
+
     def listing(self, actor, *, channel_id=None, staff_id=None, query="", limit=50, include_drafts=True):
         self._owner(actor)
         with self.channels.registry._locked_state() as state, self.channels.history.database() as conn:
