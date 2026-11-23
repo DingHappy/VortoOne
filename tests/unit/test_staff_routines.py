@@ -42,6 +42,43 @@ def test_missed_five_field_schedule_is_due_once_after_restart(tmp_path):
     assert cron.due_jobs(str(tmp_path), now) == []
 
 
+@pytest.mark.parametrize("schedule,expected", [
+    ("30 1 * * *", ["2027-11-07T05:30:00+00:00", "2027-11-08T06:30:00+00:00"]),
+    ("30 1 7 11 0", ["2027-11-07T05:30:00+00:00"]),
+    ("30 1 8 11 0", []),
+    ("once 2027-11-08T05:00:00+00:00", ["2027-11-08T05:00:00+00:00"]),
+    ("once 2027-11-07T04:00:00+00:00", []),
+])
+def test_routine_upcoming_wall_clock_uses_scheduler_calendar_rules(schedule, expected):
+    from src.scheduling.routine_schedule import RoutineSchedule
+    now = "2027-11-07T05:00:00+00:00"
+    projected = RoutineSchedule(schedule, "America/New_York").upcoming(
+        "2027-11-07T04:00:00+00:00", "2027-11-09T00:00:00+00:00",
+        last="2027-11-06T05:30:00+00:00", now=now,
+    )
+    assert [slot.isoformat() for slot in projected] == expected
+
+
+def test_routine_upcoming_intervals_use_next_dispatch_and_half_open_range():
+    from src.scheduling.routine_schedule import RoutineSchedule
+    schedule = RoutineSchedule("every 15m", "UTC")
+    now, cursor = "2027-11-07T05:07:00Z", "2027-11-07T04:00:00Z"
+    slots = schedule.upcoming("2027-11-07T05:00:00Z", "2027-11-07T05:37:00Z", now=now, last=cursor)
+    assert list(slots) == [schedule.next(now, cursor), datetime.fromisoformat("2027-11-07T05:22:00+00:00")]
+    shifted = schedule.upcoming("2027-11-07T05:23:00Z", "2027-11-07T05:38:00Z", now=now, last=cursor)
+    assert [slot.isoformat() for slot in shifted] == ["2027-11-07T05:37:00+00:00"]
+
+
+def test_routine_projection_uses_utc_minute_grid_with_historical_civil_offset():
+    from src.scheduling.routine_schedule import RoutineSchedule
+    start = datetime.fromisoformat("1892-07-04T00:00:00+00:00")
+    until = start + timedelta(days=2)
+    schedule = RoutineSchedule("at 02:15", "Pacific/Apia")
+    projected = list(schedule.upcoming(start, until, now=start, last=start))
+    assert [slot.isoformat() for slot in projected] == ["1892-07-05T13:42:00+00:00"]
+    assert schedule.due(projected[0], projected[0] - timedelta(minutes=1)) == projected[0]
+
+
 def test_owner_registered_routine_is_stored_in_the_staff_directory(tmp_path):
     from src.workflow.staff.registry import StaffRegistry
     from src.workflow.staff.routines import Routines
