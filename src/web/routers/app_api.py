@@ -54,7 +54,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 12
+API_CONTRACT = 13
 MIN_API = 1
 
 
@@ -300,7 +300,8 @@ class _Reset(BaseModel):
 @router.post("/api/auth/reset-password")
 async def reset_password(body: _Reset, request: Request):
     """凭重置链接里的令牌改密码。改完这个账号在各处的登录全部退出，要用新密码重新登录。"""
-    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.ai_apps.store import Damaged as AiAppsDamaged
+    from src.workflow.members.accounts import Damaged, MemberAccounts
     if not views.owner_connection() or not member_auth.same_origin(request):
         return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
     try:
@@ -308,10 +309,10 @@ async def reset_password(body: _Reset, request: Request):
         await asyncio.to_thread(accounts.reset_password, body.token, body.newPassword)
     except LookupError:
         return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
+    except (AiAppsDamaged, Damaged, OSError):
+        return JSONResponse({"code": "UNAVAILABLE", "message": "暂时改不了密码"}, status_code=409)
     except ValueError as error:
         return JSONResponse({"code": "INVALID_PASSWORD", "message": str(error)}, status_code=422)
-    except OSError:
-        return JSONResponse({"code": "UNAVAILABLE", "message": "暂时改不了密码"}, status_code=409)
     return {"status": True}
 
 

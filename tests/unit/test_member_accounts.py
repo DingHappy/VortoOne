@@ -197,7 +197,12 @@ def test_replacing_password_uses_a_recent_explicit_sign_in_and_keeps_only_that_s
 
     _, reconnected = accounts.sign_in("a@b.c", proposed, now=now)
     accounts.change_password(account, current, proposed, now=now)
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, current, "a second proposed password", now=now)
     assert accounts.session(reconnected, now=now)["id"] == account
+    accounts.change_password(account, reconnected, "a second proposed password", now=now)
+    assert accounts.session(current, now=now) is None
+    assert accounts.sign_in("a@b.c", "a second proposed password", now=now)[0] == account
 
 
 @pytest.mark.parametrize("operation", ["replacement", "reset"])

@@ -418,11 +418,13 @@ class MemberAccounts:
                     or not _iso(moment - PASSWORD_REAUTH) < signed_in <= _iso(moment)):
                 raise ReauthenticationRequired("请用当前密码重新登录")
             account = state["accounts"][account_id]
+            if session.get("password_replaced"):
+                if _matches(account["password"], secret):
+                    return  # Retry after a lost success response.
+                raise ReauthenticationRequired("请用当前密码重新登录")
             if account["name"] == secret:
                 raise ValueError("密码不能和名字一样")
             if _matches(account["password"], secret):
-                if session.get("password_replaced"):
-                    return   # Retry after a lost success response.
                 raise ValueError("请使用不同的新密码")
             sealed = _sealed(secret)
             self._revoke_delegated_credentials(account_id, account)
