@@ -19,7 +19,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Literal, Tuple, get_args
 import uuid
 
 from src.utils.state_dir import ensure_state_gitignore
@@ -35,6 +35,8 @@ _KEY = re.compile(r"[A-Za-z0-9+/]{86}[A-Za-z0-9+/=]{2}")   # 65 字节的 base64
 _NONCE_KEEP = 900                                           # 秒；大于签名时间窗的两倍
 PUSH_STALE = 30 * 86400                                     # App 每次启动都会重新登记；30 天没登记就不再推
 MAX_TRUSTED = 16
+PushCategory = Literal["waiting", "replies"]
+PUSH_CATEGORIES: tuple[PushCategory, ...] = get_args(PushCategory)
 
 
 def key_code(device_key: str, approval_key: str) -> str:
@@ -248,6 +250,31 @@ class MobileDevices:
             if data["instance_id"] != instance_id:
                 raise MobileStoreError("家的身份与设备授权不一致")
             return data["instance_id"]
+
+    @staticmethod
+    def _push_preferences(data: dict | None) -> dict[PushCategory, bool]:
+        off = (data or {}).get("push_categories_off", [])
+        if not isinstance(off, list) or any(category not in PUSH_CATEGORIES for category in off):
+            raise MobileStoreError("设备通知偏好无法读取")
+        return {category: category not in off for category in PUSH_CATEGORIES}
+
+    def push_preferences(self) -> dict[PushCategory, bool]:
+        return self._push_preferences(self._load())
+
+    def set_push_preference(self, category: PushCategory, on: bool) -> dict[PushCategory, bool]:
+        if category not in PUSH_CATEGORIES or type(on) is not bool:
+            raise ValueError("不支持的手机通知偏好")
+        instance_id = self.ensure_instance()
+        with self._lock():
+            data = self._load()
+            if data is None or data["instance_id"] != instance_id:
+                raise MobileStoreError("设备通知偏好无法保存")
+            preferences = self._push_preferences(data)
+            if preferences[category] != on:
+                preferences[category] = on
+                data["push_categories_off"] = [key for key, enabled in preferences.items() if not enabled]
+                self._save(data)
+            return preferences
 
     def issue(self, name: str, ttl_days: int = 30) -> dict:
         name = _name(name)

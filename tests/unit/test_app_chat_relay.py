@@ -80,6 +80,26 @@ async def test_card_waits_for_a_signed_decision_then_the_turn_continues(tmp_path
         turns.decide(turn.rid, card["id"], False, card["digest"], "device")  # 已处理过
 
 
+async def test_mobile_turn_classifies_the_approval_and_reply_notifications(tmp_path, shared_chat):
+    notices = []
+    now = [100.0]
+
+    async def notify(text, category):
+        notices.append((category, text))
+
+    turns, _ = _turns(tmp_path, ask="要记下吗？", clock=lambda: now[0], notify=notify)
+    turn = await turns.start("req-push-001", "记一下")
+    await _settle(turn, ("waiting",))
+    [card] = turn.public()["cards"]
+    assert card["status"] == "pending"
+    assert [category for category, _ in notices] == ["waiting"]
+    now[0] += 20
+    turns.decide(turn.rid, card["id"], True, card["digest"], "device")
+    await _settle(turn, ("done",))
+    assert turn.reply == "已记下"
+    assert [category for category, _ in notices] == ["waiting", "replies"]
+
+
 async def test_unanswered_card_expires_as_a_denial(tmp_path, shared_chat):
     turns, _ = _turns(tmp_path, ask="记吗？", card_timeout=0.05)
     turn = await turns.start("req-00000003", "记一下")
