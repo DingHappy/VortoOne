@@ -1,7 +1,7 @@
-"""新版界面的显示偏好：侧栏、界面语言、个人时区和团队图。
+"""新版界面的显示偏好：侧栏、界面语言、个人资料和团队图。
 
 只是界面展示，不涉及权限、不进模型上下文。个人偏好按调用人的身份保存
-（``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏和时区跟着「这个人在这个家里」走。
+（``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏、用户名和时区跟着「这个人在这个家里」走。
 团队图的汇报连线属于工作区，只有所有者可以编辑。
 存在 ``.vortoone/app_prefs.json``，坏了就如实报错（ValueError），不悄悄换成默认值覆盖掉。
 
@@ -11,20 +11,14 @@ SidebarSection / SidebarView）逐项核对；不认识的值一律拒绝。
 
 from __future__ import annotations
 
-import json
-import os
-import threading
 from copy import deepcopy
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unicodedata import category
 
-from src.scheduling.routine_schedule import zone
-from src.utils.state_dir import state_dir
-
-_FILE = "app_prefs.json"
-_LOCK = threading.Lock()
+from src.workflow.members.profile_preferences import PREFERENCES_LOCK as _LOCK
+from src.workflow.members.profile_preferences import read_preferences as _read
+from src.workflow.members.profile_preferences import write_preferences as _write
 
 # 界面的工具与分区（types.ts 的 SidebarItem / SidebarSection）。默认顺序用「个人空间」那一套
 # （sidebar-items.ts 的 PERSONAL_SIDEBAR_ITEMS / PERSONAL_SIDEBAR_SECTIONS）：这个家的 settings.mode 是 personal。
@@ -39,31 +33,6 @@ DEFAULT_VIEW = {"agentSort": "workspace", "showAllAgents": True, "pins": None}
 LOCALES = ("en", "pt-BR", "es", "fr", "de", "it", "nl", "ja", "ko", "zh-Hans", "id", "tr", "pl", "ru")
 DEFAULT_LOCALE = "zh-Hans"
 AVAILABILITIES = ("auto", "away", "busy", "out", "hidden")
-
-
-def _path(root: str) -> Path:
-    return state_dir(root) / _FILE
-
-
-def _read(root: str) -> Dict[str, Any]:
-    path = _path(root)
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {"version": 1, "people": {}}
-    except (OSError, ValueError) as error:
-        raise ValueError("界面偏好读不出来，需要先修复") from error
-    if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("people"), dict):
-        raise ValueError("界面偏好记录损坏，需要先修复")
-    return value
-
-
-def _write(root: str, value: Dict[str, Any]) -> None:
-    path = _path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def _own(root: str, who: str) -> Dict[str, Any]:
@@ -301,28 +270,6 @@ def set_locale(root: str, account_key: str, body: Any) -> None:
         row["locale"] = body["locale"]
         row["localeAuto"] = auto
         _write(root, data)
-
-
-# ── 个人时区 ────────────────────────────────────────────────────────────────
-
-def personal_timezones(root: str) -> Dict[str, str]:
-    try:
-        people = _read(root)["people"]
-    except ValueError:
-        # 名册仍能读到工作区默认时区；保存时报告文件损坏。
-        return {}
-    return {who: row["timezone"] for who, row in people.items()
-            if isinstance(row, dict) and isinstance(row.get("timezone"), str) and row["timezone"]}
-
-
-def set_personal_timezone(root: str, who: str, value: Any) -> Optional[str]:
-    if value is not None:
-        try:
-            zone(value)
-        except ValueError as error:
-            raise ValueError("个人时区须使用有效的 IANA 名称，例如 Asia/Shanghai") from error
-    _change(root, who, "timezone", value)
-    return value
 
 
 # ── 整个家的界面开关（所有者在空间设置里改）─────────────────────────────────

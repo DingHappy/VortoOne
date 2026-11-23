@@ -98,9 +98,11 @@ def _brief(name: str, title: str, instructions: str) -> str:
 def create(root: str, actor: Principal, *, name: Any, handle: Any, title: Any = "", instructions: Any = "",
            model: Any = "", look: Any = None, setup: Any = None, audience: Any = None) -> str:
     """新建一个 agent，返回它的专员 id（就是它的 handle）。"""
+    from src.workflow.members.profile_preferences import check_agent_handle
     from src.workflow.members.registry import MemberRegistry
     from src.workflow.staff.owner_confirmation import owner_route
     from src.workflow.staff.registry import StaffRegistry
+    from src.workflow.tasks.tasks import TASK_STATE_LOCK
     _owner_only(actor)
     name = _text(name, "名字", MAX_NAME, required=True)
     title = _text(title, "角色", MAX_TITLE)
@@ -108,8 +110,6 @@ def create(root: str, actor: Principal, *, name: Any, handle: Any, title: Any = 
     if not isinstance(handle, str) or not _HANDLE.fullmatch(handle) or handle in _RESERVED:
         raise ValueError("handle 只能是 2～32 个小写字母、数字、- 或 _，且不能是保留的名字")
     registry = StaffRegistry(root)
-    if any(member["id"] == handle for member in registry.members()):
-        raise ValueError("这个 handle 已经有 agent 用了（包括删掉的），换一个")
     checked_look = check_look(look)
     checked_setup = _setup(setup)
     if audience is not None:                          # 先核对，免得 agent 建好了受众却写不进去
@@ -117,7 +117,10 @@ def create(root: str, actor: Principal, *, name: Any, handle: Any, title: Any = 
         current = MemberRegistry(root).snapshot()
         check_audience(audience, current["members"], current["groups"])
     role_id = f"agent-{handle}-{uuid.uuid4().hex[:6]}"
-    with owner_route(root):
+    with TASK_STATE_LOCK, owner_route(root):
+        check_agent_handle(root, handle)
+        if handle in registry.reserved_member_handles():
+            raise ValueError("这个 handle 已经有 agent 用了（包括删掉的），换一个")
         _approve(root, "role", {"id": role_id, "title": title or name, "brief": _brief(name, title, instructions),
                                 "grants": deepcopy(FULL_GRANTS), "engine": ["vortocode"], "max_steps": FULL_STEPS,
                                 "timeout_seconds": FULL_TIMEOUT}, "所有者在界面里新建 agent：它自己的岗位")
