@@ -33,6 +33,14 @@ class ThreadArchived(ValueError):
         super().__init__("解除归档后才能修改或回复这个话题")
 
 
+class ThreadInUse(ValueError):
+    """Undo would discard an existing conversation or its references."""
+
+
+class ThreadRangeUnavailable(ValueError):
+    """Only a thread made with a range can edit it."""
+
+
 @dataclass(frozen=True)
 class ThreadState:
     title: str | None = None
@@ -80,11 +88,11 @@ def write(conn, channel, thread, state, change):
                  (thread, channel, *astuple(state), change))
 
 
-def rename(conn, channel, thread, title):
+def rename(conn, channel, thread, title, *, change="title"):
     state = read(conn, thread, initialized=True)
     state.allow_reply()
     if title != state.title:
-        write(conn, channel, thread, replace(state, title=title), "title")
+        write(conn, channel, thread, replace(state, title=title), change)
 
 
 def apply(conn, channel, thread, actor, action, now):

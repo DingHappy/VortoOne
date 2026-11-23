@@ -18,7 +18,7 @@ import os
 import sqlite3
 from contextlib import suppress
 from ipaddress import IPv6Address, ip_address
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -39,8 +39,10 @@ from src.web import (
 )
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
-from src.workflow.members.channel_threads import ThreadArchived
-from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
+from src.workflow.members.channel_threads import ThreadArchived, ThreadInUse, ThreadRangeUnavailable
+from src.workflow.members.channels import (
+    ChannelAgentAskConflict, ChannelCategoryNameConflict, TeamChannels, is_team_channel,
+)
 from src.workflow.members.direct_messages import is_person_dm
 from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
@@ -54,7 +56,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 15
+API_CONTRACT = 16
 MIN_API = 1
 
 
@@ -1634,6 +1636,10 @@ async def _team_call(request, org_id, action, *, channel_id=None, empty_listing=
         return _error(409, "channel_category.name_taken", str(error))
     except ThreadArchived as error:
         return _error(409, "thread.archived", str(error))
+    except ThreadInUse as error:
+        return _error(409, "thread.in_use", str(error))
+    except ThreadRangeUnavailable as error:
+        return _error(422, "invalid", str(error))
     except ValueError as error:
         return _error(400, "invalid", str(error))
 
@@ -1738,12 +1744,12 @@ def _channel_agent(root: str, agent_id: str):
     """(专员 id, 错误)：主助理和不能进频道的回 409，不认识的回 404。"""
     if agent_id == views.main_agent_id(root):
         return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
-    staff = next((key for key, row in app_channels.channel_agents(root).items() if row["id"] == agent_id), None)
-    if staff is None:
+    row = next((row for row in app_channels.channel_agents(root).values() if row["id"] == agent_id), None)
+    if row is None:
         return None, _error(404, "not_found", "没有这个 agent")
-    if not app_channels.channel_agents(root)[staff]["joinable"]:
+    if not row["joinable"]:
         return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
-    return staff, None
+    return row["handle"], None
 
 
 class _ChannelOverrideTarget(BaseModel):
@@ -1982,15 +1988,54 @@ async def team_thread_detail(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, thread_id, thread=True))
 
 
-class _ThreadTitle(BaseModel):
+_ThreadMessageId = Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class _ThreadCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    title: str | None = Field(max_length=200)
+    channelId: _ThreadMessageId
+    contextChannelId: _ThreadMessageId | None = None
+    firstMessageId: _ThreadMessageId
+    lastMessageId: _ThreadMessageId
+    excludedMessageIds: list[_ThreadMessageId] = Field(default_factory=list, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
+
+
+@router.post(_ORG + "/threads", status_code=201)
+async def create_team_thread(org_id: str, body: _ThreadCreate, request: Request):
+    return _team_response(await _team_call(
+        request, org_id, lambda service, actor: service.create_thread_range(
+            actor, body.channelId, body.contextChannelId, body.firstMessageId, body.lastMessageId,
+            body.excludedMessageIds, body.title), channel_id=body.channelId,
+    ))
+
+
+class _ThreadPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    firstMessageId: _ThreadMessageId | None = None
+    lastMessageId: _ThreadMessageId | None = None
+    excludedMessageIds: list[_ThreadMessageId] | None = Field(default=None, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
 
 
 @router.patch(_THREAD)
-async def rename_team_thread(org_id: str, thread_id: str, body: _ThreadTitle, request: Request):
+async def rename_team_thread(org_id: str, thread_id: str, body: _ThreadPatch, request: Request):
+    patch = body.model_dump(exclude_unset=True, exclude={"title"})
+    if patch:
+        if None in patch.values():
+            return _error(422, "invalid", "选段起点、终点和排除项不能为 null")
+        return await _team_call(request, org_id, lambda service, actor: service.update_thread_range(
+            actor, thread_id, patch, title=body.title, set_title="title" in body.model_fields_set))
+    if "title" not in body.model_fields_set:
+        return _error(422, "invalid", "需要话题标题或频道选段")
     return await _team_call(request, org_id, lambda service, actor:
                             service.change_thread(actor, thread_id, "title", title=body.title))
+
+
+@router.delete(_THREAD, status_code=204)
+async def undo_team_thread_range(org_id: str, thread_id: str, request: Request):
+    return await _team_call(request, org_id, lambda service, actor:
+                            _team_receipt(lambda: service.remove_thread_range(actor, thread_id)))
 
 
 class _ThreadAction(BaseModel):
@@ -4362,6 +4407,46 @@ async def all_memories(org_id: str):
 
 
 _INBOX = _ORG + "/notifications"
+
+
+class _AgentCreationAsk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    what: Literal["create_agents"]
+
+
+class _ChannelAgentAsk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    what: Literal["channel_agent"]
+    channelId: str = Field(min_length=1, max_length=128)
+    agentId: str = Field(min_length=1, max_length=128)
+
+
+@router.post(_ORG + "/admin-asks")
+async def ask_owner(org_id: str, body: _AgentCreationAsk | _ChannelAgentAsk, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_member or not views.owner_connection():
+        return _error(403, "forbidden", "只有当前在册成员能向所有者发送申请")
+
+    def submit():
+        if isinstance(body, _AgentCreationAsk):
+            MemberRegistry(root).request_agent_creation(who)
+            return None
+        if not is_team_channel(body.channelId):
+            return _error(404, "not_found", "没有这个频道")
+        if app_members.member_staff(root, who, body.agentId) is None:
+            return _error(404, "not_found", "没有这个 agent")
+        staff, refused = _channel_agent(root, body.agentId)
+        if refused is not None:
+            return refused
+        try:
+            app_channels.channels(root).request_agent(who, body.channelId, staff)
+        except ChannelAgentAskConflict as error:
+            return _error(409, "channel_agent_ask.conflict", str(error))
+        return None
+
+    result = await _members_call(submit, write=True)
+    return result if isinstance(result, JSONResponse) else {"sent": 1}
 
 
 class _ReadNotice(BaseModel):

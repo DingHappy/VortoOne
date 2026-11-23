@@ -9,10 +9,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from src.agents import identity_groups as rules
+from src.agents.principal import MEMBER, Principal
 from src.gateway.session_store import ChannelNameConflict, channel_metadata, normalize_channel
 from src.workflow.members import channel_threads
 from src.workflow.members.channel_history import AGENT_AUTHOR, OWNER_KEY, ChannelHistory, _before, _stamp
-from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
+from src.workflow.members.registry import (
+    ADMIN_ASK_COOLDOWN, ADMIN_ASK_TTL, MAX_CHANNEL_AGENT_ASKS, Damaged, MemberRegistry, Missing, Refused,
+    _iso, _member_act_level,
+)
 from src.workflow.members.thread_reads import ThreadReader
 
 TEAM_CHANNEL_ID_PATTERN = r"ch_[a-f0-9]{32}"
@@ -21,10 +25,22 @@ _ID = re.compile(TEAM_CHANNEL_ID_PATTERN)
 _CATEGORY_ID = re.compile(CHANNEL_CATEGORY_ID_PATTERN)
 CATEGORY_NAME_MAX = 40
 MAX_OVERRIDES = 64
+_MAX_AGENT_ASKS_PER_MEMBER = 10
+
+
+def _thread_title(title):
+    normalized = " ".join(title.split()) if title else ""
+    if len(normalized) > 200 or any(ord(char) < 32 for char in normalized):
+        raise ValueError("话题名称不能超过 200 字或包含控制字符")
+    return normalized or None
 
 
 class ChannelCategoryNameConflict(ValueError):
     """A category of the same name already exists in this workspace."""
+
+
+class ChannelAgentAskConflict(ValueError):
+    """An agent is already in the channel or the bounded request inbox is full."""
 
 
 def is_team_channel(channel_id: str) -> bool:
@@ -351,13 +367,74 @@ class TeamChannels:
         if not owner:
             raise Refused("只有所有者能把 agent 放进或移出频道")
 
+    def _agent_ask_channel(self, state, actor, channel_id, staff_id):
+        channel, access = self._find(state, actor, channel_id, archived=False, joined=True, permission="post")
+        if "talk_to_agents" not in access.permissions:
+            raise Refused("你不能在此频道呼叫 agent")
+        _, held = MemberRegistry._actor(state, actor)
+        if _member_act_level(state, staff_id, actor.id, held, MemberRegistry._posts(state)) == "none":
+            raise Missing("没有这个 agent")
+        return channel
+
+    def request_agent(self, actor: Principal, channel_id: str, staff_id: str) -> None:
+        """Request the owner's decision without changing the channel roster."""
+        from src.workflow.members.registry import _now
+
+        if not actor.is_member:
+            raise Refused("只有在册成员能提交频道角色申请")
+        with self.registry._locked_state() as state:
+            channel = self._agent_ask_channel(state, actor, channel_id, staff_id)
+            if staff_id in (channel.get("agents") or {}):
+                raise ChannelAgentAskConflict("这个 agent 已在频道中")
+            now = _now()
+            oldest = _iso(now - ADMIN_ASK_TTL)
+            asks = {}
+            for key, item in state["channel_agent_asks"].items():
+                if item["created"] <= oldest:
+                    continue
+                if (item["by"], item["channel"], item["staff"]) == (actor.id, channel_id, staff_id):
+                    if now - datetime.fromisoformat(item["created"]) < ADMIN_ASK_COOLDOWN:
+                        return
+                    continue
+                asks[key] = item
+            if (len(asks) >= MAX_CHANNEL_AGENT_ASKS
+                    or sum(item["by"] == actor.id for item in asks.values()) >= _MAX_AGENT_ASKS_PER_MEMBER):
+                raise ChannelAgentAskConflict("待处理的频道角色申请已满")
+            asks[uuid.uuid4().hex] = {"by": actor.id, "channel": channel_id, "staff": staff_id, "created": _iso(now)}
+            state["channel_agent_asks"] = asks
+            self.registry._save(state)
+
+    def agent_requests(self) -> list[tuple[str, dict[str, str], str]]:
+        from src.workflow.members.registry import _now
+
+        state = self.registry.snapshot()
+        oldest = _iso(_now() - ADMIN_ASK_TTL)
+        rows = []
+        for key, item in state["channel_agent_asks"].items():
+            if item["created"] <= oldest:
+                continue
+            actor = Principal(MEMBER, item["by"])
+            try:
+                channel = self._agent_ask_channel(state, actor, item["channel"], item["staff"])
+            except (Missing, Refused):
+                continue
+            if item["staff"] not in (channel.get("agents") or {}):
+                rows.append((key, item, channel["title"]))
+        return rows
+
+    @staticmethod
+    def _enroll_agent(state, channel, staff_id, stamp):
+        channel.setdefault("agents", {}).setdefault(staff_id, stamp)
+        state["channel_agent_asks"] = {key: item for key, item in state["channel_agent_asks"].items()
+                                       if (item["channel"], item["staff"]) != (channel["id"], staff_id)}
+
     def set_agent(self, actor, channel_id, staff_id, joined):
         with self.registry._change() as state:
             self._require_owner(state, actor)
             channel, _ = self._find(state, actor, channel_id, archived=False)
             agents = channel.setdefault("agents", {})
             if joined:
-                agents.setdefault(staff_id, _stamp(datetime.now(timezone.utc)))
+                self._enroll_agent(state, channel, staff_id, _stamp(datetime.now(timezone.utc)))
             elif staff_id not in agents:
                 raise Missing("这个 agent 不在这个频道里")
             else:
@@ -486,7 +563,7 @@ class TeamChannels:
                     continue
                 agents = channel.get("agents") or {}
                 if channel["id"] in wanted:
-                    channel.setdefault("agents", agents).setdefault(staff_id, stamp)
+                    self._enroll_agent(state, channel, staff_id, stamp)
                 elif staff_id in agents:
                     del agents[staff_id]
 
@@ -495,6 +572,9 @@ class TeamChannels:
             channel, _ = self._find(state, actor, channel_id, permission="manage_channels")
             if bool(channel["archived"]) != archived:
                 channel["archived"] = _stamp(datetime.now(timezone.utc)) if archived else None
+                if archived:
+                    state["channel_agent_asks"] = {key: item for key, item in state["channel_agent_asks"].items()
+                                                   if item["channel"] != channel_id}
 
     def join(self, actor, channel_id, joining):
         with self.registry._change() as state:
@@ -742,21 +822,57 @@ class TeamChannels:
         with self.registry._locked_state() as state:
             with self.history.database() as conn:
                 row, channel, access = self._message_access(state, conn, actor, thread_id)
-                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                if row["thread"] is not None or not (
+                    self.history.is_range(row) or self.history.has_thread_replies(conn, channel["id"], thread_id)
+                ):
                     raise Missing("没有这个话题")
                 if not self._can_manage_thread(actor, access, row["author"]):
                     raise Refused("没有管理这个话题的权限")
             with self.history.database(write=True) as conn:
                 if action == "title":
-                    normalized = " ".join(title.split()) if title else ""
-                    if len(normalized) > 200 or any(ord(char) < 32 for char in normalized):
-                        raise ValueError("话题名称不能超过 200 字或包含控制字符")
-                    channel_threads.rename(conn, channel["id"], thread_id, normalized or None)
+                    channel_threads.rename(conn, channel["id"], thread_id, _thread_title(title),
+                                           change="context" if self.history.is_range(row) else "title")
                 else:
                     channel_threads.apply(conn, channel["id"], thread_id, self._actor_key(actor), action,
                                           _stamp(datetime.now(timezone.utc)))
                 return self.history.thread_summary(conn, channel["id"], row, channel["title"],
                                                    reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def create_thread_range(self, actor, channel_id, context_channel_id, first, last, excluded, title):
+        if context_channel_id not in (None, channel_id):
+            raise ValueError("目前只支持在消息所在的团队频道建立选段话题")
+        with self.registry._locked_state() as state:
+            channel, _ = self._find(state, actor, channel_id, archived=False, joined=True, permission="post")
+            with self.history.database() as conn:
+                self.history.find(conn, channel_id, first)
+                self.history.find(conn, channel_id, last)
+            with self.history.database(write=True) as conn:
+                row = self.history.create_range(conn, channel_id, self._actor_key(actor), first, last, excluded,
+                                                _thread_title(title))
+                return self.history.thread_summary(conn, channel_id, row, channel["title"],
+                                                   reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def update_thread_range(self, actor, thread_id, selection, *, title=None, set_title=False):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, channel, access = self._message_access(state, conn, actor, thread_id)
+                if not self._can_manage_thread(actor, access, row["author"]):
+                    raise Refused("没有管理这个话题的权限")
+                if not self.history.is_range(row):
+                    raise channel_threads.ThreadRangeUnavailable("只有从频道选段建立的话题可以调整选段")
+            with self.history.database(write=True) as conn:
+                changed = self.history.change_range(conn, row, selection, _thread_title(title), set_title=set_title)
+                return self.history.thread_summary(conn, channel["id"], changed, channel["title"],
+                                                   reader=self._thread_reader(actor, channel), can_manage=True)
+
+    def remove_thread_range(self, actor, thread_id):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                row, _, access = self._message_access(state, conn, actor, thread_id)
+                if not self._can_manage_thread(actor, access, row["author"]):
+                    raise Refused("没有管理这个话题的权限")
+            with self.history.database(write=True) as conn:
+                self.history.remove_range(conn, row)
 
     def _thread_reader(self, actor, channel):
         person = self._actor_key(actor)
@@ -777,7 +893,9 @@ class TeamChannels:
                     row, channel, _ = self._message_access(state, conn, actor, thread_id)
                 except Missing as error:
                     raise Missing("没有这个话题") from error
-                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                if row["thread"] is not None or not (
+                    self.history.is_range(row) or self.history.has_thread_replies(conn, channel["id"], thread_id)
+                ):
                     raise Missing("没有这个话题")
             self.history.set_thread_follow(thread_id, self._actor_key(actor), following)
             return {"threadId": thread_id, "channelId": channel["id"], "following": following}

@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 357 个，剩 **274** 个：
-- **要做：203**（其中 27 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 359 个，剩 **272** 个：
+- **要做：201**（其中 27 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -301,14 +301,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的版本。私有文档、表格和文本版本显示已保存的备注，旧网页不推断逐版作者或备注。 |
 | ☑ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` | 经认证的所有者可给私有文档和表格添加版本及备注。对照原版本编号，过时返回 409。旧版本可查看、下载；资料不共享到频道。 |
 
-### org/threads（10 个，要做 3）
+### org/threads（10 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/threads` | `threads.list` |  |
-| ☐ | POST | `ORG/threads` | `threads.create` |  |
-| ☐ | DELETE | `ORG/threads/{x}` | `threads.remove` | 读已接、写没接 |
-| ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接现有团队频道话题的改名，调整选段待接 |
+| ☑ | POST | `ORG/threads` | `threads.create` | 已加入且可发言的团队频道成员可从同一频道的原消息选段创建话题。只引用，不移动原消息；跨频道、私聊和任务对话拒绝。当前 Desktop 的消息菜单未提供创建选段话题入口。 |
+| ☑ | DELETE | `ORG/threads/{x}` | `threads.remove` | 有管理权限的人可撤销未归档且尚无回复、引用、标记和任务草案的选段话题。只隐藏生成的标记，保留原消息和事件顺序。Desktop 仅在新建选段后的提示中接入撤销，当前无可触发的创建入口。 |
+| ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接团队话题改名。选段型话题可在原频道调整范围和排除项，写入要求原有管理权限。General 原生验收已从接口预置的话题排除一条消息并保存，频道中的三条原消息仍在。 |
 | ☑ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 取消自己在已加入频道中的话题关注，保留已读位置。当前界面未接入口。 |
 | ☑ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 关注自己能读的团队频道话题并计入个人未读。归档话题始终不计未读。当前界面未接入口。 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
@@ -973,7 +973,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/admin-asks` | `notifications.askAdmins` |  |
+| ☐ | POST | `ORG/admin-asks` | `notifications.askAdmins` | 无创建角色权限的在册成员可向所有者申请创建角色。在已加入且可发言、呼叫智能体的频道，成员可以申请添加自己可见且可进频道的角色。每人最多 10 个频道申请，工作区最多 200 个。同一申请 24 小时内去重，七天过期。所有者通过原有入口添加角色后，对应申请从收件箱移除。Webhook 请求待接。 |
 
 ### org/proposals${filter（1 个，要做 0）
 
