@@ -358,7 +358,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` |  |
 | ☐ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` |  |
 | ☑ | POST | `ORG/routines/{x}/run` | `routines.runNow` | 立即运行一次，不改排期和启停；在跑、等验收、等核对时回 409 说明 |
-| ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录 |
+| ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录。列表显示最近 14 条，健康统计只计最近七天的已结束运行（取消除外）。 |
 | ☑ | POST | `ORG/routines/{x}/stop` | `routines.stop` | 所有者按当前认领停止本次执行，复用专员停止审计和执行池。没有运行、登记不匹配或取消未受理时拒绝；不改排期。 |
 
 ### org/credentials（9 个，要做 0）
