@@ -496,9 +496,26 @@ async def sign_out(request: Request, response: Response):
     return {"success": True}
 
 
+class _DeviceAccountSignOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    userId: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 @router.post("/api/app/device-accounts/sign-out")
-async def device_sign_out(request: Request, response: Response):
-    """新版客户端退出当前账号（界面的「退出」走这里）。所有者和成员都用它；一个浏览器只登一个账号。"""
+async def device_sign_out(request: Request, response: Response, body: _DeviceAccountSignOut | None = None):
+    """退出当前账号。明确提供账号时，先核对它就是当前会话，防止旧页面退出后来登录的人。"""
+    if body is not None and "userId" in body.model_fields_set:
+        if body.userId is None:
+            return _error(422, "invalid", "账号编号必须是非空字符串")
+        account = getattr(request.state, "member_account", None)
+        if account is None:
+            if not app_staff.owner_proof(request):
+                return _error(403, "owner_proof_required", "退出指定账号需要已认证的同源会话")
+            current = views.owner_id(os.getcwd())
+        else:
+            current = member_auth.member_id(account) or account["id"]
+        if body.userId != current:
+            return _error(404, "not_found", "这个浏览器的当前会话不是指定账号")
     await sign_out(request, response)
     return {"signedIn": False}
 

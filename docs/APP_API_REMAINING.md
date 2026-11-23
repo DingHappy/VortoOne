@@ -747,6 +747,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前账号、可见空间及未读汇总，沿用 `/me/unread` 的权限。未加入时无空间汇总，暂时读不到计数时仍可读取账号。 |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
 
+现有退出接口接收可选的账号编号。提供编号时仅接受当前会话对应的账号，旧页面指定其他账号时拒绝退出。
+
 ### org/logo（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
