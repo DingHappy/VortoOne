@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,7 +12,8 @@ import re
 import stat
 import tempfile
 import uuid
-from contextlib import contextmanager
+from collections import Counter
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -19,6 +22,13 @@ from src.workflow.home_identity import ensure_home_identity
 
 DIRECTORY = ".vortoone-personal-vault"
 MAX_BODY = 32_768
+_MAX_CSV_BYTES = 2 * 1024 * 1024
+_MAX_KEYS_BYTES = 512 * 1024
+_MAX_IMPORT_KEYS = 200
+_MAX_IMPORT_ROWS = 10_000
+# JSON escapes can use six bytes for a single ASCII byte, plus the request fields.
+MAX_CSV_BODY = 6 * _MAX_CSV_BYTES + 512
+MAX_KEYS_BODY = 6 * _MAX_KEYS_BYTES + 64 * 1024
 _MAX_SECRET = 16_384
 _MAX_ITEMS = 64
 _MAX_FILE = 8 * 1024 * 1024
@@ -40,6 +50,10 @@ def _unavailable() -> VaultError:
 
 def _invalid() -> VaultError:
     return VaultError(422, "vault.invalid", "个人 Vault 条目不符合要求")
+
+
+def too_large() -> VaultError:
+    return VaultError(413, "vault.too_large", "个人 Vault 请求过大")
 
 
 def _private(info, mode: int, *, directory: bool = False) -> bool:
@@ -112,9 +126,7 @@ def _website(value) -> str:
     return f"https://{parts.netloc.lower()}"
 
 
-def _apply(item: dict, body: dict, *, creating: bool) -> None:
-    if set(body) - (_FIELDS | {"kind", "scope"} if creating else _FIELDS):
-        raise _invalid()
+def _check_access(body: dict, *, creating: bool) -> None:
     if creating and body.get("scope") != "personal":
         raise VaultError(403, "vault.personal_only", "此服务仅提供个人 Vault")
     if "access" in body:
@@ -123,6 +135,12 @@ def _apply(item: dict, body: dict, *, creating: bool) -> None:
                 or any(type(value) is not type(_ACCESS[field]) or value != _ACCESS[field]
                        for field, value in access.items())):
             raise VaultError(403, "vault.sharing_unavailable", "个人 Vault 暂不支持向成员或 Agent 授权")
+
+
+def _apply(item: dict, body: dict, *, creating: bool) -> None:
+    if set(body) - (_FIELDS | {"kind", "scope"} if creating else _FIELDS):
+        raise _invalid()
+    _check_access(body, creating=creating)
     kind = item["kind"]
     if kind not in ("login", "key"):
         raise _invalid()
@@ -153,6 +171,129 @@ def _apply(item: dict, body: dict, *, creating: bool) -> None:
         if not _KEY_NAME.fullmatch(name):
             raise _invalid()
         item["keyName"] = name
+
+
+def _new_item(body: dict) -> dict:
+    now = _timestamp()
+    item = {"id": uuid.uuid4().hex, "kind": body.get("kind"), "description": "",
+            "createdAt": now, "updatedAt": now}
+    _apply(item, body, creating=True)
+    return item
+
+
+def _keep_new(items: dict, item: dict) -> None:
+    if len(items) >= _MAX_ITEMS:
+        raise VaultError(409, "vault.limit", "个人 Vault 条目已达上限")
+    items[item["id"]] = item
+
+
+def _csv_format(header: list[str]) -> tuple[str, str, str, str]:
+    columns = set(header)
+    if not 3 <= len(header) <= 128 or len(columns) != len(header) or "" in columns:
+        raise _invalid()
+    bitwarden = ("login_uri", "login_username", "login_password")
+    if set(bitwarden) <= columns:
+        return ("bitwarden", *bitwarden)
+    if {"title", "website", "username", "password"} <= columns:
+        return ("1password", "website", "username", "password")
+    if {"url", "username", "password"} <= columns:
+        return ("chrome" if "name" in columns else "generic", "url", "username", "password")
+    if {"website", "username", "password"} <= columns:
+        return ("generic", "website", "username", "password")
+    raise _invalid()
+
+
+def _login_origin(raw: str) -> str:
+    raw = raw.strip()
+    if any(ord(char) < 32 or char.isspace() or char == "\\" for char in raw):
+        raise _invalid()
+    try:
+        url = urlsplit(raw)
+    except ValueError:
+        raise _invalid() from None
+    if any(mark in url.netloc for mark in ",;\"'"):
+        raise _invalid()
+    return _website(f"{url.scheme}://{url.netloc}")
+
+
+def _login_key(item: dict) -> tuple[str | None, int, str | None]:
+    url = urlsplit(item["website"])
+    return url.hostname, url.port or 443, item.get("username")
+
+
+def _csv_logins(value: str) -> tuple[str, list[dict], Counter[str]]:
+    if not isinstance(value, str):
+        raise _invalid()
+    try:
+        length = len(value.encode("utf-8"))
+    except UnicodeError:
+        raise _invalid() from None
+    if length > _MAX_CSV_BYTES:
+        raise too_large()
+
+    reader = csv.reader(io.StringIO(value.removeprefix("\ufeff"), newline=""), strict=True)
+    logins: list[dict] = []
+    skipped: Counter[str] = Counter()
+    try:
+        header = [part.strip().lower() for part in next(reader, [])]
+        format_name, site_column, user_column, secret_column = _csv_format(header)
+        for index, row in enumerate(reader):
+            if index >= _MAX_IMPORT_ROWS:
+                raise too_large()
+            if not row:
+                continue
+            if len(row) != len(header):
+                skipped["invalid"] += 1
+                continue
+            fields = dict(zip(header, row))
+            if format_name == "bitwarden" and fields.get("type", "login") != "login":
+                skipped["invalid"] += 1
+                continue
+            secret = fields[secret_column]
+            if not secret:
+                skipped["no_password"] += 1
+                continue
+            try:
+                site = _login_origin(fields[site_column])
+            except VaultError:
+                skipped["not_https"] += 1
+                continue
+            try:
+                logins.append(_new_item({
+                    "kind": "login", "scope": "personal", "website": site,
+                    "title": fields.get("name", "").strip() or fields.get("title", "").strip() or site,
+                    "username": fields[user_column], "secret": secret,
+                }))
+            except VaultError:
+                skipped["invalid"] += 1
+    except csv.Error:
+        raise _invalid() from None
+    return format_name, logins, skipped
+
+
+def _key_imports(entries: list[dict]) -> list[tuple[dict, bool]]:
+    if not isinstance(entries, list) or not entries:
+        raise _invalid()
+    if len(entries) > _MAX_IMPORT_KEYS:
+        raise too_large()
+    parsed = []
+    names = set()
+    total_bytes = 0
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"keyName", "secret", "replace"}:
+            raise _invalid()
+        name = _text(entry["keyName"], 128, required=True)
+        replace = entry["replace"]
+        if type(replace) is not bool or name in names:
+            raise _invalid()
+        item = _new_item({"title": name[:120], "kind": "key", "scope": "personal",
+                          "keyName": name, "secret": entry["secret"]})
+        total_bytes += len(item["secret"].encode("utf-8"))
+        if total_bytes > _MAX_KEYS_BYTES:
+            raise too_large()
+        names.add(name)
+        parsed.append((item, replace))
+    return parsed
 
 
 def _metadata(item: dict, user_id: str) -> dict:
@@ -247,15 +388,63 @@ class PersonalVault:
         return {**_metadata(self._item(self._read(), item_id), self.user_id), "uses": [], "unreadable": False}
 
     def create(self, body: dict) -> dict:
-        now = _timestamp()
-        item = {"id": uuid.uuid4().hex, "kind": body.get("kind"), "description": "",
-                "createdAt": now, "updatedAt": now}
-        _apply(item, body, creating=True)
+        item = _new_item(body)
         with self._change() as items:
-            if len(items) >= _MAX_ITEMS:
-                raise VaultError(409, "vault.limit", "个人 Vault 条目已达上限")
-            items[item["id"]] = item
+            _keep_new(items, item)
         return _metadata(item, self.user_id)
+
+    def import_csv(self, body: dict) -> dict:
+        if set(body) != {"csv", "scope", "dryRun"} or type(body["dryRun"]) is not bool:
+            raise _invalid()
+        _check_access(body, creating=True)
+        format_name, logins, skipped = _csv_logins(body["csv"])
+        added = updated = 0
+        with nullcontext(self._read()) if body["dryRun"] else self._change() as items:
+            saved: dict[tuple[str | None, int, str | None], list[dict]] = {}
+            for item in items.values():
+                if item["kind"] == "login":
+                    saved.setdefault(_login_key(item), []).append(item)
+            seen = set()
+            for login in logins:
+                key = _login_key(login)
+                candidates = saved.get(key, [])
+                if key in seen or len(candidates) > 1 or (candidates and candidates[0]["secret"] == login["secret"]):
+                    skipped["duplicate"] += 1
+                elif not candidates:
+                    _keep_new(items, login)
+                    added += 1
+                else:
+                    candidates[0].update(secret=login["secret"], updatedAt=login["updatedAt"])
+                    updated += 1
+                seen.add(key)
+        return {"added": added, "updated": updated, "format": format_name,
+                "skipped": [{"reason": reason, "count": count} for reason, count in sorted(skipped.items())]}
+
+    def import_keys(self, body: dict) -> dict:
+        if set(body) - {"scope", "access", "keys"}:
+            raise _invalid()
+        _check_access(body, creating=True)
+        incoming = _key_imports(body.get("keys"))
+        added = replaced = skipped = 0
+        with self._change() as items:
+            saved: dict[str, list[dict]] = {}
+            for item in items.values():
+                if item["kind"] == "key":
+                    saved.setdefault(item["keyName"], []).append(item)
+            for key, replace in incoming:
+                candidates = saved.get(key["keyName"], [])
+                if not candidates:
+                    _keep_new(items, key)
+                    added += 1
+                elif not replace:
+                    skipped += 1
+                elif len(candidates) != 1:
+                    raise VaultError(409, "vault.conflict", "同名密钥有多个，请先在个人 Vault 中处理")
+                else:
+                    if candidates[0]["secret"] != key["secret"]:
+                        candidates[0].update(secret=key["secret"], updatedAt=key["updatedAt"])
+                    replaced += 1
+        return {"added": added, "replaced": replaced, "skipped": skipped}
 
     def update(self, item_id: str, body: dict) -> dict:
         with self._change() as items:

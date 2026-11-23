@@ -562,6 +562,30 @@ def _who(request: Request, root: str):
 _NOT_MEMBER = "还不是这个空间的成员"
 
 
+@router.get(_ORG)
+async def workspace_details(org_id: str, request: Request, response: Response):
+    """Return the caller's workspace summary and show its context to the owner."""
+    from src.memory.assistant_profile import load_home_context
+
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取空间详情需要已认证的同源会话")
+    profile = await _current_profile(root, request, who)
+    if isinstance(profile, JSONResponse):
+        return profile
+    summary = next((org for org in profile["organizations"] if org["id"] == org_id), None)
+    if summary is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    result = dict(summary)
+    if who.is_owner:
+        result["context"] = await asyncio.to_thread(load_home_context, root)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
 @router.get(_ORG + "/overview")
 async def overview(org_id: str, request: Request):
     root = _root(org_id)
@@ -2780,13 +2804,13 @@ _VAULT_ITEM = _VAULT_ITEMS + "/{item_id}"
 _VAULT_HEADERS = {"Cache-Control": "no-store"}
 
 
-async def _vault_body(request: Request) -> dict:
+async def _vault_body(request: Request, limit: int) -> dict:
     if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
         raise app_personal_vault.VaultError(415, "vault.invalid", "个人 Vault 只接受 JSON 请求")
     raw = bytearray()
     async for chunk in request.stream():
-        if len(raw) + len(chunk) > app_personal_vault.MAX_BODY:
-            raise app_personal_vault.VaultError(413, "vault.too_large", "个人 Vault 请求过大")
+        if len(raw) + len(chunk) > limit:
+            raise app_personal_vault.too_large()
         raw.extend(chunk)
     try:
         body = json.loads(raw)
@@ -2797,7 +2821,7 @@ async def _vault_body(request: Request) -> dict:
     return body
 
 
-async def _vault_call(request: Request, org_id: str, action, *, write_body: bool = False):
+async def _vault_call(request: Request, org_id: str, action, *, body_limit: int = 0):
     root = _root(org_id)
     loopback = {"127.0.0.1", "::1"}
     local = (request.url.scheme == "http" and request.url.hostname in loopback and request.client
@@ -2817,7 +2841,7 @@ async def _vault_call(request: Request, org_id: str, action, *, write_body: bool
         return action(app_personal_vault.PersonalVault(root, who.id, member_account=account), body)
 
     try:
-        body = await _vault_body(request) if write_body else None
+        body = await _vault_body(request, body_limit) if body_limit else None
         result = await asyncio.to_thread(call, body)
         if result is None:
             return Response(status_code=204, headers=_VAULT_HEADERS)
@@ -2836,14 +2860,28 @@ async def vault_item(org_id: str, item_id: str, request: Request):
     return await _vault_call(request, org_id, lambda vault, _: vault.item(item_id))
 
 
+@router.post(_VAULT + "/import")
+async def vault_import_csv(org_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, body: vault.import_csv(body),
+                             body_limit=app_personal_vault.MAX_CSV_BODY)
+
+
+@router.post(_VAULT + "/keys")
+async def vault_import_keys(org_id: str, request: Request):
+    return await _vault_call(request, org_id, lambda vault, body: vault.import_keys(body),
+                             body_limit=app_personal_vault.MAX_KEYS_BODY)
+
+
 @router.post(_VAULT_ITEMS)
 async def vault_create(org_id: str, request: Request):
-    return await _vault_call(request, org_id, lambda vault, body: vault.create(body), write_body=True)
+    return await _vault_call(request, org_id, lambda vault, body: vault.create(body),
+                             body_limit=app_personal_vault.MAX_BODY)
 
 
 @router.patch(_VAULT_ITEM)
 async def vault_update(org_id: str, item_id: str, request: Request):
-    return await _vault_call(request, org_id, lambda vault, body: vault.update(item_id, body), write_body=True)
+    return await _vault_call(request, org_id, lambda vault, body: vault.update(item_id, body),
+                             body_limit=app_personal_vault.MAX_BODY)
 
 
 @router.delete(_VAULT_ITEM, status_code=204)

@@ -120,7 +120,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
     ("GET", _ORG + r"/vault(?:/items/[^/]+)?"),
-    ("POST", _ORG + r"/vault/items"),
+    ("POST", _ORG + r"/vault/(?:import|items|keys)"),
     ("PATCH", _ORG + r"/vault/items/[^/]+"),
     ("DELETE", _ORG + r"/vault/items/[^/]+"),
     ("GET", _ORG + r"/routines/proposals"),
@@ -186,6 +186,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PUT", _ORG + r"/threads/[^/]+/follow"),
     ("DELETE", _ORG + r"/threads/[^/]+/follow"),
     ("GET", _ORG + r"/unread-threads"),
+    ("GET", _ORG),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),
     # AI 应用：只列、只断开他自己的连接和个人令牌（管成员的人能看全部）；授权确认页按他本人答复
