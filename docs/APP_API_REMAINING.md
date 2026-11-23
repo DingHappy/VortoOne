@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 347 个，剩 **284** 个：
-- **要做：213**（其中 29 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 348 个，剩 **283** 个：
+- **要做：212**（其中 29 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -280,7 +280,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
-### org/artifacts（11 个，要做 6）
+### org/artifacts（11 个，要做 5）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -288,12 +288,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV 和 JSON。非 HTML 原样下载，小文本在 Drive 以纯文本预览。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
 | ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML、已存历史版本及私有文本原件 |
 | ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者：原始 HTML、已存历史版本和私有文本原件 |
-| ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |
+| ☑ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` | 所有者可为私有 TXT、Markdown、CSV、JSON 追加同格式的 UTF-8 文件及可选备注。原版本保留，可单独预览、下载，同一制品回收时保留全部版本。其它制品、格式或频道挂载返回明确错误。 |
 | ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
 | ☑ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` | 所有者可还原 Drive 删除的助理页面、已存历史版本和私有上传；到期回 `409 artifact.purged`，提前永久清除回 `410`。 |
 | ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
-| ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的 HTML 快照，不推断逐版作者或备注。 |
+| ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的 HTML 快照和私有文本版本，私有版本显示保存的备注。旧网页记录无逐版作者或备注。 |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
 ### org/threads（10 个，要做 3）

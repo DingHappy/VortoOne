@@ -15,6 +15,8 @@ _TEXT_MIME = {
     ".csv": ("text/csv", "application/vnd.ms-excel"),
     ".json": ("application/json", "text/json"),
 }
+TEXT_CONTENT_TYPES = frozenset(mimes[0] for mimes in _TEXT_MIME.values())
+_MULTIPART_OVERHEAD_BYTES = 16 * 1024
 
 
 @dataclass(frozen=True)
@@ -31,8 +33,9 @@ class UploadError(ValueError):
         self.code = code
 
 
-def _invalid():
-    return UploadError(400, "invalid", "上传表单需要一份文件，可附标题")
+def _invalid(*, for_version: bool = False):
+    message = "上传表单需要一份文件，可附版本备注" if for_version else "上传表单需要一份文件，可附标题"
+    return UploadError(400, "invalid", message)
 
 
 def _unsupported_file():
@@ -40,7 +43,7 @@ def _unsupported_file():
 
 
 async def _read_body(request: Request, cap: int, invalid: UploadError, oversized: UploadError) -> bytes:
-    body_cap = cap + 16 * 1024
+    body_cap = cap + _MULTIPART_OVERHEAD_BYTES
     try:
         length = int(request.headers.get("content-length", "0"))
     except ValueError:
@@ -57,14 +60,15 @@ async def _read_body(request: Request, cap: int, invalid: UploadError, oversized
     return bytes(body)
 
 
-async def read_form(request: Request) -> tuple[str, str | TextUpload]:
+async def read_form(request: Request, *, for_version: bool = False) -> tuple[str, str | TextUpload]:
     cap = max_bytes()
     oversized = UploadError(413, "artifact.upload_too_large", "上传的文件超过大小限制")
     content_type = request.headers.get("content-type", "")
+    invalid = _invalid(for_version=for_version)
     if content_type.partition(";")[0].strip().lower() != "multipart/form-data":
-        raise _invalid()
-    body = await _read_body(request, cap, _invalid(), oversized)
-    return await asyncio.to_thread(_parse_form, content_type, body, cap, oversized)
+        raise invalid
+    body = await _read_body(request, cap, invalid, oversized)
+    return await asyncio.to_thread(_parse_form, content_type, body, cap, oversized, for_version=for_version)
 
 
 async def read_json(request: Request) -> tuple[str, str]:
@@ -114,55 +118,64 @@ def _valid_content(title: str, html: str) -> bool:
     )
 
 
-def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError) -> tuple[str, str | TextUpload]:
+def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError, *,
+                for_version: bool = False) -> tuple[str, str | TextUpload]:
+    invalid = _invalid(for_version=for_version)
     if "\r" in content_type or "\n" in content_type:
-        raise _invalid()
+        raise invalid
     message = BytesParser(policy=policy.HTTP).parsebytes(
         b"Content-Type: " + content_type.encode("latin-1") + b"\r\n\r\n" + body
     )
     if not message.is_multipart() or message.defects:
-        raise _invalid()
+        raise invalid
     fields = {}
+    label = "note" if for_version else "title"
     for part in message.iter_parts():
         name = part.get_param("name", header="Content-Disposition")
         if name in {"channelId", "threadId"}:
             raise UploadError(422, "artifact.upload_location", "通过 Drive 上传，暂不支持附到频道或话题")
-        if (name not in {"file", "title"} or name in fields or part.is_multipart() or part.defects
+        if (name not in {"file", label} or name in fields or part.is_multipart() or part.defects
                 or part.get_content_disposition() != "form-data" or "Content-Transfer-Encoding" in part):
-            raise _invalid()
+            raise invalid
         fields[name] = part
     file = fields.get("file")
     if file is None:
-        raise _invalid()
+        raise invalid
     filename = file.get_filename() or ""
     extension = "." + filename.rsplit(".", maxsplit=1)[-1].lower() if "." in filename else ""
     mime = file.get_content_type()
     is_html = extension in {".html", ".htm"} and mime == "text/html"
     text_mimes = _TEXT_MIME.get(extension)
+    if for_version and text_mimes is None:
+        raise UploadError(415, "artifact.upload_format", "只可追加私有文本制品的版本")
     if not is_html and (text_mimes is None or mime not in (*text_mimes, "application/octet-stream", "text/plain")):
         raise _unsupported_file()
     if "/" in filename or "\\" in filename or not filename.strip():
-        raise _invalid()
+        raise invalid
     if not is_html and (len(filename) > 200 or any(ord(char) < 32 for char in filename)):
-        raise _invalid()
+        raise invalid
 
     data = file.get_payload(decode=True) or b""
     if len(data) > cap:
         raise oversized
-    title_part = fields.get("title")
-    raw_title = (title_part.get_payload(decode=True) or b"") if title_part else b""
-    if len(raw_title) > 800:
-        raise _invalid()
+    label_part = fields.get(label)
+    raw_label = (label_part.get_payload(decode=True) or b"") if label_part else b""
+    if len(raw_label) > (_MULTIPART_OVERHEAD_BYTES if for_version else 800):
+        raise invalid
     try:
         decoded = data.decode("utf-8")
-        title = raw_title.decode("utf-8").strip() or filename
+        value = raw_label.decode("utf-8").strip()
     except UnicodeError:
         raise _unsupported_file() from None
-    if "\x00" in decoded or len(title) > 200 or any(ord(char) < 32 for char in title):
-        raise _invalid()
+    if not for_version:
+        value = value or filename
+    allowed_whitespace = "\r\n\t" if for_version else ""
+    if ("\x00" in decoded or (not for_version and len(value) > 200)
+            or any(ord(char) < 32 and char not in allowed_whitespace for char in value)):
+        raise invalid
     if is_html:
         if not decoded.strip():
-            raise _invalid()
-        return title, decoded
+            raise invalid
+        return value, decoded
     assert text_mimes is not None
-    return title, TextUpload(filename, text_mimes[0], data)
+    return value, TextUpload(filename, text_mimes[0], data)

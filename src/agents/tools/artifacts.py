@@ -178,6 +178,67 @@ class ArtifactStore:
             return meta
 
     @staticmethod
+    def _replace_upload_bytes(path: Path, data: bytes) -> None:
+        fd, temporary = tempfile.mkstemp(prefix=".upload-write-", dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as output:
+                output.write(data)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+
+    def append_uploaded_file(self, artifact_id: str, name: str, content_type: str,
+                             data: bytes, note: Optional[str]) -> dict:
+        """Publish a file revision only when the new immutable bytes and the manifest are ready."""
+        aid = self._safe_id(artifact_id)
+        if not self._desktop_uploads or aid is None:
+            raise FileNotFoundError("没有这个私有制品")
+        if len(data) > max_bytes():
+            raise ValueError("制品体积超过上限")
+        with self._mutation():
+            directory = self._dir(aid)
+            manifest = directory / "meta.json"
+            if directory.is_symlink() or manifest.is_symlink():
+                raise OSError("桌面制品目录不可用")
+            meta = self._read_meta(directory)
+            if meta is None:
+                raise FileNotFoundError("没有这个私有制品")
+            if meta.get("kind") != "file" or meta.get("content_type") != content_type:
+                raise ValueError("这个制品只接受同一类型的文件")
+            versions = meta["versions"]
+            current = int(meta["version"])
+            if not versions or int(versions[-1]["v"]) != current or self._desktop_file_path(aid, current) is None:
+                raise OSError("制品版本记录无法读取")
+            if current == 1:
+                # The first format records the original's details only in the manifest header.
+                versions = [{**versions[0], **{key: meta[key] for key in ("name", "content_type", "sha256")}}]
+            version = current + 1
+            now = datetime.now().isoformat(timespec="seconds")
+            fields = {"name": name, "content_type": content_type, "bytes": len(data),
+                      "sha256": sha256(data).hexdigest()}
+            versions = [*versions, {"v": version, "ts": now, "note": note, **fields}]
+            saved = {**meta, **fields, "version": version, "versions": versions, "updated_at": now}
+            target = directory / self._uploaded_filename(version)
+            self._replace_upload_bytes(target, data)
+            try:
+                self._replace_upload_bytes(manifest, json.dumps(saved, ensure_ascii=False, indent=2).encode("utf-8"))
+            except (OSError, ValueError):
+                target.unlink(missing_ok=True)
+                raise
+            return saved
+
+    @staticmethod
+    def uploaded_version(meta: dict, version: int) -> Optional[dict]:
+        if meta.get("kind") != "file":
+            return None
+        if version == 1 and int(meta["version"]) == 1:
+            # Compatibility with the first private uploads and single-version files.
+            return meta
+        return next((row for row in meta["versions"] if int(row["v"]) == version), None)
+
+    @staticmethod
     def _publish_at(d: Path, aid: str, title: str, html: str, kind: str) -> dict:
         data = (html or "").encode("utf-8")
         cap = max_bytes()
@@ -273,15 +334,19 @@ class ArtifactStore:
         return (self._desktop_file_path(artifact_id, version) is not None
                 or self._html_path(artifact_id, version, strict=True) is not None)
 
+    @staticmethod
+    def _uploaded_filename(version: int) -> str:
+        return "upload.bin" if version == 1 else f"upload-v{version}.bin"
+
     def _desktop_file_path(self, artifact_id: str, version: int) -> Optional[Path]:
         aid = self._safe_id(artifact_id)
-        if not self._desktop_uploads or not aid or version != 1:
+        if not self._desktop_uploads or not aid or version < 1:
             return None
         directory = self._dir(aid)
-        path = directory / "upload.bin"
+        path = directory / self._uploaded_filename(version)
         return path if not directory.is_symlink() and not path.is_symlink() and path.is_file() else None
 
-    def uploaded_file(self, artifact_id: str, version: int, size: int) -> Optional[bytes]:
+    def uploaded_file(self, artifact_id: str, version: int, size: int, digest: Optional[str]) -> Optional[bytes]:
         path = self._desktop_file_path(artifact_id, version)
         if path is None:
             return None
@@ -293,6 +358,8 @@ class ArtifactStore:
             data = handle.read(size + 1)
         if len(data) != size:
             raise ValueError("制品文件与登记大小不符")
+        if not digest or sha256(data).hexdigest() != digest:
+            raise ValueError("制品文件与登记摘要不符")
         return data
 
     def versions(self, artifact_id: str) -> list[dict]:
