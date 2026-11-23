@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 335 个，剩 **296** 个：
-- **要做：225**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 336 个，剩 **295** 个：
+- **要做：224**（其中 33 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -179,7 +179,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/wiki/pages/{x}/rename` | `wiki.rename` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}/versions/{x}` | `wiki.version` |  |
 | ☐ | GET | `ORG/wiki/reads` | `wiki.reads` |  |
-| ☐ | GET | `ORG/wiki/search` | `wiki.search` | 界面代码里没调用 |
+| ☑ | GET | `ORG/wiki/search` | `wiki.search` | 按当前标题搜索，只回调用者可见的未删除页面摘要；界面仍用本地筛选。 |
 | ☑ | POST | `ORG/wiki/trash/purge` | `wiki.purge` |  |
 | ☑ | POST | `ORG/wiki/trash/restore` | `wiki.restoreMany` |  |
 
