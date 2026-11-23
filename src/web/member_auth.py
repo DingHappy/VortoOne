@@ -57,7 +57,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/calendar/events"),
     ("PATCH", _ORG + r"/calendar/events/[^/]+"),
     ("DELETE", _ORG + r"/calendar/events/[^/]+"),
-    ("GET", _ORG + r"/wiki/(?:graph|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
+    ("GET", _ORG + r"/wiki/(?:graph|search|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
     ("POST", _ORG + r"/wiki/import"),
     ("POST", _ORG + r"/wiki/pages"),
     ("PUT", _ORG + r"/wiki/pages/[^/]+"),

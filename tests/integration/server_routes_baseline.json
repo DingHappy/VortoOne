@@ -2814,6 +2814,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/search",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/trash/purge",
     "methods": [
       "POST"

@@ -2813,6 +2813,11 @@ async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
 
 
+@router.get(_WIKI + "/search")
+async def search_wiki(org_id: str, request: Request, q: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.search(q))
+
+
 async def _wiki_import_body(request: Request) -> bytearray:
     if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
         raise WikiError(415, "invalid", "Markdown 导入只接受 JSON 请求")

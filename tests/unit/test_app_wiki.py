@@ -111,6 +111,45 @@ def test_wiki_graph_uses_visible_pages_and_current_slugs_for_both_directions(hom
     assert owner.get("/api/app/organizations/other/wiki/graph").status_code == 404
 
 
+def test_wiki_search_returns_current_matching_titles_in_visible_page_shape(home):
+    owner, member, outsider = home["owner"], _join(home), _join(home, "reader@example.com", "读者")
+    wiki = f"{home['base']}/wiki"
+    prefix = _page(owner, home["base"], title="Release guide", tags=["维护"])
+    other = _page(owner, home["base"], title="Monthly release notes")
+    private = _page(member, home["base"], title="Release draft", audience={
+        "mode": "people", "userIds": [member.member_id],
+    })
+    deleted = _page(owner, home["base"], title="Release old")
+    unrelated = _page(owner, home["base"], title="Checklist", body="Release")
+    assert owner.delete(f"{wiki}/pages/{deleted['slug']}").status_code == 204
+    MemberRegistry(home["root"]).change_group(OWNER_P, "everyone", items=[])
+
+    search = f"{wiki}/search"
+    params = {"q": "  ReLEaSe  "}
+    for reader in (owner, member):
+        result = reader.get(search, params=params)
+        assert result.status_code == 200
+        assert result.headers["cache-control"] == "no-store"
+        listed = {page["id"]: page for page in reader.get(f"{wiki}/pages").json()["pages"]}
+        returned = result.json()["pages"]
+        assert {page["id"] for page in returned[:2]} == {prefix["id"], private["id"]}
+        assert returned[2:] == [listed[other["id"]]]
+        assert returned == [listed[page["id"]] for page in returned]
+        assert all("body" not in page for page in returned)
+        assert reader.get(search).json() == reader.get(f"{wiki}/pages").json()
+
+    assert [page["id"] for page in outsider.get(search, params=params).json()["pages"]] == [
+        prefix["id"], other["id"],
+    ]
+    for part in ("draft", "old", "unmatched"):
+        assert outsider.get(search, params={"q": part}).json() == {"pages": []}
+    assert owner.get(search, params={"q": "checklist"}).json()["pages"][0]["id"] == unrelated["id"]
+    assert owner.get(search, params={"q": "x" * 201}).status_code == 400
+    assert owner.get(search, params={"q": "\0"}).status_code == 400
+    assert TestClient(home["app"]).get(search, params=params).status_code == 401
+    assert owner.get("/api/app/organizations/other/wiki/search", params=params).status_code == 404
+
+
 def _quote(client, channel, body):
     result = client.post(f"{channel}/messages", json={"body": body})
     assert result.status_code == 200, result.text

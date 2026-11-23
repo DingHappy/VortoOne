@@ -310,6 +310,15 @@ class Wiki:
         pages = (page for page in self._all(conn) if not page.get("deletedAt") and self.reader.sees(page))
         return sorted(pages, key=lambda page: page["updatedAt"], reverse=True)
 
+    def search(self, query: str) -> dict:
+        query = _text(query, 200, "搜索词").strip().lower()
+        with self._database() as conn:
+            pages = self._visible_pages(conn)
+        titles = [(page, page["title"].lower()) for page in pages]
+        matches = [(page, title) for page, title in titles if query in title]
+        matches.sort(key=lambda match: not match[1].startswith(query))
+        return {"pages": [self._summary(page) for page, _ in matches]}
+
     @staticmethod
     def _links(conn, pages):
         """Resolve page links against the same visible pages for the graph and backlinks."""
