@@ -1,11 +1,11 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 330 个，剩 **301** 个：
+客户端合同里一共 631 个不重复接口，后端已接 334 个，剩 **297** 个：
 - **要做：226**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
-- **暂缓：4**（投票与选择卡，等智能体进团队频道）
+- **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
 
 表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
@@ -800,15 +800,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/polls/{x}` | `artifacts.poll` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
-| — | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| ☑ | GET | `ORG/polls/{x}` | `artifacts.poll` | 频道里 agent 发的投票：加入频道的人能看（主人 2026-11-22 定） |
+| ☑ | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` | 替换自己的选择，空列表是收回；单选只能一项；截止后 409 poll.closed |
 
 ### org/choices（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/choices/{x}` | `artifacts.choices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
-| — | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| ☑ | GET | `ORG/choices/{x}` | `artifacts.choices` | 频道里 agent 发的选择卡和答案 |
+| ☑ | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` | 先答的算（之后 409 choices.answered）；答案作为这个人的消息发在话题里，再交给发卡的 agent |
 
 ### org/artifacts-trash（2 个，要做 0）
 

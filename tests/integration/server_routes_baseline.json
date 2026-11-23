@@ -3658,6 +3658,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/choices/{choices_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/choices/{choices_id}/answer",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/computer-pairings",
     "methods": [
       "POST"
@@ -4005,6 +4017,18 @@
     "path": "/api/app/organizations/{org_id}/memories/{memory_id}/team",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/polls/{poll_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/polls/{poll_id}/vote",
+    "methods": [
+      "PUT"
     ]
   },
   {

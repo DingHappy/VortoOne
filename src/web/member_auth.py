@@ -54,6 +54,12 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PUT", _ORG + r"/me/issues-view"),
     # 私人日程按调用人隔离，任务截止日期沿用看板的可见范围。
     ("GET", _ORG + r"/calendar"),
+    # 频道里 agent 发的投票、选择卡：按卡片所在频道判定（见 channels.TeamChannels._card）
+    ("GET", _ORG + r"/artifacts/blk_[a-f0-9]{32}"),
+    ("GET", _ORG + r"/polls/blk_[a-f0-9]{32}"),
+    ("PUT", _ORG + r"/polls/blk_[a-f0-9]{32}/vote"),
+    ("GET", _ORG + r"/choices/blk_[a-f0-9]{32}"),
+    ("POST", _ORG + r"/choices/blk_[a-f0-9]{32}/answer"),
     ("POST", _ORG + r"/calendar/events"),
     ("PATCH", _ORG + r"/calendar/events/[^/]+"),
     ("DELETE", _ORG + r"/calendar/events/[^/]+"),

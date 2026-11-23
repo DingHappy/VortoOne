@@ -282,6 +282,9 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     dispatch = task.collaboration['dispatch']
     if dispatch.get('source') == 'staff' and not dispatch.get('routine') and not dispatch.get('channel'):
         options['extra_tools'] = (build_question_tool(work, task),)
+    elif dispatch.get('channel'):
+        from src.agents.tools.channel_cards import build_channel_card_tools
+        options['extra_tools'] = tuple(build_channel_card_tools(root, task))      # 投票、选择卡：跟着回答发在话题里
     if downgraded:
         options.pop('confirm_action', None)
         options['unattended'] = True
