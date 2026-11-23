@@ -489,6 +489,10 @@ class ChannelHistory:
         with self.database(write=True) as conn:
             thread_reads.mark(conn, channel, thread, person)
 
+    def set_thread_follow(self, thread, person, following):
+        with self.database(write=True) as conn:
+            thread_reads.set_follow(conn, thread, person, following)
+
     def unread_thread_count(self, readers):
         if not readers:
             return 0
