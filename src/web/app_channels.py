@@ -8,13 +8,23 @@ from fastapi import WebSocketDisconnect
 
 from src.gateway import app_protocol as F
 from src.web import app_views as views
-from src.workflow.members.channels import TeamChannels
+from src.workflow.members.channels import TeamChannels, is_team_channel
 from src.workflow.members.registry import Damaged, Missing, Refused
 
 
 def channels(root: str) -> TeamChannels:
     owner = views.person(root)
     return TeamChannels(root, owner["userId"], owner["name"])
+
+
+def streaming_service(root: str, channel_id: str):
+    from src.web.app_issue_chat import IssueChat, is_channel
+    return IssueChat(root) if is_channel(channel_id) else channels(root)
+
+
+def is_streamed_channel(channel_id: str) -> bool:
+    from src.web.app_issue_chat import is_channel
+    return is_team_channel(channel_id) or is_channel(channel_id)
 
 
 def channel_agents(root: str) -> dict:
@@ -38,8 +48,10 @@ async def subscribe(socket, service, actor, channel_id, *, session_valid, interv
         return None
     if not session_valid():
         return None
-    if not service.can_read(actor, channel_id):
+    if not await asyncio.to_thread(service.can_read, actor, channel_id):
         await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
+        return None
+    if not session_valid():
         return None
     await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel_id))
     return asyncio.create_task(watch(socket, service, actor, channel_id, cursor, reaction_cursor, thread_cursor,
@@ -51,8 +63,10 @@ async def watch(socket, service, actor, channel_id, after, reaction_after, threa
     async def send(kind, **fields):
         if not session_valid():
             return False
-        if not service.can_read(actor, channel_id):
+        if not await asyncio.to_thread(service.can_read, actor, channel_id):
             raise Missing("没有这个频道")
+        if not session_valid():
+            return False
         event = F.channel_event(channel_id, kind, **fields)
         await socket.send_json(F.make_app_frame(F.EVENT, channelId=channel_id, event=event))
         return True

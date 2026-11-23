@@ -14,7 +14,6 @@ from fastapi import WebSocketDisconnect
 from src.agents.principal import MEMBER, Principal
 from src.gateway import app_protocol as F
 from src.web import app_channels, app_members, app_presence, app_staff, app_views as views, member_auth
-from src.workflow.members.channels import is_team_channel
 
 
 def identity(socket, root: str) -> Optional[Tuple[str, str]]:
@@ -59,7 +58,8 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
     try:
         await socket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=bound[0]))
         while True:
-            if not session_valid() or any(not permitted(channel) for channel in watches if not is_team_channel(channel)):
+            if not session_valid() or any(not permitted(channel) for channel in watches
+                                          if not app_channels.is_streamed_channel(channel)):
                 await socket.close(code=1008)
                 return
             try:
@@ -79,12 +79,16 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
             if kind == "ping":
                 await socket.send_json(F.make_app_frame(F.PONG))
             elif kind == "subscribe":
-                if is_team_channel(channel):
+                if app_channels.is_streamed_channel(channel):
                     prior = watches.get(channel)
-                    if prior is not None and not prior.done():
+                    service = app_channels.streaming_service(root, channel)
+                    if (prior is not None and not prior.done()
+                            and await asyncio.to_thread(service.can_read, actor, channel) and session_valid()):
                         await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
                     else:
-                        subscription = await app_channels.subscribe(socket, app_channels.channels(root), actor, channel,
+                        if prior is not None and not prior.done():
+                            prior.cancel()
+                        subscription = await app_channels.subscribe(socket, service, actor, channel,
                                                                     session_valid=session_valid, interval=interval)
                         if subscription is not None:
                             watches[channel] = subscription

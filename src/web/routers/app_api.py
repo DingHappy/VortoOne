@@ -29,6 +29,7 @@ from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_artifact_upload
 from src.web import app_artifacts
 from src.web import app_channel_agents
+from src.web import app_issue_chat
 from src.web import app_views as views
 from src.web import (
     app_board, app_calendar, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox,
@@ -51,7 +52,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 7
+API_CONTRACT = 8
 MIN_API = 1
 
 
@@ -1443,6 +1444,15 @@ def _team_response(response):
     return _error(404, "not_found", "没有这个频道") if response is None else response
 
 
+async def _issue_chat_call(request, org_id, action):
+    result = await _team_call(request, org_id, lambda _, actor: action(
+        app_issue_chat.IssueChat(_root(org_id)), actor))
+    if isinstance(result, Response):
+        result.headers["Cache-Control"] = "no-store"
+        return result
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
 def _team_receipt(action):
     action()
     return Response(status_code=204)
@@ -1744,6 +1754,8 @@ async def list_team_threads(org_id: str, request: Request, tab: str = "all", cha
 
 @router.get(_THREAD)
 async def team_thread_detail(org_id: str, thread_id: str, request: Request):
+    if app_issue_chat.is_thread(thread_id):
+        return await _issue_chat_call(request, org_id, lambda chat, actor: chat.thread(actor, thread_id))
     return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, thread_id, thread=True))
 
 
@@ -1780,12 +1792,18 @@ async def follow_team_thread(org_id: str, thread_id: str, request: Request, body
 
 @router.post(_THREAD + "/read", status_code=204)
 async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
+    if app_issue_chat.is_thread(thread_id):
+        return await _issue_chat_call(request, org_id, lambda chat, actor:
+                                      _team_receipt(lambda: chat.mark_read(actor, thread_id)))
     return await _team_call(request, org_id, lambda service, actor:
                             _team_receipt(lambda: service.mark_thread_read(actor, thread_id)))
 
 
 @router.get(_ORG + "/channels/{channel_id}/members")
 async def channel_members(org_id: str, channel_id: str, request: Request):
+    if app_issue_chat.is_channel(channel_id):
+        return await _issue_chat_call(request, org_id, lambda chat, actor: {
+            "members": chat.members(actor, channel_id)})
     team = await _team_call(request, org_id, lambda service, actor: {"members": [
         {"type": person["type"], "id": person["id"]}
         for person in service.roster(actor, channel_id, agents=app_channels.channel_agents(_root(org_id)))]},
@@ -1809,6 +1827,9 @@ async def channel_members(org_id: str, channel_id: str, request: Request):
 @router.get(_ORG + "/channels/{channel_id}/messages")
 async def channel_messages(org_id: str, channel_id: str, request: Request, before: str = "", limit: int = 100,
                            threadId: str = ""):  # noqa: N803 —— 界面的查询参数名
+    if app_issue_chat.is_channel(channel_id):
+        return await _issue_chat_call(request, org_id, lambda chat, actor: {
+            "messages": chat.messages(actor, channel_id, before=before, limit=limit, thread=threadId or None)})
     team = await _team_call(request, org_id, lambda service, actor: {"messages": service.messages(
         actor, channel_id, before=before, limit=limit, thread=threadId or None)}, channel_id=channel_id)
     if team is not None:
@@ -1853,9 +1874,10 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
     """主人在私聊里发一条：交给主要聊天开一个回合（前面还有回合就排队）。应答是这条消息本身，
     助理的回复之后经实时连接或下一次读取出现。"""
     team_channel = is_team_channel(channel_id)
-    root = None if team_channel else _main_channel(org_id, channel_id)
-    member = _member_channel(org_id, channel_id) if root is None and not team_channel else None
-    if not team_channel and root is None and member is None:
+    task_channel = app_issue_chat.is_channel(channel_id)
+    root = None if team_channel or task_channel else _main_channel(org_id, channel_id)
+    member = _member_channel(org_id, channel_id) if root is None and not (team_channel or task_channel) else None
+    if not (team_channel or task_channel) and root is None and member is None:
         return _error(404, "not_found", "没有这个对话")
     text = body.body.strip()
     extra = dict(body.model_extra or {})
@@ -1865,6 +1887,11 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
     if len(text) > 20000:
         return _error(413, "message_too_long", "消息太长")
     client_id = (body.clientId or "")[:120] or None
+    if task_channel:
+        if wanted_media or any(value for value in extra.values()):
+            return _error(422, "message.media_off", "任务对话目前支持文字和同一话题的引用")
+        return await _issue_chat_call(request, org_id, lambda chat, actor: chat.post(
+            actor, channel_id, text, client_id=client_id, thread_id=body.threadId, reply_to=body.replyTo))
     if wanted_media and not team_channel:
         # GIF 只在人和人的团队频道里：发给 agent 的私聊不带图片（不进模型上下文）
         return _error(422, "message.media_off", "这里不能发 GIF")
@@ -1912,6 +1939,8 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
 
 @router.get(_ORG + "/channels/{channel_id}/active-runs")
 async def channel_active_runs(org_id: str, channel_id: str, request: Request):
+    if app_issue_chat.is_channel(channel_id):
+        return await _issue_chat_call(request, org_id, lambda chat, actor: chat.active_runs(actor, channel_id))
     def team_runs(service, actor):
         if not service.can_read(actor, channel_id):
             raise LookupError("没有这个频道")
@@ -3662,9 +3691,15 @@ async def voice_audio(org_id: str, clip_id: str, request: Request):
 # 规矩在 web/app_board.py：所有者全部；成员看可见范围里的、凭「编辑资料」新建和编辑、只删自己建的。
 # 交给 agent 走现有派活入口，不另起执行器。
 
-async def _board(org_id: str, request: Request, action, *, edit: bool = False, dispatch: bool = False):
+def _issue_card(root, who, issue):
+    issue_id = issue["id"]
+    return {**issue, "conversation": app_issue_chat.IssueChat(root).cards(who, {issue_id}).get(issue_id)}
+
+
+async def _board(org_id: str, request: Request, action, *, edit: bool = False, dispatch: bool = False,
+                 card: bool = False):
     from src.workflow.board.store import BoardError, NotFound
-    from src.workflow.members.registry import Refused
+    from src.workflow.members.registry import Damaged, Refused
     root = _root(org_id)
     who = _who(request, root)
     if who is None:
@@ -3674,27 +3709,43 @@ async def _board(org_id: str, request: Request, action, *, edit: bool = False, d
     try:
         if dispatch:
             await _dispatch_ready(root)
-            return action(root, who)
-        return await asyncio.to_thread(action, root, who)
+            result = action(root, who)
+        else:
+            result = await asyncio.to_thread(action, root, who)
+        if card:
+            # Card details may carry task conversation summaries. Apply the same owner proof as chat.
+            if not who.is_owner or app_staff.owner_proof(request):
+                result = await asyncio.to_thread(_issue_card, root, who, result)
+                if result["conversation"] is not None:
+                    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        return result
     except (NotFound, LookupError) as error:
         return _error(404, "not_found", str(error))
     except (Refused, PermissionError) as error:
         return _error(403, "forbidden", str(error))
+    except (Damaged, OSError):
+        return _error(409, "unavailable", "看板记录读写失败")
     except (BoardError, ValueError) as error:
         return _error(400, "invalid", str(error))
-    except OSError:
-        return _error(409, "unavailable", "看板记录读写失败")
 
 
 @router.get(_ORG + "/issues")
 async def list_issues(org_id: str, request: Request, q: str = "", projectId: str = ""):  # noqa: N803
-    return await _board(org_id, request, lambda root, who: {
-        "issues": app_board.listing(root, who, q=q, project_id=projectId)})
+    def listing(root, who):
+        rows = app_board.listing(root, who, q=q, project_id=projectId)
+        if not who.is_owner or app_staff.owner_proof(request):
+            summaries = app_issue_chat.IssueChat(root).cards(who, {row["id"] for row in rows})
+            for row in rows:
+                row["conversation"] = summaries.get(row["id"])
+            if summaries:
+                return JSONResponse({"issues": rows}, headers={"Cache-Control": "no-store"})
+        return {"issues": rows}
+    return await _board(org_id, request, listing)
 
 
 @router.get(_ORG + "/issues/by-number/{number}")
 async def issue_by_number(org_id: str, number: int, request: Request):
-    return await _board(org_id, request, lambda root, who: app_board.get(root, who, number))
+    return await _board(org_id, request, lambda root, who: app_board.get(root, who, number), card=True)
 
 
 @router.post(_ORG + "/issues")
@@ -3704,7 +3755,8 @@ async def create_issue(org_id: str, body: Dict[str, Any], request: Request):
 
 @router.patch(_ORG + "/issues/{issue_id}")
 async def update_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
-    return await _board(org_id, request, lambda root, who: app_board.update(root, who, issue_id, body), edit=True)
+    return await _board(org_id, request, lambda root, who: app_board.update(root, who, issue_id, body),
+                        edit=True, card=True)
 
 
 @router.delete(_ORG + "/issues/{issue_id}", status_code=204)
@@ -3716,20 +3768,20 @@ async def delete_issue(org_id: str, issue_id: str, request: Request):
 @router.post(_ORG + "/issues/{issue_id}/share")
 async def share_issue(org_id: str, issue_id: str, request: Request):
     return await _board(org_id, request, lambda root, who: app_board.set_audience(
-        root, who, issue_id, {"mode": "everyone"}), edit=True)
+        root, who, issue_id, {"mode": "everyone"}), edit=True, card=True)
 
 
 @router.put(_ORG + "/issues/{issue_id}/audience")
 async def set_issue_audience(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
     return await _board(org_id, request, lambda root, who: app_board.set_audience(root, who, issue_id, body),
-                        edit=True)
+                        edit=True, card=True)
 
 
 @router.put(_ORG + "/issues/{issue_id}/criteria/{criterion_id}")
 async def set_issue_criterion(org_id: str, issue_id: str, criterion_id: str, body: Dict[str, Any],
                               request: Request):
     return await _board(org_id, request, lambda root, who: app_board.set_criterion(
-        root, who, issue_id, criterion_id, body.get("done")), edit=True)
+        root, who, issue_id, criterion_id, body.get("done")), edit=True, card=True)
 
 
 @router.get(_ORG + "/issues/{issue_id}/activity")
@@ -3742,11 +3794,17 @@ async def comment_issue(org_id: str, issue_id: str, body: Dict[str, Any], reques
     return await _board(org_id, request, lambda root, who: app_board.comment(root, who, issue_id, body), edit=True)
 
 
+@router.post(_ORG + "/issues/{issue_id}/conversation")
+async def open_issue_conversation(org_id: str, issue_id: str, request: Request):
+    return await _issue_chat_call(request, org_id, lambda chat, actor: chat.open(actor, issue_id))
+
+
 @router.post(_ORG + "/issues/{issue_id}/ask-agent")
 async def ask_agent_on_issue(org_id: str, issue_id: str, body: Dict[str, Any], request: Request):
     proof = app_staff.owner_proof(request)
     return await _board(org_id, request, lambda root, who: app_board.ask_agent(
-        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of), edit=True, dispatch=True)
+        root, who, issue_id, body.get("agentId"), owner_proof=proof, staff_of=_staff_of),
+                        edit=True, dispatch=True, card=True)
 
 
 @router.get(_ORG + "/issue-columns")
@@ -5909,16 +5967,22 @@ async def app_socket(websocket: WebSocket):
                 await websocket.send_json(F.make_app_frame(F.PONG))
             elif kind == "subscribe":
                 channel = str(frame.get("channelId") or "")
-                if is_team_channel(channel):
+                if app_channels.is_streamed_channel(channel):
                     if not team_session_valid():
                         await websocket.send_json(F.make_app_frame(F.ERROR, code="owner_proof_required", channelId=channel))
-                    elif channel in watches and not watches[channel].done():
-                        await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
                     else:
-                        subscription = await app_channels.subscribe(websocket, app_channels.channels(root), actor, channel,
-                                                                    session_valid=team_session_valid)
-                        if subscription is not None:
-                            watches[channel] = subscription
+                        service = app_channels.streaming_service(root, channel)
+                        prior = watches.get(channel)
+                        if (prior is not None and not prior.done()
+                                and await asyncio.to_thread(service.can_read, actor, channel) and team_session_valid()):
+                            await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
+                        else:
+                            if prior is not None and not prior.done():
+                                prior.cancel()
+                            subscription = await app_channels.subscribe(websocket, service, actor, channel,
+                                                                        session_valid=team_session_valid)
+                            if subscription is not None:
+                                watches[channel] = subscription
                 elif views.is_main_dm(root, channel):
                     bridge = await main_chat_bridge(root)
                     bridge.subscribe(websocket)

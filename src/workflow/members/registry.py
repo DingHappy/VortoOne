@@ -285,6 +285,13 @@ class MemberRegistry:
             self._actor(state, actor)
             yield
 
+    @contextmanager
+    def while_actor_current(self, actor: Principal) -> Iterator[Dict[str, Any]]:
+        """Hold the current roster and roles stable during an authorized related operation."""
+        with self._locked_state() as state:
+            self._actor(state, actor)
+            yield state
+
     # ── 判定用的小工具 ────────────────────────────────────────────────────────
 
     @staticmethod

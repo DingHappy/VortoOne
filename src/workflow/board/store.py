@@ -174,6 +174,35 @@ class Board:
             raise NotFound("没有这张卡片")
         return self._row(row)
 
+    @contextmanager
+    def _locked_audience(self) -> Iterator[sqlite3.Connection]:
+        with self._db() as conn:
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            yield conn
+
+    @contextmanager
+    def locked_issue(self, issue_id: str) -> Iterator[Dict[str, Any]]:
+        """Keep an issue's audience stable through an operation in a related store."""
+        with self._locked_audience() as conn:
+            row = conn.execute("SELECT * FROM issues WHERE id = ?", (issue_id,)).fetchone()
+            if row is None:
+                raise NotFound("没有这张卡片")
+            yield self._row(row)
+
+    @contextmanager
+    def locked_issues(self, ids: set[str]) -> Iterator[Dict[str, Dict[str, Any]]]:
+        """Snapshot several current issue audiences while projecting related state."""
+        keys = sorted(ids)
+        with self._locked_audience() as conn:
+            issues = {}
+            for offset in range(0, len(keys), 200):
+                batch = keys[offset:offset + 200]
+                markers = ", ".join("?" for _ in batch)
+                for row in conn.execute(f"SELECT * FROM issues WHERE id IN ({markers})", batch):
+                    issues[row["id"]] = self._row(row)
+            yield issues
+
     def by_number(self, number: int) -> Dict[str, Any]:
         with self._db() as conn:
             row = conn.execute("SELECT * FROM issues WHERE number = ?", (number,)).fetchone()
