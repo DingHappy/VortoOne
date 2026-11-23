@@ -17,6 +17,12 @@ class RoutineCreatorUnavailable(ValueError):
         self.verified = verified
 
 
+class RoutineRunRejected(ValueError):
+    def __init__(self, reason, message):
+        super().__init__(message)
+        self.reason = reason
+
+
 class Routines:
     def __init__(self, root, *, clock=None, registry=None):
         self.root = str(root)
@@ -115,13 +121,6 @@ class Routines:
                 'enabled': item.get('enabled', True), 'revision': item.get('revision', 1),
                 'token_budget': item.get('token_budget', 0)}, member, role
 
-    @staticmethod
-    def check_unattended(role):
-        from src.workflow.staff.roles import is_full
-        if is_full(role):
-            raise ValueError('这个 agent 是完整能力，例行工作无人值守、不用完整能力：登记了到点也不会执行。'
-                             '请交给只读或公开资料的 agent（ADR-021）')
-
     def snapshot(self, data, *, initiator=None):
         item, member, role = self.normalize(data)
         previous = next((x for x in self.definitions() if x['id'] == item['id']), None)
@@ -173,7 +172,6 @@ class Routines:
         """Trusted owner-approved helper; model tools only prepare proposals."""
         with TASK_STATE_LOCK:
             snapshot = self.snapshot(data)
-            self.check_unattended(snapshot['role_snapshot'])
             return self.apply(self.target(snapshot, instant(self.clock()).isoformat(), owner), snapshot['previous'])
 
     def control(self, routine_id, revision, *, enabled=None, retire=False):
@@ -185,8 +183,7 @@ class Routines:
             if type(retire) is not bool or enabled is not None and type(enabled) is not bool:
                 raise ValueError('启停参数无效')
             if enabled is True:
-                member, role = self.check_binding(item)
-                self.check_unattended(role)
+                member, _ = self.check_binding(item)
                 self.check_creator(item, member)
                 if self.awaiting_takeover_resume(item):
                     once = RoutineSchedule(item['schedule'], item['timezone']).once
@@ -344,6 +341,47 @@ class Routines:
             if task.status != 'done' or item['delivery'] == 'notify' or task.collaboration.get('review') == 'accepted':
                 item['state']['task'] = None
             self.registry._write('routines.json', value)
+
+    def run_now(self, routine_id, *, owner):
+        """Dispatch a saved routine after the caller proves an explicit owner action."""
+        from src.gateway.audit import append_audit
+        from src.scheduling.staff_runner import get_staff_service
+        from src.workflow.staff.approvals import digest
+
+        with TASK_STATE_LOCK:
+            item = next((row for row in self.list() if row['id'] == routine_id and not row['retired']), None)
+            if item is None:
+                raise RoutineRunRejected('not_found', '没有这条例行工作')
+            if item['state'].get('error'):
+                raise RoutineRunRejected('needs_review', f"它停着等你核对：{item['state']['error']}")
+            if self.awaiting_takeover_resume(item):
+                raise RoutineRunRejected('needs_review', '接手以后要先恢复它，才能运行')
+            claim = item['state'].get('task')
+            current = TaskLedger(self.root).load(claim) if claim else None
+            if current is not None and current.status in {'queued', 'running', 'blocked'}:
+                raise RoutineRunRejected('running', '它正在运行，没有再派一次')
+            if (current is not None and current.status == 'done' and item['delivery'] == 'review'
+                    and current.collaboration.get('review') != 'accepted'):
+                raise RoutineRunRejected('awaiting_review', '上一次的结果还等你验收，验收以后才能再运行')
+            self.check_creator(item)
+            self.check_binding(item)        # 完整能力的 agent 在执行时降为无人值守档，这里不再拒绝
+            staff = get_staff_service(self.root)
+            when = instant(self.clock())
+            slot = when.isoformat()
+            definition = {key: value for key, value in item.items() if key != 'state'}
+            if not append_audit(self.root, {
+                'category': 'decision', 'operation': '主人手动运行例行工作', 'operation_kind': 'execute',
+                'decision': 'allowed', 'decision_source': 'user', 'approval_scope': 'once',
+                'approval_source': 'routine_manual', 'routine_id': routine_id, 'actor': owner,
+                'routine_revision': item['revision'], 'slot': slot,
+                'action_digest': digest({'definition': definition, 'slot': slot}),
+            }, durable=True):
+                raise RoutineRunRejected('audit_unavailable', '暂时无法记录这次手动运行，未派发')
+            started = self.dispatch(staff, when, only=routine_id, manual=True)
+            if not started:
+                reason = self.get(routine_id)['state'].get('error')
+                raise RoutineRunRejected('not_started', f"没能运行：{reason or '它的状态刚刚变了，请刷新'}")
+            return started[0]
 
     def dispatch(self, staff, now, *, only=None, manual=False):
         started = []

@@ -126,6 +126,8 @@ class StaffActions:
         if len(json.dumps(call, ensure_ascii=False).encode()) > 32 * 1024:
             raise ValueError('审批内容过长，未执行或静默截断')
         from src.workflow.staff.initiators import MemberAccessChanged, require_member_operations
+        if is_full(role) and task.collaboration['dispatch'].get('routine'):
+            raise ValueError('例行工作无人值守，完整能力在这里不生效，也不发起审批')
         require_member_operations(self.service.root, task, role, member, (call['kind'],))
         from src.agents.taint import is_tainted
         now = self.clock()
