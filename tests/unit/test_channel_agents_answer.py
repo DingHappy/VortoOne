@@ -107,6 +107,8 @@ async def test_the_owner_calls_an_agent_and_it_answers_in_the_thread_with_team_t
     [agent] = team.seen.agents
     assert team.seen.full == 0                                          # 所有者叫的也不是完整能力
     assert "ask_person" not in agent.tools
+    # 频道里谁都能写：抓网页的网址就是外传通道，只留搜索（主人 2026-11-22 定）
+    assert "web_fetch" not in agent.tools and "web_search" in agent.tools
     prompt = _channel_part(team.seen.prompts[0])
     assert prompt.count("<vortocode_untrusted_memory>") == 1 and "今天的上线计划在这里" in prompt
     assert prompt.index("今天的上线计划在这里") < prompt.index("</vortocode_untrusted_memory>")
@@ -160,6 +162,7 @@ async def test_a_member_may_call_it_and_the_work_is_theirs(team):
         [task] = await _until(lambda: [t for t in _tasks(team) if t.status == "done"] or None)
     assert task.collaboration["dispatch"]["initiator"] == {"kind": "member", "id": team.member.member_id}
     assert team.seen.full == 0 and team.seen.agents
+    assert "web_fetch" not in team.seen.agents[-1].tools
     await _until(lambda: _agent_replies(team, team.owner, posted["id"]))
 
 

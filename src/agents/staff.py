@@ -214,6 +214,10 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
         # 频道里的回答所有人都看得到（主人 2026-11-22 定）：所有者叫的也只用团队安全工具，不读私人来源
         from src.workflow.staff.registry import StaffRegistry
         turn_role = role_for_member(StaffRegistry(root), turn_role, 'execute')
+    if task.collaboration['dispatch'].get('channel'):
+        # 频道里的话谁都能写：抓网页的网址（GET 的查询串）就是外传通道，只留搜索（主人 2026-11-22 定）。成员叫的也一样
+        turn_role = {**turn_role, 'grants': {**turn_role['grants'],
+                                             'tools': [name for name in turn_role['grants']['tools'] if name != 'web_fetch']}}
     if task.collaboration['dispatch'].get('source') == 'team' and role['id'] == 'developer':
         from src.agents.team_members import execute_team_developer
         return await execute_team_developer(root, task, work)
