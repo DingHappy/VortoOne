@@ -95,6 +95,9 @@ impl Backend {
         outcome
     }
     pub fn local_origin(&self) -> Option<String> {
+        self.local_port().map(origin)
+    }
+    pub fn local_port(&self) -> Option<u16> {
         let mut slot = self.0.lock().ok()?;
         let child = slot.as_mut()?;
         if child.try_wait().ok()?.is_some() {
@@ -102,7 +105,7 @@ impl Backend {
         }
         let native = self.1.lock().ok()?;
         let native = native.as_ref()?;
-        (child.id() == native.child_pid).then(|| origin(native.port))
+        (child.id() == native.child_pid).then_some(native.port)
     }
     pub fn native_candidate(&self) -> Option<NativeCandidate> {
         let mut slot = self.0.lock().ok()?;
@@ -873,8 +876,9 @@ mod tests {
         assert!(state.consume_native(candidate).is_err());
         assert!(state.native_candidate().is_none());
         assert!(state.matches_native(candidate));
+        assert_eq!(state.local_port(), Some(candidate.port));
         state.stop();
-        assert!(state.1.lock().unwrap().is_none() && state.local_origin().is_none());
+        assert!(state.1.lock().unwrap().is_none() && state.local_port().is_none());
 
         let state = launch();
         let mut wrong = state.native_candidate().unwrap();

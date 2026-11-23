@@ -218,9 +218,10 @@ fn choose(app: &tauri::AppHandle, server: &str, page: Option<&str>) -> Result<()
     let local = places::read_local(&config, &data);
     if local.url.as_deref() == Some(origin.as_str()) || local.is_public(&origin)
         || (places::is_loopback(&origin) && local.installed) {
-        if phase(app) == "running" {
+        // A saved Tailscale alias points to this service. Handover goes to the live loopback child.
+        let local_port = app.state::<backend::Backend>().local_port();
+        if let Some(port) = local_port.filter(|_| phase(app) == "running") {
             let key = backend::owner_key(&data.join(places::OWNER_KEY_FILE))?;
-            let port: u16 = origin.rsplit(':').next().and_then(|p| p.parse().ok()).ok_or("地址不对")?;
             let url = backend::sign_in_url(port, &key)?.parse().map_err(|_| "登录地址无效".to_string())?;
             app.state::<crate::LiveAddress>().set(port);
             return crate::show_live(app, url);
