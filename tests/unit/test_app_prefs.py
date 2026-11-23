@@ -252,6 +252,190 @@ def test_a_damaged_account_preference_stays_readable_without_overwriting_it(home
     assert path.read_text(encoding="utf-8") == corrupt
 
 
+# ── 个人用户名 ──────────────────────────────────────────────────────────────
+
+def test_owner_and_member_keep_their_own_handles_and_account_ids(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    owner_before = owner.get("/api/app/me").json()["user"]
+    member_before = member.get("/api/app/me").json()["user"]
+
+    saved = owner.patch(f"{base}/me", json={"handle": "Home-Owner", "timezone": "Asia/Tokyo"})
+    assert saved.status_code == 200 and saved.headers["cache-control"] == "no-store"
+    assert saved.json()["handle"] == "home-owner" and saved.json()["timezone"] == "Asia/Tokyo"
+
+    saved = member.patch(f"{base}/me", json={"handle": "Blue_Bird", "timezone": "Europe/Paris"})
+    assert saved.status_code == 200
+    assert saved.json()["handle"] == "blue_bird" and saved.json()["timezone"] == "Europe/Paris"
+    assert member.get("/api/app/me").json()["user"] == member_before
+    assert owner.get("/api/app/me").json()["user"] == owner_before
+
+    expected = {owner_before["id"]: "home-owner", member_before["id"]: "blue_bird"}
+    for collection in ("members", "people"):
+        rows = member.get(f"{base}/{collection}").json()[collection]
+        assert {row["userId"]: row["handle"] for row in rows} == expected
+    for browser, handle in ((owner, "home-owner"), (member, "blue_bird")):
+        status = browser.put(f"{base}/me/status", json={"availability": "away"})
+        assert status.status_code == 200 and status.json()["handle"] == handle
+    assert member.patch(f"{base}/me", json={"handle": member_before["id"]}).json()["handle"] == member_before["id"]
+    assert owner.patch(f"{base}/me", json={"handle": "owner"}).json()["handle"] == "owner"
+
+
+def test_owner_can_restore_default_handle_with_legacy_staff_data(home):
+    from src.workflow.staff.registry import StaffRegistry
+    from tests.unit.test_staff_contract import role
+
+    registry = StaffRegistry(home["root"])
+    registry.register_role(role())
+    registry.register_member({"id": "owner", "name": "Legacy staff", "role": "reader", "engine": "vortocode"})
+
+    owner, base = home["owner"], home["base"]
+    assert owner.patch(f"{base}/me", json={"handle": "home-owner"}).status_code == 200
+    restored = owner.patch(f"{base}/me", json={"handle": "owner"})
+    assert restored.status_code == 200 and restored.json()["handle"] == "owner"
+    assert registry.member("owner")["name"] == "Legacy staff"
+
+
+def test_agent_person_and_historical_handles_cannot_be_reassigned(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    another = _join(home, email="another@example.com")
+    reserved = owner.post(f"{base}/agents", json={"name": "Maya", "handle": "maya"})
+    assert reserved.status_code == 200, reserved.text
+
+    assert member.patch(f"{base}/me", json={"handle": "BlueBird"}).status_code == 200
+    for handle in ("BLUEBIRD", "MAYA", "Todos", "OWNER", member_id, "staff-cron-future"):
+        assert another.patch(f"{base}/me", json={"handle": handle}).status_code == 400
+    assert member.patch(f"{base}/me", json={"handle": "sky-bird"}).status_code == 200
+    assert another.patch(f"{base}/me", json={"handle": "bluebird"}).status_code == 400
+    assert owner.delete(f"{base}/agents/{reserved.json()['id']}").status_code == 204
+    assert another.patch(f"{base}/me", json={"handle": "maya"}).status_code == 400
+
+    assert owner.delete(f"{base}/members/{member_id}", headers=ORIGIN).status_code == 204
+    assert member.patch(f"{base}/me", json={"handle": "other"}).status_code == 401
+    assert another.patch(f"{base}/me", json={"handle": "sky-bird"}).status_code == 400
+    before = owner.get(f"{base}/agents").json()
+    response = owner.post(f"{base}/agents", json={"name": "Taken", "handle": "bluebird"})
+    assert response.status_code == 422
+    assert owner.get(f"{base}/agents").json() == before
+
+
+def test_a_member_cannot_claim_a_handle_in_an_interrupted_approved_registration(home, monkeypatch):
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.registry import StaffRegistry
+    from tests.unit.staff_owner_helpers import owner_decide
+    from tests.unit.test_staff_bundles import bundle
+
+    member = _join(home)
+    url = f"{home['base']}/me"
+    approvals = StaffApprovals(home["root"])
+    proposal = approvals.propose("owner", "bundle", bundle(), "核对资料")
+    original = StaffRegistry._write
+
+    def fail_member_write(registry, name, value):
+        if name == "members.json":
+            raise OSError("fixture interrupted registration")
+        return original(registry, name, value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(StaffRegistry, "_write", fail_member_write)
+        with pytest.raises(OSError, match="interrupted registration"):
+            owner_decide(approvals, proposal["id"], True, proposal["digest"])
+    response = member.patch(url, json={"handle": "staff-reader"})
+    assert response.status_code == 400
+    assert owner_decide(approvals, proposal["id"], True, proposal["digest"])["status"] == "approved"
+    assert member.patch(url, json={"handle": "staff-reader"}).status_code == 400
+
+
+@pytest.mark.parametrize("kind", ["member", "bundle"])
+def test_a_new_profile_claim_refuses_a_pending_registration_before_it_writes(home, kind):
+    from src.workflow.staff.approvals import StaffApprovals
+    from src.workflow.staff.registry import StaffRegistry
+    from tests.unit.staff_owner_helpers import owner_decide
+    from tests.unit.test_staff_bundles import bundle
+    from tests.unit.test_staff_contract import role
+
+    registry = StaffRegistry(home["root"])
+    if kind == "member":
+        registry.register_role(role())
+        handle = "bluebird"
+        definition = {"id": handle, "name": "Reader", "role": "reader", "engine": "vortocode"}
+    else:
+        definition = bundle()
+        handle = definition["member"]["id"]
+    roles_before = registry.roles()
+    approvals = StaffApprovals(home["root"])
+    proposal = approvals.propose("owner", kind, definition, "核对资料")
+    member = _join(home)
+    assert member.patch(f"{home['base']}/me", json={"handle": handle}).status_code == 200
+    with pytest.raises(ValueError, match="已留给成员"):
+        owner_decide(approvals, proposal["id"], True, proposal["digest"])
+    assert approvals.get(proposal["id"])["status"] == "pending"
+    assert registry.roles() == roles_before
+    assert registry.members() == []
+    assert registry.departments() == []
+    assert owner_decide(approvals, proposal["id"], False, proposal["digest"])["status"] == "rejected"
+
+
+def test_per_person_handle_limit_allows_default_and_previously_claimed_handles(home):
+    owner = home["owner"]
+    member = _join(home)
+    url = f"{home['base']}/me"
+    for i in range(16):
+        assert member.patch(url, json={"handle": f"custom-{i}"}).status_code == 200
+
+    assert member.patch(url, json={"handle": "custom-16"}).status_code == 400
+    assert member.patch(url, json={"handle": "custom-15"}).json()["handle"] == "custom-15"
+    default = member.get("/api/app/me").json()["user"]["id"]
+    assert member.patch(url, json={"handle": default}).json()["handle"] == default
+    assert member.patch(url, json={"handle": "custom-0"}).json()["handle"] == "custom-0"
+    assert owner.patch(url, json={"handle": "custom-16"}).json()["handle"] == "custom-16"
+
+
+def test_workspace_handle_limit_counts_removed_members_and_preserves_existing_claims(home, monkeypatch):
+    from src.workflow.members import profile_preferences
+
+    monkeypatch.setattr(profile_preferences, "_MAX_HANDLES_PER_WORKSPACE", 2)
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    url = f"{base}/me"
+    assert owner.patch(url, json={"handle": "first"}).status_code == 200
+    assert member.patch(url, json={"handle": "second"}).status_code == 200
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    assert owner.delete(f"{base}/members/{member_id}", headers=ORIGIN).status_code == 204
+
+    new_member = _join(home, email="next@example.com")
+    assert new_member.patch(url, json={"handle": "fresh"}).status_code == 400
+    assert owner.patch(url, json={"handle": "owner"}).json()["handle"] == "owner"
+    assert owner.patch(url, json={"handle": "first"}).json()["handle"] == "first"
+    assert new_member.patch(url, json={"handle": "second"}).status_code == 400
+
+
+def test_invalid_or_failed_profile_change_leaves_both_fields_intact(home, monkeypatch):
+    from src.workflow.members import profile_preferences
+
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    assert owner.patch(f"{base}/me", json={"handle": "mine", "timezone": "Asia/Tokyo"}).status_code == 200
+    assert member.patch(f"{base}/me", json={"handle": "theirs"}).status_code == 200
+
+    for body in ({"handle": "theirs", "timezone": "Europe/Paris"},
+                 {"handle": "free", "timezone": "Mars/Base"}):
+        assert owner.patch(f"{base}/me", json=body).status_code == 400
+    assert member.patch(f"{base}/me", json={"handle": "free"}).status_code == 200
+
+    def writing_failed(*_args):
+        raise OSError("fixture-private-file-path")
+
+    monkeypatch.setattr(profile_preferences, "write_preferences", writing_failed)
+    result = owner.patch(f"{base}/me", json={"handle": "still-free", "timezone": "Europe/Paris"})
+    assert result.status_code == 409 and result.json()["error"]["code"] == "unavailable"
+    assert "fixture-private-file-path" not in result.text
+    row = owner.get(f"{base}/members").json()["members"][0]
+    assert row["handle"] == "mine" and row["timezone"] == "Asia/Tokyo"
+
+
 # ── 个人时区 ────────────────────────────────────────────────────────────────
 
 def test_owner_and_member_keep_their_own_timezones_without_changing_routines(home):
@@ -300,7 +484,7 @@ def test_personal_timezone_can_return_to_browser_default(home):
     assert client.get(f"{base}/settings").json()["timezone"] == ""
 
 
-@pytest.mark.parametrize("bad", [{"handle": "new-handle"}, {"handle": None}, {"name": "新名字"},
+@pytest.mark.parametrize("bad", [{"handle": "bad.handle"}, {"handle": None}, {"name": "新名字"},
                                  {"userId": "another-person"}, {"availability": "hidden"}, {"locale": "en"}])
 def test_an_unsupported_profile_change_does_not_also_update_timezone(home, bad):
     client, base = home["owner"], home["base"]

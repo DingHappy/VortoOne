@@ -75,9 +75,11 @@ def turns():
                                  on_decision=manager.audit_decision, enable_turn_scope=True,
                                  on_tool_event=lambda stage, payload: manager.tool_event(stage, payload))
 
-        async def notify(text: str):
+        from src.gateway.mobile_devices import PushCategory
+
+        async def notify(text: str, category: PushCategory | None):
             from src.gateway.mobile_push import push_owner
-            await push_owner(root, text)
+            await push_owner(root, text, category=category)
 
         manager = AppTurns(root, build, notify=notify)
         _turns = manager

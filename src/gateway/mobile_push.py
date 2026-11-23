@@ -20,7 +20,10 @@ import logging
 import os
 import re
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.gateway.mobile_devices import PushCategory
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +133,7 @@ async def send(registration: dict, text: str, *, client: Any = None) -> str:
     return "failed"
 
 
-async def push_owner(root: str, text: str) -> bool:
+async def push_owner(root: str, text: str, *, category: PushCategory | None = None) -> bool:
     """推给这台助理所有已登记推送的 App 设备。有一台送达（APNs 受理）就算 True；不代表用户已读。"""
     if not configured():
         return False
@@ -138,6 +141,8 @@ async def push_owner(root: str, text: str) -> bool:
 
     store = MobileDevices(root)
     try:
+        if category is not None and not store.push_preferences().get(category, False):
+            return False
         targets = store.push_targets()
     except Exception as error:  # noqa: BLE001 —— 推送是附加通道，读不到登记不影响 IM
         logger.warning("读取推送登记失败：%s", type(error).__name__)

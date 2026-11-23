@@ -141,6 +141,21 @@ class StaffApprovals:
                     raise ValueError('专员审批历史无效') from error
             return deepcopy(records)
 
+    def _check_new_member_handle(self, snapshot):
+        if snapshot['kind'] == 'member' and snapshot['previous'] is None:
+            from src.workflow.members.profile_preferences import check_agent_handle
+            check_agent_handle(self.registry.root, snapshot['data']['id'])
+
+    def applying_member_handles(self) -> set[str]:
+        handles = set()
+        for approval in self._records():
+            if approval['status'] != 'applying':
+                continue
+            snapshot = approval['snapshot']
+            entries = snapshot['entries'] if snapshot['kind'] == 'bundle' else [snapshot]
+            handles.update(entry['data']['id'] for entry in entries if entry['kind'] == 'member')
+        return handles
+
     def _view(self, item):
         value = deepcopy(item)
         value.pop('requires_desktop_key', None)
@@ -211,6 +226,7 @@ class StaffApprovals:
                         raise ValueError('这份例行工作提议已提交，修改内容后请新建提议')
                     return self._view(entry)
             snapshot = self.snapshot(kind, data, initiator=initiator)
+            self._check_new_member_handle(snapshot)
             if expected is not None and snapshot != expected:
                 raise ValueError('确认期间岗位或专员已变化')
             item = {'id': 'staff-proposal-' + uuid.uuid4().hex, 'snapshot': snapshot,
@@ -307,6 +323,8 @@ class StaffApprovals:
                 check_snapshot = approve or (kind != 'bundle' and initiator is None)
                 if check_snapshot and self.snapshot(kind, data, initiator=initiator) != snapshot:
                     raise ValueError('岗位或专员版本已变化，旧提议不能批准')
+                if approve:
+                    self._check_new_member_handle(snapshot)
                 self._audit(item, approve)
                 item['decision'] = {'at': datetime.fromtimestamp(self.clock(), timezone.utc).isoformat(),
                     'approve': approve, 'source': 'owner_route', 'instance': self.instance,

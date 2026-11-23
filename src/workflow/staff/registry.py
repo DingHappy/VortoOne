@@ -306,7 +306,7 @@ class StaffRegistry:
     def team_roles(self) -> dict:
         return team_role_view(self.roles())
 
-    def validate_member(self, data: dict) -> dict:
+    def validate_member(self, data: dict, *, new: bool = False) -> dict:
         from datetime import datetime, timezone
         fields = {'id', 'name', 'role', 'engine', 'model', 'department', 'status', 'limits',
                   'created_by', 'approved_at', 'revision'}
@@ -315,6 +315,9 @@ class StaffRegistry:
         item = deepcopy(data)
         if not isinstance(item.get('id'), str) or not _ID.fullmatch(item['id']):
             raise ValueError('专员 id 无效')
+        if new:
+            from src.workflow.members.profile_preferences import check_agent_handle
+            check_agent_handle(self.root, item['id'])
         if not isinstance(item.get('name'), str) or not item['name'].strip() or len(item['name']) > 80:
             raise ValueError('专员名称无效')
         assigned = self.role(item.get('role'))
@@ -366,6 +369,17 @@ class StaffRegistry:
                 item['department'] = Departments(self).membership(item['id'])
             return result
 
+    def reserved_member_handles(self) -> set[str]:
+        """Include retired agents and approved work whose registration may still be applying."""
+        from src.workflow.staff.approvals import StaffApprovals
+
+        with TASK_STATE_LOCK:
+            rows = self._read_raw('members.json', {'version': 1, 'members': []}).get('members')
+            if not isinstance(rows, list) or any(not isinstance(row, dict) or not isinstance(row.get('id'), str)
+                                                 or not _ID.fullmatch(row['id']) for row in rows):
+                raise ValueError('专员登记格式无效')
+            return {row['id'] for row in rows} | StaffApprovals(self.root).applying_member_handles()
+
     def departments(self):
         from src.workflow.staff.departments import Departments
         return Departments(self).list()
@@ -388,7 +402,7 @@ class StaffRegistry:
             previous = next((x for x in entries if x['id'] == data.get('id')), None)
             if previous and (previous['status'] == 'retired' or data.get('revision') != previous['revision']):
                 raise ValueError('专员已撤掉或版本变化')
-            item = self.validate_member(data)
+            item = self.validate_member(data, new=previous is None)
             item['revision'] = previous['revision'] + 1 if previous else 1
             if previous and previous['department'] and item['role'] != previous['role']:
                 raise ValueError('先在部门提议中移出专员，再批准更换岗位；不能绕过笔记资料边界')

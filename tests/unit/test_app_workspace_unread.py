@@ -20,6 +20,10 @@ def _expect(home, client, unread):
     assert response.json() == {"organizations": [
         {"orgId": home["base"].rsplit("/", 1)[1], "unread": unread, "waiting": 0},
     ]}
+    accounts = client.get("/api/app/device-accounts")
+    assert accounts.status_code == 200
+    assert accounts.headers["Cache-Control"] == "no-store"
+    assert accounts.json()["accounts"][0]["unread"] == response.json()["organizations"]
 
 
 def test_workspace_unread_tracks_channel_thread_and_notice_read_positions(home):
@@ -87,4 +91,8 @@ def test_workspace_unread_reports_an_unavailable_inbox_only_to_its_owner(home):
     response = home["owner"].get(PATH)
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "unavailable"
+    accounts = home["owner"].get("/api/app/device-accounts")
+    assert accounts.status_code == 200
+    [owner] = accounts.json()["accounts"]
+    assert owner["current"] and owner["organizations"] and owner["unread"] == []
     _expect(home, member, 0)

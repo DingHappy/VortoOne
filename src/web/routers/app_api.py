@@ -26,6 +26,7 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, StrictBool
 
 from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
 from src.gateway import app_protocol as F
+from src.gateway.mobile_devices import PushCategory
 from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_artifact_upload
 from src.web import app_artifacts
@@ -44,7 +45,7 @@ from src.workflow.members.channels import (
     ChannelAgentAskConflict, ChannelCategoryNameConflict, TeamChannels, is_team_channel,
 )
 from src.workflow.members.direct_messages import is_person_dm
-from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
+from src.workflow.members.registry import Damaged, MAX_GROUPS, MAX_MEMBERS, MemberRegistry, Refused
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
@@ -56,7 +57,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 16
+API_CONTRACT = 17
 MIN_API = 1
 
 
@@ -557,6 +558,14 @@ async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
     return JSONResponse(_setup_view(result), headers={"Cache-Control": "no-store"})
 
 
+def _workspace_unread_counts(root: str, actor) -> list[dict[str, Any]]:
+    service = app_channels.channels(root)
+    unread = sum(row.get("unreadCount", 0) for row in service.list(actor) if not row.get("muted"))
+    unread += service.unread_thread_count(actor)
+    notices = app_notice_inbox.count(root) if actor.is_owner else {"unread": 0, "waiting": 0}
+    return [{"orgId": views.home_id(root), "unread": unread + notices["unread"], "waiting": notices["waiting"]}]
+
+
 @router.get("/api/app/device-accounts")
 async def device_accounts(request: Request, response: Response):
     """Report the account of this session. Each browser session holds at most one account."""
@@ -572,16 +581,20 @@ async def device_accounts(request: Request, response: Response):
     if isinstance(profile, JSONResponse):
         return profile
     user = profile["user"]
+    unread = []
+    if profile["organizations"]:
+        try:
+            unread = await asyncio.to_thread(_workspace_unread_counts, root, actor)
+        except (Refused, Damaged, app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
+            # An unavailable badge should not prevent the client from reading the active account.
+            pass
     return {"accounts": [{"current": True, "user": {key: user[key] for key in ("id", "name", "email", "image")},
-                          "organizations": profile["organizations"], "unread": []}]}
+                          "organizations": profile["organizations"], "unread": unread}]}
 
 
 @router.get("/api/app/me/unread")
 async def workspace_unread(request: Request, response: Response):
     """Aggregate only the unread activity this session can already see."""
-    from src.utils.home_maintenance import HomeMaintenanceError
-    from src.workflow.members.registry import Damaged, Refused
-
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     who = _who(request, root)
@@ -590,16 +603,8 @@ async def workspace_unread(request: Request, response: Response):
     if who.is_owner and not app_staff.owner_proof(request):
         return _error(403, "owner_proof_required", "读取工作区未读数需要已认证的同源会话")
 
-    def counts():
-        service = app_channels.channels(root)
-        unread = sum(row.get("unreadCount", 0) for row in service.list(who) if not row.get("muted"))
-        unread += service.unread_thread_count(who)
-        notices = app_notice_inbox.count(root) if who.is_owner else {"unread": 0, "waiting": 0}
-        return {"organizations": [{"orgId": views.home_id(root), "unread": unread + notices["unread"],
-                                  "waiting": notices["waiting"]}]}
-
     try:
-        return await asyncio.to_thread(counts)
+        return {"organizations": await asyncio.to_thread(_workspace_unread_counts, root, who)}
     except Refused:
         return {"organizations": []}
     except (Damaged, app_notice_inbox.InboxUnavailable, HomeMaintenanceError, OSError):
@@ -1001,15 +1006,15 @@ async def set_person_status(org_id: str, body: Dict[str, Any], request: Request,
 
 
 @router.patch(_ORG + "/me")
-async def update_person_timezone(org_id: str, body: Dict[str, Any], request: Request, response: Response):
+async def update_person_profile(org_id: str, body: Dict[str, Any], request: Request, response: Response):
     root = _root(org_id)
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
     if who.is_owner and not app_staff.owner_proof(request):
-        return _error(403, "owner_proof_required", "保存个人时区需要已认证的同源会话")
+        return _error(403, "owner_proof_required", "保存个人资料需要已认证的同源会话")
     response.headers["Cache-Control"] = "no-store"
-    return await _members_call(lambda: app_members.update_person_timezone(root, who, body))
+    return await _members_call(lambda: app_members.update_person_profile(root, who, body))
 
 
 # ── 身份组与成员（界面里叫 roles / members）────────────────────────────────────
@@ -4487,30 +4492,62 @@ async def _notifications_call(request: Request, org_id: str, action, *, write=Fa
         return _error(400, "invalid", str(error))
 
 
-@router.get(_ORG + "/notification-prefs")
-async def notification_preferences(org_id: str, request: Request, response: Response):
-    """Project the current account's registered notification destinations."""
+class _NoticePreferenceChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    category: PushCategory
+    on: bool
+
+
+async def _notification_preferences(
+    org_id: str, request: Request, response: Response, change: _NoticePreferenceChange | None = None,
+):
     from src.gateway import mobile_push
     from src.gateway.mobile_devices import MobileDevices, MobileStoreError
+
+    def refused(status: int, code: str, message: str) -> JSONResponse:
+        error = _error(status, code, message)
+        error.headers["Cache-Control"] = "no-store"
+        return error
 
     root = _root(org_id)
     who = _who(request, root)
     response.headers["Cache-Control"] = "no-store"
     if who is None or (who.is_owner and not app_staff.owner_proof(request)):
-        refused = _error(403, "forbidden", "读取通知设置需要已认证的空间成员")
-        refused.headers["Cache-Control"] = "no-store"
-        return refused
+        return refused(403, "forbidden", "通知设置需要已认证的空间成员")
+    if change is not None and not who.is_owner:
+        return refused(403, "forbidden", "只有所有者能更新手机通知设置")
+    if not who.is_owner or not mobile_push.configured():
+        if change is not None:
+            return refused(409, "unavailable", "此工作区尚未配置手机推送")
+        return {"categories": [], "phones": 0}
 
-    phones = 0
-    if who.is_owner and mobile_push.configured():
-        try:
-            phones = await asyncio.to_thread(lambda: len(MobileDevices(root).push_targets()))
-        except (MobileStoreError, OSError):
-            unavailable = _error(409, "unavailable", "无法读取手机通知登记")
-            unavailable.headers["Cache-Control"] = "no-store"
-            return unavailable
-    # 暂无按类别改变投递的能力。界面只显示服务实际提供的开关。
-    return {"categories": [], "phones": phones}
+    def snapshot():
+        store = MobileDevices(root)
+        if change is None:
+            phones = len(store.push_targets())
+            prefs = store.push_preferences()
+        else:
+            with home_maintenance(root):
+                phones = len(store.push_targets())
+                prefs = store.set_push_preference(change.category, change.on)
+        return {"categories": [{"id": name, "on": enabled} for name, enabled in prefs.items()],
+                "phones": phones}
+
+    try:
+        return await asyncio.to_thread(snapshot)
+    except (MobileStoreError, HomeMaintenanceError, OSError):
+        message = "无法读取手机通知登记" if change is None else "无法保存手机通知设置"
+        return refused(409, "unavailable", message)
+
+
+@router.get(_ORG + "/notification-prefs")
+async def notification_preferences(org_id: str, request: Request, response: Response):
+    return await _notification_preferences(org_id, request, response)
+
+
+@router.put(_ORG + "/notification-prefs")
+async def set_notification_preference(org_id: str, body: _NoticePreferenceChange, request: Request, response: Response):
+    return await _notification_preferences(org_id, request, response, body)
 
 
 @router.get(_INBOX)

@@ -24,6 +24,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from src.agents.scoped_approval import ApprovalDecision
+from src.gateway.mobile_devices import PushCategory
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ _STEP_STATUS = {"running", "succeeded", "failed", "blocked", "timed_out", "cance
 
 # build(confirm) -> agent：用 owner_device 档案装配一个 agent，确认走传入的 confirm
 AgentFactory = Callable[[Callable[..., Awaitable[bool | ApprovalDecision]]], Any]
-Notify = Callable[[str], Awaitable[Any]]
+Notify = Callable[[str, Optional[PushCategory]], Awaitable[Any]]
 
 
 class AppTurnError(RuntimeError):
@@ -186,7 +187,7 @@ class AppTurns:
         self._prune()
         if len(self.turns) >= _MAX_TURNS:
             raise AppTurnError("进行中的回合太多，请稍后再试")
-        turn = AppTurn("app-" + secrets.token_hex(8), request_id, text.strip())
+        turn = AppTurn("app-" + secrets.token_hex(8), request_id, text.strip(), started=self.clock())
         self.turns[turn.rid] = turn
         self.by_request[request_id] = turn.rid
         asyncio.get_running_loop().create_task(self._run(turn))
@@ -244,7 +245,8 @@ class AppTurns:
                 if card.status == "pending":
                     self._settle_card(turn, card, "cancelled", "cancelled")
             if self.notify is not None and turn.finished - turn.started > 15:
-                await self._tell(f"助理回复了：{(turn.reply or turn.error)[:80]}")
+                category = "replies" if turn.state == "done" else None
+                await self._tell(f"助理回复了：{(turn.reply or turn.error)[:80]}", category)
 
     def tool_event(self, stage: str, payload: dict) -> None:
         """装配时交给 agent 的工具生命周期旁路（on_tool_event）：记到当前这一轮的执行步骤里。"""
@@ -271,7 +273,7 @@ class AppTurns:
         turn.cards.append(card)
         turn.state = "waiting"
         try:
-            await self._tell(f"有一张卡等你处理：{card.text[:60]}")
+            await self._tell(f"有一张卡等你处理：{card.text[:60]}", "waiting")
             if card.future.done():
                 result = bool(card.future.result())
             else:
@@ -349,10 +351,10 @@ class AppTurns:
                                   operation=f"App 回合操作 {turn.rid}", decision=decision, tainted=tainted,
                                   approval={**context, 'approval_source': 'main'})
 
-    async def _tell(self, text: str) -> None:
+    async def _tell(self, text: str, category: Optional[PushCategory]) -> None:
         if self.notify is None:
             return
         try:
-            await self.notify(text)
+            await self.notify(text, category)
         except Exception:  # noqa: BLE001 —— 推送是附加通道
             pass
