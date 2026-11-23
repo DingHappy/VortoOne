@@ -1,6 +1,8 @@
 """Desktop 制品下载和历史，复用所有者的制品库。"""
 
+import csv
 import hmac
+import io
 import time
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -8,7 +10,7 @@ from urllib.parse import quote, urlencode
 
 from fastapi.responses import JSONResponse, Response
 
-from src.agents.tools.artifacts import ArtifactStore
+from src.agents.tools.artifacts import EDITABLE_ARTIFACT_KINDS, ArtifactStore
 from src.web import app_views as views
 from src.web.auth import get_api_token
 
@@ -42,7 +44,7 @@ def versions(root: str, artifact_id: str) -> JSONResponse:
     for row in reversed(rows):
         version = int(row["v"])
         if store.has_snapshot(artifact_id, version):
-            history.append({"version": version, "author": author, "note": None,
+            history.append({"version": version, "author": author, "note": row.get("note"),
                             "createdAt": views._iso(row.get("ts"))})
     return JSONResponse({
         "versions": history,
@@ -88,17 +90,21 @@ def file(root: str, org_id: str, artifact_id: str, supplied: int | None,
             signature.encode(), _signature(org_id, artifact_id, supplied, expires).encode()
         ):
             raise ArtifactReadError(403, "artifact.download_expired", "下载地址已失效，请重新下载")
-    if format and format != "html":
-        raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
     store, uploaded = _store(root, artifact_id)
     version = _version(store, artifact_id, supplied)
     meta = store.meta(artifact_id) if uploaded else None
-    if meta and meta.get("kind") == "file":
+    kind = meta.get("kind") if meta else "html"
+    if kind in EDITABLE_ARTIFACT_KINDS:
+        content, extension = _structured_download(store, artifact_id, version, kind, format)
+        name = f"{artifact_id.strip()}.{extension}"
+    elif kind == "file":
         if format:
             raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
         content = store.uploaded_file(artifact_id, version, int(meta["bytes"]))
         name = meta["name"]
     else:
+        if format and format != "html":
+            raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
         content = store.html(artifact_id, version, strict=True)
         name = f"{artifact_id.strip()}.html"
     if content is None:
@@ -111,3 +117,22 @@ def file(root: str, org_id: str, artifact_id: str, supplied: int | None,
         "Cross-Origin-Resource-Policy": "same-origin",
         "X-Content-Type-Options": "nosniff",
     })
+
+
+def _structured_download(store: ArtifactStore, artifact_id: str, version: int, kind: str,
+                         format: str) -> tuple[str, str]:
+    extension = "md" if kind == "document" else "csv"
+    if format not in ("", extension):
+        raise ArtifactReadError(415, "artifact.format_unavailable", "该导出格式不可用")
+    source = store.structured_content(artifact_id, version)
+    if source is None:
+        raise ArtifactReadError(404, "not_found", "没有这个制品版本")
+    if source["kind"] != kind:
+        raise ValueError("制品版本格式不符")
+    if kind == "document":
+        return source["markdown"], extension
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(source["columns"])
+    writer.writerows(source["rows"])
+    return output.getvalue(), extension

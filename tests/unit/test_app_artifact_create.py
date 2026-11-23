@@ -75,7 +75,7 @@ def test_creation_requires_authenticated_owner_with_write_proof(home, monkeypatc
         (_payload(content={"kind": "html", "html": "invalid\x00"}), 400, "invalid"),
         (_payload(content={"kind": "html", "html": 101}), 400, "invalid"),
         (_payload(content={"kind": "html", "html": HTML, "extra": True}), 400, "invalid"),
-        (_payload(content={"kind": "document", "markdown": "Some content"}), 415, "artifact.upload_format"),
+        (_payload(content={"kind": "diagram", "mermaid": "flowchart LR"}), 415, "artifact.upload_format"),
         (_payload(channelId="any-channel"), 422, "artifact.upload_location"),
         (_payload(sharing={"mode": "workspace"}), 400, "invalid"),
     ],

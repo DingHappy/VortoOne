@@ -51,7 +51,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 7
+API_CONTRACT = 8
 MIN_API = 1
 
 
@@ -5134,7 +5134,7 @@ async def upload_artifact(org_id: str, request: Request, response: Response):
 
 @router.post(_ORG + "/artifacts", status_code=201)
 async def create_artifact(org_id: str, request: Request, response: Response):
-    """Create a private HTML artifact without the multipart upload envelope."""
+    """Create a private document, table, or HTML artifact from JSON."""
     return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_json)
 
 
@@ -5259,6 +5259,31 @@ async def artifact(org_id: str, artifact_id: str, request: Request, response: Re
 @router.get(_ORG + "/artifacts/{artifact_id}/versions")
 async def desktop_artifact_versions(org_id: str, artifact_id: str, request: Request):
     return await _artifact_read(org_id, artifact_id, request, app_artifacts.versions)
+
+
+@router.post(_ORG + "/artifacts/{artifact_id}/versions")
+async def append_artifact_version(org_id: str, artifact_id: str, request: Request):
+    from src.agents.tools.artifacts import ArtifactVersionConflict
+    root = _root(org_id)
+    if not _may_access_desktop_uploads(request, root):
+        return _error(403, "owner_proof_required", "编辑制品需要已认证的所有者")
+    try:
+        base_version, content, note = await app_artifact_upload.read_version(request)
+        result = await asyncio.to_thread(views.append_structured_artifact, root, artifact_id,
+                                         base_version, content, note)
+    except app_artifact_upload.UploadError as error:
+        return _error(error.status, error.code, str(error))
+    except ArtifactVersionConflict as error:
+        return _error(409, "artifact.version_conflict", str(error))
+    except FileNotFoundError:
+        return _error(404, "not_found", "没有这个制品")
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+    except ValueError:
+        return _error(422, "artifact.edit_format", "这里只能编辑已有的私有文档或表格")
+    except OSError:
+        return _error(503, "unavailable", "暂时无法保存制品版本")
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
 @router.get(_ORG + "/artifacts/{artifact_id}/download")

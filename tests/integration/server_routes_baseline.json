@@ -3026,6 +3026,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/versions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/download",
     "methods": [
       "GET"
