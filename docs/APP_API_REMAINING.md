@@ -830,8 +830,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | GET | `ORG/notification-prefs` | `notifications.prefs` | 所有者可查看已配置的 APNs 手机目标和 iPhone 发起回合的待审批、回复开关。设备按实际投递登记去重。 |
-| ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` | 已接入所有者的 iPhone 回合待审批和回复推送开关。其余类别返回 422。浏览器、桌面横幅及其它来源的分类投递待接。 |
+| ☑ | GET | `ORG/notification-prefs` | `notifications.prefs` | 所有者可查看已配置的 APNs 手机目标和待审批、回复开关。设备按实际投递登记去重。 |
+| ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` | APNs 的待审批开关覆盖 iPhone 回合和既有后台专员待审批提醒，回复开关用于 iPhone 回合。台账、IM 和审批状态继续照常。其余类别返回 422，浏览器、桌面横幅及其它来源的分类投递待接。 |
 
 ### org/questions（2 个，要做 0）
 

@@ -206,7 +206,11 @@ def notify_transition(root: str, task: Any, *, notify: Optional[Notify] = None) 
     if notify is None:
         from src.scheduling.notices import make_notifier
         legacy = (task.collaboration.get('dispatch', {}).get('routine') or {}).get('legacy')
-        notify = make_notifier(root, source='cron:' + legacy['name'] if legacy else 'assistant')
+        approval = task.collaboration.get('approval') or {}
+        # The approval record identifies an actual pending action. Generic failures and quota holds stay unclassified.
+        approval_wait = task.status == 'blocked' and approval.get('status') == 'pending'
+        notify = make_notifier(root, source='cron:' + legacy['name'] if legacy else 'assistant',
+                               mobile_category='waiting' if approval_wait else None)
 
     async def deliver() -> None:
         try:
