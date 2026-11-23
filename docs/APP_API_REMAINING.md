@@ -721,7 +721,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` |  |
+| ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` | 暂无跳过预算继续同一回合的能力。已认证所有者可查看主聊天新记录的明确终态，旧记录没有终态时不推断。 |
 | ☑ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 所有者的任务详情读取主聊天已记录的工具名称、调用开始与结果状态。专员无逐步记录时返回 404。 |
 
 ### /api/app/telemetry（2 个，要做 0）

@@ -198,6 +198,8 @@ async def test_web_host_appends_persists_and_broadcasts(tmp_path, monkeypatch):
         assert [m["content"] for m in sess["agent"].history][-1] == "收到"
         saved = load_session(str(tmp_path), key)
         assert [(i["role"], i["source"]) for i in saved["transcript"]] == [("user", "telegram"), ("assistant", "telegram")]
+        assert saved["transcript"][0]["outcome"]["status"] == "done"
+        assert saved["transcript"][0]["outcome"]["at"] >= saved["transcript"][0]["at"]
         assert ("sid-maintest", "agent_history") in events and ("sid-maintest", "agent_done") in events
         assert not realtime._ACTORS.busy(key)
     finally:
@@ -459,6 +461,7 @@ async def test_incomplete_phone_turn_is_consistent_in_display_context_and_saved_
         assert "未确认完成" in message
         assert saved["transcript"][-1]["text"] == message
         assert saved["transcript"][-1]["source"] == "telegram"
+        assert saved["transcript"][-2]["outcome"]["status"] == ("canceled" if cancelled else "failed")
         assert any(event["type"] == ("agent_cancelled" if cancelled else "agent_error") for event in events)
         assert not realtime._ACTORS.busy(key)
     finally:

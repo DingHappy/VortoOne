@@ -43,6 +43,9 @@ class _Agent:
             self.confirmed = await realtime.turn_bindings(self).confirm("删除 notes.txt？", "write")
             emit("已删除" if self.confirmed else "没有删除")
             return
+        if text == "回复后失败":
+            emit("这一段已经发出")
+            raise RuntimeError("任务未完成")
         if text == "查看步骤":
             binding = realtime.turn_bindings(self)
             call = {"id": "demo-call", "name": "read_file", "args": {"path": "synthetic-private-path"}}
@@ -156,6 +159,12 @@ async def test_task_manager_steps_use_live_and_archived_main_chat_records(app_ho
     assert saved.status_code == 200, saved.text
     assert "synthetic-private" not in saved.text and "查看步骤" not in saved.text
     assert saved.json()["run"]["finishedAt"] is not None
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    [ended] = history.json()["ended"]
+    assert (ended["runId"], ended["status"], ended["channelId"], history.json()["doneToday"]) == (
+        run["runId"], "done", channel, 1)
+    assert "查看步骤" not in history.text
     started, finished = saved.json()["steps"]
     assert started == call
     assert finished["kind"] == "tool_result" and finished["seq"] == 2
@@ -181,6 +190,43 @@ async def test_task_manager_steps_use_terminal_phase_for_cancelled_run(app_home,
     payload = response.json()
     assert payload["run"]["finishedAt"] is not None
     assert [step["kind"] for step in payload["steps"]] == ["tool_call"]
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    [ended] = history.json()["ended"]
+    assert (ended["runId"], ended["status"], history.json()["doneToday"]) == (run_id, "canceled", 0)
+
+
+async def test_task_manager_shows_failed_main_turn_even_after_one_reply(app_home, monkeypatch):
+    from src.gateway.session_store import load_session
+    from src.web.routers import realtime
+
+    token = "synthetic-desktop-owner"
+    monkeypatch.setenv("VORTOONE_API_TOKEN", token)
+    headers = {"Authorization": f"Bearer {token}"}
+    http, base, channel, socket, bridge = (app_home[k] for k in ("http", "base", "channel", "socket", "bridge"))
+    sent = await http.post(f"{base}/channels/{channel}/messages", json={"body": "回复后失败"}, headers=headers)
+    assert sent.status_code == 200
+    await _until(lambda: any(event["status"] == "failed" for event in socket.events("run.finished")))
+    await _until(lambda: bool(load_session(bridge.root, bridge.key)))
+    monkeypatch.setattr(realtime, "live_session_view", lambda *args, **kwargs: None)
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    [ended] = history.json()["ended"]
+    assert ended["status"] == "failed"
+    assert history.json()["doneToday"] == 0
+    assert "这一段已经发出" not in history.text and "任务未完成" not in history.text
+    future = {"doneToday": "true", "since": "2099-11-01T00:00:00Z"}
+    outside_window = await http.get(f"{base}/task-manager", params=future, headers=headers)
+    assert outside_window.status_code == 200
+    assert outside_window.json()["ended"] == []
+
+    legacy = [{**item} for item in load_session(bridge.root, bridge.key)["transcript"]]
+    for item in legacy:
+        item.pop("outcome", None)
+    monkeypatch.setattr(realtime, "live_session_view", lambda *args, **kwargs: {"transcript": legacy})
+    unknown = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert unknown.status_code == 200
+    assert unknown.json()["ended"] == [] and unknown.json()["doneToday"] == 0
 
 
 async def test_a_message_runs_a_turn_and_the_reply_arrives(app_home):
