@@ -42,8 +42,9 @@ INVITE_DAYS_DEFAULT, INVITE_DAYS_MAX = 7, 30
 _JOIN_ID = re.compile(r"j_[a-f0-9]{32}")
 _MAX_JOIN_SUGGESTIONS, _MAX_JOIN_SUGGESTIONS_PER_MEMBER = 200, 10
 _JOIN_SUGGESTION_DAYS = 7
-_AGENT_CREATE_ASK_COOLDOWN = timedelta(days=1)
-_AGENT_CREATE_ASK_TTL = timedelta(days=7)
+ADMIN_ASK_COOLDOWN = timedelta(days=1)
+ADMIN_ASK_TTL = timedelta(days=7)
+MAX_CHANNEL_AGENT_ASKS = 200
 
 
 def is_member_id(value: object) -> bool:
@@ -98,6 +99,7 @@ def _fresh() -> Dict[str, Any]:
         "invitations": {},
         "join_suggestions": {},
         "agent_create_asks": {},
+        "channel_agent_asks": {},
         "agent_levels": {},
         "plans_shared": {},
         "agent_audiences": {},
@@ -184,6 +186,7 @@ class MemberRegistry:
         value.setdefault("channel_categories", [])
         value.setdefault("join_suggestions", {})
         value.setdefault("agent_create_asks", {})
+        value.setdefault("channel_agent_asks", {})
         if any(not isinstance(value[key], dict) for key in ("plans_shared", "agent_audiences", "agent_policies", "channels")):
             raise Damaged("成员登记文件结构无效")
         try:
@@ -228,6 +231,19 @@ class MemberRegistry:
             moment = datetime.fromisoformat(created)
             if moment.utcoffset() != timedelta(0) or moment.isoformat(timespec="seconds") != created:
                 raise ValueError("创建角色申请登记无效")
+        channel_asks = state["channel_agent_asks"]
+        if not isinstance(channel_asks, dict) or len(channel_asks) > MAX_CHANNEL_AGENT_ASKS:
+            raise ValueError("频道角色申请登记无效")
+        for request_id, item in channel_asks.items():
+            if (not isinstance(request_id, str) or not re.fullmatch(r"[a-f0-9]{32}", request_id) or not isinstance(item, dict)
+                    or set(item) != {"by", "channel", "staff", "created"}
+                    or not all(isinstance(value, str) for value in item.values())
+                    or item["by"] not in state["members"] or item["channel"] not in state["channels"]
+                    or not _AGENT.fullmatch(item["staff"])):
+                raise ValueError("频道角色申请登记无效")
+            moment = datetime.fromisoformat(item["created"])
+            if moment.utcoffset() != timedelta(0) or moment.isoformat(timespec="seconds") != item["created"]:
+                raise ValueError("频道角色申请时间无效")
         from src.workflow.members.channels import check_channels
         check_channels(state)
 
@@ -584,6 +600,8 @@ class MemberRegistry:
             state["join_suggestions"] = {key: item for key, item in state["join_suggestions"].items()
                                          if item["by"] != str(member_id)}
             state["agent_create_asks"].pop(str(member_id), None)
+            state["channel_agent_asks"] = {key: item for key, item in state["channel_agent_asks"].items()
+                                           if item["by"] != str(member_id)}
             for agent_id in list(state["agent_levels"]):
                 state["agent_levels"][agent_id].pop(str(member_id), None)
                 if not state["agent_levels"][agent_id]:
@@ -605,7 +623,7 @@ class MemberRegistry:
             now = _now()
             asks = state["agent_create_asks"]
             previous = asks.get(actor.id)
-            if previous is not None and now - datetime.fromisoformat(previous) < _AGENT_CREATE_ASK_COOLDOWN:
+            if previous is not None and now - datetime.fromisoformat(previous) < ADMIN_ASK_COOLDOWN:
                 return
             asks[actor.id] = _iso(now)
             self._save(state)
@@ -613,7 +631,7 @@ class MemberRegistry:
     def agent_creation_requests(self) -> dict[str, str]:
         """Local inbox projection for the owner. Records have no email or request body."""
         state = self.snapshot()
-        oldest = _iso(_now() - _AGENT_CREATE_ASK_TTL)
+        oldest = _iso(_now() - ADMIN_ASK_TTL)
         return {member_id: created for member_id, created in state["agent_create_asks"].items()
                 if created > oldest}
 

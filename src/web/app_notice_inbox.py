@@ -14,8 +14,9 @@ from typing import Literal
 from src.scheduling.notices import MAX_NOTICES, load_notices
 from src.utils.home_maintenance import home_maintenance
 from src.utils.state_dir import ensure_state_gitignore, state_dir
+from src.web import app_channels
 from src.web.app_views import _id, _iso, dm_channel_id, main_agent_id, owner_connection
-from src.workflow.members.registry import Damaged, MAX_MEMBERS, MemberRegistry
+from src.workflow.members.registry import Damaged, MAX_CHANNEL_AGENT_ASKS, MAX_MEMBERS, MemberRegistry
 
 NoticeFilter = Literal["all", "mentions", "waiting", "unread", "reactions", "done"]
 _FILE = "logs/notice-inbox.json"
@@ -56,7 +57,7 @@ def _read_status(path):
         return {}
     except (UnicodeError, ValueError) as error:
         raise InboxUnavailable("通知状态记录损坏") from error
-    if not isinstance(data, dict) or len(data) > MAX_NOTICES + MAX_MEMBERS:
+    if not isinstance(data, dict) or len(data) > MAX_NOTICES + MAX_MEMBERS + MAX_CHANNEL_AGENT_ASKS:
         raise InboxUnavailable("通知状态记录无效")
     for row in data.values():
         if not isinstance(row, dict) or row.keys() != set(_STATUS_FIELDS):
@@ -68,6 +69,31 @@ def _read_status(path):
         except ValueError as error:
             raise InboxUnavailable("通知状态记录无效") from error
     return data
+
+
+def _admin_ask(notice_id, member_id, created, reason, source):
+    stamp = _iso(created)
+    return {"id": notice_id, "kind": "admin_ask", "waiting": False,
+            "actors": [{"type": "person", "id": member_id}], "count": 1,
+            "source": source, "latest": {"reason": reason}, "readAt": None, "doneAt": None,
+            "snoozedUntil": None, "createdAt": stamp, "updatedAt": stamp}
+
+
+def _admin_asks(root):
+    try:
+        creation = MemberRegistry(root).agent_creation_requests()
+        channel = app_channels.channels(root).agent_requests()
+    except Damaged as error:
+        raise InboxUnavailable("角色申请不可用") from error
+    for member_id, created in creation.items():
+        yield _admin_ask(_id("admin-ask", member_id, created), member_id, created, "create_agents", {})
+    if channel:
+        agents = app_channels.channel_agents(root)
+        for key, ask, label in channel:
+            agent = agents.get(ask["staff"])
+            if agent is not None and agent["joinable"]:
+                yield _admin_ask(_id("admin-ask-channel", key), ask["by"], ask["created"], "channel_agent",
+                                 {"channelId": ask["channel"], "agentId": agent["id"], "label": label})
 
 
 def _snapshot(root):
@@ -101,17 +127,8 @@ def _snapshot(root):
             items[notice_id] = item
             default_reads[notice_id] = default_read
     if can_mark:
-        try:
-            asks = MemberRegistry(root).agent_creation_requests()
-        except Damaged as error:
-            raise InboxUnavailable("创建角色申请不可用") from error
-        for member_id, created in asks.items():
-            notice_id = _id("admin-ask", member_id, created)
-            stamp = _iso(created)
-            item = {"id": notice_id, "kind": "admin_ask", "waiting": False,
-                    "actors": [{"type": "person", "id": member_id}], "count": 1,
-                    "source": {}, "latest": {"reason": "create_agents"},
-                    "readAt": None, "doneAt": None, "snoozedUntil": None, "createdAt": stamp, "updatedAt": stamp}
+        for item in _admin_asks(root):
+            notice_id = item["id"]
             item.update(status.get(notice_id, {}))
             items[notice_id] = item
             default_reads[notice_id] = None
@@ -130,7 +147,7 @@ def _select(items, filter_name: NoticeFilter, now: datetime):
         return sorted((item for item in items if (item["doneAt"] or "") >= oldest),
                       key=lambda item: item["doneAt"], reverse=True)
     if filter_name not in {"all", "unread"}:
-        # Background notices and requests to create an agent have no inline reply.
+        # Background notices and admin requests do not contribute to these filters.
         return []
     return [item for item in items if _visible(item, stamp)
             and (filter_name == "all" or item["readAt"] is None)]
