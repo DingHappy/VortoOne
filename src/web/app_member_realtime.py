@@ -55,6 +55,7 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
 
     await socket.accept()
     watches = {}
+    pending_receive: Optional[asyncio.Task[str]] = None
     presence = app_presence.connected(root, actor.id)
     try:
         await socket.send_json(F.make_app_frame(F.READY, orgId=views.home_id(root), userId=bound[0]))
@@ -62,10 +63,15 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
             if not session_valid() or any(not permitted(channel) for channel in watches if not is_team_channel(channel)):
                 await socket.close(code=1008)
                 return
-            try:
-                raw = await asyncio.wait_for(socket.receive_text(), timeout=interval)
-            except asyncio.TimeoutError:
+            if pending_receive is None:
+                pending_receive = asyncio.create_task(socket.receive_text())
+            # A permission tick must not cancel a receive that already claimed an incoming frame.
+            ready, _ = await asyncio.wait((pending_receive,), timeout=interval)
+            if not ready:
                 continue
+            received = pending_receive
+            pending_receive = None
+            raw = received.result()
             if not session_valid():
                 await socket.close(code=1008)
                 return
@@ -108,8 +114,11 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
         pass
     finally:
         app_presence.disconnected(presence)
-        for task in watches.values():
+        pending = list(watches.values())
+        if pending_receive is not None:
+            pending.append(pending_receive)
+        for task in pending:
             task.cancel()
-        for task in watches.values():
+        for task in pending:
             with suppress(asyncio.CancelledError, WebSocketDisconnect):
                 await task
