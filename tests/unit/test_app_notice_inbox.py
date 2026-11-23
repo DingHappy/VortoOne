@@ -45,11 +45,16 @@ def test_new_scheduler_notices_have_distinct_ids_and_start_unread(home):
     assert owner.get(f"{url}/count").json()["unread"] == 0
 
 
-def _without_agent_creation(home):
+def _everyone_permissions(home):
     roles = home["owner"].get(f"{home['base']}/roles").json()["roles"]
-    everyone = next(role for role in roles if role["id"] == "everyone")
-    kept = [permission for permission in everyone["permissions"] if permission != "create_agents"]
+    return next(role["permissions"] for role in roles if role["id"] == "everyone")
+
+
+def _without_agent_creation(home):
+    permissions = _everyone_permissions(home)
+    kept = [permission for permission in permissions if permission != "create_agents"]
     assert home["owner"].patch(f"{home['base']}/roles/everyone", json={"permissions": kept}).status_code == 204
+    return permissions
 
 
 def test_member_request_to_create_agent_is_delivered_only_to_the_owner_inbox(home):
@@ -87,12 +92,17 @@ def test_member_request_checks_identity_scope_and_support_before_writing(home):
     assert member.post(ask, json=body).status_code == 403  # the default role still advertises creation
     assert owner.post(ask, json=body).status_code == 403
     assert TestClient(home["app"]).post(ask, json=body).status_code == 401
-    _without_agent_creation(home)
+    permissions = _without_agent_creation(home)
     assert member.post(ask, json=body, headers={"Origin": "https://other.example"}).status_code == 403
     assert member.post(ask, json={**body, "userId": "someone-else"}).status_code == 422
     assert member.post(ask, json={"what": "webhook", "provider": "github"}).status_code == 422
     assert owner.get(f"{base}/notifications").json()["items"] == []
     assert member.post(ask, json=body).status_code == 200
+    pending = owner.get(f"{base}/notifications").json()["items"]
+    assert len(pending) == 1
+    assert owner.patch(f"{base}/roles/everyone", json={"permissions": permissions}).status_code == 204
+    assert member.post(ask, json=body).status_code == 403
+    assert owner.get(f"{base}/notifications").json()["items"] == pending
     MemberRegistry(home["root"]).remove_member(OWNER_P, member.member_id)
     assert member.post(ask, json=body).status_code == 403
     assert owner.get(f"{base}/notifications").json()["items"] == []
@@ -198,6 +208,45 @@ def test_member_channel_agent_ask_obeys_current_channel_and_agent_access(home):
     assert MemberRegistry(home["root"]).snapshot()["channel_agent_asks"] == {}
     assert member.post(ask, json=body).status_code == 403
     assert owner.get(inbox).json()["items"] == []
+
+
+def test_channel_agent_requests_respect_capacity_and_current_workspace_roles(home, monkeypatch):
+    monkeypatch.setattr("src.workflow.members.channels._MAX_AGENT_ASKS_PER_MEMBER", 1)
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    permissions = _everyone_permissions(home)
+    channels = [_create(home, name) for name in ("first-agent-request", "second-agent-request")]
+    for channel in channels:
+        assert member.post(f"{channel}/join").status_code == 204
+    inbox, ask = f"{base}/notifications", f"{base}/admin-asks"
+    agent_id = home["agent"]["id"]
+    first, second = [{"what": "channel_agent", "channelId": channel.rsplit("/", 1)[1], "agentId": agent_id}
+                     for channel in channels]
+
+    submitted = member.post(ask, json=first)
+    assert submitted.status_code == 200 and submitted.json() == {"sent": 1}
+    [pending] = owner.get(inbox).json()["items"]
+    duplicate = member.post(ask, json=first)
+    assert duplicate.status_code == 200 and duplicate.json() == {"sent": 1}
+    full = member.post(ask, json=second)
+    assert full.status_code == 409 and full.json()["error"]["code"] == "channel_agent_ask.conflict"
+    assert owner.get(inbox).json()["items"] == [pending]
+
+    restricted = [permission for permission in permissions if permission != "talk_to_agents"]
+    assert owner.patch(f"{base}/roles/everyone", json={"permissions": restricted}).status_code == 204
+    denied = member.post(ask, json=first)
+    assert denied.status_code == 404 and denied.json()["error"]["code"] == "not_found"
+    assert owner.get(inbox).json()["items"] == []
+    assert owner.patch(f"{base}/roles/everyone", json={"permissions": permissions}).status_code == 204
+    assert owner.get(inbox).json()["items"] == [pending]
+
+    assert owner.post(f"{channels[0]}/members", json={"agentId": agent_id}).status_code == 204
+    assert owner.get(inbox).json()["items"] == []
+    submitted = member.post(ask, json=second)
+    assert submitted.status_code == 200 and submitted.json() == {"sent": 1}
+    [replacement] = owner.get(inbox).json()["items"]
+    assert replacement["source"] == {"channelId": second["channelId"], "agentId": agent_id,
+                                     "label": "second-agent-request"}
 
 
 def test_member_channel_agent_request_renewal_and_expiration(home, monkeypatch):
