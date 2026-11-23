@@ -205,6 +205,7 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | `VORTOONE_APP_UI_DIR` | Desktop | 新版界面构建产物的目录（含 `index.html`）。设了才由本服务把它当自己的网站提供；不设则页面与原来一样。 | `web/app_ui.py` |
 | `VORTOONE_UPGRADE_FILE` | 安装命令 | 安装命令记下的升级结果（`<安装目录>/upgrade.json`）。服务启动时读一次，没报过的成功或退回写进通知。不设则不读。 | `scheduling/upgrade_notice.py` |
 | `VORTOONE_BUNDLED_DESKTOP` | Desktop 内部 | 随包启动器设为 `1`，只在本机所有者窗口开放安装时创建的引导。 | `workflow/desktop_setup.py` |
+| `VORTOONE_BUNDLED_DESKTOP_VERSION` | Desktop 内部 | 随包启动器传入桌面应用的版本。在随包模式下由 `/api/instance` 报告，单独安装的服务仍读取 Python 包版本。 | `web/routers/app_api.py` |
 | `VORTOONE_SUPERVISOR_PID` | Desktop | 监护进程 pid；它退出时 runtime 随之退出，不留孤儿。 | `gateway/supervisor_watchdog.py` |
 | `VORTOONE_MODEL_CONFIGURATION_REVISION` | Desktop | 不含凭据的模型配置版本。运行时就绪后回传启动回执；不代表模型服务可用或推理成功。 | `gateway/configuration_receipt.py` |
 | `VORTOONE_CONFIGURATION_LAUNCH_ID` | Desktop | 每次启动独有的身份，与配置版本共同核对，防止旧进程响应被当作新进程的回执。 | `gateway/configuration_receipt.py` |
