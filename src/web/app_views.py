@@ -746,6 +746,7 @@ def agent_detail(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
     return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
                                            "ownerUserId", "createdAt", "audienceMode", "canTalk",
                                            "seesDetails")},
+            **({"reportsToAgentId": agent["reportsToAgentId"]} if "reportsToAgentId" in agent else {}),
             "credentialId": None, "budgetUsedPercent": 0, **agent_activity(root, agent["id"]),
             "pendingApprovals": 0, "channels": []}
 
