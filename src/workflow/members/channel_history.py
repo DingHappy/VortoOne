@@ -60,6 +60,16 @@ CREATE TABLE IF NOT EXISTS read_markers (
     created TEXT NOT NULL,
     PRIMARY KEY(channel, person)
 );
+CREATE TABLE IF NOT EXISTS person_direct_messages (
+    channel TEXT PRIMARY KEY,
+    first TEXT NOT NULL,
+    second TEXT NOT NULL,
+    creator TEXT NOT NULL,
+    opened TEXT NOT NULL,
+    CHECK(first < second AND creator IN (first, second)),
+    UNIQUE(first, second)
+);
+CREATE INDEX IF NOT EXISTS direct_messages_by_second ON person_direct_messages(second);
 CREATE TABLE IF NOT EXISTS channel_mutes (
     person TEXT NOT NULL,
     channel TEXT NOT NULL,
