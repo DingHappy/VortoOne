@@ -25,7 +25,7 @@ export const helpUrl = (slug: string, locale: string, section?: string) =>
  * up to its `api` (`GET /api/instance`); they work together when the two ranges overlap. Raise `APP_API` when the app
  * starts using something new, and `APP_API_MIN` only when it stops working without it.
  */
-export const APP_API = 6;
+export const APP_API = 7;
 export const APP_API_MIN = 1;
 
 /** A workspace's Settings section on the server's website (from the phone, which has no such screen). */

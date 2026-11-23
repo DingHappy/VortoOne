@@ -12,7 +12,7 @@ test("the native window identifies as desktop for both old and new pages", () =>
   assert.equal(window.__vortooneDesktop?.platform, "mac");
   assert.equal(window.__vortooneDesktop?.renderer, "gpu");
   assert.equal(Object.isFrozen(window.__vortooneDesktop), true);
-  assert.deepEqual(Object.keys(window.__vortooneDesktop!).sort(), ["platform", "renderer"]);
+  assert.deepEqual(Object.keys(window.__vortooneDesktop!).sort(), ["desktopSetupModelSettings", "platform", "renderer"]);
   assert.equal(window.__agentesDesktop, window.__vortooneDesktop);
 });
 

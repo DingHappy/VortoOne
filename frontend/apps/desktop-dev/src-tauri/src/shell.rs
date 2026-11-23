@@ -206,7 +206,7 @@ pub fn open_remote(app: &tauri::AppHandle, server: &str, page: Option<&str>) -> 
     app.state::<crate::LiveAddress>().set_origin(&origin, 0);
     let id = format!("dev-live-{}", origin.replace(|c: char| !c.is_ascii_alphanumeric(), "-"));
     app.add_capability(crate::live_window_capability_for(&origin, &id)).map_err(|e| e.to_string())?;
-    crate::show_live(app, url, false)
+    crate::show_live(app, url)
 }
 
 fn choose(app: &tauri::AppHandle, server: &str, page: Option<&str>) -> Result<(), String> {
@@ -223,7 +223,7 @@ fn choose(app: &tauri::AppHandle, server: &str, page: Option<&str>) -> Result<()
             let port: u16 = origin.rsplit(':').next().and_then(|p| p.parse().ok()).ok_or("地址不对")?;
             let url = backend::sign_in_url(port, &key)?.parse().map_err(|_| "登录地址无效".to_string())?;
             app.state::<crate::LiveAddress>().set(port);
-            return crate::show_live(app, url, false);
+            return crate::show_live(app, url);
         }
         crate::connect(app.clone());
         return Ok(());
@@ -232,7 +232,7 @@ fn choose(app: &tauri::AppHandle, server: &str, page: Option<&str>) -> Result<()
         // 这台电脑上别人起的服务：照样只走它自己的页面
         app.state::<crate::LiveAddress>().set_origin(&origin, 0);
         let url = format!("{origin}{}", page_path(page)?).parse().map_err(|_| "地址不对".to_string())?;
-        return crate::show_live(app, url, false);
+        return crate::show_live(app, url);
     }
     open_remote(app, &origin, page)
 }
@@ -266,7 +266,11 @@ fn install(app: &tauri::AppHandle, choice: LocalChoice) -> Result<(), String> {
     let cancelled = || state.cancel.load(Ordering::SeqCst);
     let (config, data) = dirs(app)?;
     emit_step(app, "database", "active", None);
-    std::fs::create_dir_all(data.join("home")).map_err(|e| e.to_string())?;
+    let local = places::read_local(&config, &data);
+    let bundled = app.path().resource_dir().is_ok_and(|root| {
+        root.join("runtime").join(backend::BUNDLED_RUNTIME).is_file()
+    });
+    places::prepare_local_home(&data, bundled && !local.installed).map_err(|e| e.to_string())?;
     backend::owner_key(&data.join(places::OWNER_KEY_FILE))?;
     emit_step(app, "database", "done", None);
     if cancelled() { return Err("cancelled".into()); }

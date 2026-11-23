@@ -104,6 +104,7 @@ export const settingUp = <O extends { role?: string; onboarding?: unknown }>(org
  * onboarding (which resumes the one they are setting up).
  */
 export function landingFor(me: Me, lastOrgId: string | null): { to: "/onboarding" } | { orgId: string } {
+  if (me.desktopSetup) return { to: "/onboarding" };
   const ready = me.organizations.filter((o) => !settingUp(o));
   const org = ready.find((o) => o.id === lastOrgId) ?? ready[0];
   return org ? { orgId: org.id } : { to: "/onboarding" };

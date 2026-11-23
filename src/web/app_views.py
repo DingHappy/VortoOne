@@ -87,6 +87,12 @@ def _profile(root: str) -> Dict[str, str]:
     return assistant_profile.load_profile(root)
 
 
+def workspace_identity(root: str) -> tuple[str, str | None]:
+    from src.workflow import desktop_setup
+    name, mode = desktop_setup.workspace(root)
+    return name or _profile(root)["name"], mode
+
+
 def _home_created(root: str) -> str:
     try:
         return _iso(os.stat(root).st_birthtime)  # type: ignore[attr-defined]
@@ -228,6 +234,7 @@ def me(root: str) -> Dict[str, Any]:
     from src.web import app_profile_avatar
 
     card = _owner_card(root)
+    name, mode = workspace_identity(root)
     user_id = owner_id(root)
     display = workspace_display(root, Principal(OWNER, user_id, root))
     requires_auth = owner_connection()
@@ -239,7 +246,8 @@ def me(root: str) -> Dict[str, Any]:
     return {
         "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": avatar,
                  **preferences},
-        "organizations": [{"id": home_id(root), "name": _profile(root)["name"], "role": "owner",
+        "organizations": [{"id": home_id(root), "name": name, "role": "owner",
+                           **({"mode": mode} if mode else {}),
                            **display, "permissions": list(OWNER_PERMISSIONS),
                            "routineProposalReview": requires_auth, "teamChannels": requires_auth,
                            "channelCategories": requires_auth}],
@@ -282,7 +290,7 @@ def _timezone(root: str) -> str:
 
 
 def overview(root: str) -> Dict[str, Any]:
-    return {"name": _profile(root)["name"], "role": "owner", "people": 1, "agents": len(agents(root)),
+    return {"name": workspace_identity(root)[0], "role": "owner", "people": 1, "agents": len(agents(root)),
             "budgetUsedPercent": 0, "approvalsWaitingForMe": 0, "proposalsWaitingForMe": 0}
 
 
@@ -298,12 +306,13 @@ def settings(root: str) -> Dict[str, Any]:
     from src.web import app_gifs, app_voice
     switches = _home_switches(root)
     from src.memory.assistant_profile import load_home_context
-    return {"name": _profile(root)["name"], "context": load_home_context(root), "defaultCredentialId": None,
+    name, mode = workspace_identity(root)
+    return {"name": name, "context": load_home_context(root), "defaultCredentialId": None,
             "routerModel": None,
             "summaryModel": None, "timezone": _timezone(root), "actionCheck": True, "autoModels": {},
             "teamWatch": False, "welcomePeople": False, "gifs": switches["gifs"], "gifRating": switches["gifRating"],
             "agentStickers": False, "agentMedia": "never", "voiceMessages": switches["voiceMessages"],
-            "voiceAvailable": app_voice.available(root), "gifsAvailable": app_gifs.available(root), "agentMediaAvailable": False, "mode": "personal",
+            "voiceAvailable": app_voice.available(root), "gifsAvailable": app_gifs.available(root), "agentMediaAvailable": False, "mode": mode or "personal",
             "defaultAgentBudgetUsd": None}
 
 

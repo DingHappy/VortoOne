@@ -852,7 +852,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/onboarding` | `orgs.saveOnboarding` |  |
+| ☐ | PATCH | `ORG/onboarding` | `orgs.saveOnboarding` | 随包本机安装的引导使用独立的 `/api/app/desktop-setup`，创建其他工作区的流程仍待接入。 |
 
 ### org/billing-link（1 个，要做 0）
 

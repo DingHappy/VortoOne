@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub const CONFIG_FILE: &str = "backend.json";
+pub const BUNDLED_RUNTIME: &str = if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" };
 const START_WITHIN: Duration = Duration::from_secs(90);
 const IO_WAIT: Duration = Duration::from_secs(5);
 /// 模型凭据等只从这些前缀里取，免得把配置文件当成往后端塞任意环境变量的口子。
@@ -407,7 +408,9 @@ pub fn bundled_command(
         .args(["server", "--host", "127.0.0.1", "--port"])
         .arg(port.to_string());
     command.env_remove("PYTHONPATH").env_remove("PYTHONHOME");
-    configure(command, env_file, home, ui, token)
+    let mut command = configure(command, env_file, home, ui, token);
+    command.env("VORTOONE_BUNDLED_DESKTOP", "1");
+    command
 }
 
 fn configure(
@@ -432,6 +435,7 @@ fn configure(
         command.envs(allowed_env(&text));
     }
     // 经 Tailscale 对外的地址（外壳打开「让别的设备连进来」时写下）：链接、二维码和 AI 应用报这个地址
+    command.env_remove("VORTOONE_BUNDLED_DESKTOP");
     command.env_remove("VORTOONE_PUBLIC_URL");
     if let Some(url) = public_url(&home.with_file_name(crate::places::PUBLIC_URL_FILE)) {
         command.env("VORTOONE_PUBLIC_URL", url);
@@ -584,11 +588,7 @@ fn good_code(code: &str) -> bool {
 
 /// 安装验收：在全新的临时家里启动随包后端并完成登录，不读取用户配置，不调用模型。
 pub fn verify_standalone(resources: &Path) -> Result<(), String> {
-    let runtime = resources.join("runtime").join(if cfg!(windows) {
-        "vortocode-runtime.exe"
-    } else {
-        "vortocode-runtime"
-    });
+    let runtime = resources.join("runtime").join(BUNDLED_RUNTIME);
     let capabilities = Command::new(&runtime)
         .arg("model-capabilities")
         .output()
@@ -606,8 +606,8 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
         std::process::id(),
         new_token()?
     ));
-    fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let outcome = (|| {
+        crate::places::prepare_local_home(&scratch, true).map_err(|e| e.to_string())?;
         let ui = resources.join("web");
         let home = scratch.join("home");
         let log = scratch.join("backend.log");
@@ -616,13 +616,17 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
                 let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
                 cmd.env_clear();
                 cmd = configure(cmd, None, &home, &ui, token);
-                cmd.env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
+                cmd.env("VORTOONE_BUNDLED_DESKTOP", "1")
+                    .env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
                 cmd
             })?;
         let result = (|| {
+            let (status, profile) = request(port, "GET", "/api/app/me", Some(&token))?;
+            let profile: serde_json::Value = serde_json::from_str(&profile).map_err(|_| "独立后端账号应答无效")?;
             if request(port, "GET", "/api/app/me", None)?.0 != 401
-                || request(port, "GET", "/api/app/me", Some(&token))?.0 != 200
-                || request(port, "GET", "/", None)?.0 != 200
+                || status != 200
+                || profile["desktopSetup"]["step"] != "purpose"
+                || request(port, "GET", "/onboarding", None)?.0 != 200
             {
                 return Err("独立后端或界面未能通过验收".into());
             }

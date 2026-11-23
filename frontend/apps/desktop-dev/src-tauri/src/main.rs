@@ -75,6 +75,29 @@ fn show(
 }
 
 const LIVE: &str = "live";
+const SETUP_MODEL_PATH: &str = "/onboarding/native-model-settings";
+
+fn setup_model_navigation(source: &tauri::Url, target: &tauri::Url, live_origin: &str, managed_origin: &str) -> bool {
+    source.path() == "/onboarding"
+        && target.path() == SETUP_MODEL_PATH
+        && target.query().is_none() && target.fragment().is_none()
+        && live_origin == managed_origin
+        && places::origin(source.as_str()).as_deref() == Some(managed_origin)
+        && places::origin(target.as_str()).as_deref() == Some(managed_origin)
+}
+
+fn open_setup_model_settings(app: &tauri::AppHandle, target: &tauri::Url) {
+    let Some(managed) = app.state::<backend::Backend>().local_origin() else { return; };
+    let Some(live) = app.get_webview_window(LIVE) else { return; };
+    let Ok(source) = live.url() else { return; };
+    let Ok(data) = app.path().app_data_dir() else { return; };
+    if setup_model_navigation(&source, target, &app.state::<LiveAddress>().origin(), &managed)
+        && places::desktop_setup_at_model(&data.join("home")) {
+        if let Err(error) = show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0) {
+            eprintln!("无法打开模型配置窗口: {error}");
+        }
+    }
+}
 
 fn live_window_capability(port: u16) -> tauri::ipc::CapabilityBuilder {
     live_window_capability_for(&backend::origin(port), &format!("dev-live-window-{port}"))
@@ -111,9 +134,8 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
     let ui = resources.join("web");
-    let runtime = resources.join("runtime").join(if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" });
+    let runtime = resources.join("runtime").join(backend::BUNDLED_RUNTIME);
     let env_file = model_settings::env_file(&config_dir, &data);
-    let first_run = runtime.is_file() && env_file.is_none();
     let config = if runtime.is_file() { None } else {
         let Ok(text) = std::fs::read_to_string(config_dir.join(backend::CONFIG_FILE)) else { return Ok(()); };
         Some(backend::parse_config(&text)?)
@@ -145,7 +167,7 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
         app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
         app.state::<LiveAddress>().set(port);
         watch_consents(app.clone(), port, token.clone());
-        show_live(app, url, first_run)
+        show_live(app, url)
     })();
     if outcome.is_ok() { connector::resume(app.clone()); }
     else { app.state::<backend::Backend>().stop(); }
@@ -153,7 +175,7 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 /// 主窗口打开 url（本机服务的交接登录地址，或别处服务的页面）。已开着就原地导航。
-fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result<(), String> {
+fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if let Some(window) = handle.get_webview_window(LIVE) {
@@ -168,6 +190,7 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result
         }
         let address = handle.state::<LiveAddress>().inner().clone();
         let download_address = address.clone();
+        let setup_handle = handle.clone();
         let builder = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
             .title("VortoOne Dev")
             .initialization_script(include_str!("../../desktop-titlebar.js"))
@@ -176,6 +199,10 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result
             .center()
             // 窗口只在后端自己的地址里走；外部链接交给系统浏览器
             .on_navigation(move |target| {
+                if target.path() == SETUP_MODEL_PATH && address.allows(target) {
+                    open_setup_model_settings(&setup_handle, target);
+                    return false;
+                }
                 if address.allows(target) {
                     return true;
                 }
@@ -205,9 +232,6 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url, first_run: bool) -> Result
             Ok(_) => {
                 if let Some(preview) = handle.get_webview_window("main") {
                     let _ = preview.close();
-                }
-                if first_run {
-                    let _ = show(&handle, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0);
                 }
             }
             Err(error) => eprintln!("无法打开主窗口: {error}"),
@@ -488,6 +512,27 @@ mod tests {
         assert!(nav.allows(&"http://127.0.0.1:4322/api/auth/handover/code".parse().unwrap()));
         for rejected in ["http://127.0.0.1:4321/", "http://localhost:4322/", "https://example.test/"] {
             assert!(!nav.allows(&rejected.parse().unwrap()));
+        }
+    }
+
+    #[test]
+    fn onboarding_model_command_only_accepts_the_managed_setup_page() {
+        let managed = "http://127.0.0.1:4321";
+        let page = format!("{managed}/onboarding").parse().unwrap();
+        let command = format!("{managed}{SETUP_MODEL_PATH}").parse().unwrap();
+        assert!(setup_model_navigation(&page, &command, managed, managed));
+        let wrong_page = format!("{managed}/settings").parse().unwrap();
+        assert!(!setup_model_navigation(&wrong_page, &command, managed, managed));
+        let remote = "https://example.test";
+        assert!(!setup_model_navigation(&page, &command, remote, managed));
+        for target in [
+            "http://127.0.0.1:4321/onboarding/native-model-settings?or=1",
+            "http://127.0.0.1:4321/onboarding/native-model-settings#anything",
+            "http://user@127.0.0.1:4321/onboarding/native-model-settings",
+            "http://127.0.0.1:4322/onboarding/native-model-settings",
+            "https://example.test/onboarding/native-model-settings",
+        ] {
+            assert!(!setup_model_navigation(&page, &target.parse().unwrap(), managed, managed));
         }
     }
 
