@@ -399,3 +399,47 @@ def test_wiki_rechecks_member_edit_rights_and_does_not_accept_anonymous_or_forei
     assert stale_owner.post("/api/auth/login", headers=ORIGIN, json={"token": TOKEN}).status_code == 200
     assert stale_owner.post(root, json={"title": "没有来源", "body": ""}).status_code == 403
     assert stale_owner.post(root, headers=ORIGIN, json={"title": "有来源", "body": ""}).status_code == 201
+
+
+def test_agent_reads_excludes_human_views_and_requires_workspace_membership(home):
+    owner, member, base = home["owner"], _join(home), home["base"]
+    page = _page(owner, base)
+    detail = f"{base}/wiki/pages/{page['slug']}"
+    path = f"{base}/wiki/reads"
+    registry = MemberRegistry(home["root"])
+    registry.change_group(OWNER_P, "everyone", items=[])
+    for reader in (owner, member):
+        assert reader.get(detail).status_code == 200
+        response = reader.get(path)
+        assert response.status_code == 200 and response.json() == []
+        assert response.headers["cache-control"] == "no-store"
+
+    assert TestClient(home["app"]).get(path).status_code == 401
+    assert owner.get("/api/app/organizations/other/wiki/reads").status_code == 404
+    registry.remove_member(OWNER_P, member.member_id)
+    assert member.get(path).status_code == 403
+
+
+def test_bulk_agent_access_refuses_without_saving_or_revealing_page_ids(home):
+    owner, member, base = home["owner"], _join(home), home["base"]
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    page = _page(owner, base, title="所有者的页面", audience={"mode": "people", "userIds": [owner_id]})
+    path = f"{base}/wiki/bulk/agents"
+    detail = f"{base}/wiki/pages/{page['slug']}"
+    payload = {"ids": [page["id"]], "agentIds": [home["main"]["id"]]}
+    assert member.get(detail).status_code == 404
+    for reader in (owner, member):
+        for selection in (None, [], payload["agentIds"]):
+            unavailable = reader.put(path, json=payload | {"agentIds": selection})
+            assert unavailable.status_code == 409
+            assert unavailable.json()["error"]["code"] == "wiki_context_unavailable"
+            missing = reader.put(path, json=payload | {"ids": ["unknown-page-id"], "agentIds": selection})
+            assert missing.status_code == 409 and missing.json() == unavailable.json()
+
+    assert owner.put(path, json=payload | {"agentIds": [123]}).status_code == 400
+    assert member.put(path, json=payload, headers={"Origin": "https://elsewhere.test"}).status_code == 403
+    assert TestClient(home["app"]).put(path, json=payload).status_code == 401
+    MemberRegistry(home["root"]).change_group(OWNER_P, "everyone", items=[])
+    assert member.put(path, json=payload).status_code == 403
+    assert owner.get(detail).json() == page
+    assert [row["version"] for row in owner.get(detail + "/history").json()["versions"]] == [1]

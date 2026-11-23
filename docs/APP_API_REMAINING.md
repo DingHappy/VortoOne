@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 354 个，剩 **277** 个：
-- **要做：206**（其中 27 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 356 个，剩 **275** 个：
+- **要做：204**（其中 27 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -154,18 +154,18 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 3）
+### org/wiki（24 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` |  |
+| ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` | Wiki 的智能体读取尚未开放，已登录且有编辑权限的调用返回明确的 409，页面和智能体授权均无变更。 |
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
 | ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
 | ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
-| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 支持纯 Markdown 文件、Obsidian 笔记和所有者的 GitHub 笔记，保存来源、目录、标签与正文。重发相同导入号及批次内容会复用回执。笔记别名和 Drive 附件待接。 |
+| ☑ | POST | `ORG/wiki/import` | `wiki.import` | 导入 Markdown、Obsidian 或所有者的 GitHub 笔记，保存来源、目录、标签、正文和别名。所有者可绑定本空间私有 Drive 文件，成员看不到绑定，文件回收后隐藏。重发相同导入号及批次内容复用回执。 |
 | ☑ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` | 所有者预览公开 GitHub 仓库、分支目录或单个 Markdown 文件。仅返回笔记 ZIP，保存在后续导入确认时执行。私有仓库及附件暂不可用。 |
-| ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
+| ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 所有者和有 Wiki 编辑权限的成员可以创建页面，继续遵守文件夹的可见规则。 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
 | ☑ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
@@ -178,8 +178,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/wiki/pages/{x}/pin` | `wiki.pin` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/rename` | `wiki.rename` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}/versions/{x}` | `wiki.version` |  |
-| ☐ | GET | `ORG/wiki/reads` | `wiki.reads` |  |
-| ☑ | GET | `ORG/wiki/search` | `wiki.search` | 按当前标题搜索，只回调用者可见的未删除页面摘要；界面仍用本地筛选。 |
+| ☑ | GET | `ORG/wiki/reads` | `wiki.reads` | 供 Wiki 首页显示近 7 天的智能体阅读排行。Wiki 尚未开放智能体读取，因此排行为空；成员和所有者查看页面不计入。 |
+| ☑ | GET | `ORG/wiki/search` | `wiki.search` | 搜索标题和导入别名，只返回可见、未删除的页面。别名也用于关系图和反向链接，同名别名不会自动选页。Desktop 的搜索框和正文链接在客户端处理，导入别名的界面兼容见 #1083。 |
 | ☑ | POST | `ORG/wiki/trash/purge` | `wiki.purge` |  |
 | ☑ | POST | `ORG/wiki/trash/restore` | `wiki.restoreMany` |  |
 

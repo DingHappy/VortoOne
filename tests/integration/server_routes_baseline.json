@@ -2778,6 +2778,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/bulk/agents",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/bulk/delete",
     "methods": [
       "POST"
@@ -2893,6 +2899,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/versions/{version}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/wiki/reads",
     "methods": [
       "GET"
     ]
