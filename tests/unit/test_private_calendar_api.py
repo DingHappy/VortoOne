@@ -1,5 +1,8 @@
 """Calendar uses the Desktop payload with live owner and member sessions."""
 
+import json
+import sqlite3
+from contextlib import closing
 from stat import S_IMODE
 
 import pytest
@@ -108,7 +111,7 @@ def test_all_day_uses_civil_dates_and_exclusive_end_across_dst(home):
     assert timed.json()["startDate"] is None and timed.json()["endDate"] is None
 
 
-def test_calendar_has_no_invites_recurrence_or_series_writes(home):
+def test_calendar_rejects_invites_and_unimplemented_rules(home):
     owner = home["owner"]
     member = _join(home)
     calendar = home["base"] + "/calendar"
@@ -124,6 +127,174 @@ def test_calendar_has_no_invites_recurrence_or_series_writes(home):
     assert owner.post(path + "/rsvp", json={"status": "accepted"}).status_code == 404
     assert _fetch(owner, calendar)["events"] == [own]
     assert _fetch(member, calendar)["events"] == []
+
+
+def _series_rule(**changes):
+    return {
+        "freq": "daily", "interval": 1, "times": ["09:00"], "timezone": "America/New_York",
+        "start": "2027-03-12", "until": None, "count": None, **changes,
+    }
+
+
+def _series_scope(event, scope):
+    return {"scope": scope, "occurrenceStart": event["occurrenceStart"]}
+
+
+def test_daily_desktop_series_has_stable_identity_and_local_time_across_dst(home):
+    owner = home["owner"]
+    calendar = home["base"] + "/calendar"
+    single = _create(owner, calendar)
+    storage = state_dir(home["root"]) / "calendar.sqlite3"
+    with closing(sqlite3.connect(storage)) as conn, conn:
+        row = json.loads(conn.execute("SELECT content FROM events WHERE id = ?", (single["id"],)).fetchone()[0])
+        del row["rule"]
+        conn.execute("UPDATE events SET content = ? WHERE id = ?", (json.dumps(row), single["id"]))
+        conn.execute("DROP TABLE series_exceptions")
+    assert _fetch(owner, calendar)["events"] == [single]
+    # EventDialog posts actual browser instants alongside the selected civil schedule.
+    event = _create(owner, calendar, title="每天上午", timezone="America/New_York", rule=_series_rule(),
+                    start="2027-03-12T09:00:00.000Z", end="2027-03-12T10:00:00.000Z")
+    expected = [
+        "2027-03-12T14:00:00.000Z", "2027-03-13T14:00:00.000Z", "2027-03-14T13:00:00.000Z",
+        "2027-03-15T13:00:00.000Z", "2027-03-16T13:00:00.000Z", "2027-03-17T13:00:00.000Z",
+    ]
+    all_events = _fetch(owner, calendar)["events"]
+    assert all_events[0] == single
+    rows = all_events[1:]
+    assert [row["start"] for row in rows] == expected
+    assert all(row["id"] == row["seriesId"] == event["id"] for row in rows)
+    assert [row["occurrenceStart"] for row in rows] == expected
+    assert rows[0] == event
+    assert rows[2]["rule"]["start"] == "2027-03-14"
+    assert rows[2]["end"] == "2027-03-14T14:00:00.000Z"
+
+    path = calendar + "/events/" + event["id"]
+    assert owner.patch(path, json={"title": "未指定范围"}).status_code == 409
+    assert owner.delete(path).status_code == 409
+    assert owner.patch(path, json={"title": "无效日期", "scope": "all",
+                                   "occurrenceStart": "2027-03-14T14:00:00Z"}).status_code == 404
+    member = _join(home)
+    assert _fetch(member, calendar)["events"] == []
+    assert member.patch(path, json={"title": "其他成员", **_series_scope(rows[0], "all")}).status_code == 404
+    assert member.delete(path, params=_series_scope(rows[0], "all")).status_code == 404
+    assert _fetch(owner, calendar)["events"] == all_events
+
+
+def test_daily_gap_and_fall_back_are_resolved_as_civil_time(home):
+    owner = home["owner"]
+    calendar = home["base"] + "/calendar"
+    _create(owner, calendar, title="春季", timezone="America/New_York",
+            rule=_series_rule(times=["02:30"], start="2027-03-13", until="2027-03-15"))
+    _create(owner, calendar, title="秋季", timezone="America/New_York",
+            rule=_series_rule(times=["01:30"], start="2027-11-06", until="2027-11-08"))
+    spring = _fetch(owner, calendar)["events"]
+    assert [row["start"] for row in spring] == ["2027-03-13T07:30:00.000Z", "2027-03-15T06:30:00.000Z"]
+    fall = _fetch(owner, calendar, **{"from": "2027-11-06T00:00:00Z", "to": "2027-11-09T00:00:00Z"})["events"]
+    assert [row["start"] for row in fall] == [
+        "2027-11-06T05:30:00.000Z", "2027-11-07T05:30:00.000Z", "2027-11-08T06:30:00.000Z",
+    ]
+
+
+def test_weekly_all_day_series_anchors_to_monday_and_keeps_civil_dates(home):
+    owner = home["owner"]
+    calendar = home["base"] + "/calendar"
+    event = _create(owner, calendar, allDay=True, timezone="America/New_York",
+                    startDate="2027-03-12", endDate="2027-03-13",
+                    rule=_series_rule(freq="weekly", interval=2, byWeekday=["SU", "MO"], times=["00:00"]))
+    rows = _fetch(owner, calendar, **{"from": "2027-03-12T00:00:00Z", "to": "2027-04-01T00:00:00Z"})["events"]
+    assert [row["startDate"] for row in rows] == ["2027-03-14", "2027-03-22", "2027-03-28"]
+    assert event == rows[0]
+    assert event["start"] == "2027-03-14T05:00:00.000Z"
+    assert event["endDate"] == "2027-03-15"
+    assert event["end"] == "2027-03-16T04:00:00.000Z"
+    assert sum(row["id"] == event["id"] for row in rows) == 3
+
+
+def test_series_edit_and_delete_scopes_apply_only_to_selected_occurrences(home):
+    owner = home["owner"]
+    calendar = home["base"] + "/calendar"
+    event = _create(owner, calendar, timezone="America/New_York", rule=_series_rule(), title="原件")
+    path = calendar + "/events/" + event["id"]
+    rows = _fetch(owner, calendar)["events"]
+    one = owner.patch(path, json={**_series_scope(rows[1], "this"), "title": "仅本次",
+                                 "start": "2027-03-13T16:00:00Z", "end": "2027-03-13T17:00:00Z",
+                                 "rule": {**rows[1]["rule"], "times": ["11:00"]}})
+    assert one.status_code == 200, one.text
+    assert one.json()["rule"] is None and one.json()["id"] != event["id"]
+    after_one = _fetch(owner, calendar)["events"]
+    assert [row["title"] for row in after_one] == ["原件", "仅本次", "原件", "原件", "原件", "原件"]
+    assert after_one[1]["start"] == "2027-03-13T16:00:00.000Z"
+
+    following = owner.patch(path, json={"title": "此后", **_series_scope(rows[3], "following")})
+    assert following.status_code == 200, following.text
+    new_path = calendar + "/events/" + following.json()["id"]
+    later = _fetch(owner, calendar)["events"][-1]
+    # Editing text from a browser in another zone can echo a different clock time.
+    finalized = owner.patch(new_path, json={"title": "整组", **_series_scope(later, "all"),
+                                         "rule": {**later["rule"], "times": ["13:00"]}})
+    assert finalized.status_code == 200, finalized.text
+    after_edit = _fetch(owner, calendar)["events"]
+    assert [row["title"] for row in after_edit] == ["原件", "仅本次", "原件", "整组", "整组", "整组"]
+    assert after_edit[-1]["start"] == later["start"]
+
+    assert owner.delete(new_path, params=_series_scope(after_edit[4], "this")).status_code == 204
+    assert owner.delete(new_path, params=_series_scope(after_edit[5], "following")).status_code == 204
+    after_delete = _fetch(owner, calendar)["events"]
+    assert [row["title"] for row in after_delete] == ["原件", "仅本次", "原件", "整组"]
+    assert owner.delete(path, params=_series_scope(after_delete[2], "all")).status_code == 204
+    assert [row["title"] for row in _fetch(owner, calendar)["events"]] == ["整组"]
+
+
+def test_weekly_grid_move_updates_initial_rule_without_affecting_other_people(home):
+    member = _join(home)
+    calendar = home["base"] + "/calendar"
+    event = _create(member, calendar, timezone="America/New_York", rule=_series_rule(freq="weekly", byWeekday=["MO"]))
+    assert event["start"] == "2027-03-15T13:00:00.000Z"
+    path = calendar + "/events/" + event["id"]
+    moved = member.patch(path, json={**_series_scope(event, "all"),
+                                    "start": "2027-03-16T16:30:00Z", "end": "2027-03-16T17:30:00Z"})
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["rule"]["byWeekday"] == ["TU"]
+    assert moved.json()["rule"]["times"] == ["12:30"]
+    checked = moved.json()
+    assert _fetch(member, calendar)["events"] == [checked]
+    assert _fetch(home["owner"], calendar)["events"] == []
+    outside = member.get(calendar, params={"from": "2029-01-01T00:00:00Z", "to": "2029-01-03T00:00:00Z"})
+    assert outside.status_code == 200
+    assert outside.json()["events"][0]["start"] == "2029-01-02T17:30:00.000Z"
+
+
+def test_following_split_moves_future_exceptions_and_rollback_keeps_original(home, monkeypatch):
+    from src.workflow.private_calendar import PrivateCalendar
+
+    owner = home["owner"]
+    calendar = home["base"] + "/calendar"
+    item = _create(owner, calendar, timezone="America/New_York", rule=_series_rule(), title="原始")
+    path = calendar + "/events/" + item["id"]
+    rows = _fetch(owner, calendar)["events"]
+    changed = owner.patch(path, json={"title": "例外", **_series_scope(rows[4], "this")})
+    assert changed.status_code == 200, changed.text
+    exception_path = calendar + "/events/" + changed.json()["id"]
+    assert owner.patch(exception_path, json={"rule": _series_rule()}).status_code == 409
+    original = _fetch(owner, calendar)["events"]
+    scope = {"title": "新系列", **_series_scope(rows[2], "following")}
+
+    def refuse_write(self, conn, event_id, data):
+        raise sqlite3.OperationalError("tested write rollback")
+
+    with monkeypatch.context() as fail:
+        fail.setattr(PrivateCalendar, "_replace", refuse_write)
+        assert owner.patch(path, json=scope).status_code == 409
+    assert _fetch(owner, calendar)["events"] == original
+
+    accepted = owner.patch(path, json=scope)
+    assert accepted.status_code == 200, accepted.text
+    after_split = _fetch(owner, calendar)["events"]
+    assert [row["title"] for row in after_split] == ["原始", "原始", "新系列", "新系列", "例外", "新系列"]
+    new_path = calendar + "/events/" + accepted.json()["id"]
+    assert owner.delete(new_path, params=_series_scope(after_split[3], "following")).status_code == 204
+    assert [row["title"] for row in _fetch(owner, calendar)["events"]] == ["原始", "原始", "新系列"]
+    assert owner.delete(exception_path).status_code == 404
 
 
 @pytest.mark.parametrize("payload", [
