@@ -1705,7 +1705,8 @@ async def mute_team_channel(org_id: str, channel_id: str, request: Request, body
 
 @router.get(_ORG + "/messages/{message_id}/card")
 async def team_message_card(org_id: str, message_id: str, request: Request):
-    return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, message_id))
+    return await _team_call(request, org_id, lambda service, actor: service.message_details(
+        actor, message_id, load_agents=lambda: app_channels.channel_agents(_root(org_id))))
 
 
 class _MessageReaction(BaseModel):
