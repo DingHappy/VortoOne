@@ -1,15 +1,15 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 353 个，剩 **278** 个：
-- **要做：207**（其中 27 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 354 个，剩 **277** 个：
+- **要做：206**（其中 27 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
 
 表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
-> **「已接」不等于「能用」（2026-11-22 查出）**：「已接」只按路由登记算，里面至少三十来个是固定回答：
+> **接口统计口径（2026-11-22）**。「已接」按清单中打勾的客户端合同计数。已经登记路由但缺合同关键行为的接口仍记待办。已打勾的接口中有至少三十来个返回固定答案。
 > `app_api.py` 的 `_EMPTY` 表回固定的空，另一些回固定值或一律拒绝。多数是如实的「没有这个功能」，但数据明明存在却回空的是缺陷：
 > `task-manager`、`waiting`、`active-runs` 已改成读真实记录；`mail/accounts`、`calendar`、`proposals` 等还要逐个核对。
 > 报进度时把这一类单独说，别混在「已接」里。
@@ -444,7 +444,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | POST | `ORG/browser-profiles/{x}/open` | `browserProfiles.open` | Codex 连接电脑线；界面代码里没调用 |
 | — | POST | `ORG/browser-profiles/{x}/takeover` | `browserProfiles.takeover` | Codex 连接电脑线；界面代码里没调用 |
 
-### /api/app/invitations（7 个，要做 6）
+### /api/app/invitations（7 个，要做 5）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -454,7 +454,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `/api/app/invitations/{x}/request-new` | `invites.requestNew` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests` | `invites.ask` |  |
 | ☐ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` |  |
-| ☐ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 已接尚未清理的过期邮箱邀请；已接受的令牌已被消费，待有真实回执后补齐 |
+| ☑ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 保留尚未清理的过期邮箱邀请提示。原有效期内，仅接受该邀请且仍在册的登录成员显式请求 `receipt=1` 时可查看回执。旧客户端和其他人查询已消费的令牌返回 404。 |
 
 ### org/databases（6 个，要做 6）
 

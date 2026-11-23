@@ -837,6 +837,28 @@ class MemberRegistry:
             return {**item, "groups": groups, "id": invitation_id}
         return None
 
+    def accepted_invitation_at(self, token: str, member_id: str, account_id: str) -> Optional[str]:
+        """仅在原有效期内，返回该成员用这一份邀请加入的时间。"""
+        if not member_id or not account_id:
+            return None
+        record = self.snapshot()["members"].get(member_id)
+        if record is None or record.get("account") != account_id:
+            return None
+        receipt = record.get("invitation_receipt")
+        if not isinstance(receipt, dict):
+            return None
+        digest, expires = receipt.get("digest"), receipt.get("expires")
+        if (not isinstance(expires, str) or not isinstance(digest, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", digest)):
+            return None
+        if not secrets.compare_digest(digest, _digest(token)):
+            return None
+        try:
+            expiry = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return record.get("joined") if expiry.tzinfo is not None and expiry > _now() else None
+
     def manages(self, actor: Principal, member_id: str) -> bool:
         """操作人管不管得了这个成员（重置他的密码、移除他）：所有者，或有「管理成员」且排在他之前。"""
         state = self.snapshot()
@@ -871,10 +893,14 @@ class MemberRegistry:
             groups = self._invited_groups(state, state["invitations"][found])
             invitation = state["invitations"].pop(found)
             member_id = f"m_{uuid.uuid4().hex[:12]}"
-            state["members"][member_id] = {
+            record: Dict[str, Any] = {
                 "name": _name(name, "名字"), "joined": _iso(moment), "invited_by": str(invitation.get("by") or ""),
                 "email": str(email or ""), "account": str(account or ""),
                 "groups": groups}
+            if wanted and account:
+                # 消费邀请时，回执和成员记录一起落盘。
+                record["invitation_receipt"] = {"digest": digest, "expires": invitation["expires"]}
+            state["members"][member_id] = record
             return member_id
 
     # ── 对单个 agent 单独定级别 ───────────────────────────────────────────────

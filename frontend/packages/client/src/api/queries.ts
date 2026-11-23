@@ -254,13 +254,29 @@ export const invitationQuery = (api: ApiClient, token: string) =>
     queryFn: () => api.orgs.previewInvitation(token),
     retry: (count, error) => count < 2 && noAnswer(error),
   });
-/** An email invitation that no longer opens: accepted or expired (ADR 0090). */
-export const invitationStateQuery = (api: ApiClient, token: string) =>
+/** An email invitation that no longer opens. An accepted receipt belongs to the current member session. */
+export const invitationStateQuery = (api: ApiClient, token: string, viewerId: string | null) =>
   queryOptions({
-    queryKey: keys.invitationState(token),
-    queryFn: () => api.orgs.invitationState(token),
+    queryKey: keys.invitationState(token, viewerId),
+    queryFn: () => api.orgs.invitationState(token, viewerId === null ? undefined : { receipt: true }),
     retry: false,
+    gcTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   });
+
+/** Discard the old session's data, including invitation receipts, and refresh the current preview as a guest. */
+export async function refreshInvitationAfterSignOut(qc: QueryClient, token: string) {
+  const preview = keys.invitation(token);
+  qc.removeQueries({
+    predicate: ({ queryKey: [kind, keyToken] }) =>
+      kind !== keys.authConfig[0] && kind !== keys.me[0] && (kind !== preview[0] || keyToken !== token),
+  });
+  qc.setQueryData(keys.me, null);
+  // Even the preview can carry the old account's join request. Reset it before it refetches.
+  await qc.resetQueries({ queryKey: preview, exact: true });
+}
 
 // ── Account ─────────────────────────────────────────────────────────────────
 

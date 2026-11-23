@@ -53,7 +53,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 10
+API_CONTRACT = 11
 MIN_API = 1
 
 
@@ -1187,7 +1187,7 @@ async def password_link(org_id: str, user_id: str, request: Request):
     return await _members_call(lambda: app_members.password_link(root, who, user_id, origin), write=True)
 
 
-# 下面几条不过鉴权中间件（收到邀请的人可能还没有账号）：凭邀请令牌本身，接受时再核对成员会话。
+# 下面几条不过鉴权中间件：预览和过期状态仅凭邀请令牌，接受和读取回执要核对成员会话。
 
 @router.get("/api/app/invitations/{token}")
 async def invitation_preview(token: str):
@@ -1197,10 +1197,20 @@ async def invitation_preview(token: str):
 
 
 @router.get("/api/app/invitations/{token}/state")
-async def expired_invitation_state(token: str, response: Response):
+async def invitation_state(token: str, request: Request, response: Response, receipt: str = ""):
+    from src.web.auth import is_authed
+
     root = os.getcwd()
     response.headers["Cache-Control"] = "no-store"
-    result = await _members_call(lambda: app_members.expired_invitation_state(root, token))
+
+    def read():
+        account = None
+        # 旧界面退出时会保留邀请缓存，只对已更新缓存策略的客户端启用回执。
+        if receipt == "1" and not is_authed(request) and member_auth.same_origin(request):
+            account = member_auth.account(request)
+        return app_members.invitation_state(root, token, account)
+
+    result = await _members_call(read)
     if result is None:
         result = _error(404, "not_found", "邀请不存在或已失效")
     if isinstance(result, JSONResponse):

@@ -1,5 +1,13 @@
 import type { AskToJoinResult, InvitationPreview } from "@vortoone/client";
-import { ApiError, invitationQuery, invitationStateQuery, keys, useAuthConfig, useMe } from "@vortoone/client";
+import {
+  ApiError,
+  invitationQuery,
+  invitationStateQuery,
+  keys,
+  refreshInvitationAfterSignOut,
+  useAuthConfig,
+  useMe,
+} from "@vortoone/client";
 import { authErrorText, errorCode, errorText, invitedErrorText, knownErrorText } from "@vortoone/client/lib/errors";
 import { formatShortDate, joinNames } from "@vortoone/client/lib/format";
 import { INVITATION_MAIL_PARAM, signInPath } from "@vortoone/client/lib/guards";
@@ -421,9 +429,6 @@ function usePasswordField(
   return { field, face };
 }
 
-/** What a sign-out on this page keeps: the invitation, the sign-in settings and who is signed in (nobody, after). */
-const KEPT: ReadonlySet<string> = new Set([keys.invitation("")[0], keys.authConfig[0], keys.me[0]]);
-
 /**
  * Signs out and stays on the page: what the other account had cached goes, and the invitation is read again as
  * nobody's (a link's `you` was the account's).
@@ -433,9 +438,7 @@ function useSignOutHere(token: string) {
   const qc = useQueryClient();
   return async () => {
     await auth.signOut();
-    qc.removeQueries({ predicate: (query) => !KEPT.has(String(query.queryKey[0])) });
-    qc.setQueryData(keys.me, null);
-    await qc.invalidateQueries({ queryKey: keys.invitation(token) });
+    await refreshInvitationAfterSignOut(qc, token);
   };
 }
 
@@ -914,13 +917,16 @@ function GoneInvitation({ token }: { token: string }) {
   const navigate = useNavigate();
   const me = useMe();
   const emails = sendsEmail(useAuthConfig().data);
-  const state = useQuery(invitationStateQuery(api, token));
+  const state = useQuery(invitationStateQuery(api, token, me.data?.user.id ?? null));
   const [asked, setAsked] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (state.isPending) return <Loading />;
   if (state.isError) return <LoadFailed retrying={state.isFetching} retry={() => void state.refetch()} />;
   const dead = state.data;
+  if (dead?.state === "accepted" && (!state.isFetchedAfterMount || state.fetchStatus !== "idle")) {
+    return <Loading />;
+  }
   if (!dead) return <InviteScreen title={t("invite.goneTitle")} lead={t("invite.goneLead")} step="gone" />;
   const date = formatShortDate(i18n.language, dead.at);
 

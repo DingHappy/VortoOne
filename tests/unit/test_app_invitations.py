@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.unit.test_member_login import ORIGIN, PASSWORD, _group, _invite, _join
+from tests.unit.test_member_login import ORIGIN, PASSWORD, TOKEN, _group, _invite, _join
 from tests.unit.test_member_login import home  # noqa: F401 —— 成员登录的整套夹具
 
 
@@ -98,6 +98,7 @@ def test_expired_invitation_state_only_returns_known_preview_metadata(home, monk
     assert gone.status_code == 200 and gone.headers["cache-control"] == "no-store"
     assert gone.json() == {"state": "expired", "orgName": current.json()["orgName"],
                            "invitedBy": current.json()["invitedBy"], "at": current.json()["expiresAt"]}
+    assert guest.get(path + "/state?receipt=1").json() == gone.json()
     assert registry.MemberRegistry(home["root"]).snapshot() == before
     missing = guest.get("/api/app/invitations/unknown-token/state")
     assert missing.status_code == 404 and missing.headers["cache-control"] == "no-store"
@@ -136,6 +137,110 @@ def test_expired_state_does_not_reconstruct_completed_or_revoked_invitations(hom
         result = guest.get(f"/api/app/invitations/{token}/state")
         assert result.status_code == 404
         assert "accepted@example.com" not in result.text
+
+
+def test_accepted_invitation_state_only_belongs_to_the_member_who_consumed_that_link(home, monkeypatch):
+    from src.workflow.members import registry
+
+    now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(registry, "_now", lambda: now)
+    other = _join(home, "other@example.com")
+    token = _invite(home, "recipient@example.com")
+    guest = TestClient(home["app"], headers=ORIGIN)
+    recipient = TestClient(home["app"], headers=ORIGIN)
+    invite_path = f"/api/app/invitations/{token}"
+    legacy_path = invite_path + "/state"
+    state_path = legacy_path + "?receipt=1"
+    preview = guest.get(invite_path).json()
+    signup = {"name": "受邀人", "email": "recipient@example.com", "password": PASSWORD}
+    auth = {"x-invitation-token": token}
+    assert recipient.post("/api/auth/sign-up/email", json=signup, headers=auth).status_code == 200
+    assert recipient.get(state_path).status_code == 404
+    assert recipient.post(invite_path + "/accept", json={}).status_code == 200
+    assert guest.get(invite_path).status_code == 404
+    assert guest.post("/api/auth/sign-up/email", json=signup, headers=auth).status_code == 403
+
+    receipt = recipient.get(state_path)
+    assert receipt.status_code == 200 and receipt.headers["cache-control"] == "no-store"
+    assert receipt.json() == {"state": "accepted", "orgId": home["org"], "orgName": preview["orgName"],
+                              "at": now.isoformat(timespec="seconds")}
+    state = registry.MemberRegistry(home["root"]).snapshot()
+    member_id = recipient.get("/api/app/me").json()["user"]["id"]
+    assert state["members"][member_id]["invitation_receipt"] == {
+        "digest": registry._digest(token), "expires": preview["expiresAt"],
+    }
+    assert state["invitations"] == {}
+
+    unknown = guest.get("/api/app/invitations/unknown-token/state")
+    for response in (guest.get(state_path), other.get(state_path), home["owner"].get(state_path),
+                     recipient.get(state_path, headers={"Origin": "https://elsewhere.example"}),
+                     recipient.get(state_path, headers={"Authorization": f"Bearer {TOKEN}"}),
+                     recipient.get(legacy_path), recipient.get(legacy_path + "?receipt=0"),
+                     recipient.get("/api/app/invitations/unknown-token/state?receipt=1")):
+        assert response.status_code == 404 and response.headers["cache-control"] == "no-store"
+        assert response.json() == unknown.json()
+
+    now = datetime.fromisoformat(preview["expiresAt"])
+    assert recipient.get(state_path).status_code == 404
+    assert recipient.get("/api/app/me").json()["organizations"][0]["id"] == home["org"]
+
+
+def test_rotated_invitation_receipt_requires_an_active_session_and_membership(home):
+    owner, base = home["owner"], home["base"]
+    email = "rotated@example.com"
+    original = _invite(home, email)
+    row, = owner.get(f"{base}/invitations").json()["invitations"]
+    rotated = owner.post(f"{base}/invitations/{row['id']}/resend", json={}, headers=ORIGIN)
+    assert rotated.status_code == 200
+    token = rotated.json()["url"].rsplit("/", 1)[1]
+    recipient = TestClient(home["app"], headers=ORIGIN)
+    credentials = {"email": email, "password": PASSWORD}
+    signed = recipient.post("/api/auth/sign-up/email", json={**credentials, "name": "受邀人"},
+                            headers={"x-invitation-token": token})
+    assert signed.status_code == 200
+    assert recipient.post(f"/api/app/invitations/{token}/accept", json={}).status_code == 200
+    member_id = recipient.get("/api/app/me").json()["user"]["id"]
+    state_path = f"/api/app/invitations/{token}/state?receipt=1"
+    assert recipient.get(f"/api/app/invitations/{original}/state?receipt=1").status_code == 404
+    assert recipient.get(state_path).status_code == 200
+
+    old_session = TestClient(home["app"], headers=ORIGIN, cookies=dict(recipient.cookies))
+    assert recipient.post("/api/auth/sign-out", json={}).status_code == 200
+    assert old_session.get(state_path).status_code == 404
+    assert recipient.post("/api/auth/sign-in/email", json=credentials).status_code == 200
+    assert recipient.get(state_path).status_code == 200
+    assert owner.delete(f"{base}/members/{member_id}").status_code == 204
+    assert recipient.get(state_path).status_code == 404
+
+
+def test_accept_retry_reuses_the_receipt_committed_with_the_membership(home, monkeypatch):
+    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.members.registry import MemberRegistry
+
+    email = "retry@example.com"
+    token = _invite(home, email)
+    recipient = TestClient(home["app"], headers=ORIGIN)
+    assert recipient.post("/api/auth/sign-up/email", json={
+        "email": email, "password": PASSWORD, "name": "重试加入的成员",
+    }, headers={"x-invitation-token": token}).status_code == 200
+    invite_path = f"/api/app/invitations/{token}"
+
+    def fail_to_bind(*args):
+        raise OSError("test account write unavailable")
+
+    with monkeypatch.context() as failed:
+        failed.setattr(MemberAccounts, "bind_member", fail_to_bind)
+        assert recipient.post(invite_path + "/accept", json={}).status_code == 409
+
+    store = MemberRegistry(home["root"])
+    committed = store.snapshot()
+    assert committed["invitations"] == {}
+    member, = committed["members"].values()
+    assert recipient.get(invite_path + "/state?receipt=1").status_code == 404
+    assert recipient.post(invite_path + "/accept", json={}).status_code == 200
+    receipt = recipient.get(invite_path + "/state?receipt=1")
+    assert receipt.status_code == 200 and receipt.json()["at"] == member["joined"]
+    assert store.snapshot() == committed
 
 
 def test_expired_state_does_not_revive_a_former_inviters_authority(home, monkeypatch):

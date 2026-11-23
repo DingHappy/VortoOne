@@ -731,8 +731,10 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         request<{ invitation: Invitation; url: string }>(`${org(orgId)}/invitations`, { json: input }),
       revokeInvitation: (orgId, id) => request<void>(`${org(orgId)}/invitations/${enc(id)}`, { method: "DELETE" }),
       previewInvitation: (token) => nullOn(404, () => request<InvitationPreview>(`/api/app/invitations/${enc(token)}`)),
-      invitationState: (token) =>
-        nullOn(404, () => request<InvitationState>(`/api/app/invitations/${enc(token)}/state`)),
+      invitationState: (token, options) =>
+        nullOn(404, () => request<InvitationState>(`/api/app/invitations/${enc(token)}/state`, {
+          query: options?.receipt ? { receipt: "1" } : {},
+        })),
       acceptInvitation: (token, mail) =>
         request<{ orgId: string }>(
           `/api/app/invitations/${enc(token)}/accept${mail ? `?${new URLSearchParams({ mail })}` : ""}`,

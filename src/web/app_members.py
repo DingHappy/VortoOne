@@ -484,9 +484,14 @@ def invitation_preview(root: str, token: str) -> Optional[Dict[str, Any]]:
             "account": {"exists": exists, "password": exists, "providers": []}}
 
 
-def expired_invitation_state(root: str, token: str) -> Optional[Dict[str, Any]]:
-    """只显示同一令牌原已可见的工作区和邀请人，帮助对方联系原邀请人。"""
+def invitation_state(root: str, token: str, account: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+    """仅向接受邀请的在册成员返回回执，过期邀请保留原有预览信息。"""
     registry = MemberRegistry(root)
+    if account is not None:
+        accepted_at = registry.accepted_invitation_at(token, account["member"], account["id"])
+        if accepted_at is not None:
+            return {"state": "accepted", "orgId": views.home_id(root),
+                    "orgName": views.overview(root)["name"], "at": accepted_at}
     item = registry.invitation(token, expired=True)
     if item is None:
         return None
