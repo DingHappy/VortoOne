@@ -116,7 +116,10 @@ def permission_keys(root: str, actor: Principal) -> List[str]:
 
 
 def roles(root: str, actor: Principal) -> Dict[str, Any]:
-    state = MemberRegistry(root).snapshot()
+    return _roles_view(MemberRegistry(root).snapshot(), actor)
+
+
+def _roles_view(state: Mapping[str, Any], actor: Principal) -> Dict[str, Any]:
     owner, mine, posts = _standing(state, actor)
     manages = rules.has("space.manage_posts", mine, posts, owner=owner)
     held = [set(member.get("groups") or []) for member in state["members"].values()]
@@ -174,6 +177,18 @@ def change_role(root: str, actor: Principal, role_id: str, body: Mapping[str, An
     if not change:
         raise ValueError("没有可改的内容")
     MemberRegistry(root).change_group(actor, role_id, **change)
+
+
+def set_role_row(root: str, actor: Principal, row: str, everyone: int,
+                 holders: List[tuple[str, int]]) -> Dict[str, Any]:
+    item = _KEYS.get(row)
+    if row != "computers" and (item is None or item == ADMIN):
+        raise ValueError("没有这个权限项")
+    levels = dict(holders)
+    if len(levels) != len(holders):
+        raise ValueError("身份组不能重复")
+    state = MemberRegistry(root).set_permission_row(actor, item, everyone, levels)
+    return _roles_view(state, actor)
 
 
 def delete_role(root: str, actor: Principal, role_id: str) -> None:

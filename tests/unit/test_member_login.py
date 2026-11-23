@@ -52,6 +52,28 @@ def _group(home, name, permissions):
     return home["owner"].post(f"{home['base']}/roles", json={"name": name, "permissions": permissions}).json()["id"]
 
 
+def test_permission_row_uses_current_owner_proof_and_denies_existing_member_sessions(home):
+    owner, base = home["owner"], home["base"]
+    ordinary = _join(home)
+    managers = _group(home, "成员管理员", ["manage_roles", "post"])
+    manager = _join(home, "manager@example.com", roleIds=[managers])
+    path = f"{base}/permissions/post"
+    body = {"everyone": 0, "roles": []}
+    before = owner.get(f"{base}/roles").json()
+    for member in (ordinary, manager):
+        assert member.put(path, json=body).status_code == 403
+        assert member.patch(f"{base}/roles/everyone", json={"permissions": []}).status_code == 403
+
+    guest = TestClient(home["app"])
+    assert guest.put(path, json=body).status_code == 401
+    assert guest.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    assert guest.put(path, json=body, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    assert owner.get(f"{base}/roles").json() == before
+    allowed = guest.put(path, json=body, headers=ORIGIN)
+    assert allowed.status_code == 200, allowed.text
+    assert "post" not in ordinary.get("/api/app/me").json()["organizations"][0]["permissions"]
+
+
 # ── 整条路 ────────────────────────────────────────────────────────────────────
 
 def test_invite_sign_up_accept_and_see_myself(home):

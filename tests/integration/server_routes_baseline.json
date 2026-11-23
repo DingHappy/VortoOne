@@ -2574,6 +2574,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/permissions/{row}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/roles/order",
     "methods": [
       "PUT"
