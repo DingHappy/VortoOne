@@ -5889,6 +5889,8 @@ export interface Mission {
   canAct: boolean;
   /** You may close it and change who takes part. */
   canManage: boolean;
+  /** You may cancel a local, unstarted draft while retaining its thread. */
+  canCancelDraft?: boolean;
   createdAt: string;
   startedAt: string | null;
   pausedAt: string | null;
