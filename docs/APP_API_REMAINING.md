@@ -646,7 +646,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/me/password` | `account.addPassword` |  |
+| ☐ | POST | `/api/app/me/password` | `account.addPassword` | 仅令牌的所有者缺少已认领的邮箱，已有邮箱账号均已设密码。客户端要求十分钟内重新认证及替换后撤销其他会话，现有所有者令牌会话不能提供这些证明。 |
 | ☑ | GET | `/api/app/me/unread` | `account.unread` | 按当前账号汇总未静音频道的新消息和已关注话题。所有者另外计入自己的通知；等待数沿用通知收件箱口径。 |
 | ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
@@ -730,8 +730,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前会话的账号和可见空间。第二个会话和未读汇总独立处理。 |
+| ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前账号、可见空间及其未读汇总，沿用 `/me/unread` 的权限口径。未加入者无空间汇总，计数暂不可用时仍可读取账号。 |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
+
+现有退出接口接收可选的账号编号。提供编号时仅接受当前会话对应的账号，旧页面指定其他账号时拒绝退出。
 
 ### org/logo（2 个，要做 0）
 
