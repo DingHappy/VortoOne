@@ -60,6 +60,16 @@ def test_user_instructions_missing_or_blank_is_empty(tmp_path):
     assert load_user_instructions(tmp_path / "AGENTS.md") == ""
 
 
+def test_user_instructions_inaccessible_home_is_empty(monkeypatch):
+    def inaccessible_home():
+        raise PermissionError("Home state directory is inaccessible")
+
+    monkeypatch.setattr(project_module, "USER_INSTRUCTIONS_PATH", None)
+    monkeypatch.setattr(project_module, "home_state_dir", inaccessible_home)
+
+    assert load_user_instructions() == ""
+
+
 def test_user_instructions_are_labelled_and_truncated(tmp_path):
     path = tmp_path / "AGENTS.md"
     path.write_text("回答用中文", encoding="utf-8")

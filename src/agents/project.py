@@ -74,8 +74,8 @@ def load_user_instructions(path: Optional[Path] = None) -> str:
 
     与项目指令同样在装配时读一次（系统提示在会话内保持字节稳定），超长截断并标注。
     """
-    p = path or USER_INSTRUCTIONS_PATH or home_state_dir() / "AGENTS.md"
     try:
+        p = path or USER_INSTRUCTIONS_PATH or home_state_dir() / "AGENTS.md"
         text = p.read_text(encoding="utf-8", errors="ignore").strip() if p.is_file() else ""
     except OSError:
         return ""
