@@ -313,8 +313,12 @@ def principal(request, root: str) -> Principal:
 
 
 def set_cookie(request, response, token: str) -> None:
+    """A successful member sign-in replaces the browser's active account."""
+    from src.web.auth import SESSION_COOKIE
+
     response.set_cookie(MEMBER_COOKIE, token, httponly=True, samesite="lax",
                         secure=(request.url.scheme == "https"), path="/", max_age=_MAX_AGE)
+    response.delete_cookie(SESSION_COOKIE, path="/")
 
 
 def clear_cookie(response) -> None:
