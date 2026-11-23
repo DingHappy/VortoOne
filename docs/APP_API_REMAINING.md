@@ -73,7 +73,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | POST | `ORG/missions` | `missions.create` | 读已接、写没接 |
+| ☑ | POST | `ORG/missions` | `missions.create` | 仅所有者在已加入的团队频道话题新建草案。话题归档后新建返回 409，既有草案仍可读取并按原参数重试。 |
 | ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
 | ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
 | ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |

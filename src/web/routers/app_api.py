@@ -3086,6 +3086,8 @@ async def _mission_request(org_id, request, action, *, status=200):
         return _error(409, "mission.thread_in_use", str(error))
     except AgentUnavailable as error:
         return _error(409, "mission.agent_unavailable", str(error))
+    except ThreadArchived as error:
+        return _error(409, "thread.archived", str(error))
     except (Damaged, OSError, ValueError):
         return _error(409, "mission.unavailable", "读取或保存任务草案失败")
     return value if isinstance(value, Response) else JSONResponse(value, status_code=status,

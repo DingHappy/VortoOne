@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from src.workflow.members import channel_threads
 from src.workflow.members.channel_history import OWNER_KEY, _stamp
 from src.workflow.members.channels import TeamChannels
 from src.workflow.members.registry import Missing, Refused
@@ -72,6 +73,8 @@ class MissionDrafts:
                     if (previous["staff_id"], previous["title"], previous["goal"]) != (staff_id, title, goal):
                         raise DraftConflict("这个线程已经有另一份任务草案")
                     return dict(previous)
+                # Thread archive and draft insertion share the outer registry lock.
+                channel_threads.read(conn, thread_id).allow_reply()
 
             try:
                 service = get_staff_service(registry.root)
