@@ -3254,9 +3254,10 @@ async def calendar_update(org_id: str, event_id: str, request: Request, body: Di
 
 
 @router.delete(_CALENDAR + "/events/{event_id}")
-async def calendar_delete(org_id: str, event_id: str, request: Request):
-    series = "scope" in request.query_params or "occurrenceStart" in request.query_params
-    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(event_id, series=series))
+async def calendar_delete(org_id: str, event_id: str, request: Request, scope: str | None = None,
+                          occurrence_start: str | None = Query(None, alias="occurrenceStart")):
+    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(
+        event_id, scope=scope, occurrence_start=occurrence_start))
     return result if isinstance(result, Response) else Response(status_code=204)
 
 

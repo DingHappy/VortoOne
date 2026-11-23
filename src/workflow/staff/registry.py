@@ -199,6 +199,9 @@ class StaffRegistry:
         return item
 
     def roles(self) -> list[dict]:
+        return self._read_roles(persist_defaults=True)
+
+    def _read_roles(self, *, persist_defaults: bool) -> list[dict]:
         with TASK_STATE_LOCK:
             missing = not (self.directory / 'roles.json').exists()
             payload = self._read('roles.json', {'version': 1, 'roles': builtin_roles()})
@@ -225,12 +228,13 @@ class StaffRegistry:
                 ids.add(item['id'])
             if not {x['id'] for x in builtin_roles()} <= ids:
                 raise ValueError('内置岗位缺失，未自动恢复权限')
-            if missing:
+            if missing and persist_defaults:
                 self._write('roles.json', {'version': 1, 'roles': output})
             return output
 
-    def role(self, role_id: str) -> dict:
-        return next((x for x in self.roles() if x['id'] == role_id), None) or self._missing('岗位不存在')
+    def role(self, role_id: str, *, persist_defaults: bool = True) -> dict:
+        rows = self.roles() if persist_defaults else self._read_roles(persist_defaults=False)
+        return next((x for x in rows if x['id'] == role_id), None) or self._missing('岗位不存在')
 
     @staticmethod
     def _missing(message):

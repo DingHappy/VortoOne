@@ -1,8 +1,8 @@
 """Timezone-aware schedules; UTC storage and one catch-up per dispatch."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from src.scheduling.cron import parse_schedule, _cron_matches
+from src.scheduling.cron import parse_schedule, _cron_date_matches, _cron_matches
 
 UTC = timezone.utc
 HORIZON = timedelta(days=62)
@@ -22,6 +22,15 @@ def instant(value):
     if not isinstance(parsed, datetime) or parsed.tzinfo is None:
         raise ValueError('时间必须带明确时区偏移')
     return parsed.astimezone(UTC)
+
+
+def local_day_ordinal(utc: datetime, tz: ZoneInfo) -> int:
+    """Civil day of a UTC instant, permitting an ordinal just outside years 1–9999."""
+    try:
+        return utc.astimezone(tz).date().toordinal()
+    except OverflowError:
+        # A UTC offset of less than 24 hours crosses only the outermost representable date.
+        return 0 if utc.year == 1 else date.max.toordinal() + 1
 
 
 class RoutineSchedule:
@@ -70,3 +79,65 @@ class RoutineSchedule:
                 return probe
             probe += timedelta(minutes=1)
         return None
+
+    def upcoming(self, start, end, *, now, last):
+        """Project future slots in [start, end), without mutating the dispatch cursor."""
+        now, last = instant(now), instant(last)
+        start, end = max(instant(start), now), instant(end)
+        if max(start, last) >= end:
+            return
+        if self.once is not None:
+            if start <= self.once < end and last < self.once:
+                yield self.once
+            return
+        if self.schedule.kind == 'every':
+            yield from self._upcoming_intervals(start, end, now, last)
+            return
+        yield from self._upcoming_clock_slots(start, end, last)
+
+    def _upcoming_intervals(self, start, end, now, last):
+        interval = self.schedule.interval
+        if interval >= end - last:
+            return
+        slot = max(now, last + interval)
+        if slot < start:
+            whole, remainder = divmod(start - slot, interval)
+            steps = whole + bool(remainder)
+            if steps > (end - slot) // interval:
+                return
+            slot += steps * interval
+        while slot < end:
+            yield slot
+            if interval >= end - slot:
+                break
+            slot += interval
+
+    def _upcoming_clock_slots(self, start, end, last):
+        cron = self.schedule.cron if self.schedule.kind == 'cron' else None
+        if cron is not None:
+            hours = sorted(cron[1]) if cron[1] is not None else range(24)
+            minutes = sorted(cron[0]) if cron[0] is not None else range(60)
+        else:
+            hour, minute = self.schedule.at
+            hours, minutes = [hour], [minute]
+        first_day = max(date.min.toordinal(), local_day_ordinal(max(start, last), self.zone))
+        last_day = min(date.max.toordinal(), local_day_ordinal(end - timedelta(microseconds=1), self.zone))
+        for ordinal in range(first_day, last_day + 1):
+            day = date.fromordinal(ordinal)
+            if cron is not None and not _cron_date_matches(cron, day):
+                continue
+            for hour in hours:
+                for minute in minutes:
+                    local = datetime.combine(day, time(hour, minute), self.zone)
+                    try:
+                        slot = local.astimezone(UTC)
+                        if slot.second:
+                            # Old offsets can have seconds. Dispatch probes whole UTC minutes.
+                            slot = slot.replace(second=0) + timedelta(minutes=1)
+                        actual = slot.astimezone(self.zone)
+                    except OverflowError:
+                        continue  # This wall time is outside the representable UTC interval.
+                    # The first fold is eligible. A round trip rejects nonexistent wall times.
+                    if (not actual.fold and actual.replace(second=0) == local
+                            and start <= slot < end and last < slot):
+                        yield slot
