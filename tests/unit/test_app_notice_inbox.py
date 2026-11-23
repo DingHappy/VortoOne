@@ -9,6 +9,7 @@ from src.scheduling.notices import record_notice
 from src.utils.state_dir import state_dir
 from src.workflow.members.registry import MemberRegistry
 from tests.unit.test_member_agents import ORIGIN, OWNER_P, TOKEN, _join, home  # noqa: F401 - pytest fixture
+from tests.unit.test_team_channels import _create, _override
 
 
 def _seed(home):
@@ -114,6 +115,109 @@ def test_agent_creation_request_can_be_renewed_and_expires(home, monkeypatch):
     assert member.post(ask, json=body).status_code == 200
     replacement, = owner.get(inbox).json()["items"]
     assert replacement["id"] != first["id"]
+    now += timedelta(days=7)
+    assert owner.get(inbox).json()["items"] == []
+
+
+def test_member_channel_agent_ask_reaches_only_owner_and_closes_on_enrollment(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    other = _join(home, email="other@example.com")
+    inbox, ask = f"{base}/notifications", f"{base}/admin-asks"
+    channel = _create(home, "agent-work")
+    channel_id = channel.rsplit("/", 1)[1]
+    agent_id = home["agent"]["id"]
+    body = {"what": "channel_agent", "channelId": channel_id, "agentId": agent_id}
+    assert member.post(f"{channel}/join").status_code == 204
+    assert other.post(f"{channel}/join").status_code == 204
+    state_before = MemberRegistry(home["root"]).snapshot()["channels"]
+
+    for client in (member, member, other):
+        received = client.post(ask, json=body)
+        assert received.status_code == 200 and received.json() == {"sent": 1}
+    reply = owner.get(inbox, params={"filter": "unread"}).json()
+    assert len(reply["items"]) == reply["counts"]["unread"] == 2
+    assert {item["actors"][0]["id"] for item in reply["items"]} == {member.member_id, other.member_id}
+    for item in reply["items"]:
+        assert item["kind"] == "admin_ask"
+        assert item["source"] == {"channelId": channel_id, "agentId": agent_id, "label": "agent-work"}
+        assert item["latest"] == {"reason": "channel_agent"}
+    assert member.get(inbox).json()["items"] == []
+    assert MemberRegistry(home["root"]).snapshot()["channels"] == state_before
+    assert not home["pool"].jobs
+    assert member.post(f"{channel}/members", json={"agentId": agent_id}).status_code == 403
+
+    assert owner.post(f"{channel}/members", json={"agentId": agent_id}).status_code == 204
+    assert owner.get(inbox).json()["items"] == []
+    assert member.post(ask, json=body).status_code == 409
+    assert owner.delete(f"{channel}/members/agents/{agent_id}").status_code == 204
+    assert owner.get(inbox).json()["items"] == []
+
+
+def test_member_channel_agent_ask_obeys_current_channel_and_agent_access(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    channel = _create(home, "team-work")
+    private = _create(home, "private-work", visibility="private")
+    channel_id = channel.rsplit("/", 1)[1]
+    agent_id = home["agent"]["id"]
+    inbox, ask = f"{base}/notifications", f"{base}/admin-asks"
+    body = {"what": "channel_agent", "channelId": channel_id, "agentId": agent_id}
+
+    assert owner.post(ask, json=body).status_code == 403
+    assert TestClient(home["app"]).post(ask, json=body).status_code == 401
+    assert member.post(ask, json={**body, "channelId": private.rsplit("/", 1)[1]}).status_code == 404
+    assert member.post(ask, json=body).status_code == 403
+    assert member.post(f"{channel}/join").status_code == 204
+    assert member.post(ask, json={**body, "agentId": home["main"]["id"]}).status_code == 404
+    assert member.post(ask, json={**body, "agentId": "agent-unknown"}).status_code == 404
+    assert member.post(ask, json={**body, "by": "someone"}).status_code == 422
+    assert member.post(ask, json=body, headers={"Origin": "https://other.example"}).status_code == 403
+    assert _override(owner, channel, "person", member.member_id, deny=["post"]).status_code == 200
+    assert member.post(ask, json=body).status_code == 403
+    assert _override(owner, channel, "person", member.member_id, deny=["talk_to_agents"]).status_code == 200
+    assert member.post(ask, json=body).status_code == 403
+    assert owner.get(inbox).json()["items"] == []
+
+    assert _override(owner, channel, "person", member.member_id, allow=["talk_to_agents"]).status_code == 200
+    assert member.post(ask, json=body).status_code == 200
+    assert len(owner.get(inbox).json()["items"]) == 1
+    assert owner.delete(channel).status_code == 204
+    assert member.post(ask, json=body).status_code == 404
+    assert owner.get(inbox).json()["items"] == []
+    assert owner.post(f"{channel}/unarchive").status_code == 204
+    assert owner.get(inbox).json()["items"] == []
+    assert member.post(ask, json=body).status_code == 200
+    agent_url = f"{base}/agents/{agent_id}"
+    restricted = owner.patch(agent_url, json={"audience": {"mode": "people", "userIds": []}})
+    assert restricted.status_code == 200, restricted.text
+    assert member.post(ask, json=body).status_code == 404
+    assert owner.get(inbox).json()["items"] == []
+    assert owner.patch(agent_url, json={"audience": {"mode": "everyone"}}).status_code == 200
+    MemberRegistry(home["root"]).remove_member(OWNER_P, member.member_id)
+    assert MemberRegistry(home["root"]).snapshot()["channel_agent_asks"] == {}
+    assert member.post(ask, json=body).status_code == 403
+    assert owner.get(inbox).json()["items"] == []
+
+
+def test_member_channel_agent_request_renewal_and_expiration(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    channel = _create(home, "agent-expiry")
+    assert member.post(f"{channel}/join").status_code == 204
+    now = datetime(2026, 11, 23, tzinfo=timezone.utc)
+    monkeypatch.setattr("src.workflow.members.registry._now", lambda: now)
+    inbox, ask = f"{base}/notifications", f"{base}/admin-asks"
+    body = {"what": "channel_agent", "channelId": channel.rsplit("/", 1)[1], "agentId": home["agent"]["id"]}
+    assert member.post(ask, json=body).status_code == 200
+    [first] = owner.get(inbox).json()["items"]
+    now += timedelta(hours=23, minutes=59)
+    assert member.post(ask, json=body).status_code == 200
+    assert owner.get(inbox).json()["items"] == [first]
+    now += timedelta(minutes=1)
+    assert member.post(ask, json=body).status_code == 200
+    [second] = owner.get(inbox).json()["items"]
+    assert second["id"] != first["id"]
     now += timedelta(days=7)
     assert owner.get(inbox).json()["items"] == []
 

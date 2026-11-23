@@ -38,7 +38,7 @@ from src.web import (
 from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
-from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
+from src.workflow.members.channels import ChannelAgentAskConflict, ChannelCategoryNameConflict, TeamChannels, is_team_channel
 from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
@@ -1516,12 +1516,12 @@ def _channel_agent(root: str, agent_id: str):
     """(专员 id, 错误)：主助理和不能进频道的回 409，不认识的回 404。"""
     if agent_id == views.main_agent_id(root):
         return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
-    staff = next((key for key, row in app_channels.channel_agents(root).items() if row["id"] == agent_id), None)
-    if staff is None:
+    row = next((row for row in app_channels.channel_agents(root).values() if row["id"] == agent_id), None)
+    if row is None:
         return None, _error(404, "not_found", "没有这个 agent")
-    if not app_channels.channel_agents(root)[staff]["joinable"]:
+    if not row["joinable"]:
         return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
-    return staff, None
+    return row["handle"], None
 
 
 class _ChannelOverrideTarget(BaseModel):
@@ -3984,13 +3984,38 @@ class _AgentCreationAsk(BaseModel):
     what: Literal["create_agents"]
 
 
+class _ChannelAgentAsk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    what: Literal["channel_agent"]
+    channelId: str = Field(min_length=1, max_length=128)
+    agentId: str = Field(min_length=1, max_length=128)
+
+
 @router.post(_ORG + "/admin-asks")
-async def ask_about_agent_creation(org_id: str, body: _AgentCreationAsk, request: Request):
+async def ask_owner(org_id: str, body: _AgentCreationAsk | _ChannelAgentAsk, request: Request):
     root = _root(org_id)
     who = _who(request, root)
     if who is None or not who.is_member or not views.owner_connection():
         return _error(403, "forbidden", "只有当前在册成员能向所有者发送申请")
-    result = await _members_call(lambda: MemberRegistry(root).request_agent_creation(who), write=True)
+
+    def submit():
+        if isinstance(body, _AgentCreationAsk):
+            MemberRegistry(root).request_agent_creation(who)
+            return None
+        if not is_team_channel(body.channelId):
+            return _error(404, "not_found", "没有这个频道")
+        if app_members.member_staff(root, who, body.agentId) is None:
+            return _error(404, "not_found", "没有这个 agent")
+        staff, refused = _channel_agent(root, body.agentId)
+        if refused is not None:
+            return refused
+        try:
+            app_channels.channels(root).request_agent(who, body.channelId, staff)
+        except ChannelAgentAskConflict as error:
+            return _error(409, "channel_agent_ask.conflict", str(error))
+        return None
+
+    result = await _members_call(submit, write=True)
     return result if isinstance(result, JSONResponse) else {"sent": 1}
 
 
