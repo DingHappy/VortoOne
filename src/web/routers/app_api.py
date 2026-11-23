@@ -17,11 +17,12 @@ import logging
 import os
 import sqlite3
 from contextlib import suppress
+from ipaddress import IPv6Address, ip_address
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, StrictBool
 
 from src.agents.tools.artifact_trash import ArtifactTrash, TrashConflict
 from src.gateway import app_protocol as F
@@ -1035,6 +1036,34 @@ def _origin(request: Request) -> str:
     return f"{scheme if scheme in ('http', 'https') else 'http'}://{host}"
 
 
+def _invitation_origin(request: Request) -> str:
+    """邀请优先走配置的 HTTPS 源。和 Desktop 一样，只收主机和可选端口。"""
+    configured = os.getenv("VORTOONE_PUBLIC_URL", "").strip()
+    fallback = str(request.base_url).rstrip("/")   # 协议由 ASGI 提供，不从任意转发头拼链接
+    if not re.fullmatch(r"https://[^/?#@\\\s\x00-\x1f\x7f]+/?", configured, flags=re.IGNORECASE):
+        return fallback
+    try:
+        url = AnyHttpUrl(configured)              # 规范化浏览器接受的 IP、端口和 IDN 表示法
+    except ValueError:
+        return fallback
+    if not url.host or not url.port or url.username is not None or url.password is not None:
+        return fallback
+    host = url.host.strip("[]").rstrip(".")
+    try:
+        address = ip_address(host)
+    except ValueError:
+        if host == "localhost" or host.endswith(".localhost"):
+            return fallback
+        if not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in host.split(".")):
+            return fallback
+    else:
+        if isinstance(address, IPv6Address) and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        if address.is_loopback or address.is_unspecified:
+            return fallback
+    return str(url).rstrip("/")
+
+
 @router.get(_ORG + "/invitations")
 async def invitations(org_id: str, request: Request):
     root = _root(org_id)
@@ -1045,7 +1074,7 @@ async def invitations(org_id: str, request: Request):
 @router.post(_ORG + "/invitations")
 async def invite(org_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
-    who, origin = member_auth.principal(request, root), _origin(request)
+    who, origin = member_auth.principal(request, root), _invitation_origin(request)
     return await _members_call(lambda: app_members.invite(root, who, body, origin), write=True)
 
 
@@ -1070,7 +1099,7 @@ async def all_invitations(org_id: str, request: Request):
 async def invite_many(org_id: str, body: Dict[str, Any], request: Request):
     root = _root(org_id)
     who = member_auth.principal(request, root)
-    return await _members_call(lambda: {"results": app_members.invite_many(root, who, body, _origin(request))},
+    return await _members_call(lambda: {"results": app_members.invite_many(root, who, body, _invitation_origin(request))},
                                write=True)
 
 
@@ -1094,7 +1123,7 @@ async def resend_invitation(org_id: str, invitation_id: str, body: Dict[str, Any
         result = _error(400, "invalid", "换链只接受空 JSON 对象")
     else:
         result = await _members_call(
-            lambda: app_members.resend_invitation(root, who, invitation_id, _origin(request)), write=True)
+            lambda: app_members.resend_invitation(root, who, invitation_id, _invitation_origin(request)), write=True)
     if isinstance(result, JSONResponse):
         result.headers["Cache-Control"] = "no-store"
     return result
@@ -1157,7 +1186,7 @@ async def approve_join_suggestion(org_id: str, suggestion_id: str, body: Dict[st
                                   request: Request, response: Response):
     return await _join_suggestion_call(org_id, request, response, owner=True, write=True,
                                        action=lambda root, who: app_members.approve_join_suggestion(
-                                           root, who, suggestion_id, body, _origin(request)))
+                                           root, who, suggestion_id, body, _invitation_origin(request)))
 
 
 @router.post(_JOIN_REQUESTS + "/{suggestion_id}/deny", status_code=204)
