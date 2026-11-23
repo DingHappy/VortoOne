@@ -118,6 +118,9 @@ def test_calendar_rejects_invites_and_unimplemented_rules(home):
     own = _create(owner, calendar)
     path = calendar + "/events/" + own["id"]
     for payload in ({"recurrence": "weekly"}, {"rule": {"freq": "weekly"}},
+                    {"rule": _series_rule(freq="monthly", timezone="UTC")},
+                    {"rule": _series_rule(count=3, timezone="UTC")},
+                    {"rule": _series_rule(times=["09:00", "16:00"], timezone="UTC")},
                     {"participants": own["participants"] + _body(member)["participants"]},
                     {"channelId": "channel-general"}, {"issueId": "issue-test"}):
         assert owner.post(calendar + "/events", json=_body(owner, **payload)).status_code == 409

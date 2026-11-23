@@ -479,7 +479,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | POST | `ORG/calendar/events` | `calendar.create` | 仅本人可见的本地单次日程及每日、每周重复，按本地时区保留时刻，支持按日期结束。高级规则、按次数结束、共享或外部邀请暂不可用。 |
 | ☑ | DELETE | `ORG/calendar/events/{x}` | `calendar.remove` | 按界面的「仅本次」「此后」「整组」移除自己的日程。后两种范围包含各自被单独编辑的例外。 |
-| ☑ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` | 可编辑自己的日程和重复范围。已有单次例外时，批量更改时间或规则明确拒绝；修改整组时间或规则从首次日程操作。 |
+| ☑ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` | 可编辑自己的日程和重复范围。单次例外保留各自的编辑。有例外时，批量更改时间或规则明确拒绝；修改整组时间或规则从首次日程操作。 |
 | ☐ | POST | `ORG/calendar/events/{x}/rsvp` | `calendar.respond` |  |
 | ☐ | POST | `ORG/calendar/proposals/{x}/confirm` | `calendar.confirmProposal` |  |
 | ☐ | POST | `ORG/calendar/proposals/{x}/dismiss` | `calendar.dismissProposal` |  |
