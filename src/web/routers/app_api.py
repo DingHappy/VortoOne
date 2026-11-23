@@ -1161,7 +1161,7 @@ async def password_link(org_id: str, user_id: str, request: Request):
     return await _members_call(lambda: app_members.password_link(root, who, user_id, origin), write=True)
 
 
-# 下面几条不过鉴权中间件（收到邀请的人可能还没有账号）：凭邀请令牌本身，接受时再核对成员会话。
+# 下面几条不过鉴权中间件：预览和过期状态仅凭邀请令牌，接受和读取回执要核对成员会话。
 
 @router.get("/api/app/invitations/{token}")
 async def invitation_preview(token: str):
@@ -1171,10 +1171,17 @@ async def invitation_preview(token: str):
 
 
 @router.get("/api/app/invitations/{token}/state")
-async def expired_invitation_state(token: str, response: Response):
+async def invitation_state(token: str, request: Request, response: Response):
+    from src.web.auth import is_authed
+
     root = os.getcwd()
     response.headers["Cache-Control"] = "no-store"
-    result = await _members_call(lambda: app_members.expired_invitation_state(root, token))
+
+    def read():
+        account = member_auth.account(request) if not is_authed(request) and member_auth.same_origin(request) else None
+        return app_members.invitation_state(root, token, account)
+
+    result = await _members_call(read)
     if result is None:
         result = _error(404, "not_found", "邀请不存在或已失效")
     if isinstance(result, JSONResponse):
