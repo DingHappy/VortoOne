@@ -1,4 +1,8 @@
 """The private Desktop HTML upload shares storage code with agent artifacts."""
+from hashlib import sha256
+from pathlib import Path
+from urllib.parse import quote
+
 from fastapi.testclient import TestClient
 import pytest
 
@@ -72,6 +76,90 @@ def test_legacy_artifact_routes_do_not_discover_private_uploads(home):
     assert owner.get(f"/artifact/{legacy}/raw").status_code == 200
 
 
+@pytest.mark.parametrize(("name", "declared", "expected"), [
+    ("记录.txt", "text/plain", "text/plain"),
+    ("notes.md", "application/octet-stream", "text/markdown"),
+    ("report.csv", "application/vnd.ms-excel", "text/csv"),
+    ("schema.json", "application/json", "application/json"),
+])
+def test_private_drive_uploads_offer_text_preview_and_original_attachment(home, name, declared, expected):
+    owner, base, root = home["owner"], home["base"], home["root"]
+    path = f"{base}/artifacts"
+    original = '"<em>此处是文本</em>"\r\n'.encode()
+    published = owner.post(f"{path}/files", files=_files(name, original, declared))
+    assert published.status_code == 201, published.text
+    assert published.headers["cache-control"] == "no-store"
+    detail = published.json()
+    aid = detail["id"]
+    assert detail["kind"] == "file" and detail["title"] == name
+    assert detail["version"] == detail["shownVersion"] == 1
+    assert detail["untrusted"] is True and detail["canEdit"] is False and detail["canShare"] is False
+    assert detail["content"] == {"kind": "file", "name": name, "contentType": expected, "size": len(original),
+                                 "sha256": sha256(original).hexdigest(), "text": original.decode()}
+    assert owner.get(f"{path}/{aid}?version=1").json() == detail
+    assert owner.get(f"{path}/{aid}?version=2").status_code == 404
+
+    legacy = ArtifactStore(root).publish("Legacy", HTML)["id"]
+    result = owner.get(path).json()
+    assert result["counts"] == {"file": 1, "html": 1}
+    assert [row["id"] for row in owner.get(path, params={"kinds": "file"}).json()["artifacts"]] == [aid]
+    assert [row["id"] for row in owner.get(path, params={"kinds": "html"}).json()["artifacts"]] == [legacy]
+    [version] = owner.get(f"{path}/{aid}/versions").json()["versions"]
+    assert version["version"] == 1 and version["author"] == detail["createdBy"]
+    raw = owner.get(f"{path}/{aid}/file")
+    assert raw.status_code == 200 and raw.content == original
+    assert raw.headers["content-type"] == "application/octet-stream"
+    assert raw.headers["content-disposition"] == f"attachment; filename*=UTF-8''{quote(name, safe='')}"
+    assert raw.headers["x-content-type-options"] == "nosniff"
+    assert raw.headers["content-security-policy"] == "sandbox; default-src 'none'"
+    assert raw.headers["cache-control"] == "no-store"
+    assert owner.get(f"{path}/{aid}/file?format=html").status_code == 415
+    signed = owner.get(f"{path}/{aid}/download").json()["url"]
+    assert owner.get(signed).content == original
+    assert owner.get(f"/artifact/{aid}/raw").status_code == 404
+
+    member = _join(home)
+    assert member.get(path, params={"kinds": "file"}).json()["artifacts"] == []
+    assert member.post(f"{path}/files", files=_files(name, original, declared)).status_code == 403
+    assert member.get(f"{path}/{aid}").status_code == 403
+    assert member.get(f"{path}/{aid}/file").status_code == 403
+    assert member.get(signed).status_code == 403
+    assert owner.delete(f"{path}/{aid}").status_code == 204
+    assert owner.get(f"{path}/{aid}/file").status_code == 404
+    [trashed] = owner.get(f"{base}/artifacts-trash").json()["files"]
+    assert trashed["id"] == aid and trashed["kind"] == "file"
+    assert owner.post(f"{path}/{aid}/restore", json={}).status_code == 204
+    assert owner.get(f"{path}/{aid}/file").content == original
+
+
+def test_large_text_file_can_be_downloaded_without_inline_content(home):
+    owner, base = home["owner"], home["base"]
+    original = b"payload\n" * 5000
+    posted = owner.post(f"{base}/artifacts/files", files=_files("large.txt", original, "text/plain"))
+    assert posted.status_code == 201, posted.text
+    path = f"{base}/artifacts/{posted.json()['id']}"
+    for detail in [posted.json(), owner.get(path).json()]:
+        assert detail["content"]["size"] == len(original)
+        assert "text" not in detail["content"]
+    assert owner.get(f"{path}/file").content == original
+
+
+def test_file_upload_failure_keeps_uncommitted_bytes_out_of_drive(home, monkeypatch):
+    original = Path.write_text
+
+    def fail_metadata(path, *args, **kwargs):
+        if path.name == "meta.json" and path.parent.parent.name.startswith(".upload-"):
+            raise OSError("private fixture path")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_metadata)
+    path = f"{home['base']}/artifacts"
+    rejected = home["owner"].post(f"{path}/files", files=_files("notes.md", "sample", "text/markdown"))
+    assert rejected.status_code == 503 and "private fixture path" not in rejected.text
+    assert home["owner"].get(path).json()["artifacts"] == []
+    assert not list(ArtifactStore(home["root"], desktop_uploads=True).root.iterdir())
+
+
 def test_an_upload_needs_an_owner_with_bearer_or_same_origin_cookie(home):
     path = f"{home['base']}/artifacts/files"
     member = _join(home)
@@ -89,7 +177,11 @@ def test_an_upload_needs_an_owner_with_bearer_or_same_origin_cookie(home):
     ("file", "data", "status"),
     [
         (_files("image.svg", "<svg/>", "image/svg+xml"), {}, 415),
-        (_files("mail.txt", "test", "text/plain"), {}, 415),
+        (_files("notes.txt", "<p>text</p>", "text/html"), {}, 415),
+        (_files("payload.pdf", "test", "application/pdf"), {}, 415),
+        (_files("notes.txt", b"\xff", "text/plain"), {}, 415),
+        (_files("notes.txt", b"hello\x00", "text/plain"), {}, 400),
+        (_files("../notes.txt", b"plain", "text/plain"), {}, 400),
         (_files("text.html", b"\xff"), {}, 415),
         (_files("text.html", ""), {}, 400),
         (_files(), {"channelId": "another-channel"}, 422),

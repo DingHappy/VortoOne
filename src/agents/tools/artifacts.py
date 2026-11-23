@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from hashlib import sha256
 import json
 import os
 import re
@@ -82,6 +83,7 @@ class ArtifactStore:
     _ID_RE = re.compile(r"[A-Za-z0-9_-]{1,80}")
 
     def __init__(self, repo_root: str, *, desktop_uploads: bool = False) -> None:
+        self._desktop_uploads = desktop_uploads
         self.root = state_dir(repo_root) / ("desktop-artifacts" if desktop_uploads else "artifacts")
         if desktop_uploads and self.root.is_symlink():
             raise ValueError("桌面制品目录不可用")
@@ -139,16 +141,41 @@ class ArtifactStore:
         with self._mutation():
             return self._publish_at(self._dir(aid), aid, title, html, kind)
 
-    def publish_new(self, title: str, html: str) -> dict:
-        """Publish a new HTML artifact only once all initial files are present."""
+    @contextmanager
+    def _stage_upload(self):
+        """Commit the complete private upload with a single directory rename."""
+        if not self._desktop_uploads:
+            raise ValueError("文件上传只能写入桌面制品库")
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         aid = f"upload-{uuid.uuid4().hex}"
         with tempfile.TemporaryDirectory(prefix=".upload-", dir=self.root) as temporary:
             destination = Path(temporary) / aid
-            meta = self._publish_at(destination, aid, title, html, "html")
+            yield destination, aid
             with self._mutation():
                 destination.rename(self._dir(aid))
-        return meta
+
+    def publish_new(self, title: str, html: str) -> dict:
+        """Publish a new private HTML artifact only once all initial files are present."""
+        with self._stage_upload() as (destination, aid):
+            return self._publish_at(destination, aid, title, html, "html")
+
+    def publish_file(self, title: str, name: str, content_type: str, data: bytes) -> dict:
+        """Keep the owner's original file bytes separate from renderable HTML."""
+        size = len(data)
+        if size > max_bytes():
+            raise ValueError("制品体积超过上限")
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._stage_upload() as (destination, aid):
+            meta = {
+                "id": aid, "title": title, "kind": "file", "version": 1, "pinned": None,
+                "created_at": now, "updated_at": now, "bytes": size,
+                "name": name, "content_type": content_type, "sha256": sha256(data).hexdigest(),
+                "versions": [{"v": 1, "ts": now, "bytes": size}],
+            }
+            destination.mkdir(mode=0o700)
+            (destination / "upload.bin").write_bytes(data)
+            (destination / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            return meta
 
     @staticmethod
     def _publish_at(d: Path, aid: str, title: str, html: str, kind: str) -> dict:
@@ -243,7 +270,30 @@ class ArtifactStore:
 
     def has_snapshot(self, artifact_id: str, version: int) -> bool:
         """不用读取正文即可确认这个版本有对应文件。"""
-        return self._html_path(artifact_id, version, strict=True) is not None
+        return (self._desktop_file_path(artifact_id, version) is not None
+                or self._html_path(artifact_id, version, strict=True) is not None)
+
+    def _desktop_file_path(self, artifact_id: str, version: int) -> Optional[Path]:
+        aid = self._safe_id(artifact_id)
+        if not self._desktop_uploads or not aid or version != 1:
+            return None
+        directory = self._dir(aid)
+        path = directory / "upload.bin"
+        return path if not directory.is_symlink() and not path.is_symlink() and path.is_file() else None
+
+    def uploaded_file(self, artifact_id: str, version: int, size: int) -> Optional[bytes]:
+        path = self._desktop_file_path(artifact_id, version)
+        if path is None:
+            return None
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size != size:
+                raise ValueError("制品文件与登记大小不符")
+            data = handle.read(size + 1)
+        if len(data) != size:
+            raise ValueError("制品文件与登记大小不符")
+        return data
 
     def versions(self, artifact_id: str) -> list[dict]:
         """版本清单 [{v, ts, bytes}]，升序。老 meta 无记录则按当前版本合成一条。"""

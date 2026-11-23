@@ -1,4 +1,4 @@
-"""Desktop 制品下载和历史，复用所有者的 HTML 制品库。"""
+"""Desktop 制品下载和历史，复用所有者的制品库。"""
 
 import hmac
 import time
@@ -89,13 +89,21 @@ def file(root: str, org_id: str, artifact_id: str, supplied: int | None,
         ):
             raise ArtifactReadError(403, "artifact.download_expired", "下载地址已失效，请重新下载")
     if format and format != "html":
-        raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始 HTML")
-    store, _uploaded = _store(root, artifact_id)
+        raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
+    store, uploaded = _store(root, artifact_id)
     version = _version(store, artifact_id, supplied)
-    content = store.html(artifact_id, version, strict=True)
+    meta = store.meta(artifact_id) if uploaded else None
+    if meta and meta.get("kind") == "file":
+        if format:
+            raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
+        content = store.uploaded_file(artifact_id, version, int(meta["bytes"]))
+        name = meta["name"]
+    else:
+        content = store.html(artifact_id, version, strict=True)
+        name = f"{artifact_id.strip()}.html"
     if content is None:
         raise ArtifactReadError(404, "not_found", "没有这个制品版本")
-    filename = quote(f"{artifact_id.strip()}.html", safe="")
+    filename = quote(name, safe="")
     return Response(content, media_type="application/octet-stream", headers={
         **_NO_STORE,
         "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",

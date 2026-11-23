@@ -2990,6 +2990,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/artifacts/files",
     "methods": [
       "POST"

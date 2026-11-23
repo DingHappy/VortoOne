@@ -5105,20 +5105,28 @@ async def artifacts(org_id: str, request: Request, response: Response, q: str = 
 
 @router.post(_ORG + "/artifacts/files", status_code=201)
 async def upload_artifact(org_id: str, request: Request, response: Response):
-    from src.utils.home_maintenance import HomeMaintenanceError
+    return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_form)
 
+
+@router.post(_ORG + "/artifacts", status_code=201)
+async def create_artifact(org_id: str, request: Request, response: Response):
+    """Create a private HTML artifact without the multipart upload envelope."""
+    return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_json)
+
+
+async def _create_private_artifact(org_id: str, request: Request, response: Response, read):
     root = _root(org_id)
     if not _may_access_desktop_uploads(request, root):
-        return _error(403, "owner_proof_required", "上传 HTML 制品需要已认证的所有者")
+        return _error(403, "owner_proof_required", "创建或上传制品需要已认证的所有者")
     try:
-        title, html = await app_artifact_upload.read_form(request)
-        artifact = await asyncio.to_thread(views.upload_artifact, root, title, html)
+        title, content = await read(request)
+        artifact = await asyncio.to_thread(views.upload_artifact, root, title, content)
     except app_artifact_upload.UploadError as error:
         return _error(error.status, error.code, str(error))
     except HomeMaintenanceError:
         return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
     except (OSError, ValueError):
-        return _error(503, "unavailable", "暂时无法保存 HTML 制品")
+        return _error(503, "unavailable", "暂时无法保存上传文件")
     response.headers["Cache-Control"] = "no-store"
     return artifact
 
