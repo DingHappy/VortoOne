@@ -683,6 +683,18 @@ class TeamChannels:
                     raise Missing("没有这个话题")
             self.history.mark_thread_read(channel["id"], thread_id, self._actor_key(actor))
 
+    def set_thread_follow(self, actor, thread_id, following):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                try:
+                    row, channel, _ = self._message_access(state, conn, actor, thread_id)
+                except Missing as error:
+                    raise Missing("没有这个话题") from error
+                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                    raise Missing("没有这个话题")
+            self.history.set_thread_follow(thread_id, self._actor_key(actor), following)
+            return {"threadId": thread_id, "channelId": channel["id"], "following": following}
+
     def unread_thread_count(self, actor):
         with self.registry._locked_state() as state:
             MemberRegistry._actor(state, actor)

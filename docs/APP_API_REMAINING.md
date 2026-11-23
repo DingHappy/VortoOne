@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 330 个，剩 **301** 个：
-- **要做：226**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 332 个，剩 **299** 个：
+- **要做：224**（其中 32 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -296,7 +296,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的 HTML 快照，不推断逐版作者或备注。 |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
-### org/threads（10 个，要做 5）
+### org/threads（10 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -304,8 +304,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/threads` | `threads.create` |  |
 | ☐ | DELETE | `ORG/threads/{x}` | `threads.remove` | 读已接、写没接 |
 | ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接现有团队频道话题的改名，调整选段待接 |
-| ☐ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 界面代码里没调用 |
-| ☐ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 界面代码里没调用 |
+| ☑ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 取消自己在已加入频道中的话题关注，保留已读位置。当前界面未接入口。 |
+| ☑ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 关注自己能读的团队频道话题并计入个人未读。归档话题始终不计未读。当前界面未接入口。 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
 | ☑ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | Desktop 打开话题时调用。已接团队频道话题的个人已读位置及频道、工作区两处列表的未读状态。侧栏只计有权限、已关注且未归档的话题。 |
 | ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |

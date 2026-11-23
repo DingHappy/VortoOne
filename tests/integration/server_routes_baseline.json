@@ -2220,6 +2220,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/follow",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/follow",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/threads/{thread_id}/mission",
     "methods": [
       "GET"

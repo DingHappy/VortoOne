@@ -176,6 +176,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", _ORG + r"/threads/[^/]+"),
     ("POST", _ORG + r"/threads/[^/]+/(?:close|reopen|archive|unarchive)"),
     ("POST", _ORG + r"/threads/[^/]+/read"),
+    ("PUT", _ORG + r"/threads/[^/]+/follow"),
+    ("DELETE", _ORG + r"/threads/[^/]+/follow"),
     ("GET", _ORG + r"/unread-threads"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),

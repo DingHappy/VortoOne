@@ -1701,6 +1701,13 @@ async def act_team_thread(org_id: str, thread_id: str, request: Request, body: _
     return await _team_call(request, org_id, lambda service, actor: service.change_thread(actor, thread_id, action))
 
 
+@router.put(_THREAD + "/follow")
+@router.delete(_THREAD + "/follow")
+async def follow_team_thread(org_id: str, thread_id: str, request: Request, body: _ThreadAction | None = None):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.set_thread_follow(actor, thread_id, request.method == "PUT"))
+
+
 @router.post(_THREAD + "/read", status_code=204)
 async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor:
