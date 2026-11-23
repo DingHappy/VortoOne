@@ -726,11 +726,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `/api/app/telemetry` | `system.telemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 | — | PUT | `/api/app/telemetry` | `system.setTelemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 
-### /api/app/device-accounts（2 个，要做 2）
+### /api/app/device-accounts（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `/api/app/device-accounts` | `account.deviceAccounts` |  |
+| ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前会话的账号和可见空间。第二个会话和未读汇总独立处理。 |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
 
 ### org/logo（2 个，要做 0）

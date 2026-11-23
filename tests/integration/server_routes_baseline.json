@@ -3260,6 +3260,12 @@
     ]
   },
   {
+    "path": "/api/app/device-accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/device-accounts/sign-out",
     "methods": [
       "POST"

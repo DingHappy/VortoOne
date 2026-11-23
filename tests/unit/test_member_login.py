@@ -132,6 +132,56 @@ def test_workspace_mail_provider_catalog_does_not_use_the_host_mailbox(home, mon
     assert guest.get(url).status_code == 403
 
 
+def test_device_accounts_lists_only_the_current_signed_in_profile(home):
+    path = "/api/app/device-accounts"
+    owner = home["owner"]
+    first = _join(home, email="first@example.test")
+    second = _join(home, email="second@example.test")
+    seen = []
+    for client, role in ((owner, "owner"), (first, "member"), (second, "member")):
+        profile = client.get("/api/app/me").json()
+        response = client.get(path)
+        assert response.status_code == 200, response.text
+        assert response.headers["Cache-Control"] == "no-store"
+        [account] = response.json()["accounts"]
+        assert account["current"] is True
+        assert account["user"] == {key: profile["user"][key] for key in ("id", "name", "email", "image")}
+        assert account["organizations"] == profile["organizations"]
+        assert [org["role"] for org in account["organizations"]] == [role]
+        assert account["unread"] == []
+        seen.append(account["user"]["id"])
+    assert len(set(seen)) == 3
+
+    assert first.post("/api/app/device-accounts/sign-out", json={}).status_code == 200
+    assert first.get(path).status_code == 401
+    assert second.get(path).json()["accounts"][0]["user"]["id"] == seen[-1]
+
+
+def test_device_accounts_does_not_infer_a_session_or_workspace(home, monkeypatch):
+    from src.web.auth import SESSION_COOKIE
+
+    path = "/api/app/device-accounts"
+    visitor = TestClient(home["app"], headers=ORIGIN)
+    assert visitor.get(path).status_code == 401
+    token = _invite(home)
+    assert visitor.post("/api/auth/sign-up/email", headers={"x-invitation-token": token}, json={
+        "name": "未加入", "email": "ana@example.com", "password": PASSWORD,
+    }).status_code == 200
+    pending = visitor.get(path)
+    assert pending.status_code == 200, pending.text
+    [account] = pending.json()["accounts"]
+    assert account["current"] is True
+    assert account["user"]["email"] == "ana@example.com"
+    assert account["organizations"] == []
+    assert visitor.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
+
+    owner_cookie = TestClient(home["app"], cookies={SESSION_COOKIE: TOKEN})
+    assert owner_cookie.get(path).status_code == 200
+    assert owner_cookie.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert TestClient(home["app"]).get(path).json() == {"accounts": []}
+
+
 def test_a_stolen_cookie_dies_with_sign_out(home):
     browser = _join(home)
     stolen = TestClient(home["app"], headers=ORIGIN, cookies=dict(browser.cookies))
