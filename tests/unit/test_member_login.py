@@ -557,6 +557,7 @@ def test_a_removed_member_is_out_at_once(home):
     assert gone.status_code == 404
     assert gone.headers["cache-control"] == "no-store"
     assert browser.get("/api/app/me").status_code == 401
+    assert browser.get(home["base"]).status_code == 401
     assert browser.post("/api/auth/sign-in/email",
                         json={"email": "ana@example.com", "password": PASSWORD}).status_code == 401
 
@@ -608,6 +609,52 @@ def test_removal_holds_even_if_the_account_was_not_cleaned_up(home, monkeypatch)
     member_id = browser.get("/api/app/me").json()["user"]["id"]
     MemberRegistry(home["root"]).remove_member(Principal(OWNER, "owner"), member_id)
     assert browser.get("/api/app/me").json()["organizations"] == []
+    assert browser.get(home["base"]).status_code == 403
     assert browser.get(f"{home['base']}/members").status_code == 403
     assert browser.get(f"{home['base']}/roles").status_code == 403
     assert browser.post(f"{home['base']}/invitations", json={"email": "x@example.com"}).status_code == 403
+
+
+def test_workspace_details_return_the_current_principals_workspace(home):
+    owner, path = home["owner"], home["base"]
+    team = _group(home, "财务", ["view_usage"])
+    member = _join(home, "workspace-user@example.com", roleIds=[team])
+    plain = _join(home, "workspace-user-two@example.com")
+    assert owner.patch(path, json={"name": "工作室", "context": "空间背景"}).status_code == 204
+    assert member.put(f"{path}/me/start", json={"page": "last"}).status_code == 200
+
+    for client, role in ((owner, "owner"), (member, "member"), (plain, "member")):
+        response = client.get(path)
+        assert response.status_code == 200, response.text
+        assert response.headers["Cache-Control"] == "no-store"
+        [summary] = client.get("/api/app/me").json()["organizations"]
+        details = response.json()
+        assert details["name"] == "工作室" and details["role"] == role
+        if role == "owner":
+            assert details.pop("context") == "空间背景"
+        assert details == summary
+        assert client.get("/api/app/organizations/an-unknown-workspace").status_code == 404
+
+    assert "view_usage" in member.get(path).json()["permissions"]
+    assert "view_usage" not in plain.get(path).json()["permissions"]
+    assert member.get(path).json()["start"] == {"page": "last", "channelId": None}
+    assert plain.get(path).json()["start"] == {"page": "home", "channelId": None}
+
+
+def test_workspace_details_require_join_or_proven_owner(home, monkeypatch):
+    path = home["base"]
+    owner = TestClient(home["app"])
+    assert owner.get(path).status_code == 401
+    assert owner.post("/api/auth/login", json={"token": TOKEN}, headers=ORIGIN).status_code == 200
+    assert owner.get(path).status_code == 200
+    assert owner.get(path, headers={"Origin": "https://foreign.example.test"}).status_code == 403
+
+    pending = TestClient(home["app"], headers=ORIGIN)
+    invite = _invite(home, email="workspace-pending@example.com")
+    signed = pending.post("/api/auth/sign-up/email", headers={"x-invitation-token": invite},
+                          json={"name": "未加入", "email": "workspace-pending@example.com", "password": PASSWORD})
+    assert signed.status_code == 200, signed.text
+    assert pending.get(path).status_code == 403
+
+    monkeypatch.delenv("VORTOONE_API_TOKEN")
+    assert TestClient(home["app"]).get(path).status_code == 403
