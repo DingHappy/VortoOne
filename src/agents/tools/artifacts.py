@@ -129,6 +129,14 @@ class ArtifactStore:
         aid = self._safe_id(artifact_id)
         return bool(aid and (self._dir(aid) / "meta.json").is_file())
 
+    def has_uploaded_file(self, artifact_id: str, version: int) -> bool:
+        """Check a private upload reference without reading its contents or following metadata links."""
+        path = self._desktop_file_path(artifact_id, version)
+        if path is None or (path.parent / "meta.json").is_symlink():
+            return False
+        meta = self.meta(artifact_id)
+        return bool(meta and meta.get("id") == artifact_id and meta.get("kind") == "file")
+
     def publish(self, title: str, html: str, artifact_id: Optional[str] = None,
                 kind: str = "html") -> dict:
         """写入/更新一个制品并返回 meta。传已存在的 id 即原地更新（version+1，保留 created_at）。
