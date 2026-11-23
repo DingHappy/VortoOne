@@ -56,6 +56,8 @@ curl -fsSL https://github.com/DingHappy/VortoOne/releases/download/server-latest
 2. `tailscale serve --bg http://127.0.0.1:8080`（tailnet 里没开 HTTPS 时，它会给一个管理页地址，去打开）。
 3. 在 `server.env` 里填 `VORTOONE_PUBLIC_URL=https://vortoone.<你的 tailnet>.ts.net`，重启服务（Linux：`systemctl --user restart vortoone`；macOS：`launchctl kickstart -k gui/$(id -u)/com.vorto.vortoone.server`）。
 
+成员邀请链接会使用配置的 HTTPS 地址。自行接入反向代理时，请在对外站点的根路径提供服务。未配置 `VORTOONE_PUBLIC_URL` 时，代理应保留对外 `Host`，并由服务信任的代理传递 HTTPS 协议。
+
 ## Docker
 
 ```sh

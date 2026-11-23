@@ -9,6 +9,128 @@ from tests.unit.test_member_login import ORIGIN, PASSWORD, TOKEN, _group, _invit
 from tests.unit.test_member_login import home  # noqa: F401 —— 成员登录的整套夹具
 
 
+PUBLIC_ORIGIN = "https://workspace.example.test:8443"
+LOCAL_ORIGIN = "http://127.0.0.1:4310"
+
+
+def _native_owner(home):
+    handover = home["owner"].post("/api/auth/handover")
+    assert handover.status_code == 200, handover.text
+    owner = TestClient(home["app"], base_url=LOCAL_ORIGIN, headers={"Origin": LOCAL_ORIGIN})
+    joined = owner.get("/api/auth/handover/" + handover.json()["code"], follow_redirects=False)
+    assert joined.status_code == 303 and joined.headers["location"] == "/"
+    assert owner.get("/api/app/me").json()["organizations"][0]["role"] == "owner"
+    return owner
+
+
+def _accept_and_sign_in(home, url, email, name):
+    origin, token = url.rsplit("/invite/", 1)
+    assert origin == PUBLIC_ORIGIN
+    browser = TestClient(home["app"], base_url=origin, headers={"Origin": origin})
+    assert browser.get(f"/invite/{token}").text == "<p>Desktop UI fixture</p>"
+    path = f"/api/app/invitations/{token}"
+    preview = browser.get(path)
+    assert preview.status_code == 200 and preview.json()["email"] == email
+    registered = browser.post("/api/auth/sign-up/email",
+                              json={"email": email, "password": PASSWORD, "name": name},
+                              headers={"x-invitation-token": token})
+    assert registered.status_code == 200, registered.text
+    assert "Secure" in registered.headers["set-cookie"]
+    entered = browser.post(path + "/accept", json={})
+    assert entered.status_code == 200 and entered.json() == {"orgId": home["org"]}
+    assert browser.post("/api/app/device-accounts/sign-out", json={}).status_code == 200
+    assert browser.get("/api/app/me").status_code == 401
+
+    signed_in = TestClient(home["app"], base_url=origin, headers={"Origin": origin})
+    login = signed_in.post("/api/auth/sign-in/email", json={"email": email, "password": PASSWORD})
+    assert login.status_code == 200, login.text
+    me = signed_in.get("/api/app/me").json()
+    assert me["user"]["email"] == email and me["user"]["name"] == name
+    assert [(org["id"], org["role"]) for org in me["organizations"]] == [(home["org"], "member")]
+    return signed_in, me["user"]["id"]
+
+
+def test_native_invitation_paths_lead_to_https_member_sign_in_and_chat(home, monkeypatch, tmp_path):
+    ui = tmp_path / "desktop-ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("<p>Desktop UI fixture</p>", encoding="utf-8")
+    monkeypatch.setenv("VORTOONE_APP_UI_DIR", str(ui))
+    monkeypatch.setenv("VORTOONE_PUBLIC_URL", PUBLIC_ORIGIN + "/")
+    owner, base = _native_owner(home), home["base"]
+
+    first_email, second_email = "first@example.test", "second@example.test"
+    invite = owner.post(f"{base}/invitations", json={"email": first_email})
+    assert invite.status_code == 200, invite.text
+    first_url = invite.json()["url"]
+    assert invite.json()["invitation"]["url"] == first_url
+    first, first_id = _accept_and_sign_in(home, first_url, first_email, "First")
+
+    invited = owner.post(f"{base}/invitations/batch", json={"emails": [second_email]})
+    assert invited.status_code == 200, invited.text
+    [row] = invited.json()["results"]
+    issued_origin, old_token = row["url"].rsplit("/invite/", 1)
+    assert issued_origin == PUBLIC_ORIGIN
+    rotated = owner.post(f"{base}/invitations/{row['invitationId']}/resend", json={})
+    assert rotated.status_code == 200, rotated.text
+    assert first.get(f"/api/app/invitations/{old_token}").status_code == 404
+    second, second_id = _accept_and_sign_in(home, rotated.json()["url"], second_email, "Second")
+    assert first_id != second_id
+
+    suggested_email = "suggested@example.test"
+    assert first.post(f"{base}/invitations", json={"email": suggested_email}).status_code == 403
+    suggestion = first.post(f"{base}/join-requests/suggest", json={"email": suggested_email})
+    assert suggestion.status_code == 200, suggestion.text
+    approved = owner.post(f"{base}/join-requests/{suggestion.json()['id']}/approve", json={})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["emailed"] is False
+    approved_origin, token = approved.json()["url"].rsplit("/invite/", 1)
+    assert approved_origin == PUBLIC_ORIGIN
+    assert second.get(f"/api/app/invitations/{token}").json()["email"] == suggested_email
+
+    opened = first.post(f"{base}/dms", json={"userId": second_id})
+    assert opened.status_code == 200, opened.text
+    channel = opened.json()["channelId"]
+    path = f"{base}/channels/{channel}/messages"
+    wss_url = PUBLIC_ORIGIN.replace("https://", "wss://", 1)
+    with second.websocket_connect(f"{wss_url}/api/ws?orgId={home['org']}") as socket:
+        assert socket.receive_json()["userId"] == second_id
+        socket.send_json({"type": "subscribe", "channelId": channel})
+        assert socket.receive_json() == {"type": "subscribed", "channelId": channel}
+        sent = first.post(path, json={"body": "Hello from the first joined member"})
+        assert sent.status_code == 200, sent.text
+        assert socket.receive_json()["event"]["messageId"] == sent.json()["id"]
+    replied = second.post(path, json={"body": "Hello back", "replyTo": sent.json()["id"]})
+    assert replied.status_code == 200, replied.text
+    assert [row["body"] for row in first.get(path).json()["messages"]] == [
+        "Hello from the first joined member", "Hello back",
+    ]
+
+
+@pytest.mark.parametrize("configured", [
+    "", "http://workspace.example.test", "https://localhost", "https://127.1", "https://[::1]",
+    "https://[::ffff:127.0.0.1]", "https://user@workspace.example.test",
+    "https://workspace.example.test/reserved-path", "https://workspace.example.test?query",
+    "https://workspace.example.test:invalid", "https://broken host.example.test",
+])
+def test_invalid_public_address_keeps_its_local_origin(home, monkeypatch, configured):
+    monkeypatch.setenv("VORTOONE_PUBLIC_URL", configured)
+    owner = _native_owner(home)
+    invite = owner.post(home["base"] + "/invitations", json={"email": "member@example.test"},
+                        headers={"X-Forwarded-Host": "elsewhere.example.test", "X-Forwarded-Proto": "https"})
+    assert invite.status_code == 200, invite.text
+    assert invite.json()["url"].startswith(LOCAL_ORIGIN + "/invite/")
+
+
+def test_without_public_address_uses_the_https_served_origin(home, monkeypatch):
+    monkeypatch.delenv("VORTOONE_PUBLIC_URL", raising=False)
+    owner = TestClient(home["app"], base_url=PUBLIC_ORIGIN, headers={"Origin": PUBLIC_ORIGIN})
+    assert owner.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    invite = owner.post(home["base"] + "/invitations", json={"email": "member@example.test"},
+                        headers={"X-Forwarded-Host": "elsewhere.example.test", "X-Forwarded-Proto": "http"})
+    assert invite.status_code == 200, invite.text
+    assert invite.json()["url"].startswith(PUBLIC_ORIGIN + "/invite/")
+
+
 def test_a_batch_invites_each_address_once(home):
     owner, base = home["owner"], home["base"]
     _join(home, email="old@example.com")
