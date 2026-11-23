@@ -54,7 +54,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 12
+API_CONTRACT = 13
 MIN_API = 1
 
 
@@ -247,8 +247,9 @@ async def sign_up(body: _SignUp, request: Request, response: Response):
         if invitation is None or (invitation.get("email") and invitation["email"] != login_name(body.email)):
             return closed
         accounts = MemberAccounts(root)
-        account_id = await asyncio.to_thread(accounts.create, body.email, body.name, body.password)
-        token = accounts.open_session(account_id)
+        account_id, token = await asyncio.to_thread(
+            accounts.create_with_activation_session, body.email, body.name, body.password,
+        )
     except ValueError as error:
         return JSONResponse({"code": "INVALID_SIGN_UP", "message": str(error)}, status_code=422)
     except OSError:
@@ -299,24 +300,19 @@ class _Reset(BaseModel):
 @router.post("/api/auth/reset-password")
 async def reset_password(body: _Reset, request: Request):
     """凭重置链接里的令牌改密码。改完这个账号在各处的登录全部退出，要用新密码重新登录。"""
-    from src.workflow.members.accounts import MemberAccounts
+    from src.workflow.ai_apps.store import Damaged as AiAppsDamaged
+    from src.workflow.members.accounts import Damaged, MemberAccounts
     if not views.owner_connection() or not member_auth.same_origin(request):
         return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
     try:
         accounts = MemberAccounts(os.getcwd())
-        account_id = await asyncio.to_thread(accounts.reset_password, body.token, body.newPassword)
-        from src.workflow.members.one_time import PENDING
-        PENDING.forget("account:" + str(account_id))     # 还没用掉的一次性登录也作废
-        member_id = str((await asyncio.to_thread(accounts.get, account_id) or {}).get("member") or "")
-        if member_id:                                   # 换了密码：他连上来的 AI 应用和个人令牌一并作废
-            from src.workflow.ai_apps.store import AiApps
-            await asyncio.to_thread(AiApps(os.getcwd()).disconnect_person, member_id)
+        await asyncio.to_thread(accounts.reset_password, body.token, body.newPassword)
     except LookupError:
         return JSONResponse({"code": "INVALID_TOKEN", "message": "重置链接不对或已过期"}, status_code=400)
+    except (AiAppsDamaged, Damaged, OSError):
+        return JSONResponse({"code": "UNAVAILABLE", "message": "暂时改不了密码"}, status_code=409)
     except ValueError as error:
         return JSONResponse({"code": "INVALID_PASSWORD", "message": str(error)}, status_code=422)
-    except OSError:
-        return JSONResponse({"code": "UNAVAILABLE", "message": "暂时改不了密码"}, status_code=409)
     return {"status": True}
 
 
@@ -358,7 +354,8 @@ async def handover_finish(code: str, request: Request):
     """用掉交接码：对了就登录并跳回首页；错的、过期的、用过的一律回登录页，不说明是哪一种。"""
     import time
     from fastapi.responses import RedirectResponse
-    from src.web.auth import SESSION_COOKIE, get_api_token
+    from src.web.auth import get_api_token
+    from src.web.routers.auth_routes import set_owner_cookie
     expires = _HANDOVERS.pop(_handover_key(code), None)
     token = get_api_token()
     if expires is None or expires <= time.monotonic() or not token:
@@ -372,8 +369,7 @@ async def handover_finish(code: str, request: Request):
         # Keep authentication available so the onboarding page can display and retry this read failure.
         redirect_to = "/onboarding"
     response = RedirectResponse(redirect_to, status_code=303)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax",
-                        secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
+    set_owner_cookie(request, response, token)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
@@ -386,14 +382,26 @@ async def handover_finish(code: str, request: Request):
 async def phone_sign_in(request: Request):
     """界面「在手机上打开」：给调用人自己开一个 5 分钟、只能用一次的登录。server 是别的设备该连的地址。"""
     from src.web.routers.ai_apps import server_url
+    from src.workflow.members.accounts import MemberAccounts, ReauthenticationRequired
     from src.workflow.members.one_time import OWNER, PENDING, TooMany
     if not views.owner_connection() or not member_auth.same_origin(request):
         return _error(403, "forbidden", "这里开不了一次性登录")
     account = getattr(request.state, "member_account", None)
+
+    def mint():
+        if account is None:
+            return PENDING.mint(OWNER)
+        accounts = MemberAccounts(os.getcwd())
+        return accounts.mint_one_time(request.cookies.get(member_auth.MEMBER_COOKIE, ""), account["id"])
+
     try:
-        token, seconds = PENDING.mint(OWNER if account is None else "account:" + str(account["id"]))
+        token, seconds = await asyncio.to_thread(mint)
+    except ReauthenticationRequired:
+        return _error(401, "unauthorized", "请重新登录")
     except TooMany as error:
         return _error(429, "too_many", str(error))
+    except (ValueError, OSError):
+        return _error(503, "unavailable", "暂时开不了一次性登录")
     return {"token": token, "server": server_url(request), "expiresIn": seconds}
 
 
@@ -404,32 +412,27 @@ class _OneTime(BaseModel):
 @router.post("/api/auth/sign-in/one-time-token")
 async def one_time_sign_in(body: _OneTime, request: Request, response: Response):
     """另一台设备凭一次性登录换自己的登录。错的、过期的、用过的回同一句话。"""
-    from src.web.auth import SESSION_COOKIE, get_api_token
+    from src.web.auth import get_api_token
+    from src.web.routers.auth_routes import set_owner_cookie
     from src.workflow.members.accounts import MemberAccounts
-    from src.workflow.members.one_time import OWNER, PENDING
+    from src.workflow.members.one_time import OWNER
     refused = JSONResponse({"code": "INVALID_TOKEN", "message": "这个登录链接不对、过期或已经用过"}, status_code=401)
     owner_token = get_api_token()
     if not owner_token or not member_auth.same_origin(request):
         return refused
-    who = PENDING.redeem(body.token)
     root = os.getcwd()
-    if who == OWNER:
-        response.set_cookie(SESSION_COOKIE, owner_token, httponly=True, samesite="lax",
-                            secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
-        return {"redirect": False, "token": None, "user": views.me(root)["user"]}
-    if not who or not who.startswith("account:"):
-        return refused
-    account_id = who[len("account:"):]
-    accounts = MemberAccounts(root)
     try:
-        session = await asyncio.to_thread(accounts.open_session, account_id)
-        account = await asyncio.to_thread(accounts.get, account_id) or {}
+        who, session, account = await asyncio.to_thread(MemberAccounts(root).redeem_one_time, body.token)
     except (LookupError, ValueError, OSError):
-        return refused                                  # 账号已经删了（被移出空间）
+        return refused
+    if who == OWNER:
+        set_owner_cookie(request, response, owner_token)
+        return {"redirect": False, "token": None, "user": views.me(root)["user"]}
+    if session is None:
+        return refused
     member_auth.set_cookie(request, response, session)
     return {"redirect": False, "token": None,
-            "user": {"id": account.get("member") or account_id, "name": account.get("name"),
-                     "email": account.get("email")}}
+            "user": {"id": account["member"] or account["id"], "name": account["name"], "email": account["email"]}}
 
 
 @router.post("/api/auth/sign-out")
@@ -603,6 +606,32 @@ async def update_me(body: Dict[str, Any], request: Request):
         await asyncio.to_thread(app_prefs.set_locale, root, key, body)
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
+    return Response(status_code=204)
+
+
+@router.post("/api/app/me/password", status_code=204)
+async def replace_member_password(body: Dict[str, Any], request: Request):
+    from src.workflow.ai_apps.store import Damaged as AiAppsDamaged
+    from src.workflow.members.accounts import Damaged, MemberAccounts, ReauthenticationRequired
+
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "forbidden", "更换密码需要已认证的会话")
+        return _error(409, "account.password_unsupported", "所有者的邮箱密码由本机所有者认领流程管理")
+    account = request.state.member_account
+    if set(body) != {"password"}:
+        return _error(422, "invalid_password", "只需提供自己的新密码")
+    try:
+        await asyncio.to_thread(MemberAccounts(root).change_password, account["id"],
+                                request.cookies.get(member_auth.MEMBER_COOKIE, ""), body["password"])
+    except ReauthenticationRequired:
+        return _error(403, "reauth.sign_in", "请用当前密码重新登录")
+    except (AiAppsDamaged, Damaged, OSError):
+        return _error(503, "unavailable", "暂时改不了密码")
+    except ValueError as error:
+        return _error(422, "invalid_password", str(error))
     return Response(status_code=204)
 
 

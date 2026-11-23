@@ -161,3 +161,143 @@ def test_a_damaged_file_means_nobody_is_signed_in(accounts):
         accounts.sign_in("a@b.c", PASSWORD)
     with pytest.raises(ValueError):
         accounts.create("n@b.c", "小李", PASSWORD)
+
+
+def test_replacing_password_uses_a_recent_explicit_sign_in_and_keeps_only_that_session(accounts):
+    account = accounts.create("a@b.c", "小王", PASSWORD)
+    other = accounts.create("o@b.c", "小李", PASSWORD)
+    activation = accounts.open_session(account, now=T0)
+    _, current = accounts.sign_in("a@b.c", PASSWORD, now=T0)
+    _, sibling = accounts.sign_in("a@b.c", PASSWORD, now=T0)
+    _, unaffected = accounts.sign_in("o@b.c", PASSWORD, now=T0)
+    proposed = "a brand new password"
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, activation, proposed, now=T0)
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, unaffected, proposed, now=T0)
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, current, proposed, now=T0 + timedelta(minutes=10))
+    with pytest.raises(ValueError, match="不同"):
+        accounts.change_password(account, current, PASSWORD, now=T0)
+    with pytest.raises(ValueError, match="密码要"):
+        accounts.change_password(account, current, "short", now=T0)
+
+    reset, _ = accounts.reset_link(account, now=T0)
+    now = T0 + timedelta(minutes=9, seconds=59)
+    accounts.change_password(account, current, proposed, now=now)
+    assert accounts.session(current, now=now)["id"] == account
+    assert accounts.session(activation, now=now) is None
+    assert accounts.session(sibling, now=now) is None
+    assert accounts.session(unaffected, now=now)["id"] == other
+    assert accounts.get(account)["email"] == "a@b.c"
+    with pytest.raises(LookupError):
+        accounts.reset_password(reset, "password from old link", now=now)
+    with pytest.raises(WrongCredentials):
+        accounts.sign_in("a@b.c", PASSWORD, now=now)
+
+    _, reconnected = accounts.sign_in("a@b.c", proposed, now=now)
+    accounts.change_password(account, current, proposed, now=now)
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, current, "a second proposed password", now=now)
+    assert accounts.session(reconnected, now=now)["id"] == account
+    accounts.change_password(account, reconnected, "a second proposed password", now=now)
+    assert accounts.session(current, now=now) is None
+    assert accounts.sign_in("a@b.c", "a second proposed password", now=now)[0] == account
+
+
+@pytest.mark.parametrize("operation", ["replacement", "reset"])
+def test_an_inflight_old_password_cannot_issue_a_session_after_revocation(accounts, monkeypatch, operation):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event, current_thread
+
+    account = accounts.create("a@b.c", "小王", PASSWORD)
+    _, current = accounts.sign_in("a@b.c", PASSWORD, now=T0)
+    reset, _ = accounts.reset_link(account, now=T0)
+    computed, release = Event(), Event()
+    original = module._matches
+
+    def wait_after_verification(sealed, password):
+        valid = original(sealed, password)
+        if current_thread().name.startswith("old-password"):
+            assert valid and password == PASSWORD
+            computed.set()
+            assert release.wait(timeout=5)
+        return valid
+
+    monkeypatch.setattr(module, "_matches", wait_after_verification)
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="old-password") as executor:
+        attempt = executor.submit(accounts.sign_in, "a@b.c", PASSWORD, now=T0)
+        try:
+            assert computed.wait(timeout=5)
+            if operation == "replacement":
+                accounts.change_password(account, current, "a brand new password", now=T0)
+            else:
+                accounts.reset_password(reset, "a brand new password", now=T0)
+                with pytest.raises(module.ReauthenticationRequired):
+                    accounts.change_password(account, current, "other proposed password", now=T0)
+        finally:
+            release.set()
+        with pytest.raises(WrongCredentials):
+            attempt.result(timeout=5)
+    assert accounts.sign_in("a@b.c", "a brand new password", now=T0)[0] == account
+
+
+def test_revocation_io_failure_leaves_member_password_and_sessions_retryable(accounts, monkeypatch):
+    from src.workflow.ai_apps.store import AiApps
+    from src.workflow.members.one_time import PENDING
+
+    account = accounts.create("failure@b.c", "小王", PASSWORD)
+    accounts.bind_member(account, "m_failure")
+    _, current = accounts.sign_in("failure@b.c", PASSWORD, now=T0)
+    _, sibling = accounts.sign_in("failure@b.c", PASSWORD, now=T0)
+    link, _ = PENDING.mint("account:" + account)
+
+    def unavailable(*args):
+        raise OSError("injected storage failure")
+
+    with monkeypatch.context() as mocked:
+        mocked.setattr(AiApps, "disconnect_person", unavailable)
+        with pytest.raises(OSError, match="injected"):
+            accounts.change_password(account, current, "a brand new password", now=T0)
+    assert accounts.session(current, now=T0)["id"] == account
+    assert accounts.session(sibling, now=T0)["id"] == account
+    assert accounts.sign_in("failure@b.c", PASSWORD, now=T0)[0] == account
+    accounts.change_password(account, current, "a brand new password", now=T0)
+    assert accounts.session(sibling, now=T0) is None
+    assert PENDING.redeem(link) is None
+
+
+def test_a_link_in_another_worker_cannot_outlive_a_password_change(accounts, monkeypatch):
+    from src.workflow.members import one_time
+
+    account = accounts.create("a@b.c", "小王", PASSWORD)
+    _, current = accounts.sign_in("a@b.c", PASSWORD)
+    minting_worker = one_time.OneTimeSignIns()
+    changing_worker = one_time.OneTimeSignIns()
+    monkeypatch.setattr(one_time, "PENDING", minting_worker)
+    link, _ = accounts.mint_one_time(current, account)
+    monkeypatch.setattr(one_time, "PENDING", changing_worker)
+    accounts.change_password(account, current, "a brand new password")
+
+    monkeypatch.setattr(one_time, "PENDING", minting_worker)
+    with pytest.raises(LookupError, match="已失效"):
+        accounts.redeem_one_time(link)
+    assert accounts.redeem_one_time(link) == (None, None, {})
+    new_link, _ = accounts.mint_one_time(current, account)
+    _, redeemed, profile = accounts.redeem_one_time(new_link)
+    assert redeemed and profile["id"] == account
+
+
+def test_activated_account_is_not_published_when_session_creation_fails(accounts, monkeypatch):
+    def unavailable(*args):
+        raise OSError("injected activation failure")
+
+    with monkeypatch.context() as mocked:
+        mocked.setattr(MemberAccounts, "_issue_session", unavailable)
+        with pytest.raises(OSError, match="injected"):
+            accounts.create_with_activation_session("a@b.c", "小王", PASSWORD)
+    assert not accounts.exists("a@b.c")
+    account, activation = accounts.create_with_activation_session("a@b.c", "小王", PASSWORD)
+    assert accounts.session(activation)["id"] == account
+    with pytest.raises(module.ReauthenticationRequired):
+        accounts.change_password(account, activation, "a brand new password")

@@ -22,7 +22,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from src.web import app_views as views
-from src.web import mcp_server
+from src.web import mcp_server, member_auth
+from src.workflow.members.accounts import MemberAccounts, ReauthenticationRequired
 from src.web.routers.app_api import _ORG, _error, _origin, _root, _who
 
 router = APIRouter(tags=["ai-apps"])
@@ -47,6 +48,16 @@ def _enabled() -> bool:
 def _store():
     from src.workflow.ai_apps.store import AiApps
     return AiApps(os.getcwd())
+
+
+def _issue_credential(request: Request, root: str, issue, *args, **kwargs):
+    """Recheck a member's session immediately before persisting a delegated credential."""
+    account = getattr(request.state, "member_account", None)
+    if account is None:
+        return issue(*args, **kwargs)
+    token = request.cookies.get(member_auth.MEMBER_COOKIE, "")
+    with MemberAccounts(root).guard_session(token, account["id"]):
+        return issue(*args, **kwargs)
 
 
 def server_url(request: Request) -> str:
@@ -443,8 +454,14 @@ async def create_personal_token(org_id: str, body: Dict[str, Any], request: Requ
         return refused
     days = body.get("expiresInDays")
     try:
-        grant, secret = await asyncio.to_thread(_store().create_token, who.id, body.get("name"),
-                                                str(body.get("access") or ""), days if days is None else int(days))
+        grant, secret = await asyncio.to_thread(
+            _issue_credential, request, root, _store().create_token, who.id, body.get("name"),
+            str(body.get("access") or ""), days if days is None else int(days),
+        )
+    except ReauthenticationRequired:
+        return _error(401, "unauthorized", "请重新登录")
+    except OSError:
+        return _error(503, "indisponivel", "暂时无法创建个人令牌")
     except OverflowError:
         return _error(409, "token_limit", "每人最多 10 个个人令牌")
     except (TypeError, ValueError) as error:
@@ -515,9 +532,12 @@ async def decide_consent(request_id: str, body: Dict[str, Any], request: Request
     if allow and body.get("orgId") != views.home_id(root):
         return _error(403, "not_member", "不是这个空间的成员")
     try:
-        target, grant_id = await asyncio.to_thread(_store().decide, request_id, who.id, allow=allow,
-                                                   access=str(body.get("access") or "write"),
-                                                   issuer=server_url(request))
+        target, grant_id = await asyncio.to_thread(
+            _issue_credential, request, root, _store().decide, request_id, who.id, allow=allow,
+            access=str(body.get("access") or "write"), issuer=server_url(request),
+        )
+    except ReauthenticationRequired:
+        return _error(401, "unauthorized", "请重新登录")
     except ConsentError as error:
         return _error(error.status, error.code, str(error))
     except (Damaged, OSError) as error:
