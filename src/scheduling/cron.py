@@ -164,9 +164,14 @@ def _dow_cron(dt: datetime) -> int:
 
 
 def _cron_matches(cron: tuple, now: datetime) -> bool:
-    minute, hour, dom, mon, dow = cron
-    checks = [(minute, now.minute), (hour, now.hour), (dom, now.day),
-              (mon, now.month), (dow, _dow_cron(now))]
+    minute, hour, *_ = cron
+    return ((minute is None or now.minute in minute) and (hour is None or now.hour in hour)
+            and _cron_date_matches(cron, now))
+
+
+def _cron_date_matches(cron: tuple, day) -> bool:
+    _, _, dom, mon, dow = cron
+    checks = [(dom, day.day), (mon, day.month), (dow, _dow_cron(day))]
     return all(f is None or v in f for f, v in checks)
 
 

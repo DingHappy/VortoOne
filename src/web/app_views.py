@@ -13,7 +13,7 @@ import os
 import re
 import uuid
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlsplit
 
@@ -1606,21 +1606,25 @@ def routine_runs(root: str, routine_id: str) -> Optional[List[Dict[str, Any]]]:
 
 
 def routine_history(root: str) -> Dict[str, Dict[str, Any]]:
-    """每项例行工作最近的运行：任务台账里带着它标记的那些任务。"""
+    """用台账投影最近 14 次运行，并统计最近七天内的已结束运行。"""
     history: Dict[str, List[Dict[str, Any]]] = {}
     for routine_id, run in _routine_run_rows(root):
         history.setdefault(routine_id, []).append(run)
+    now = datetime.now(timezone.utc)
+    start = _iso((now - timedelta(days=7)).timestamp())
+    end = _iso(now.timestamp())
     out = {}
     for routine_id, rows in history.items():
         finished = [row for row in rows if row["finishedAt"] and row["status"] != "canceled"]
+        recent = [row for row in finished if start <= row["at"] <= end]
         streak = 0
         for row in finished:
             if row["status"] != "failed":
                 break
             streak += 1
         out[routine_id] = {
-            "lastRun": rows[0], "recentRuns": rows[:10], "failuresInRow": streak,
-            "health": {"ok": sum(row["status"] == "reported" for row in finished), "silent": 0,
-                       "failed": sum(row["status"] == "failed" for row in finished), "skipped": 0, "missed": 0,
-                       "total": len(finished)}}
+            "lastRun": rows[0], "recentRuns": rows[:14], "failuresInRow": streak,
+            "health": {"ok": sum(row["status"] == "reported" for row in recent), "silent": 0,
+                       "failed": sum(row["status"] == "failed" for row in recent), "skipped": 0, "missed": 0,
+                       "total": len(recent)}}
     return out
