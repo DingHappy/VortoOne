@@ -11375,7 +11375,7 @@
       "nothingYet": "Er gaat niets in voordat je het hebt bekeken.",
       "readingText": "Voorlopig alleen in je browser. Er is nog niets verstuurd.",
       "notesRead": "notities gelezen",
-      "reviewText": "Bekijk het voordat het in de wiki komt. Agents beginnen deze pagina's te lezen zodra je importeert.",
+      "reviewText": "Bekijk het voordat het in de wiki komt.",
       "stat": {
         "notes_one": "notitie",
         "notes_other": "notities",
@@ -11430,8 +11430,6 @@
       "doneTitle": "Klaar",
       "pages_one": "{{count}} pagina in de wiki",
       "pages_other": "{{count}} pagina's in de wiki",
-      "agentsRead_one": "{{names}} kan hem nu lezen. Nieuwe pagina's zijn gemarkeerd als “nieuw”.",
-      "agentsRead_other": "{{names}} kunnen ze nu lezen. Nieuwe pagina's zijn gemarkeerd als “nieuw”.",
       "newMarked": "Nieuwe pagina's zijn gemarkeerd als “nieuw”.",
       "uploaded_one": "{{count}} bijlage staat in de Drive.",
       "uploaded_other": "{{count}} bijlagen staan in de Drive.",

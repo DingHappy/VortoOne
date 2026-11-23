@@ -11,7 +11,9 @@ from urllib.parse import quote, urlencode
 from fastapi.responses import JSONResponse, Response
 
 from src.agents.tools.artifacts import EDITABLE_ARTIFACT_KINDS, ArtifactStore
+from src.utils.home_maintenance import home_maintenance
 from src.web import app_views as views
+from src.web.app_artifact_upload import TEXT_CONTENT_TYPES, FileUpload
 from src.web.auth import get_api_token
 
 _DOWNLOAD_TTL_SECONDS = 300
@@ -31,6 +33,19 @@ def _store(root: str, artifact_id: str) -> tuple[ArtifactStore, bool]:
     if uploads.exists(artifact_id):
         return uploads, True
     return ArtifactStore(root), False
+
+
+def upload_version(root: str, artifact_id: str, content: FileUpload, note: str | None) -> dict:
+    with home_maintenance(root):
+        store, uploaded = _store(root, artifact_id)
+        meta = store.meta(artifact_id)
+        if meta is None:
+            raise ArtifactReadError(404, "not_found", "没有这个制品")
+        if (not uploaded or meta.get("kind") != "file" or meta.get("content_type") not in TEXT_CONTENT_TYPES
+                or meta["content_type"] != content.content_type):
+            raise ArtifactReadError(415, "artifact.upload_format", "只可追加相同文本格式的私有制品版本")
+        saved = store.append_uploaded_file(artifact_id, content.name, content.content_type, content.data, note)
+    return views.uploaded_file_detail(root, saved, saved, saved["version"], content.data)
 
 
 def versions(root: str, artifact_id: str) -> JSONResponse:
@@ -100,8 +115,11 @@ def file(root: str, org_id: str, artifact_id: str, supplied: int | None,
     elif kind == "file":
         if format:
             raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
-        content = store.uploaded_file(artifact_id, version, int(meta["bytes"]))
-        name = meta["name"]
+        snapshot = store.uploaded_version(meta, version)
+        if snapshot is None:
+            raise ArtifactReadError(404, "not_found", "没有这个制品版本")
+        content = store.uploaded_file(artifact_id, version, int(snapshot["bytes"]), snapshot.get("sha256"))
+        name = snapshot["name"]
     else:
         if format and format != "html":
             raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")

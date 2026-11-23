@@ -228,12 +228,6 @@ html:not([data-pointer]) .vault-drop__area:focus-visible {
   inset: 0;
   z-index: -1;
 }
-.vault-done__crew {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-  animation: wiki-bob 1.6s var(--out) infinite alternate;
-}
 .vault-done > b {
   font-family: var(--font-display);
   font-weight: var(--font-display-weight, 300);
@@ -303,7 +297,6 @@ html:not([data-pointer]) .vault-drop__area:focus-visible {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vault-done__crew,
   .wiki-dropzone__icon {
     animation: none;
   }

@@ -56,7 +56,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 15
+API_CONTRACT = 16
 MIN_API = 1
 
 
@@ -5576,6 +5576,26 @@ async def artifacts(org_id: str, request: Request, response: Response, q: str = 
 @router.post(_ORG + "/artifacts/files", status_code=201)
 async def upload_artifact(org_id: str, request: Request, response: Response):
     return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_form)
+
+
+@router.post(_ORG + "/artifacts/{artifact_id}/files", status_code=201)
+async def upload_artifact_version(org_id: str, artifact_id: str, request: Request, response: Response):
+    root = _root(org_id)
+    if not _may_access_desktop_uploads(request, root):
+        return _error(403, "owner_proof_required", "上传制品版本需要已认证的所有者")
+    try:
+        note, content = await app_artifact_upload.read_form(request, for_version=True)
+        if not isinstance(content, app_artifact_upload.FileUpload):
+            return _error(415, "artifact.upload_format", "只可追加私有文本制品的版本")
+        saved = await asyncio.to_thread(app_artifacts.upload_version, root, artifact_id, content, note or None)
+    except (app_artifact_upload.UploadError, app_artifacts.ArtifactReadError) as error:
+        return _error(error.status, error.code, str(error))
+    except HomeMaintenanceError:
+        return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
+    except (OSError, ValueError, KeyError, TypeError):
+        return _error(503, "unavailable", "暂时无法保存制品版本")
+    response.headers["Cache-Control"] = "no-store"
+    return saved
 
 
 @router.post(_ORG + "/artifacts", status_code=201)

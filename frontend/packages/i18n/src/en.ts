@@ -11748,7 +11748,7 @@ export const en = {
       nothingYet: "Nothing goes in before you review it.",
       readingText: "Only in your browser for now. Nothing has been sent yet.",
       notesRead: "notes read",
-      reviewText: "Review it before it goes into the wiki. Agents start reading these pages as soon as you import.",
+      reviewText: "Review these pages before importing them into the wiki.",
       stat: {
         notes_one: "note",
         notes_other: "notes",
@@ -11803,8 +11803,6 @@ export const en = {
       doneTitle: "Done",
       pages_one: "{{count}} page in the wiki",
       pages_other: "{{count}} pages in the wiki",
-      agentsRead_one: "{{names}} can read it now. New pages are marked “new”.",
-      agentsRead_other: "{{names}} can read them now. New pages are marked “new”.",
       newMarked: "New pages are marked “new”.",
       uploaded_one: "{{count}} attachment is in the Drive.",
       uploaded_other: "{{count}} attachments are in the Drive.",

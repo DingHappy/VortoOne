@@ -6,6 +6,7 @@ import type {
   WikiPageSummary,
 } from "@vortoone/client";
 import { readZip } from "@vortoone/client/lib/zip";
+import { wikiLabelKey } from "@vortoone/client/lib/wiki";
 
 /*
  * Notes to import in the browser: an Obsidian vault or plain Markdown as a
@@ -52,7 +53,7 @@ export interface VaultReport {
   tags: string[];
   dataview: number;
   callouts: number;
-  /** Link targets that match no note, alias, attachment or existing page. */
+  /** Link targets that could not be resolved to a note, existing page, unique alias, or attachment. */
   broken: string[];
   /** Notes named like a page that already exists. */
   conflicts: string[];
@@ -251,7 +252,7 @@ const attachmentOf = (report: Pick<VaultReport, "attachments">, target: string) 
 export async function readVault(
   files: VaultFile[],
   options: {
-    existing?: Pick<WikiPageSummary, "title">[];
+    existing?: Pick<WikiPageSummary, "title" | "aliases">[];
     name?: string;
     source?: WikiImportSource;
     onProgress?: (done: number, total: number, path: string) => void;
@@ -285,14 +286,24 @@ export async function readVault(
   // Not said (dropped on the page): a vault when it carries Obsidian's own folder, else plain Markdown.
   const source = options.source ?? (skipped.config > 0 ? "obsidian" : "files");
 
-  const known = new Set(
-    [...notes.flatMap((n) => [n.title, ...n.aliases]), ...(options.existing ?? []).map((p) => p.title)].map(lower),
-  );
-  const broken = new Set<string>();
-  for (const n of notes) {
-    for (const l of n.links) if (!known.has(lower(base(l))) && !attachmentOf({ attachments }, l)) broken.add(l);
+  const existingPages = options.existing ?? [];
+  const knownTitles = new Set<string>();
+  const aliasCounts = new Map<string, number>();
+  for (const page of [...notes, ...existingPages]) {
+    knownTitles.add(wikiLabelKey(page.title));
+    for (const alias of new Set(page.aliases?.map(wikiLabelKey))) {
+      aliasCounts.set(alias, (aliasCounts.get(alias) ?? 0) + 1);
+    }
   }
-  const existing = new Set((options.existing ?? []).map((p) => lower(p.title)));
+  const broken = new Set<string>();
+  for (const note of notes) {
+    for (const link of note.links) {
+      const key = wikiLabelKey(link);
+      if (knownTitles.has(key) || knownTitles.has(wikiLabelKey(base(link))) || aliasCounts.get(key) === 1) continue;
+      if (!attachmentOf({ attachments }, link)) broken.add(link);
+    }
+  }
+  const existing = new Set(existingPages.map((page) => lower(page.title)));
   const folders = new Map<string, number>();
   for (const n of notes) {
     const top = n.folder.split("/")[0] ?? "";
