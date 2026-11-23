@@ -264,7 +264,7 @@ def _fill(path, *, team_channel=False):
 def test_a_member_session_reaches_nothing_outside_the_allow_list(home):
     """把服务上每一条路由都用成员会话打一遍：白名单和免鉴权之外，一条都不能进到处理函数。"""
     from src.web import member_auth
-    from src.web.auth import _EXEMPT_EXACT, _EXEMPT_PREFIXES, MOBILE_SELF_AUTHENTICATED
+    from src.web.auth import _EXEMPT_EXACT, _EXEMPT_PREFIXES, MOBILE_SELF_AUTHENTICATED, PUBLIC_DOWNLOAD_ROUTES
     from tests.integration.test_server_smoke import _live_routes
     browser = _join(home)
     cookie = browser.cookies.get(member_auth.MEMBER_COOKIE)
@@ -278,7 +278,8 @@ def test_a_member_session_reaches_nothing_outside_the_allow_list(home):
         for method in set(methods) - {"HEAD", "OPTIONS"}:
             url = _fill(path).replace("/organizations/x", f"/organizations/{home['org']}")
             exempt = (url in _EXEMPT_EXACT or url.startswith(_EXEMPT_PREFIXES)
-                      or (method, url) in MOBILE_SELF_AUTHENTICATED)
+                      or (method, url) in MOBILE_SELF_AUTHENTICATED
+                      or (method, url) in PUBLIC_DOWNLOAD_ROUTES)
             allowed = any(method == m and pattern.match(url) for m, pattern in member_auth.MEMBER_ROUTES)
             if exempt or allowed:
                 continue

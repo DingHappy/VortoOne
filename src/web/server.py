@@ -108,6 +108,7 @@ from src.web.routers.staff import router as staff_router
 from src.web.routers.app_api import router as app_api_router, install_error_handler as _install_app_errors
 from src.web.routers.ai_apps import router as ai_apps_router
 from src.web.routers.computers import router as computers_router
+from src.web.routers.desktop_releases import router as desktop_releases_router
 
 for _router in (
     pages_router, git_router, context_router,
@@ -117,7 +118,7 @@ for _router in (
     pipelines_router, trust_router, resident_router, assistant_router, personal_goals_router, voice_router, ops_heartbeat_router,
     codex_router, mobile_router, mobile_pages_router, account_access_router, mobile_browser_router, mobile_native_router, mobile_owner_router,
     phone_keys_router, app_relay_router, timeline_router, teams_router, staff_router, app_api_router,
-    ai_apps_router, computers_router,
+    ai_apps_router, computers_router, desktop_releases_router,
 ):
     app.include_router(_router)
 _install_app_errors(app)

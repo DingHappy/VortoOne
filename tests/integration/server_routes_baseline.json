@@ -2838,6 +2838,12 @@
     ]
   },
   {
+    "path": "/api/desktop/latest",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/instance",
     "methods": [
       "GET"
