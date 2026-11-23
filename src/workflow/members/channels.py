@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from src.agents import identity_groups as rules
 from src.gateway.session_store import ChannelNameConflict, channel_metadata, normalize_channel
 from src.workflow.members import channel_threads
-from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _before, _stamp
+from src.workflow.members.channel_history import AGENT_AUTHOR, OWNER_KEY, ChannelHistory, _before, _stamp
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
 from src.workflow.members.thread_reads import ThreadReader
 
@@ -359,6 +359,26 @@ class TeamChannels:
                 raise Missing("这个 agent 不在这个频道里")
             else:
                 del agents[staff_id]
+
+    def agents_here(self, actor, channel_id):
+        """在频道里的 agent（专员 id）。和名册一样，加入了频道的人才看得到。"""
+        state = self.registry.snapshot()
+        channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
+        return set(channel.get("agents") or {})
+
+    def can_call_agents(self, actor, channel_id):
+        state = self.registry.snapshot()
+        _, access = self._find(state, actor, channel_id, archived=False, joined=True)
+        return "talk_to_agents" in access.permissions
+
+    def post_as_agent(self, channel_id, staff_id, agent_id, text, *, thread, client):
+        """agent 交回的话。发之前再核对一次：频道还在、没归档、agent 还在里面；不满足就不发（抛 Missing）。
+        client 让同一件事的回答只发一次（重试、重启后补发都落到同一条）。"""
+        with self.registry._locked_state() as state:
+            channel = state["channels"].get(channel_id)
+            if channel is None or channel["archived"] or staff_id not in (channel.get("agents") or {}):
+                raise Missing("agent 已不在这个频道里，没有发出回答")
+            return self.history.append(channel_id, AGENT_AUTHOR + agent_id, text, client, thread, None, False)
 
     def require_owner(self, actor):
         self._require_owner(self.registry.snapshot(), actor)

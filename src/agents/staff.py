@@ -200,6 +200,10 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
 
         check = check_initiator
         check()
+    elif task.collaboration['dispatch'].get('channel'):
+        # 频道里的回答所有人都看得到（主人 2026-11-22 定）：所有者叫的也只用团队安全工具，不读私人来源
+        from src.workflow.staff.registry import StaffRegistry
+        turn_role = role_for_member(StaffRegistry(root), turn_role, 'execute')
     from src.workflow.staff.roles import is_full
     if is_full(role) and task.collaboration['dispatch'].get('routine'):
         raise ValueError('例行工作无人值守，不用完整能力；请交给只读或公开资料的 agent')
@@ -265,7 +269,7 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     if principal is not None:
         options.update(principal=principal, member_allowed=tuple(sorted(preapproved)))
     dispatch = task.collaboration['dispatch']
-    if dispatch.get('source') == 'staff' and not dispatch.get('routine'):
+    if dispatch.get('source') == 'staff' and not dispatch.get('routine') and not dispatch.get('channel'):
         options['extra_tools'] = (build_question_tool(work, task),)
     agent = build_staff_member(root, turn_role, member, check=check, on_tool_event=observe, **options)
     execution = StaffExecution(work, task, 'vortocode')
@@ -309,7 +313,7 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
 def _continues_conversation(task):
     """私聊里直接交给 agent 的事（不是小组的活、不是例行工作、不是返工轮）才接着之前的对话。"""
     dispatch = task.collaboration['dispatch']
-    return (dispatch.get('source') == 'staff' and not dispatch.get('routine')
+    return (dispatch.get('source') == 'staff' and not dispatch.get('routine') and not dispatch.get('channel')
             and int(task.collaboration.get('round') or 1) == 1)
 
 

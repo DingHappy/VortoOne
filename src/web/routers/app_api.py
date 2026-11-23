@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 from contextlib import suppress
@@ -27,6 +28,7 @@ from src.gateway import app_protocol as F
 from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_artifact_upload
 from src.web import app_artifacts
+from src.web import app_channel_agents
 from src.web import app_views as views
 from src.web import (
     app_board, app_calendar, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox,
@@ -1286,6 +1288,20 @@ def _member_dm(request: Request, org_id: str, channel_id: str):
     return root, staff_id, who
 
 
+async def _call_channel_agents(request: Request, org_id: str, channel_id: str, message: Dict[str, Any]) -> None:
+    """消息已经发出：叫到的 agent 接活。出了什么问题都不影响这条消息本身（agent 会在话题里说明）。
+    留在事件循环线程：派活要把任务登记进执行池。"""
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return
+    try:
+        await _dispatch_ready(root)
+        app_channel_agents.call(root, app_channels.channels(root), actor, channel_id, message)
+    except Exception:  # noqa: BLE001 —— 消息已存好，叫 agent 失败不能让发消息报错
+        logging.getLogger(__name__).warning("频道里叫 agent 失败", exc_info=True)
+
+
 async def _dispatch_ready(root: str) -> None:
     """派活要用主要聊天的会话当发起身份；新界面里还没打开过主要聊天时（直接去 agent 私聊派活）先登记上。"""
     if not views.main_chat_key(root):
@@ -1784,9 +1800,12 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             media = await _gif_for_message(org_id, wanted_media)
             if isinstance(media, JSONResponse):
                 return media
-        return await _team_call(request, org_id, lambda service, actor: service.post(
+        posted = await _team_call(request, org_id, lambda service, actor: service.post(
             actor, channel_id, text, client_id=client_id, thread=body.threadId or None,
             reply_to=body.replyTo or None, opened=bool(body.threadId and body.openThread), media=media))
+        if isinstance(posted, dict) and "@" in text:
+            await _call_channel_agents(request, org_id, channel_id, posted)
+        return posted
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     answer = await _as_member(request, org_id, channel_id,
@@ -1820,7 +1839,7 @@ async def channel_active_runs(org_id: str, channel_id: str, request: Request):
     def team_runs(service, actor):
         if not service.can_read(actor, channel_id):
             raise LookupError("没有这个频道")
-        return {"runs": []}
+        return {"runs": app_channel_agents.runs(_root(org_id), channel_id)}
 
     team = await _team_call(request, org_id, team_runs, channel_id=channel_id)
     if team is not None:
