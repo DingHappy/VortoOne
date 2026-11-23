@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 import pytest
 
 from desktop.runtime_entry import build_parser, model_capabilities
@@ -33,6 +38,33 @@ def test_model_capability_probe_accepts_no_endpoint_or_credentials():
     assert build_parser().parse_args(["model-capabilities"]).command == "model-capabilities"
     with pytest.raises(SystemExit):
         build_parser().parse_args(["model-capabilities", "--base-url", "https://example.com"])
+
+
+def test_bundled_server_logs_unicode_on_redirected_ansi_streams(tmp_path):
+    source = Path(__file__).resolve().parents[2]
+    script = """
+import runpy
+import sys
+import types
+
+assert sys.stdout.encoding == sys.stderr.encoding == "cp1252"
+server = types.ModuleType("src.web.server")
+def start_server(host, port):
+    assert (host, port) == ("127.0.0.1", 8080)
+    print("VortoOne 服务器启动")
+    print("🐕 看门狗已启动", file=sys.stderr)
+server.start_server = start_server
+sys.modules[server.__name__] = server
+sys.argv = ["desktop.runtime_entry", "server"]
+runpy.run_module("desktop.runtime_entry", run_name="__main__")
+"""
+    observed = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path, capture_output=True, timeout=10,
+        env={**os.environ, "PYTHONPATH": str(source), "PYTHONIOENCODING": "cp1252"},
+    )
+    assert observed.returncode == 0, observed.stderr.decode("utf-8", errors="replace")
+    assert observed.stdout.decode("utf-8").splitlines() == ["VortoOne 服务器启动"]
+    assert observed.stderr.decode("utf-8").splitlines() == ["🐕 看门狗已启动"]
 
 
 @pytest.mark.asyncio
