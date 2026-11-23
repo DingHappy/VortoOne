@@ -2996,6 +2996,11 @@ async def change_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request
     return await _wiki_call(request, org_id, lambda wiki: wiki.change(slug, attribute, value))
 
 
+@router.put(_WIKI + "/pages/{slug}/audience")
+async def narrow_wiki_audience(org_id: str, slug: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_audience(slug, body))
+
+
 @router.get(_WIKI + "/pages/{slug}/history")
 async def wiki_history(org_id: str, slug: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.history(slug))

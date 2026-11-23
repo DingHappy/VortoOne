@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 336 个，剩 **295** 个：
-- **要做：224**（其中 33 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 337 个，剩 **294** 个：
+- **要做：223**（其中 33 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -170,7 +170,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
 | ☑ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/append` | `wiki.append` | 支持摘录已加入的公开团队频道消息。私信和受限频道来源暂不可用 |
-| ☐ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` |  |
+| ☑ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` | 所有者可按成员收紧单页的可见范围，保留原链接。扩大范围、角色、独立编辑授权和智能体授权返回 409。 |
 | ☑ | POST | `ORG/wiki/pages/{x}/context` | `wiki.context` | 已接入。开启时返回明确的 409，页面不会进入智能体上下文 |
 | ☑ | GET | `ORG/wiki/pages/{x}/history` | `wiki.history` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/lock` | `wiki.lock` |  |

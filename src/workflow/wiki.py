@@ -257,7 +257,7 @@ class Wiki:
     def _summary(page: dict) -> dict:
         hidden = {"body", "createdBy", "createdAt"}
         return {**{key: item for key, item in page.items() if key not in hidden},
-                "excerpt": " ".join(page["body"].split())[:200], "agentContext": False}
+                "excerpt": " ".join(page["body"].split())[:200], "agentContext": False, "agentIds": []}
 
     def _detail(self, conn, page: dict) -> dict:
         authors = list(dict.fromkeys(row["author"] for row in conn.execute(
@@ -510,6 +510,40 @@ class Wiki:
                 self._save(conn, page)
                 return self._detail(conn, page)
             return self._change(conn, page, {attribute: value})
+
+    def narrow_audience(self, slug: str, data: dict) -> dict:
+        if not self.reader.actor.is_owner:
+            _fail("forbidden", "只有所有者能更改 Wiki 页面的可见范围", status=403)
+        _fields(data, {"audience", "agentIds", "editors", "agentEditorIds"})
+        if "audience" not in data:
+            _fail("invalid", "必须提供 Wiki 页面的可见范围")
+        if (data.get("editors") is not None
+                or any(data.get(key) not in (None, []) for key in ("agentIds", "agentEditorIds"))):
+            _fail("wiki_audience_unsupported", "目前只支持按成员收紧页面可见范围", status=409)
+        choice = data["audience"]
+        if choice is not None:
+            if not isinstance(choice, dict) or set(choice) != {"roleIds", "userIds"}:
+                _fail("invalid", "Wiki 页面可见范围无效")
+            if choice["roleIds"] != []:
+                _fail("wiki_audience_unsupported", "目前只支持按成员收紧页面可见范围", status=409)
+            people = choice["userIds"]
+            if people == []:
+                people = [self.reader.actor.id]
+            choice = {"mode": "people", "userIds": people}
+        audience = _audience(choice, self.reader)
+
+        with self._database(write=True) as conn:
+            page = self._page(conn, slug)
+            previous = page["audience"]
+            if previous is not None:
+                if audience is None or set(audience["userIds"]) - {self.reader.actor.id} - set(previous["userIds"]):
+                    _fail("wiki_audience_expansion", "此处只能收紧页面可见范围", status=409)
+                if set(audience["userIds"]) == set(previous["userIds"]):
+                    return self._detail(conn, page)
+            if audience != previous:
+                page["audience"] = audience
+                self._save(conn, page, "收紧页面可见范围")
+            return self._detail(conn, page)
 
     def remove(self, slug: str) -> None:
         with self._database(write=True) as conn:

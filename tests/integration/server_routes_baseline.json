@@ -2778,6 +2778,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/audience",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/wiki/pages/{slug}/context",
     "methods": [
       "POST"
