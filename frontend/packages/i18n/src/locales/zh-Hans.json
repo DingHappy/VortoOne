@@ -11081,7 +11081,6 @@
       "creatingPages": "个页面已创建",
       "doneTitle": "完成",
       "pages_other": "Wiki 中有 {{count}} 个页面",
-      "agentsRead_other": "{{names}} 现在可以阅读它们了。新页面会标记为“新”。",
       "newMarked": "新页面会标记为“新”。",
       "uploaded_other": "{{count}} 个附件已存入 Drive。",
       "open": "打开 {{title}}",

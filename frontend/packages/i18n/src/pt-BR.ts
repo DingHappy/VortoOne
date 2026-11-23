@@ -11730,8 +11730,6 @@ export const ptBR = {
       doneTitle: "Pronto",
       pages_one: "{{count}} página na wiki",
       pages_other: "{{count}} páginas na wiki",
-      agentsRead_one: "{{names}} já pode consultar. As novas aparecem marcadas como “novo”.",
-      agentsRead_other: "{{names}} já podem consultar. As novas aparecem marcadas como “novo”.",
       newMarked: "As novas aparecem marcadas como “novo”.",
       uploaded_one: "{{count}} anexo está no Drive.",
       uploaded_other: "{{count}} anexos estão no Drive.",

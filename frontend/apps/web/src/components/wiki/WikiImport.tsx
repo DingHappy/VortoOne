@@ -1,6 +1,5 @@
 import { keys, useCatalog, useWikiTree, type WikiImportNote, type WikiImportSource } from "@vortoone/client";
 import { errorText } from "@vortoone/client/lib/errors";
-import { joinNames } from "@vortoone/client/lib/format";
 import { can } from "@vortoone/client/lib/permissions";
 import { hiddenRepoOf, hiddenRepoText } from "@vortoone/client/lib/skills";
 import {
@@ -23,13 +22,11 @@ import type { TFunction } from "i18next";
 import { type DragEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";
-import { AgentAvatar } from "@/components/AgentAvatar";
 import { ConnectFlow, type FlowState } from "@/components/ConnectFlow";
 import { ConnectorIcon } from "@/components/ConnectorCatalog";
 import { GitHubMark } from "@/components/GitHubMark";
 import { useOrg } from "@/components/org-context";
 import { WikiSky } from "@/components/Sky";
-import { useDirectory } from "@/hooks/useDirectory";
 import { githubRoot, isGithubLink } from "@/lib/import-flow";
 import {
   filesFromDrop,
@@ -412,7 +409,6 @@ export function WikiImportDialog({
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
-  const dir = useDirectory(org.id);
   const tree = useWikiTree(org.id);
   const reader = useVaultReader(tree.data ?? []);
   const [pick, setPick] = useState<Set<string>>(new Set());
@@ -546,7 +542,6 @@ export function WikiImportDialog({
     }
   };
 
-  const agents = dir.agents.slice(0, 2);
   const missing = done ? done.failures.length + done.skipped.length : 0;
   const title = done
     ? missing
@@ -617,23 +612,8 @@ export function WikiImportDialog({
     body = (
       <div className="vault-done">
         <WikiSky variant="glow" />
-        <div className="vault-done__crew">
-          {agents.map((a) => (
-            <AgentAvatar key={a.id} agentId={a.id} name={a.name} size="lg" />
-          ))}
-        </div>
         <b>{t("wiki.import.pages", { count: done.count })}</b>
-        <span>
-          {agents.length
-            ? t("wiki.import.agentsRead", {
-                names: joinNames(
-                  agents.map((a) => a.name),
-                  t,
-                ),
-                count: agents.length,
-              })
-            : t("wiki.import.newMarked")}
-        </span>
+        <span>{t("wiki.import.newMarked")}</span>
         {done.uploaded > 0 && (
           <span className="small muted">{t("wiki.import.uploaded", { count: done.uploaded })}</span>
         )}

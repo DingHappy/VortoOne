@@ -11430,8 +11430,6 @@
       "doneTitle": "Klaar",
       "pages_one": "{{count}} pagina in de wiki",
       "pages_other": "{{count}} pagina's in de wiki",
-      "agentsRead_one": "{{names}} kan hem nu lezen. Nieuwe pagina's zijn gemarkeerd als “nieuw”.",
-      "agentsRead_other": "{{names}} kunnen ze nu lezen. Nieuwe pagina's zijn gemarkeerd als “nieuw”.",
       "newMarked": "Nieuwe pagina's zijn gemarkeerd als “nieuw”.",
       "uploaded_one": "{{count}} bijlage staat in de Drive.",
       "uploaded_other": "{{count}} bijlagen staan in de Drive.",

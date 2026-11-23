@@ -11786,8 +11786,6 @@ export const en = {
       doneTitle: "Done",
       pages_one: "{{count}} page in the wiki",
       pages_other: "{{count}} pages in the wiki",
-      agentsRead_one: "{{names}} can read it now. New pages are marked “new”.",
-      agentsRead_other: "{{names}} can read them now. New pages are marked “new”.",
       newMarked: "New pages are marked “new”.",
       uploaded_one: "{{count}} attachment is in the Drive.",
       uploaded_other: "{{count}} attachments are in the Drive.",

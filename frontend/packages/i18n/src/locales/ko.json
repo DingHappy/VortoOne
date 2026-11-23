@@ -10901,7 +10901,6 @@
       "creatingPages": "만든 페이지",
       "doneTitle": "완료",
       "pages_other": "Wiki의 페이지 {{count}}개",
-      "agentsRead_other": "이제 {{names}}이(가) 읽을 수 있어요. 새 페이지에는 “새 페이지” 표시가 붙어요.",
       "newMarked": "새 페이지에는 “새 페이지” 표시가 붙어요.",
       "uploaded_other": "첨부 파일 {{count}}개가 Drive에 있어요.",
       "open": "{{title}} 열기",

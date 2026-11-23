@@ -11363,8 +11363,6 @@
       "doneTitle": "Fertig",
       "pages_one": "{{count}} Seite im Wiki",
       "pages_other": "{{count}} Seiten im Wiki",
-      "agentsRead_one": "{{names}} kann sie jetzt lesen. Neue Seiten sind mit „neu“ markiert.",
-      "agentsRead_other": "{{names}} können sie jetzt lesen. Neue Seiten sind mit „neu“ markiert.",
       "newMarked": "Neue Seiten sind mit „neu“ markiert.",
       "uploaded_one": "{{count}} Anhang ist im Drive.",
       "uploaded_other": "{{count}} Anhänge sind im Drive.",
