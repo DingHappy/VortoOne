@@ -18,7 +18,7 @@ export const keys = {
   webPushKey: ["push", "web-key"] as const,
   models: ["models"] as const,
   invitation: (token: string) => ["invitation", token] as const,
-  invitationState: (token: string) => ["invitation", token, "state"] as const,
+  invitationState: (token: string, viewerId: string | null) => ["invitation-state", token, viewerId] as const,
   org: (orgId: string) => ["org", orgId] as const,
   members: (orgId: string) => ["org", orgId, "members"] as const,
   /** The workspace's roles (ADR 0085). */
