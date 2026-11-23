@@ -421,25 +421,48 @@ export function CloseMissionDialog({
   const wikiId = useId();
   const agent = dir.agentById.get(mission.agentId)?.name ?? "";
   const hasBranch = Boolean(mission.branch);
+  const draft = mission.canCancelDraft === true;
+  const submittedOutcome = draft ? "canceled" : outcome;
+  const saveToWiki = !draft && wiki;
   const submit = () =>
     close.mutate(
       {
         missionId: mission.id,
-        outcome,
-        saveToWiki: wiki,
-        ...(outcome === "canceled" && hasBranch ? { deleteBranch: branch === "delete" } : {}),
+        outcome: submittedOutcome,
+        saveToWiki,
+        ...(!draft && outcome === "canceled" && hasBranch ? { deleteBranch: branch === "delete" } : {}),
       },
       {
         onSuccess: () => {
           onOpenChange(false);
           toast.show(
-            wiki
-              ? t(`missions.close.toastWiki.${outcome}`, { name: agent, title: mission.title })
-              : t(`missions.close.toast.${outcome}`),
+            draft
+              ? t("missions.close.draftCanceled")
+              : saveToWiki
+                ? t(`missions.close.toastWiki.${outcome}`, { name: agent, title: mission.title })
+                : t(`missions.close.toast.${outcome}`),
           );
         },
         onError: (error) => toast.show(errorText(t, error), "error"),
       },
+    );
+  if (draft)
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        width={520}
+        title={t("missions.close.cancelDraft")}
+        description={t("missions.close.draftText")}
+        closeLabel={t("common.close")}
+      >
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>{t("common.back")}</Button>
+          <Button variant="primary" loading={close.isPending} onClick={submit}>
+            {t("missions.close.cancelDraft")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     );
   return (
     <Dialog

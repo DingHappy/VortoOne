@@ -21,15 +21,33 @@ class DraftConflict(ValueError):
     """The thread already has a draft with different content."""
 
 
+class DraftClosed(ValueError):
+    """A repeated request does not match the recorded draft closure."""
+
+
 class AgentUnavailable(ValueError):
     """The selected staff member is no longer available for a new draft."""
 
 
-def _has_drafts(conn):
+def _has_table(conn, name):
     # Older homes can open their existing history read-only before its first migration.
     return conn is not None and conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mission_drafts'"
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,),
     ).fetchone() is not None
+
+
+def _draft_rows(conn):
+    # Keep the original draft check constraint and record cancelation separately.
+    if _has_table(conn, "mission_draft_closures"):
+        return (
+            "WITH drafts AS (SELECT draft.*, root.channel AS channel_id, closure.closed_at, closure.note,"
+            " CASE WHEN closure.mission_id IS NULL THEN draft.status ELSE 'canceled' END AS current_status"
+            + _ROWS + " LEFT JOIN mission_draft_closures AS closure ON closure.mission_id = draft.id) "
+        )
+    return (
+        "WITH drafts AS (SELECT draft.*, root.channel AS channel_id, NULL AS closed_at, NULL AS note,"
+        " draft.status AS current_status" + _ROWS + ") "
+    )
 
 
 class MissionDrafts:
@@ -48,11 +66,11 @@ class MissionDrafts:
         return True
 
     def _load(self, conn, identifier, *, by_thread=False):
-        if not _has_drafts(conn):
+        if not _has_table(conn, "mission_drafts"):
             return None
-        key = "draft.thread_id" if by_thread else "draft.id"
+        key = "thread_id" if by_thread else "id"
         return conn.execute(
-            "SELECT draft.*, root.channel AS channel_id" + _ROWS + f" WHERE {key} = ?", (identifier,)
+            _draft_rows(conn) + f"SELECT * FROM drafts WHERE {key} = ?", (identifier,)
         ).fetchone()
 
     def create(self, actor, thread_id, staff_id, title, goal):
@@ -97,13 +115,35 @@ class MissionDrafts:
                 )
                 return dict(self._load(conn, draft_id))
 
+    def _get_visible(self, conn, state, actor, identifier, *, by_thread=False):
+        draft = self._load(conn, identifier, by_thread=by_thread)
+        if draft is None or not self._can_read(state, actor, draft["channel_id"]):
+            raise Missing("没有这个任务草案")
+        return draft
+
     def get(self, actor, identifier, *, by_thread=False):
         self._owner(actor)
         with self.channels.registry._locked_state() as state, self.channels.history.database() as conn:
-            draft = self._load(conn, identifier, by_thread=by_thread)
-            if draft is None or not self._can_read(state, actor, draft["channel_id"]):
-                raise Missing("没有这个任务草案")
-            return dict(draft)
+            return dict(self._get_visible(conn, state, actor, identifier, by_thread=by_thread))
+
+    def cancel(self, actor, identifier, note):
+        """Cancel a draft once while the source access remains stable."""
+        self._owner(actor)
+        history = self.channels.history
+        with self.channels.registry._locked_state() as state:
+            with history.database() as conn:
+                draft = self._get_visible(conn, state, actor, identifier)
+                if draft["closed_at"] is not None:
+                    if draft["note"] != note:
+                        raise DraftClosed("这个任务草案已取消")
+                    return dict(draft)
+            with history.database(write=True) as conn:
+                closed_at = _stamp(datetime.now(timezone.utc))
+                conn.execute(
+                    "INSERT INTO mission_draft_closures (mission_id, closed_at, note) VALUES (?, ?, ?)",
+                    (identifier, closed_at, note),
+                )
+                return dict(self._load(conn, identifier))
 
     def assigned_model(self, actor, identifier):
         """Read only the model from the staff revision recorded by the draft."""
@@ -123,31 +163,38 @@ class MissionDrafts:
                 raise AgentUnavailable("草案绑定的专员模型配置无效")
             return model
 
-    def listing(self, actor, *, channel_id=None, staff_id=None, query="", limit=50, include_drafts=True):
+    def listing(self, actor, *, channel_id=None, staff_id=None, query="", limit=50, status="open"):
         self._owner(actor)
+        counts = {"active": 0, "waitingYou": 0, "closed": 0}
         with self.channels.registry._locked_state() as state, self.channels.history.database() as conn:
-            if not _has_drafts(conn):
-                return [], 0
+            if not _has_table(conn, "mission_drafts"):
+                return [], counts
             allowed = {channel_id for channel_id in state["channels"] if self._can_read(state, actor, channel_id)}
             conn.create_function("mission_channel_readable", 1, lambda key: key in allowed)
-            filters = ["mission_channel_readable(root.channel)"]
+            filters = ["mission_channel_readable(channel_id)"]
             arguments = []
             if channel_id is not None:
-                filters.append("root.channel = ?")
+                filters.append("channel_id = ?")
                 arguments.append(channel_id)
             if staff_id is not None:
-                filters.append("draft.staff_id = ?")
+                filters.append("staff_id = ?")
                 arguments.append(staff_id)
             if query:
                 conn.create_function("mission_casefold", 1, str.casefold)
-                filters.append("(instr(mission_casefold(draft.title), ?) OR instr(mission_casefold(draft.goal), ?))")
+                filters.append("(instr(mission_casefold(title), ?) OR instr(mission_casefold(goal), ?))")
                 arguments.extend([query.casefold()] * 2)
-            matching = _ROWS + " WHERE " + " AND ".join(filters)
-            count = conn.execute("SELECT count(*)" + matching, arguments).fetchone()[0]
-            if not include_drafts:
-                return [], count
+            projection = _draft_rows(conn)
+            matching = " FROM drafts WHERE " + " AND ".join(filters)
+            by_status = dict(conn.execute(
+                projection + "SELECT current_status, count(*)" + matching + " GROUP BY current_status", arguments,
+            ))
+            counts["active"] = by_status.get("proposed", 0)
+            counts["closed"] = by_status.get("canceled", 0)
+            target = {"open": "proposed", "closed": "canceled"}.get(status, status)
+            if target not in ("proposed", "canceled"):
+                return [], counts
             rows = conn.execute(
-                "SELECT draft.*, root.channel AS channel_id" + matching
-                + " ORDER BY draft.created DESC, draft.id DESC LIMIT ?", [*arguments, limit]
+                projection + "SELECT *" + matching
+                + " AND current_status = ? ORDER BY created DESC, id DESC LIMIT ?", [*arguments, target, limit]
             )
-            return [dict(row) for row in rows], count
+            return [dict(row) for row in rows], counts

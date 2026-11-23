@@ -55,6 +55,7 @@ def test_owner_creates_and_reads_real_draft_without_dispatch_or_channel_post(hom
         "测试草案", "核对测试\n结果", "owner", "proposed")
     assert draft["commandApproval"] == "always" and draft["executor"] == "agent" and draft["machine"] is None
     assert not (draft["canAct"] or draft["canManage"] or draft["resumeTasks"] or draft["runningTasks"])
+    assert draft["canCancelDraft"] is True
     assert draft["plan"] == {"version": 0, "done": 0, "total": 0, "doing": 0, "waiting": 0, "items": []}
     assert draft["startedAt"] is None and draft["closedAt"] is None
     route = f"{base}/missions/{draft['id']}"
@@ -243,6 +244,106 @@ def test_draft_filters_count_visible_matches_before_status_and_limit(home):
     assert owner.get(hidden_route).status_code == 404
     assert owner.post(archived + "/join").status_code == 204
     assert owner.get(hidden_route).json() == hidden
+
+
+def test_cancel_migrates_old_draft_without_taking_down_original_thread(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "draft-cancel")
+    thread_id, _ = _thread(owner, channel)
+    mission = _draft(home, thread_id, title="旧草案")
+    newer_thread, _ = _thread(owner, channel)
+    proposed = _draft(home, newer_thread, title="新草案")
+    route = f"{base}/missions/{mission['id']}"
+    messages = owner.get(channel + "/messages", params={"threadId": thread_id}).json()
+    monkeypatch.setattr(home["service"], "assign", lambda *args, **kwargs: pytest.fail("取消草案不派活"))
+
+    history = state_dir(home["root"]) / "members/channel-messages.sqlite3"
+    with closing(sqlite3.connect(history)) as conn, conn:
+        conn.execute("DROP TABLE mission_draft_closures")
+    assert owner.get(route).json() == mission
+    assert owner.get(base + "/missions", params={"status": "closed"}).json() == {
+        "missions": [], "counts": {"active": 2, "waitingYou": 0, "closed": 0}}
+    with closing(sqlite3.connect(history)) as conn:
+        assert conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'mission_draft_closures'").fetchone() is None
+
+    response = owner.post(route + "/close", json={"outcome": "canceled", "saveToWiki": False, "note": "  暂停这个想法  "})
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    canceled = response.json()
+    assert canceled == {**mission, "status": "canceled", "canCancelDraft": False,
+                        "closedAt": canceled["closedAt"], "closeReason": "暂停这个想法"}
+    assert canceled["closedAt"] >= mission["createdAt"]
+    assert owner.get(route).json() == canceled
+    assert owner.get(f"{base}/threads/{thread_id}/mission").json() == canceled
+    assert owner.get(f"{base}/threads/{thread_id}").json()["state"] == "open"
+    assert owner.get(channel + "/messages", params={"threadId": thread_id}).json() == messages
+    assert owner.get(route + "/files").json() == {"files": [], "editedOnMachine": []}
+    assert owner.get(f"{base}/threads/{thread_id}/tasks").json() == {"tasks": []}
+    assert not home["pool"].jobs and TaskLedger(home["root"]).list() == []
+    assert _draft(home, thread_id, title="旧草案") == canceled
+
+    for status, rows in (
+        ("open", [proposed]), ("closed", [canceled]), ("proposed", [proposed]), ("canceled", [canceled]),
+        ("done", []), ("active", []), ("waiting_you", []),
+    ):
+        assert owner.get(base + "/missions", params={"status": status, "limit": 1}).json() == {
+            "missions": rows, "counts": {"active": 1, "waitingYou": 0, "closed": 1}}
+    assert owner.get(base + "/missions", params={"q": "旧草案", "status": "open"}).json() == {
+        "missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 1}}
+    again = owner.post(route + "/close", json={"outcome": "canceled", "note": "暂停这个想法"})
+    assert again.status_code == 200 and again.json() == canceled
+    different = owner.post(route + "/close", json={"outcome": "canceled"})
+    assert different.status_code == 409 and different.json()["error"]["code"] == "mission.closed"
+
+
+def test_draft_close_respects_owner_source_access_and_rejects_unsupported_options(home):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "draft-cancel-access")
+    thread_id, _ = _thread(owner, channel)
+    draft = _draft(home, thread_id)
+    route = f"{base}/missions/{draft['id']}/close"
+    body = {"outcome": "canceled"}
+    browser = TestClient(home["app"], headers=ORIGIN)
+    assert browser.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    member = _join(home)
+    assert member.post(channel + "/join").status_code == 204
+    assert member.post(route, json=body).status_code == 403
+    assert TestClient(home["app"]).post(route, json=body).status_code == 401
+    assert browser.post(route, json=body, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    for options in ({"outcome": "done"}, {"saveToWiki": True}, {"deleteBranch": True}):
+        response = owner.post(route, json=body | options)
+        assert response.status_code == 409 and response.json()["error"]["code"] == "mission.unsupported"
+    for options in ({"outcome": "stop"}, {"saveToWiki": "false"}, {"note": "x" * 2001}, {"userId": member.member_id}):
+        assert owner.post(route, json=body | options).status_code == 422
+    assert owner.get(route.removesuffix("/close")).json() == draft
+    assert owner.post(f"{base}/missions/unknown/close", json=body).status_code == 404
+    assert owner.post(channel + "/leave").status_code == 204
+    assert owner.post(route, json=body).status_code == 404
+    assert owner.post(channel + "/join").status_code == 204
+    assert owner.post(f"{base}/threads/{thread_id}/archive", json={}).status_code == 200
+    assert browser.post(route, json=body).json()["status"] == "canceled"
+    assert owner.delete(channel).status_code == 204
+    assert owner.post(route, json=body).status_code == 404
+    assert owner.get(base + "/missions", params={"status": "closed"}).json() == {
+        "missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}}
+
+
+def test_concurrent_draft_cancellation_records_only_one_result(home):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "draft-cancel-race")
+    thread_id, _ = _thread(owner, channel)
+    draft = _draft(home, thread_id)
+    route = f"{base}/missions/{draft['id']}/close"
+
+    def submit(note):
+        client = TestClient(home["app"], headers={"Authorization": f"Bearer {TOKEN}"})
+        return client.post(route, json={"outcome": "canceled", "note": note})
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        replies = list(pool.map(submit, ["第一种", "第二种"] * 2))
+    assert sorted(reply.status_code for reply in replies) == [200, 200, 409, 409]
+    saved = owner.get(route.removesuffix("/close")).json()
+    assert all(reply.json() == saved for reply in replies if reply.status_code == 200)
+    assert all(reply.json()["error"]["code"] == "mission.closed" for reply in replies if reply.status_code == 409)
 
 
 def test_bad_bodies_and_stale_staff_cannot_create_new_drafts(home):

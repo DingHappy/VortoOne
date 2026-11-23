@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS mission_drafts (
     revision INTEGER NOT NULL CHECK(revision > 0),
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS mission_draft_closures (
+    mission_id TEXT PRIMARY KEY NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    closed_at TEXT NOT NULL,
+    note TEXT
+);
 """
 
 REACTION_MAX_LENGTH = 32
