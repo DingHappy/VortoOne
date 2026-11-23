@@ -4616,6 +4616,26 @@ async def delete_routine(org_id: str, routine_id: str):
     return result if isinstance(result, JSONResponse) else Response(status_code=204)
 
 
+class _StopRoutine(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post(_ORG + "/routines/{routine_id}/stop")
+async def stop_routine(org_id: str, routine_id: str, body: _StopRoutine, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "停止例行执行需要已认证的所有者")
+    try:
+        if not app_staff.stop_routine(root, routine_id):
+            return _error(409, "routine.not_running", "这条例行工作没有正在执行的任务")
+        row = await asyncio.to_thread(_routine_row, root, routine_id)
+        return row if row is not None else _error(404, "not_found", "没有这条例行工作")
+    except LookupError:
+        return _error(404, "not_found", "没有这条例行工作")
+    except (ValueError, OSError) as error:
+        return _error(409, "conflict", str(error))
+
+
 def _routine_takeover(root: str, routine_id: str, request: Request, approval: Optional[str]):
     from src.gateway.main_conversation import main_chat_key
     from src.workflow.staff.owner_confirmation import owner_route
