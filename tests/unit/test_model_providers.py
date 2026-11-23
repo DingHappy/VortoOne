@@ -175,7 +175,7 @@ def test_ambiguous_or_nonloopback_endpoint_never_accepts_keyless(base, monkeypat
     assert not default_chat_ready()
 
 
-def test_keyless_provider_uses_local_transport_without_redirects(monkeypatch):
+async def test_keyless_provider_uses_local_transport_without_redirects(monkeypatch):
     from src.llm.client import LLMClient
     from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, default_chat_ready
     monkeypatch.delenv("OPENAI_API_KEY")
@@ -185,12 +185,16 @@ def test_keyless_provider_uses_local_transport_without_redirects(monkeypatch):
     assert default_chat_ready()
     client = LLMClient()
     assert client.config.api_key == LOCAL_MODEL_PLACEHOLDER
-    assert client._keyless_redirect("follow_redirects") == {"follow_redirects": False}
+    sdk = await client._get_client()
+    async with sdk:
+        assert sdk._client.trust_env is False
+        assert sdk._client.follow_redirects is False
+    assert client._aio_redirect_options() == {"allow_redirects": False}
     monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Api-Key:synthetic")
     assert not default_chat_ready()
 
 
-def test_keyed_local_provider_keeps_its_existing_transport(monkeypatch):
+async def test_keyed_local_provider_keeps_its_existing_transport(monkeypatch):
     from src.llm.client import LLMClient
     from src.llm.providers import default_chat_ready, direct_keyless_endpoint, local_model_endpoint
     base = "https://localhost/%76%31"
@@ -200,4 +204,8 @@ def test_keyed_local_provider_keeps_its_existing_transport(monkeypatch):
     assert local_model_endpoint(base)
     client = LLMClient()
     assert client.config.api_key == RELAY_KEY
-    assert client._keyless_redirect("follow_redirects") == {}
+    sdk = await client._get_client()
+    async with sdk:
+        assert sdk._client.trust_env is False
+        assert sdk._client.follow_redirects is True
+    assert client._aio_redirect_options() == {}
