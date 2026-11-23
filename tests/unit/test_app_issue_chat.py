@@ -6,8 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from src.web.app_issue_chat import IssueChat
 from src.workflow.members.channel_history import ChannelHistory
-from src.workflow.members.registry import MemberRegistry
+from src.workflow.members.registry import Damaged, MemberRegistry
 from tests.unit.test_app_board import _drop_from_everyone, _new
 from tests.unit.test_member_agents import ORIGIN, OWNER_P, TOKEN, _join, home  # noqa: F401 - pytest fixture
 from tests.unit.test_team_channels import _create
@@ -148,6 +149,8 @@ def test_task_conversation_does_not_grant_new_channel_or_board_permissions(home)
     frontend_cross_origin = TestClient(home["app"], headers={"Origin": "https://elsewhere.example"})
     assert frontend_cross_origin.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
     start = f"{base}/issues/{issue['id']}/conversation"
+    assert owner.post(start, json={"threadId": "ignored", "empty": False}).status_code == 422
+    assert owner.get(f"{base}/issues/by-number/{issue['number']}").json()["conversation"] is None
     assert frontend_cross_origin.post(start).status_code == 403
     _drop_from_everyone(home, "edit_wiki")
     assert member.post(start).status_code == 403
@@ -166,6 +169,10 @@ def test_task_conversation_does_not_grant_new_channel_or_board_permissions(home)
                  {"body": "跨会话引用", "threadId": ref["rootId"], "replyTo": existing_post["id"]}):
         assert owner.post(messages, json=body).status_code == 404
     assert owner.post(messages, json={"body": "附件", "threadId": ref["rootId"], "media": {"kind": "gif"}}).status_code == 422
+    body = {"body": "附件", "threadId": ref["rootId"]}
+    for extra in ({"attachments": ["artifact-id"]}, {"steer": "now"}, {"openThread": True}):
+        assert owner.post(messages, json={**body, **extra}).status_code == 422
+    assert owner.post(messages, json={**body, "unknown": False}).status_code == 400
     assert owner.post(channel + "/join").status_code == 404
     assert owner.get(channel + "/permissions").status_code == 404
     assert owner.post(channel + "/members", json={"agentId": home["agent"]["id"]}).status_code == 404
@@ -193,3 +200,42 @@ def test_removed_member_loses_the_existing_task_socket(home):
             socket.receive_json()
         assert disconnected.value.code == 1008
     assert member.get(_message_path(base, ref), params={"threadId": ref["rootId"]}).status_code == 401
+
+
+def test_successful_board_writes_survive_optional_chat_summary_failure(home, monkeypatch, caplog):
+    owner, base = home["owner"], home["base"]
+    owner_id = owner.get("/api/app/me").json()["user"]["id"]
+    issue = _new(owner, base, criteria=["需复核"],
+                 audience={"mode": "people", "userIds": [owner_id]})
+    ref = _open(owner, base, issue)
+    _post(owner, base, ref, "已有任务消息")
+    card = f"{base}/issues/{issue['id']}"
+    detail = f"{base}/issues/by-number/{issue['number']}"
+    criterion = f"{card}/criteria/{issue['criteria'][0]['id']}"
+
+    def damaged(*args):
+        raise Damaged("synthetic summary failure")
+
+    with monkeypatch.context() as failed_projection:
+        failed_projection.setattr(IssueChat, "cards", damaged)
+        moved = owner.patch(card, json={"columnId": "col-in_progress"})
+        shared = owner.post(card + "/share")
+        checked = owner.put(criterion, json={"done": True})
+        for response in (moved, shared, checked):
+            assert response.status_code == 200
+            assert "conversation" not in response.json()
+            assert response.headers["cache-control"] == "no-store"
+        assert moved.json()["columnId"] == "col-in_progress"
+        assert shared.json()["audience"]["mode"] == "everyone"
+        assert checked.json()["criteria"][0]["done"]
+        for route in (detail, f"{base}/issues"):
+            denied = owner.get(route)
+            assert denied.status_code == 409
+            assert denied.json()["error"]["code"] == "unavailable"
+
+    assert caplog.messages.count("看板已更新，本次响应省略任务对话摘要") == 3
+    saved = owner.get(detail).json()
+    assert saved["columnId"] == "col-in_progress"
+    assert saved["audience"]["mode"] == "everyone"
+    assert saved["criteria"][0]["done"]
+    assert saved["conversation"]["count"] == 1

@@ -4,10 +4,11 @@ from __future__ import annotations
 import re
 import sqlite3
 from contextlib import contextmanager
+from json import JSONDecodeError
 
 from src.agents.principal import MEMBER, Principal
 from src.web import app_board, app_views
-from src.workflow.board.store import Board, NotFound
+from src.workflow.board.store import Board, BoardError, NotFound
 from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
 from src.workflow.members.thread_reads import ThreadReader
@@ -95,7 +96,7 @@ class IssueChat:
                         conn, ((ref["channelId"], ref["rootId"]) for ref in refs.values()))
                 return {key: {**ref, **summaries[ref["rootId"]]} for key, ref in refs.items()
                         if ref["rootId"] in summaries}
-        except sqlite3.Error as error:
+        except (BoardError, JSONDecodeError, sqlite3.Error) as error:
             raise Damaged("读写任务对话失败") from error
 
     def thread(self, actor, thread_id):

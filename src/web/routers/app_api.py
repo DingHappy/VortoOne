@@ -1888,7 +1888,10 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
         return _error(413, "message_too_long", "消息太长")
     client_id = (body.clientId or "")[:120] or None
     if task_channel:
-        if wanted_media or any(value for value in extra.values()):
+        if set(extra) - {"attachments", "steer"}:
+            return _error(400, "invalid", "任务消息包含不认识的字段")
+        if (wanted_media is not None or extra.get("attachments") not in (None, [])
+                or extra.get("steer") is not None or body.openThread):
             return _error(422, "message.media_off", "任务对话目前支持文字和同一话题的引用")
         return await _issue_chat_call(request, org_id, lambda chat, actor: chat.post(
             actor, channel_id, text, client_id=client_id, thread_id=body.threadId, reply_to=body.replyTo))
@@ -3715,7 +3718,15 @@ async def _board(org_id: str, request: Request, action, *, edit: bool = False, d
         if card:
             # Card details may carry task conversation summaries. Apply the same owner proof as chat.
             if not who.is_owner or app_staff.owner_proof(request):
-                result = await asyncio.to_thread(_issue_card, root, who, result)
+                try:
+                    result = await asyncio.to_thread(_issue_card, root, who, result)
+                except (Damaged, OSError):
+                    if not edit:
+                        raise
+                    # The board mutation has already completed. Retrying it cannot repair a failed summary read.
+                    logging.getLogger(__name__).warning("看板已更新，本次响应省略任务对话摘要")
+                    result.pop("conversation", None)
+                    return JSONResponse(result, headers={"Cache-Control": "no-store"})
                 if result["conversation"] is not None:
                     return JSONResponse(result, headers={"Cache-Control": "no-store"})
         return result
@@ -3794,8 +3805,13 @@ async def comment_issue(org_id: str, issue_id: str, body: Dict[str, Any], reques
     return await _board(org_id, request, lambda root, who: app_board.comment(root, who, issue_id, body), edit=True)
 
 
+class _OpenIssueConversation(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
 @router.post(_ORG + "/issues/{issue_id}/conversation")
-async def open_issue_conversation(org_id: str, issue_id: str, request: Request):
+async def open_issue_conversation(org_id: str, issue_id: str, request: Request,
+                                  body: _OpenIssueConversation | None = None):
     return await _issue_chat_call(request, org_id, lambda chat, actor: chat.open(actor, issue_id))
 
 
