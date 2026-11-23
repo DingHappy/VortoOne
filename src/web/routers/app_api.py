@@ -3465,6 +3465,14 @@ class _NewMissionDraft(BaseModel):
     commandApproval: str | None = Field(None, max_length=32)
 
 
+class _CloseMissionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    outcome: Literal["done", "canceled"]
+    saveToWiki: bool = False
+    note: str | None = Field(None, max_length=2000)
+    deleteBranch: bool = False
+
+
 def _mission_progress():
     return {"done": 0, "total": 0, "doing": 0, "waiting": 0}
 
@@ -3475,7 +3483,7 @@ def _mission_view(drafts, row):
         "id": row["id"], "threadId": row["thread_id"], "channelId": row["channel_id"],
         "agentId": views.member_agent_id(channels.registry.root, row["staff_id"]),
         "ownerId": channels.history.person_id(row["owner"]),
-        "title": row["title"], "goal": row["goal"], "status": row["status"],
+        "title": row["title"], "goal": row["goal"], "status": row["current_status"],
         "executor": "agent", "findings": [], "openQuestion": None,
         "repoDir": "", "resumeTasks": False, "commandApproval": "always",
         "plan": {"version": 0, **_mission_progress(), "items": []},
@@ -3483,12 +3491,13 @@ def _mission_view(drafts, row):
                     "joinRequests": 0, "commands": 0, "deliveries": 0},
         "joinRequested": False, "runningTasks": 0, "machine": None, "needsComputer": False,
         "role": "owner", "canAct": False, "canManage": False, "createdAt": row["created"],
-        "startedAt": None, "pausedAt": None, "closedAt": None, "closeReason": None, "wikiPageId": None,
+        "startedAt": None, "pausedAt": None, "closedAt": row["closed_at"], "closeReason": row["note"],
+        "wikiPageId": None,
     }
 
 
 async def _mission_request(org_id, request, action, *, status=200):
-    from src.workflow.members.mission_drafts import AgentUnavailable, DraftConflict, MissionDrafts
+    from src.workflow.members.mission_drafts import AgentUnavailable, DraftClosed, DraftConflict, MissionDrafts
     from src.workflow.members.registry import Damaged, Missing, Refused
 
     root = _root(org_id)
@@ -3503,6 +3512,8 @@ async def _mission_request(org_id, request, action, *, status=200):
         return _error(403, "forbidden", "没有访问任务草案的权限")
     except DraftConflict as error:
         return _error(409, "mission.thread_in_use", str(error))
+    except DraftClosed as error:
+        return _error(409, "mission.closed", str(error))
     except AgentUnavailable as error:
         return _error(409, "mission.agent_unavailable", str(error))
     except ThreadArchived as error:
@@ -3526,10 +3537,9 @@ async def list_mission_drafts(
 
     def read(drafts, actor):
         staff_id = None if agentId is None else _staff_of(drafts.channels.registry.root, agentId) or ""
-        rows, count = drafts.listing(actor, channel_id=channelId, staff_id=staff_id, query=q.strip(), limit=limit,
-                                     include_drafts=status in ("open", "proposed"))
-        return {"missions": [_mission_view(drafts, row) for row in rows],
-                "counts": {"active": count, "waitingYou": 0, "closed": 0}}
+        rows, counts = drafts.listing(actor, channel_id=channelId, staff_id=staff_id, query=q.strip(), limit=limit,
+                                      status=status)
+        return {"missions": [_mission_view(drafts, row) for row in rows], "counts": counts}
 
     return await _mission_request(org_id, request, read)
 
@@ -3563,6 +3573,17 @@ async def create_mission_draft(org_id: str, body: _NewMissionDraft, request: Req
 async def get_mission_draft(org_id: str, mission_id: str, request: Request):
     return await _mission_request(org_id, request, lambda drafts, actor:
                                   _mission_view(drafts, drafts.get(actor, mission_id)))
+
+
+@router.post(_ORG + "/missions/{mission_id}/close")
+async def close_mission_draft(org_id: str, mission_id: str, body: _CloseMissionDraft, request: Request):
+    def close(drafts, actor):
+        if body.outcome != "canceled" or body.saveToWiki or body.deleteBranch:
+            return _error(409, "mission.unsupported", "草案只能取消，且不生成 Wiki 总结或删除分支")
+        note = (body.note or "").strip() or None
+        return _mission_view(drafts, drafts.cancel(actor, mission_id, note))
+
+    return await _mission_request(org_id, request, close)
 
 
 @router.get(_ORG + "/threads/{thread_id}/mission")

@@ -77,9 +77,9 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
 | ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
 | ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |
-| ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型；专员版本变化后拒绝。模型配置只读，不探测或启动执行。 |
+| ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型。专员或岗位的登记版本变化、岗位停用时返回 409。只读，不探测模型或启动执行。 |
 | ☐ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` |  |
-| ☐ | POST | `ORG/missions/{x}/close` | `missions.close` |  |
+| ☐ | POST | `ORG/missions/{x}/close` | `missions.close` | 后端已接所有者取消尚未执行的草案的请求，保留原话题、消息和关闭时间。标为完成、生成 Wiki 总结或删除分支返回 409；当前 Desktop 尚无草案取消入口。 |
 | ☐ | PUT | `ORG/missions/{x}/command-approval` | `missions.setCommandApproval` |  |
 | ☐ | DELETE | `ORG/missions/{x}/command-rules/{x}` | `missions.removeCommandRule` |  |
 | ☐ | GET | `ORG/missions/{x}/commands` | `missions.commands` |  |
