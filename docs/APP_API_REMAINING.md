@@ -602,7 +602,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/github-app` | `githubApp.info` |  |
+| ☐ | GET | `ORG/github-app` | `githubApp.info` | Settings 已能显示 App 未配置。仅已认证所有者看到服务器设置状态。安装绑定和可用状态仍待接，见 [接入草案](DESKTOP_GITHUB_APP.md)。 |
 | ☐ | POST | `ORG/github-app/complete` | `githubApp.complete` |  |
 | ☐ | POST | `ORG/github-app/install` | `githubApp.install` |  |
 | ☐ | DELETE | `ORG/github-app/installations/{x}` | `githubApp.remove` |  |
@@ -772,8 +772,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/github/access` | `githubApp.access` |  |
-| ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` |  |
+| ☐ | GET | `ORG/github/access` | `githubApp.access` | 等待工作区绑定的 GitHub 用户授权和组织访问结果。 |
+| ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` | 等待向该工作区验证的 GitHub 用户授权或 App 安装所授予的仓库清单。 |
 
 ### org/memories（2 个，要做 1）
 

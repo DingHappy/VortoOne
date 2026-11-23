@@ -3868,6 +3868,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/github-app",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/invitations/all",
     "methods": [
       "GET"

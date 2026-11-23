@@ -2796,6 +2796,21 @@ async def connector_oauth_start(org_id: str, connector: str, request: Request):
     return await _connector_unsupported(request, org_id)
 
 
+@router.get(_ORG + "/github-app")
+async def github_app_info(org_id: str, request: Request):
+    """Report the unsupported installation state so Desktop can show its off status."""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "读取服务器的 GitHub App 状态需要已认证的所有者")
+    setup = ({"source": None, "slug": None, "htmlUrl": None, "state": "off", "canCreate": False}
+             if who.is_owner else None)
+    return JSONResponse({"installable": False, "installations": [], "setup": setup, "ownerCreates": False},
+                        headers={"Cache-Control": "no-store"})
+
+
 # ── 个人 Vault：无原值读取，不参与 Agent 工具或共享 ────────────────────────────
 
 _VAULT = _ORG + "/vault"
