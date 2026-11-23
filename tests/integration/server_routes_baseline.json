@@ -2148,6 +2148,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/channels/{channel_id}/reads",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/mute",
     "methods": [
       "PUT"
@@ -3977,6 +3983,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/issues/{issue_id}/comments",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/issues/{issue_id}/conversation",
     "methods": [
       "POST"
     ]

@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 352 个，剩 **279** 个：
-- **要做：208**（其中 27 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 354 个，剩 **277** 个：
+- **要做：206**（其中 27 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -316,7 +316,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 
-### org/channels（10 个，要做 5）
+### org/channels（10 个，要做 4）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -329,7 +329,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | DELETE | `ORG/channels/{x}/mute` | `reads.mute` | 解除自己已加入的团队频道静音，保留未读进度。私聊和其他非团队频道不支持。 |
 | ☑ | PUT | `ORG/channels/{x}/mute` | `reads.mute` | 静音自己已加入的团队频道，频道列表隐藏普通未读提示。私聊和其他非团队频道不支持。 |
 | ☑ | PUT | `ORG/channels/{x}/place` | `chat.place` |  |
-| ☐ | GET | `ORG/channels/{x}/reads` | `dms.reads` |  |
+| ☑ | GET | `ORG/channels/{x}/reads` | `dms.reads` | 仅两名当前在册参与人可读，返回对方已确认的持久游标，并向其私聊订阅推送 `channel.read`。 |
 
 ### org/usage（10 个，要做 10）
 
@@ -980,8 +980,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | GET | `ORG` | `orgs.get` | 返回调用者在当前空间的摘要、权限及个人显示设置。空间背景仅在已认证的所有者响应中返回。客户端有 `useOrganization` 查询，目前没有页面调用。 |
 
-### org/issues（1 个，要做 1）
+### org/issues（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/issues/{x}/conversation` | `issues.conversation` | 读已接、写没接 |
+| ☑ | POST | `ORG/issues/{x}/conversation` | `issues.conversation` | 当前可见范围内的人可打开实际任务对话，首次创建和回复沿用评论权限。支持文字和同一话题的引用，不派活，不进入普通频道列表或搜索。 |

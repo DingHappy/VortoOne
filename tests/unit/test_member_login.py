@@ -369,8 +369,11 @@ def test_a_member_session_reaches_nothing_outside_the_allow_list(home):
 def test_every_allow_listed_route_exists(home):
     from src.web import member_auth
     from tests.integration.test_server_smoke import _live_routes
+    routes = _live_routes()
     live = {(method, _fill(path, team_channel=team_channel))
-            for path, methods in _live_routes() for method in methods for team_channel in (False, True)}
+            for path, methods in routes for method in methods for team_channel in (False, True)}
+    live.update((method, _fill(path.replace("{channel_id}", "pd_" + "0" * 32)))
+                for path, methods in routes for method in methods if "{channel_id}" in path)
     for method, pattern in member_auth.MEMBER_ROUTES:
         assert any(method == m and pattern.match(path) for m, path in live), pattern.pattern
 
