@@ -1363,12 +1363,12 @@ def _structured_artifact(shown: dict, content: dict, version: int) -> dict:
 
 
 def append_structured_artifact(root: str, artifact_id: str, base_version: int, content: dict,
-                               note: str | None) -> dict:
+                               note: str | None, title: str | None) -> dict:
     from src.agents.tools.artifacts import ArtifactStore
     from src.utils.home_maintenance import home_maintenance
 
     with home_maintenance(root):
-        meta = ArtifactStore(root, desktop_uploads=True).append_structured(artifact_id, base_version, content, note)
+        meta = ArtifactStore(root, desktop_uploads=True).append_structured(artifact_id, base_version, content, note, title)
     return _structured_artifact(_artifact(root, meta, desktop_upload=True), content, meta["version"])
 
 

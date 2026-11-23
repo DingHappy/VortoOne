@@ -35,11 +35,13 @@ def test_document_and_table_show_original_and_new_versions(home, source, edited,
         source["kind"]: 1,
     }
 
-    response = owner.post(path + "/versions", json={"content": edited, "baseVersion": 1, "note": "  Review changes  "})
+    response = owner.post(path + "/versions", json={
+        "content": edited, "baseVersion": 1, "note": "  Review changes  ", "title": "  Revised title  ",
+    })
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "no-store"
     latest = response.json()
-    assert latest["content"] == edited
+    assert latest["content"] == edited and latest["title"] == "Revised title"
     assert latest["id"] == original["id"]
     assert latest["version"] == latest["shownVersion"] == 2
     assert owner.get(path).json() == latest
@@ -115,3 +117,14 @@ def test_failed_manifest_commit_does_not_advance_version_and_can_be_retried(home
     assert not (metadata.parent / "v2.json").exists()
     retry = owner.post(path + "/versions", json=payload)
     assert retry.status_code == 200 and retry.json()["version"] == 2
+
+
+
+@pytest.mark.parametrize("corrupt", ['{"kind":"document"}', r'{"kind":"document","markdown":"\ud800"}'])
+def test_damaged_version_never_returns_an_invalid_document_or_unhandled_download(home, corrupt):
+    owner = home["owner"]
+    path, original = _create(home, {"kind": "document", "markdown": "First"})
+    store = ArtifactStore(home["root"], desktop_uploads=True)
+    (store.root / original["id"] / "v1.json").write_text(corrupt, encoding="utf-8")
+    assert owner.get(path).status_code == 503
+    assert owner.get(path + "/file").status_code == 409

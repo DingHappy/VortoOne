@@ -5268,9 +5268,9 @@ async def append_artifact_version(org_id: str, artifact_id: str, request: Reques
     if not _may_access_desktop_uploads(request, root):
         return _error(403, "owner_proof_required", "编辑制品需要已认证的所有者")
     try:
-        base_version, content, note = await app_artifact_upload.read_version(request)
+        base_version, content, note, title = await app_artifact_upload.read_version(request)
         result = await asyncio.to_thread(views.append_structured_artifact, root, artifact_id,
-                                         base_version, content, note)
+                                         base_version, content, note, title)
     except app_artifact_upload.UploadError as error:
         return _error(error.status, error.code, str(error))
     except ArtifactVersionConflict as error:

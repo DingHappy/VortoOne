@@ -80,6 +80,28 @@ def render_markdown_doc(title: str, md_text: str) -> str:
 EDITABLE_ARTIFACT_KINDS = frozenset({"document", "table"})
 
 
+_INVALID_SOURCE_TEXT = re.compile(r"[\x00\ud800-\udfff]")
+
+
+def _source_text(value) -> bool:
+    return isinstance(value, str) and _INVALID_SOURCE_TEXT.search(value) is None
+
+
+def _source_row(value) -> bool:
+    return isinstance(value, list) and all(_source_text(cell) for cell in value)
+
+
+def valid_structured_source(content) -> bool:
+    if not isinstance(content, dict):
+        return False
+    if content.get("kind") == "document":
+        return set(content) == {"kind", "markdown"} and _source_text(content.get("markdown"))
+    columns, rows = content.get("columns"), content.get("rows")
+    return (content.get("kind") == "table" and set(content) == {"kind", "columns", "rows"}
+            and _source_row(columns) and isinstance(rows, list)
+            and all(_source_row(row) and len(row) == len(columns) for row in rows))
+
+
 class ArtifactVersionConflict(ValueError):
     pass
 
@@ -195,7 +217,8 @@ class ArtifactStore:
                 "created_at": datetime.now().isoformat(timespec="seconds"), "versions": [],
             }, content, None)
 
-    def append_structured(self, artifact_id: str, base_version: int, content: dict, note: str | None) -> dict:
+    def append_structured(self, artifact_id: str, base_version: int, content: dict, note: str | None,
+                          title: str | None = None) -> dict:
         """Append to the current source version without publishing a partial edit."""
         if not self._desktop_uploads:
             raise ValueError("只能编辑私有桌面制品")
@@ -215,10 +238,14 @@ class ArtifactStore:
                 raise ArtifactVersionConflict("已有更新的制品版本，请重新打开后编辑")
             if self._structured_path(aid, base_version) is None:
                 raise OSError("制品当前版本不可用")
+            if title is not None:
+                current = {**current, "title": title}
             return self._write_structured_version(directory, current, content, note)
 
     @staticmethod
     def _write_structured_version(directory: Path, meta: dict, content: dict, note: str | None) -> dict:
+        if not valid_structured_source(content):
+            raise ValueError("制品版本格式不符")
         data = json.dumps(content, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if len(data) > max_bytes():
             raise ValueError("制品体积超过上限")
@@ -256,8 +283,11 @@ class ArtifactStore:
             info = os.fstat(handle.fileno())
             if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes():
                 raise ValueError("制品版本不可用")
-            content = json.loads(handle.read(info.st_size + 1))
-        if not isinstance(content, dict) or content.get("kind") not in EDITABLE_ARTIFACT_KINDS:
+            data = handle.read(info.st_size + 1)
+            if len(data) != info.st_size:
+                raise ValueError("制品版本大小不符")
+            content = json.loads(data)
+        if not valid_structured_source(content):
             raise ValueError("制品版本格式不符")
         return content
 
