@@ -1224,8 +1224,6 @@ async def handle_agent_message(websocket, message: Dict[str, Any], *, owner_turn
     """启动一个 agent 回合（**后台任务**），随即返回——好让接收循环在回合执行期间
     仍能收到新消息（尤其是 agent_cancel「停止」）。回合事件由 _run_agent_turn 发回。
     """
-    import os
-
     text = str(message.get("text", "")).strip()
     images = _sanitize_images(message.get("images"))       # 多模态：前端传来的 data 图
     audio = _sanitize_audio(message.get("audio"))          # 多模态：前端传来的 data 音频

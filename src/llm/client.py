@@ -662,8 +662,11 @@ class LLMClient:
                 from src.llm.providers import local_model_endpoint
                 # 本机模型不走代理环境变量。用 SDK 自带的客户端类：openai 3.x 底层换成了 httpx2，
                 # 裸 httpx.AsyncClient 类型不符。None 即 SDK 默认客户端。
-                http_client = (DefaultAsyncHttpxClient(trust_env=False, **self._keyless_redirect("follow_redirects"))
-                               if local_model_endpoint(self.config.base_url) else None)
+                http_client = None
+                if local_model_endpoint(self.config.base_url):
+                    http_client = DefaultAsyncHttpxClient(
+                        trust_env=False, follow_redirects=not self._is_keyless_local(),
+                    )
                 self._client = AsyncOpenAI(
                     http_client=http_client,
                     base_url=self.config.base_url,
@@ -964,11 +967,12 @@ class LLMClient:
                 "reasoning_content": reasoning,
                 "tool_calls": tool_calls, "model": model or self.config.model}
 
-    def _keyless_redirect(self, option: str) -> dict[str, bool]:
+    def _is_keyless_local(self) -> bool:
         from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, direct_keyless_endpoint
-        if self.config.api_key == LOCAL_MODEL_PLACEHOLDER and direct_keyless_endpoint(self.config.base_url):
-            return {option: False}
-        return {}
+        return self.config.api_key == LOCAL_MODEL_PLACEHOLDER and direct_keyless_endpoint(self.config.base_url)
+
+    def _aio_redirect_options(self) -> dict[str, bool]:
+        return {"allow_redirects": False} if self._is_keyless_local() else {}
 
     def _endpoint_session(self, **kwargs):
         from src.llm.providers import local_model_endpoint
@@ -1010,7 +1014,7 @@ class LLMClient:
                 await asyncio.sleep(self.config.retry_base_delay * (2 ** (attempt - 1)))
             try:
                 async with self._endpoint_session(timeout=timeout) as session:
-                    async with session.post(url, json=payload, headers=headers, **self._keyless_redirect("allow_redirects")) as response:
+                    async with session.post(url, json=payload, headers=headers, **self._aio_redirect_options()) as response:
                         if response.status == 200:
                             data = await response.json()
                             if not isinstance(data, dict):
@@ -1070,7 +1074,7 @@ class LLMClient:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         timeout = aiohttp.ClientTimeout(total=min(self.config.timeout, 10.0))
         async with self._endpoint_session(timeout=timeout) as session:
-            async with session.get(url, headers=headers, **self._keyless_redirect("allow_redirects")) as response:
+            async with session.get(url, headers=headers, **self._aio_redirect_options()) as response:
                 if response.status != 200:
                     raise Exception(f"获取模型列表失败：HTTP {response.status}")
                 payload = await response.json()
@@ -1109,7 +1113,7 @@ class LLMClient:
                    "Authorization": f"Bearer {self.config.api_key}"}
         timeout = _aiohttp_timeout(self.config)
         async with self._endpoint_session(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=headers, **self._keyless_redirect("allow_redirects")) as resp:
+            async with session.post(url, json=payload, headers=headers, **self._aio_redirect_options()) as resp:
                 if resp.status != 200:
                     raise Exception(f"TTS 请求失败: {resp.status} - {(await resp.text())[:300]}")
                 data = await resp.json()
