@@ -46,16 +46,43 @@ async def subscribe(socket, service, actor, channel_id, *, session_valid, interv
     except (Damaged, OSError):
         await socket.send_json(F.make_app_frame(F.ERROR, code="unavailable", channelId=channel_id))
         return None
-    if not session_valid():
+    if not await _acknowledge_subscription(socket, service, actor, channel_id, session_valid):
         return None
-    if not await asyncio.to_thread(service.can_read, actor, channel_id):
-        await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
-        return None
-    if not session_valid():
-        return None
-    await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel_id))
     return asyncio.create_task(watch(socket, service, actor, channel_id, cursor, reaction_cursor, thread_cursor,
                                      session_valid=session_valid, interval=interval))
+
+
+async def _acknowledge_subscription(socket, service, actor, channel_id, session_valid):
+    if not session_valid():
+        return False
+    try:
+        readable = await asyncio.to_thread(service.can_read, actor, channel_id)
+    except (Missing, Refused):
+        readable = False
+    except (Damaged, OSError):
+        if session_valid():
+            await socket.send_json(F.make_app_frame(F.ERROR, code="unavailable", channelId=channel_id))
+        return False
+    if not session_valid():
+        return False
+    if readable:
+        await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel_id))
+    else:
+        await socket.send_json(F.make_app_frame(F.ERROR, code="channel_access_lost", channelId=channel_id))
+    return readable
+
+
+async def subscribe_channel(socket, root, actor, channel_id, watches, *, session_valid, interval=1.0):
+    service = streaming_service(root, channel_id)
+    prior = watches.get(channel_id)
+    if prior is not None and not prior.done():
+        if not await _acknowledge_subscription(socket, service, actor, channel_id, session_valid):
+            prior.cancel()
+            watches.pop(channel_id)
+        return
+    subscription = await subscribe(socket, service, actor, channel_id, session_valid=session_valid, interval=interval)
+    if subscription is not None:
+        watches[channel_id] = subscription
 
 
 async def watch(socket, service, actor, channel_id, after, reaction_after, thread_after, *, session_valid, interval=1.0):

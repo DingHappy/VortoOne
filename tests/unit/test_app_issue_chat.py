@@ -239,3 +239,43 @@ def test_successful_board_writes_survive_optional_chat_summary_failure(home, mon
     assert saved["audience"]["mode"] == "everyone"
     assert saved["criteria"][0]["done"]
     assert saved["conversation"]["count"] == 1
+
+
+@pytest.mark.parametrize("watcher", ["member", "owner"])
+@pytest.mark.parametrize("already_subscribed", [False, True])
+def test_task_handshake_read_failure_leaves_the_team_channel_active(home, monkeypatch, watcher, already_subscribed):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    if watcher == "owner":
+        client = TestClient(home["app"], headers=ORIGIN)
+        assert client.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    else:
+        client = member
+    identity = client.get("/api/app/me").json()["user"]["id"]
+    task_channel = _open(owner, base, _new(owner, base))["channelId"]
+    team = _create(home, "working-team-channel", visibility="private", people=[member.member_id])
+    team_id = team.rsplit("/", 1)[1]
+    org_id = base.rsplit("/", 1)[1]
+    with client.websocket_connect(f"/api/ws?orgId={org_id}", headers=ORIGIN) as socket:
+        assert socket.receive_json()["userId"] == identity
+        socket.send_json({"type": "subscribe", "channelId": team_id})
+        assert socket.receive_json() == {"type": "subscribed", "channelId": team_id}
+        if already_subscribed:
+            socket.send_json({"type": "subscribe", "channelId": task_channel})
+            assert socket.receive_json() == {"type": "subscribed", "channelId": task_channel}
+
+        def damaged_history(self, actor, channel):
+            assert channel == task_channel
+            raise Damaged("synthetic task history read failure")
+
+        with monkeypatch.context() as failure:
+            failure.setattr(IssueChat, "can_read", damaged_history)
+            socket.send_json({"type": "subscribe", "channelId": task_channel})
+            assert socket.receive_json() == {"type": "error", "channelId": task_channel, "code": "unavailable"}
+            message = owner.post(team + "/messages", json={"body": "频道继续送达"})
+            assert message.status_code == 200, message.text
+            event = socket.receive_json()["event"]
+            assert (event["channelId"], event["messageId"]) == (team_id, message.json()["id"])
+
+        socket.send_json({"type": "subscribe", "channelId": task_channel})
+        assert socket.receive_json() == {"type": "subscribed", "channelId": task_channel}

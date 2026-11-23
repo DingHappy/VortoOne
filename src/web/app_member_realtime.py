@@ -80,18 +80,8 @@ async def serve(socket, root: str, bound: Tuple[str, str], *, interval: float = 
                 await socket.send_json(F.make_app_frame(F.PONG))
             elif kind == "subscribe":
                 if app_channels.is_streamed_channel(channel):
-                    prior = watches.get(channel)
-                    service = app_channels.streaming_service(root, channel)
-                    if (prior is not None and not prior.done()
-                            and await asyncio.to_thread(service.can_read, actor, channel) and session_valid()):
-                        await socket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
-                    else:
-                        if prior is not None and not prior.done():
-                            prior.cancel()
-                        subscription = await app_channels.subscribe(socket, service, actor, channel,
-                                                                    session_valid=session_valid, interval=interval)
-                        if subscription is not None:
-                            watches[channel] = subscription
+                    await app_channels.subscribe_channel(socket, root, actor, channel, watches,
+                                                         session_valid=session_valid, interval=interval)
                     continue
                 staff = permitted(channel)
                 if not staff:

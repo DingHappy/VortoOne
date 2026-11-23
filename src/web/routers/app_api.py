@@ -6011,18 +6011,8 @@ async def app_socket(websocket: WebSocket):
                     if not team_session_valid():
                         await websocket.send_json(F.make_app_frame(F.ERROR, code="owner_proof_required", channelId=channel))
                     else:
-                        service = app_channels.streaming_service(root, channel)
-                        prior = watches.get(channel)
-                        if (prior is not None and not prior.done()
-                                and await asyncio.to_thread(service.can_read, actor, channel) and team_session_valid()):
-                            await websocket.send_json(F.make_app_frame(F.SUBSCRIBED, channelId=channel))
-                        else:
-                            if prior is not None and not prior.done():
-                                prior.cancel()
-                            subscription = await app_channels.subscribe(websocket, service, actor, channel,
-                                                                        session_valid=team_session_valid)
-                            if subscription is not None:
-                                watches[channel] = subscription
+                        await app_channels.subscribe_channel(websocket, root, actor, channel, watches,
+                                                             session_valid=team_session_valid)
                 elif views.is_main_dm(root, channel):
                     bridge = await main_chat_bridge(root)
                     bridge.subscribe(websocket)
