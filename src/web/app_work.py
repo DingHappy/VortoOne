@@ -131,6 +131,27 @@ def _main_run(run: Dict[str, Any]) -> Dict[str, Any]:
     return {"channelKind": "dm", "channelName": None, "label": None, "background": False, **run}
 
 
+def _ended_main(root: str, active: Collection[str], since: datetime) -> List[Dict[str, Any]]:
+    agent = views.main_agent_id(root)
+    channel = views.dm_channel_id(agent)
+    rows = {}
+    for item in views._main_view(root)["transcript"]:
+        rid, record = item.get("rid"), item.get("outcome")
+        if item.get("role") != "user" or not isinstance(rid, str) or not rid or rid in active:
+            continue
+        if not isinstance(record, dict) or record.get("status") not in ("done", "failed", "canceled"):
+            continue
+        finished = _step_time(record.get("at"))
+        if finished is None or datetime.fromisoformat(finished) < since:
+            continue
+        started = _step_time(item.get("at"))
+        rows[rid] = {"runId": rid, "agentId": agent, "channelId": channel, "channelKind": "dm",
+                     "channelName": None, "threadId": None, "status": record["status"], "label": None,
+                     "background": False, "routine": None, "startedAt": views._iso(started) if started else None,
+                     "finishedAt": views._iso(finished), "stoppedBy": None}
+    return list(rows.values())
+
+
 def active_runs(root: str, main: List[Dict[str, Any]], approving: Collection[str], *,
                 staff: bool) -> List[Dict[str, Any]]:
     """此刻在跑的（含停下来等批准的）。staff：带着所有者证明，才列 agent 私聊里的事。"""
@@ -164,6 +185,8 @@ def task_manager(root: str, main: List[Dict[str, Any]], approving: Collection[st
                             "hidden": {"total": 0, "working": 0, "byAgent": {}}}
     ended, finished_ok = [], 0
     if staff:
+        ended.extend(_ended_main(root, {row["runId"] for row in main}, since))
+        finished_ok = sum(item["status"] == "done" for item in ended)
         engines = {str(m.get("id")): _BRAIN.get(str(m.get("engine"))) for m in views._staff(root).get("members") or []}
         mine, others = _split(root)
         for task in mine:
