@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 347 个，剩 **284** 个：
-- **要做：213**（其中 29 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 349 个，剩 **282** 个：
+- **要做：211**（其中 27 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -234,7 +234,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `ORG/machines/{x}/queue` | `machines.queue` | Codex 连接电脑线 |
 | — | POST | `ORG/machines/{x}/{x}` | `machines.setPause` | Codex 连接电脑线 |
 
-### org/vault（12 个，要做 7）
+### org/vault（12 个，要做 5）
 
 首批只支持个人登录和 API Key 条目。每个当前成员只访问自己的条目，所有者按同一条规则。删除后当前条目失效，
 成员离开后无法访问原个人库。API 只回条目元数据，角色和 Agent 暂不能使用个人库。
@@ -248,6 +248,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 现有新建界面默认提交 `allAgents: true`，这个端点会拒绝。在当前界面通过「编辑智能体」关闭「所有智能体」后，可以把条目保存为仅本人可见。
 
+「导入密码」支持 Chrome、1Password、Bitwarden 和有网址、用户名、密码列的 CSV。预览只统计，本人确认后才批量保存。
+登录条目按 HTTPS 来源（协议、主机和端口）及用户名匹配，重复条目跳过，唯一匹配且密码变化时只更新密码。
+「导入 .env」支持前端解析并审阅后的环境变量，按名称匹配，已存在的只有勾选「替换」才更新，请在界面关闭「所有智能体」。
+批量导入沿用原个人库加密文件、身份隔离和 64 条容量上限，响应只回统计。团队库、Agent 授权和密码管理器连接未开放。
+
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/vault` | `vault.overview` | 仅调用人自己的元数据，显式启用 |
@@ -255,13 +260,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | DELETE | `ORG/vault/connections/{x}` | `vault.removeConnection` | 界面代码里没调用 |
 | ☐ | PATCH | `ORG/vault/connections/{x}` | `vault.updateConnection` | 界面代码里没调用 |
 | ☐ | POST | `ORG/vault/connections/{x}/sync` | `vault.syncConnection` | 界面代码里没调用 |
-| ☐ | POST | `ORG/vault/import` | `vault.importCsv` | 界面代码里没调用 |
+| ☑ | POST | `ORG/vault/import` | `vault.importCsv` | 「导入密码」支持预览及保存到本人库，返回统计 |
 | ☑ | POST | `ORG/vault/items` | `vault.create` | 仅个人登录和 Key 条目，禁止共享 |
 | ☑ | DELETE | `ORG/vault/items/{x}` | `vault.remove` | 只允许条目本人删除 |
 | ☑ | GET | `ORG/vault/items/{x}` | `vault.item` | 仅本人元数据，无原值 |
 | ☑ | PATCH | `ORG/vault/items/{x}` | `vault.update` | 只允许本人更新或换值，禁止共享 |
 | ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
-| ☐ | POST | `ORG/vault/keys` | `vault.importKeys` | 界面代码里没调用 |
+| ☑ | POST | `ORG/vault/keys` | `vault.importKeys` | 「导入 .env」仅本人批量新增或显式替换，返回统计 |
 
 ### org/me（12 个，要做 2）
 

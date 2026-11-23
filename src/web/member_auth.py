@@ -120,7 +120,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
     ("GET", _ORG + r"/vault(?:/items/[^/]+)?"),
-    ("POST", _ORG + r"/vault/items"),
+    ("POST", _ORG + r"/vault/(?:import|items|keys)"),
     ("PATCH", _ORG + r"/vault/items/[^/]+"),
     ("DELETE", _ORG + r"/vault/items/[^/]+"),
     ("GET", _ORG + r"/routines/proposals"),

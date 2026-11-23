@@ -4194,6 +4194,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/vault/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/vault/items",
     "methods": [
       "POST"
@@ -4215,6 +4221,12 @@
     "path": "/api/app/organizations/{org_id}/vault/items/{item_id}",
     "methods": [
       "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/keys",
+    "methods": [
+      "POST"
     ]
   },
   {
