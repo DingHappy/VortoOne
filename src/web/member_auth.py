@@ -49,6 +49,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", _ORG + r"/me/sidebar"),
     ("PUT", _ORG + r"/me/status"),
     ("GET", _ORG + r"/notification-prefs"),
+    ("GET", _ORG + r"/github-app"),                        # 成员只看当前安装功能是否可用
     ("PUT", _ORG + r"/me/avatar"),
     ("DELETE", _ORG + r"/me/avatar"),
     ("GET", _ORG + r"/people/[^/]+/avatar"),
