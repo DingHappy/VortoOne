@@ -301,9 +301,9 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/threads` | `threads.list` |  |
-| ☑ | POST | `ORG/threads` | `threads.create` | 已加入且可发言的团队频道成员可从同一频道的原消息选段创建话题。只引用，不移动原消息；跨频道、私聊和任务对话拒绝。 |
-| ☑ | DELETE | `ORG/threads/{x}` | `threads.remove` | 有管理权限的人可撤销尚无回复、引用、标记和任务草案的选段话题。只隐藏生成的标记，保留原消息和事件顺序。 |
-| ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接团队话题改名。选段型话题可在原频道调整范围和排除项，写入要求原有管理权限。 |
+| ☑ | POST | `ORG/threads` | `threads.create` | 已加入且可发言的团队频道成员可从同一频道的原消息选段创建话题。只引用，不移动原消息；跨频道、私聊和任务对话拒绝。当前 Desktop 的消息菜单未提供创建选段话题入口。 |
+| ☑ | DELETE | `ORG/threads/{x}` | `threads.remove` | 有管理权限的人可撤销尚无回复、引用、标记和任务草案的选段话题。只隐藏生成的标记，保留原消息和事件顺序。Desktop 仅在新建选段后的提示中接入撤销，当前无可触发的创建入口。 |
+| ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接团队话题改名。选段型话题可在原频道调整范围和排除项，写入要求原有管理权限。General 原生验收已从接口预置的话题排除一条消息并保存，频道中的三条原消息仍在。 |
 | ☑ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 取消自己在已加入频道中的话题关注，保留已读位置。当前界面未接入口。 |
 | ☑ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 关注自己能读的团队频道话题并计入个人未读。归档话题始终不计未读。当前界面未接入口。 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
