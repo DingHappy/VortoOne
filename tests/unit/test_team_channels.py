@@ -272,6 +272,45 @@ def test_private_channel_isolated_from_other_members_and_personal_sessions(home)
     assert alice.get(f"{url}/messages").status_code == 404
 
 
+def test_agent_message_card_uses_only_the_visible_channel_roster(home):
+    from src.web.app_channels import channels
+
+    owner, alice, bob = home["owner"], _join(home), _join(home, "bo@example.com", "小博")
+    channel = _create(home, "private-work", visibility="private", people=[alice.member_id])
+    other = _create(home, "other-work", visibility="private")
+    channel_id = channel.rsplit("/", 1)[1]
+    agent = home["agent"]
+    for room in (channel, other):
+        assert owner.post(f"{room}/members", json={"agentId": agent["id"]}).status_code == 204
+
+    posted = alice.post(f"{channel}/messages", json={"body": "线程正文"})
+    assert posted.status_code == 200, posted.text
+    thread = posted.json()["id"]
+    reply = channels(home["root"]).post_as_agent(
+        channel_id, home["staff"]["id"], agent["id"], "角色回复", thread=thread, client="agent-reply",
+    )
+    assert reply["author"] == {"type": "agent", "id": agent["id"]}
+    url = f"{home['base']}/messages/{reply['id']}/card"
+    card = {"id": reply["id"], "channelId": channel_id, "threadId": thread,
+            "kind": "channel", "name": "private-work", "author": agent["name"]}
+    for allowed in (owner, alice):
+        response = allowed.get(url)
+        assert response.status_code == 200, response.text
+        assert response.json() == card
+    assert alice.get(f"{home['base']}/messages/{thread}/card").json()["author"] == "小王"
+    assert bob.get(url).status_code == 404
+    assert TestClient(home["app"]).get(url).status_code == 401
+
+    assert owner.delete(f"{channel}/members/agents/{agent['id']}").status_code == 204
+    assert alice.get(url).json() == {**card, "author": ""}
+    assert owner.post(f"{channel}/members", json={"agentId": agent["id"]}).status_code == 204
+    lifecycle = f"{home['base']}/agents/{agent['id']}"
+    assert owner.delete(lifecycle).status_code == 204
+    assert alice.get(url).json() == {**card, "author": ""}
+    assert owner.delete(lifecycle, params={"purge": "true"}).status_code == 204
+    assert alice.get(url).json() == {**card, "author": ""}
+
+
 def test_department_requires_membership_and_rechecks_roles_and_cleans_removed_targets(home):
     owner, alice, bob = home["owner"], _join(home), _join(home, "bo@example.com", "小博")
     registry = MemberRegistry(home["root"])
