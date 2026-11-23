@@ -1128,7 +1128,10 @@ async def _run_main_conversation_turn(*, key: str, source: str, user_text: str, 
             ]
 
         try:
-            await _publish_session_event(key, P.make_event(P.AGENT_HISTORY, items=list(sess["transcript"])))
+            # The running request will receive an outcome. Keep its earlier replay event intact.
+            history_before_turn = list(sess["transcript"])
+            history_before_turn[-1] = dict(request)
+            await _publish_session_event(key, P.make_event(P.AGENT_HISTORY, items=history_before_turn))
             history, reply = await run(list(previous_history))
             sess["agent"].history = list(history)
             if agent is not None:

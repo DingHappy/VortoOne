@@ -176,9 +176,12 @@ async def test_web_host_appends_persists_and_broadcasts(tmp_path, monkeypatch):
     from src.web.routers import realtime
 
     events = []
+    history_snapshots = []
 
     async def capture(key, event, *, fallback=None):
         events.append((key, event["type"]))
+        if event["type"] == "agent_history":
+            history_snapshots.append(event["items"])
 
     monkeypatch.setattr(realtime, "_publish_session_event", capture)
     monkeypatch.setattr(realtime, "_schedule_turn_digest", lambda key, rid: None)
@@ -200,6 +203,9 @@ async def test_web_host_appends_persists_and_broadcasts(tmp_path, monkeypatch):
         assert [(i["role"], i["source"]) for i in saved["transcript"]] == [("user", "telegram"), ("assistant", "telegram")]
         assert saved["transcript"][0]["outcome"]["status"] == "done"
         assert saved["transcript"][0]["outcome"]["at"] >= saved["transcript"][0]["at"]
+        started, finished = history_snapshots
+        assert "outcome" not in started[0]
+        assert finished[0]["outcome"] == saved["transcript"][0]["outcome"]
         assert ("sid-maintest", "agent_history") in events and ("sid-maintest", "agent_done") in events
         assert not realtime._ACTORS.busy(key)
     finally:
