@@ -1,11 +1,11 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 329 个，剩 **302** 个：
-- **要做：227**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 348 个，剩 **283** 个：
+- **要做：212**（其中 29 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
-- **暂缓：4**（投票与选择卡，等智能体进团队频道）
+- **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
 
 表里 ☐ 是一般待办，☑ 是已接入的（注明限制），— 表示单独统计的连接电脑待办、已定不做或暂缓。「读已接、写没接」表示后端只有 GET，界面保存会 405。
 
@@ -69,15 +69,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 33）
+### org/missions（40 个，要做 32）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | POST | `ORG/missions` | `missions.create` | 读已接、写没接 |
+| ☑ | POST | `ORG/missions` | `missions.create` | 仅所有者在已加入的团队频道话题新建草案。话题归档后新建返回 409，既有草案仍可读取并按原参数重试。 |
 | ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
 | ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
 | ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |
-| ☐ | GET | `ORG/missions/{x}/brain` | `missions.brain` |  |
+| ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型；专员版本变化后拒绝。模型配置只读，不探测或启动执行。 |
 | ☐ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` |  |
 | ☐ | POST | `ORG/missions/{x}/close` | `missions.close` |  |
 | ☐ | PUT | `ORG/missions/{x}/command-approval` | `missions.setCommandApproval` |  |
@@ -130,8 +130,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/browser/open` | `browser.open` |  |
 | ☐ | POST | `ORG/agents/{x}/browser/restart` | `browser.restart` |  |
 | ☐ | POST | `ORG/agents/{x}/browser/stop` | `browser.stop` |  |
-| ☑ | GET | `ORG/agents/{x}/channels` | `agents.channels` | agent 还不进团队频道，是空的 |
-| ☑ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` | 只接受空列表，要放进频道回 409 |
+| ☑ | GET | `ORG/agents/{x}/channels` | `agents.channels` | agent 所在的团队频道（只给所有者） |
+| ☑ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` | 所有者整组替换；主助理、本机 CLI、连登记项目的 agent 不进频道；不 @ 也回答回 409 |
 | ☐ | PUT | `ORG/agents/{x}/computer/target` | `sandbox.setTarget` |  |
 | ☐ | GET | `ORG/agents/{x}/databases` | `databases.agent` |  |
 | ☐ | PUT | `ORG/agents/{x}/databases/{x}` | `databases.setAgent` |  |
@@ -154,23 +154,23 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 8）
+### org/wiki（24 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` |  |
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
-| ☐ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` |  |
-| ☐ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` |  |
+| ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
+| ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
-| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 已接纯 Markdown 文件。重发相同导入号及批次内容会复用回执；Obsidian、GitHub、笔记别名和 Drive 附件待接。 |
-| ☐ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` |  |
+| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 支持纯 Markdown 文件、Obsidian 笔记和所有者的 GitHub 笔记，保存来源、目录、标签与正文。重发相同导入号及批次内容会复用回执。笔记别名和 Drive 附件待接。 |
+| ☑ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` | 所有者预览公开 GitHub 仓库、分支目录或单个 Markdown 文件。仅返回笔记 ZIP，保存在后续导入确认时执行。私有仓库及附件暂不可用。 |
 | ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}` | `wiki.get` |  |
 | ☑ | PUT | `ORG/wiki/pages/{x}` | `wiki.update` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/append` | `wiki.append` | 支持摘录已加入的公开团队频道消息。私信和受限频道来源暂不可用 |
-| ☐ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` |  |
+| ☑ | PUT | `ORG/wiki/pages/{x}/audience` | `wiki.audience` | 所有者可在上级文件夹权限内按成员收紧单页的可见范围，保留原链接。扩大范围、角色、独立编辑授权和智能体授权返回 409。 |
 | ☑ | POST | `ORG/wiki/pages/{x}/context` | `wiki.context` | 已接入。开启时返回明确的 409，页面不会进入智能体上下文 |
 | ☑ | GET | `ORG/wiki/pages/{x}/history` | `wiki.history` |  |
 | ☑ | POST | `ORG/wiki/pages/{x}/lock` | `wiki.lock` |  |
@@ -179,7 +179,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/wiki/pages/{x}/rename` | `wiki.rename` |  |
 | ☑ | GET | `ORG/wiki/pages/{x}/versions/{x}` | `wiki.version` |  |
 | ☐ | GET | `ORG/wiki/reads` | `wiki.reads` |  |
-| ☐ | GET | `ORG/wiki/search` | `wiki.search` | 界面代码里没调用 |
+| ☑ | GET | `ORG/wiki/search` | `wiki.search` | 按当前标题搜索，只回调用者可见的未删除页面摘要；界面仍用本地筛选。 |
 | ☑ | POST | `ORG/wiki/trash/purge` | `wiki.purge` |  |
 | ☑ | POST | `ORG/wiki/trash/restore` | `wiki.restoreMany` |  |
 
@@ -280,23 +280,23 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PUT | `ORG/me/start` | `orgs.setStart` |  |
 | ☑ | PUT | `ORG/me/status` | `orgs.setStatus` | 状态按人保存，隐身只对本人可见；跨端更新需重新读取列表 |
 
-### org/artifacts（11 个，要做 7）
+### org/artifacts（11 个，要做 6）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/artifacts` | `artifacts.create` | 读已接、写没接；界面代码里没调用 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 已接所有者私有 UTF-8 HTML 上传和 Drive 隔离预览。其它格式返回 415，频道或话题挂载返回 422。通用文件上传仍待接。 |
-| ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML 和已存历史版本 |
-| ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者：助理制品和上传文件的原始 HTML、已存历史版本 |
+| ☑ | POST | `ORG/artifacts` | `artifacts.create` | 已接所有者通过 JSON 创建私有 HTML，与 Drive HTML 上传使用同一存储和隔离预览。其它种类回 415，附到频道回 422。界面代码里没调用。 |
+| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV 和 JSON。非 HTML 原样下载，小文本在 Drive 以纯文本预览。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
+| ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML、已存历史版本及私有文本原件 |
+| ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者：原始 HTML、已存历史版本和私有文本原件 |
 | ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |
 | ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
-| ☑ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` | 所有者可还原 Drive 删除的助理页面及历史版本；到期回 `409 artifact.purged`，提前永久清除回 `410`。 |
+| ☑ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` | 所有者可还原 Drive 删除的助理页面、已存历史版本和私有上传；到期回 `409 artifact.purged`，提前永久清除回 `410`。 |
 | ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
 | ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的 HTML 快照，不推断逐版作者或备注。 |
 | ☐ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` |  |
 
-### org/threads（10 个，要做 5）
+### org/threads（10 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -304,14 +304,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/threads` | `threads.create` |  |
 | ☐ | DELETE | `ORG/threads/{x}` | `threads.remove` | 读已接、写没接 |
 | ☑ | PATCH | `ORG/threads/{x}` | `threads.update` | 已接现有团队频道话题的改名，调整选段待接 |
-| ☐ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 界面代码里没调用 |
-| ☐ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 界面代码里没调用 |
+| ☑ | DELETE | `ORG/threads/{x}/follow` | `threadFollows.unfollow` | 取消自己在已加入频道中的话题关注，保留已读位置。当前界面未接入口。 |
+| ☑ | PUT | `ORG/threads/{x}/follow` | `threadFollows.follow` | 关注自己能读的团队频道话题并计入个人未读。归档话题始终不计未读。当前界面未接入口。 |
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
 | ☑ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | Desktop 打开话题时调用。已接团队频道话题的个人已读位置及频道、工作区两处列表的未读状态。侧栏只计有权限、已关注且未归档的话题。 |
 | ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 
-### org/channels（10 个，要做 7）
+### org/channels（10 个，要做 5）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -319,8 +319,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/channels/{x}/consultations/{x}` | `agents.consultation` |  |
 | ☐ | POST | `ORG/channels/{x}/delete` | `chat.deleteChannel` |  |
 | ☐ | GET | `ORG/channels/{x}/follow-ups` | `chat.followUps` |  |
-| ☐ | DELETE | `ORG/channels/{x}/members/agents/{x}` | `chat.removeMember` |  |
-| ☐ | PATCH | `ORG/channels/{x}/members/agents/{x}` | `chat.setAutoReply` |  |
+| ☑ | DELETE | `ORG/channels/{x}/members/agents/{x}` | `chat.removeMember` | 所有者把 agent 拿出频道（删掉的 agent 也能拿出来） |
+| ☑ | PATCH | `ORG/channels/{x}/members/agents/{x}` | `chat.setAutoReply` | 只认「被 @ 才回答」；开不 @ 也回答第一期如实回 409（主人 2026-11-22 定） |
 | ☑ | DELETE | `ORG/channels/{x}/mute` | `reads.mute` | 解除自己已加入的团队频道静音，保留未读进度。私聊和其他非团队频道不支持。 |
 | ☑ | PUT | `ORG/channels/{x}/mute` | `reads.mute` | 静音自己已加入的团队频道，频道列表隐藏普通未读提示。私聊和其他非团队频道不支持。 |
 | ☑ | PUT | `ORG/channels/{x}/place` | `chat.place` |  |
@@ -712,12 +712,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/action-cards/{x}` | `actionCards.get` | 界面代码里没调用 |
 | ☐ | POST | `ORG/action-cards/{x}/{x}` | `actionCards.decide` | 界面代码里没调用 |
 
-### org/task-manager（2 个，要做 2）
+### org/task-manager（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` |  |
-| ☐ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 界面代码里没调用 |
+| ☑ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 所有者的任务详情读取主聊天已记录的工具名称、调用开始与结果状态。专员无逐步记录时返回 404。 |
 
 ### /api/app/telemetry（2 个，要做 0）
 
@@ -726,11 +726,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `/api/app/telemetry` | `system.telemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 | — | PUT | `/api/app/telemetry` | `system.setTelemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 
-### /api/app/device-accounts（2 个，要做 2）
+### /api/app/device-accounts（2 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `/api/app/device-accounts` | `account.deviceAccounts` |  |
+| ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前会话的账号和可见空间。第二个会话和未读汇总独立处理。 |
 | ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
 
 ### org/logo（2 个，要做 0）
@@ -744,7 +744,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | GET | `ORG/team` | `agents.team` | 只读名册，活动沿用自己的会话；不推断频道或汇报关系 |
+| ☑ | GET | `ORG/team` | `agents.team` | 只读名册，活动沿用自己的会话。团队图的汇报关系只显示双方已可见的连线。 |
 | ☐ | POST | `ORG/team/channel-move` | `agents.proposeChannelMove` |  |
 
 ### org/team-templates（2 个，要做 2）
@@ -800,15 +800,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/polls/{x}` | `artifacts.poll` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
-| — | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| ☑ | GET | `ORG/polls/{x}` | `artifacts.poll` | 频道里 agent 发的投票：加入频道的人能看（主人 2026-11-22 定） |
+| ☑ | PUT | `ORG/polls/{x}/vote` | `artifacts.vote` | 替换自己的选择，空列表是收回；单选只能一项；截止后 409 poll.closed |
 
 ### org/choices（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/choices/{x}` | `artifacts.choices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
-| — | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` | 先不做（2026-11-22 主人定）：agent 现在只在私聊里，投票没有别人可投；选项提问已由 ask_person 覆盖。等 agent 进团队频道后再做 |
+| ☑ | GET | `ORG/choices/{x}` | `artifacts.choices` | 频道里 agent 发的选择卡和答案 |
+| ☑ | POST | `ORG/choices/{x}/answer` | `artifacts.answerChoices` | 先答的算（之后 409 choices.answered）；答案作为这个人的消息发在话题里，再交给发卡的 agent |
 
 ### org/artifacts-trash（2 个，要做 0）
 
@@ -879,11 +879,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | GET | `ORG/audit` | `orgs.audit` | 只给所有者。工具调用与确认门决定来自共享审计台账；台账不记成败与审批卡，`outcome`、`approval` 为 null，「等待中」为空 |
 
-### org/permissions（1 个，要做 1）
+### org/permissions（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/permissions/{x}` | `roles.setRow` |  |
+| ☑ | PUT | `ORG/permissions/{x}` | `roles.setRow` | 与单组编辑一样限所有者。一个请求原子更新所有人和普通身份组的现有权限项或电脑阶梯。管理员组、其他权限项和办事级别保留。 |
 
 ### org/roles（1 个，要做 0）
 
@@ -891,11 +891,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | POST | `ORG/roles/{x}/members/preview` | `roles.mailLoss` | 所有者在授予身份组前预查在册成员与授权。工作区无智能体邮箱绑定，预查不写入。 |
 
-### org/agent-lines（1 个，要做 1）
+### org/agent-lines（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/agent-lines` | `agents.setLines` |  |
+| ☑ | PUT | `ORG/agent-lines` | `agents.setLines` | 所有者可批量保存团队图中最多三层的汇报关系并撤销，包括名册里的主助理。改动只用于界面展示。 |
 
 ### org/autonomy-proposals（1 个，要做 1）
 
@@ -949,7 +949,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | GET | `/api/desktop/latest` | `machines.desktopLatest` | 读取公开正式发行版的 Apple Silicon DMG、SHA-256 和发布时间。未发布平台与发布源暂不可用均返回 404，错误码各自区分，沿用客户端官方站点回退。 |
+| ☑ | GET | `/api/desktop/latest` | `machines.desktopLatest` | General 和默认工作区均可公开读取 Apple Silicon 正式 DMG、SHA-256 和发布时间。未发布平台与发布源暂不可用均返回 404，错误码各自区分。下载页仍需准确标注 Apple Silicon，并纠正无法可靠识别架构时的回退行为。 |
 
 ### org/tasks（1 个，要做 0）
 

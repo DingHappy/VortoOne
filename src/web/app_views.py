@@ -12,9 +12,12 @@ import hashlib
 import os
 import re
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlsplit
+
+from src.web.app_artifact_upload import TextUpload
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
 
@@ -310,19 +313,22 @@ def main_chat_key(root: str) -> Optional[str]:
     return registered(root)
 
 
-def _main_view(root: str) -> Dict[str, Any]:
+def _main_view(root: str, *, include_activities: bool = False) -> Dict[str, Any]:
     """主要聊天的记录与排队中的输入。会话在内存里就读内存（回合进行中存盘会落后），否则读存盘。"""
     key = main_chat_key(root)
     if not key:
         return {"transcript": [], "queued": []}
     from src.web.routers.realtime import live_session_view
-    live = live_session_view(key)
+    live = live_session_view(key, include_activities=True) if include_activities else live_session_view(key)
     if live is not None:
         return live
     from src.gateway.session_store import load_session
     data = load_session(root, key) or {}
-    return {"transcript": [item for item in data.get("transcript") or [] if isinstance(item, dict)],
+    view = {"transcript": [item for item in data.get("transcript") or [] if isinstance(item, dict)],
             "queued": [item for item in data.get("prompt_queue") or [] if isinstance(item, dict)]}
+    if include_activities:
+        view["activities"] = [item for item in data.get("activities") or [] if isinstance(item, dict)]
+    return view
 
 
 def message_id(rid: str, role: str, ordinal: int = 0) -> str:
@@ -481,8 +487,10 @@ def staff_action_approval(root: str, task: Any, card: Dict[str, Any], *, status:
     title = f"{name} 要{_OPERATION_WORDS.get(kind, kind)}：{tool}"
     if tool.startswith(PREFIX):         # 连接器工具给模型的名字带哈希，人看不懂：用确认文案里的连接器名和工具名
         title = f"{name}：{str(p.get('message') or '').strip().splitlines()[0] if p.get('message') else tool}"
+    where = ((getattr(task, "collaboration", None) or {}).get("dispatch") or {}).get("channel")  # 频道里的事：审批卡指回那个话题
     return {"id": f"{p['id']}~{card['digest'][:16]}", "runId": task.id, "agentId": agent,
-            "channelId": dm_channel_id(agent), "threadId": message_id(task.id, "user"), "messageId": None,
+            "channelId": where["id"] if where else dm_channel_id(agent),
+            "threadId": where["thread"] if where else message_id(task.id, "user"), "messageId": None,
             "tool": str(p.get("tool") or ""), "scope": kind,
             "title": title[:120],
             "detail": detail, "params": {}, "status": status,
@@ -744,6 +752,7 @@ def agent_detail(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
     return {**{key: agent[key] for key in ("id", "name", "handle", "role", "instructions", "model",
                                            "ownerUserId", "createdAt", "audienceMode", "canTalk",
                                            "seesDetails")},
+            **({"reportsToAgentId": agent["reportsToAgentId"]} if "reportsToAgentId" in agent else {}),
             "credentialId": None, "budgetUsedPercent": 0, **agent_activity(root, agent["id"]),
             "pendingApprovals": 0, "channels": []}
 
@@ -1247,7 +1256,8 @@ def _artifact(root: str, meta: Dict[str, Any], *, desktop_upload: bool = False) 
         agent_id = main_agent_id(root)
         author = {"type": "agent", "id": agent_id}
         channel_id = dm_channel_id(agent_id)
-    row = {"id": str(meta["id"]), "kind": "html", "title": str(meta.get("title") or meta["id"]),
+    kind = "file" if desktop_upload and meta.get("kind") == "file" else "html"
+    row = {"id": str(meta["id"]), "kind": kind, "title": str(meta.get("title") or meta["id"]),
            "version": int(meta.get("pinned") or meta.get("version") or 1),
            "channelId": channel_id, "threadId": None, "createdBy": author,
            "updatedBy": author, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
@@ -1267,7 +1277,7 @@ def trashed_artifact(root: str, meta: Dict[str, Any], deleted_at: datetime, purg
 def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
               include_uploads: bool = False) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
-    if kinds is not None and "html" not in kinds:
+    if kinds is not None and "html" not in kinds and not (include_uploads and "file" in kinds):
         return {"artifacts": [], "nextCursor": None, "counts": {}}
     needle = query.strip().lower()
     rows = [_artifact(root, meta) for meta in ArtifactStore(root).list() if isinstance(meta, dict) and meta.get("id")]
@@ -1275,13 +1285,26 @@ def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
         rows.extend(_artifact(root, meta, desktop_upload=True) for meta in ArtifactStore(root, desktop_uploads=True).list()
                     if isinstance(meta, dict) and meta.get("id"))
         rows.sort(key=lambda row: row["updatedAt"], reverse=True)
+    if kinds is not None:
+        rows = [row for row in rows if row["kind"] in kinds]
     if needle:
         rows = [row for row in rows if needle in row["title"].lower()]
-    return {"artifacts": rows, "nextCursor": None, "counts": {"html": len(rows)} if rows else {}}
+    return {"artifacts": rows, "nextCursor": None, "counts": dict(Counter(row["kind"] for row in rows))}
 
 
 def _artifact_content(shown: Dict[str, Any], html: str, version: int, *, versioned: bool) -> Dict[str, Any]:
     return {**shown, "shownVersion": version, "content": {"kind": "html", "html": html}, "versioned": versioned}
+
+
+_UPLOADED_FILE_PREVIEW_BYTES = 32 * 1024
+
+
+def _uploaded_file_detail(shown: Dict[str, Any], meta: Dict[str, Any], data: Optional[bytes]) -> Dict[str, Any]:
+    content = {"kind": "file", "name": meta["name"], "contentType": meta["content_type"],
+               "size": meta["bytes"], "sha256": meta["sha256"]}
+    if data is not None and len(data) <= _UPLOADED_FILE_PREVIEW_BYTES:
+        content["text"] = data.decode("utf-8")
+    return {**shown, "shownVersion": 1, "content": content, "versioned": False}
 
 
 def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
@@ -1294,6 +1317,16 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
             shown = _artifact(root, meta, desktop_upload=True)
             if version is not None and version != shown["version"]:
                 return None
+            if shown["kind"] == "file":
+                if not uploads.has_snapshot(artifact_id, 1):
+                    return None
+                data = None
+                size = int(meta["bytes"])
+                if size <= _UPLOADED_FILE_PREVIEW_BYTES:
+                    data = uploads.uploaded_file(artifact_id, 1, size)
+                    if data is None:
+                        return None
+                return _uploaded_file_detail(shown, meta, data)
             html = uploads.html(artifact_id)
             return _artifact_content(shown, html, shown["version"], versioned=False) if html is not None else None
     store = ArtifactStore(root)
@@ -1311,15 +1344,19 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
     return _artifact_content(shown, html, wanted, versioned=len(known_versions) > 1)
 
 
-def upload_artifact(root: str, title: str, html: str) -> Dict[str, Any]:
+def upload_artifact(root: str, title: str, content: str | TextUpload) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     from src.utils.home_maintenance import home_maintenance
     from src.utils.state_dir import ensure_state_gitignore
 
     with home_maintenance(root):
         ensure_state_gitignore(root)
-        meta = ArtifactStore(root, desktop_uploads=True).publish_new(title, html)
-    return _artifact_content(_artifact(root, meta, desktop_upload=True), html, 1, versioned=False)
+        store = ArtifactStore(root, desktop_uploads=True)
+        if isinstance(content, TextUpload):
+            meta = store.publish_file(title, content.name, content.content_type, content.data)
+            return _uploaded_file_detail(_artifact(root, meta, desktop_upload=True), meta, content.data)
+        meta = store.publish_new(title, content)
+    return _artifact_content(_artifact(root, meta, desktop_upload=True), content, 1, versioned=False)
 
 
 # ── 角色资料页 ────────────────────────────────────────────────────────────────

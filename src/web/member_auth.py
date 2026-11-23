@@ -54,10 +54,16 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PUT", _ORG + r"/me/issues-view"),
     # 私人日程按调用人隔离，任务截止日期沿用看板的可见范围。
     ("GET", _ORG + r"/calendar"),
+    # 频道里 agent 发的投票、选择卡：按卡片所在频道判定（见 channels.TeamChannels._card）
+    ("GET", _ORG + r"/artifacts/blk_[a-f0-9]{32}"),
+    ("GET", _ORG + r"/polls/blk_[a-f0-9]{32}"),
+    ("PUT", _ORG + r"/polls/blk_[a-f0-9]{32}/vote"),
+    ("GET", _ORG + r"/choices/blk_[a-f0-9]{32}"),
+    ("POST", _ORG + r"/choices/blk_[a-f0-9]{32}/answer"),
     ("POST", _ORG + r"/calendar/events"),
     ("PATCH", _ORG + r"/calendar/events/[^/]+"),
     ("DELETE", _ORG + r"/calendar/events/[^/]+"),
-    ("GET", _ORG + r"/wiki/(?:graph|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
+    ("GET", _ORG + r"/wiki/(?:graph|search|pages(?:/[^/]+(?:/history|/versions/[^/]+)?)?)"),
     ("POST", _ORG + r"/wiki/import"),
     ("POST", _ORG + r"/wiki/pages"),
     ("PUT", _ORG + r"/wiki/pages/[^/]+"),
@@ -109,6 +115,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/voice/[A-Za-z0-9_-]+/audio"),
     ("POST", _TEAM_CHANNEL + r"/voice"),
     ("GET", _ORG + r"/mail/providers"),
+    ("GET", r"/api/app/device-accounts"),                # 仅列本次会话的账号
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
@@ -176,6 +183,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("PATCH", _ORG + r"/threads/[^/]+"),
     ("POST", _ORG + r"/threads/[^/]+/(?:close|reopen|archive|unarchive)"),
     ("POST", _ORG + r"/threads/[^/]+/read"),
+    ("PUT", _ORG + r"/threads/[^/]+/follow"),
+    ("DELETE", _ORG + r"/threads/[^/]+/follow"),
     ("GET", _ORG + r"/unread-threads"),
     ("GET", _ORG + r"/overview"),
     ("GET", _ORG + r"/people"),

@@ -1,11 +1,27 @@
-"""Private HTML uploads for Desktop Drive."""
+"""Private HTML creation and HTML or text uploads for Desktop Drive."""
 import asyncio
+import json
+from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
 
 from fastapi import Request
 
 from src.agents.tools.artifacts import max_bytes
+
+_TEXT_MIME = {
+    ".txt": ("text/plain",),
+    ".md": ("text/markdown", "text/x-markdown"),
+    ".csv": ("text/csv", "application/vnd.ms-excel"),
+    ".json": ("application/json", "text/json"),
+}
+
+
+@dataclass(frozen=True)
+class TextUpload:
+    name: str
+    content_type: str
+    data: bytes
 
 
 class UploadError(ValueError):
@@ -16,38 +32,89 @@ class UploadError(ValueError):
 
 
 def _invalid():
-    return UploadError(400, "invalid", "上传表单需要一份 HTML 文件，可附标题")
+    return UploadError(400, "invalid", "上传表单需要一份文件，可附标题")
 
 
 def _unsupported_file():
-    return UploadError(415, "artifact.upload_format", "目前只能上传 UTF-8 编码的 HTML 文件")
+    return UploadError(415, "artifact.upload_format", "目前只能上传 UTF-8 编码的 HTML、TXT、Markdown、CSV 或 JSON 文件")
 
 
-async def read_form(request: Request) -> tuple[str, str]:
-    cap = max_bytes()
+async def _read_body(request: Request, cap: int, invalid: UploadError, oversized: UploadError) -> bytes:
     body_cap = cap + 16 * 1024
-    oversized = UploadError(413, "artifact.upload_too_large", "上传的 HTML 文件超过大小限制")
-    content_type = request.headers.get("content-type", "")
-    if content_type.partition(";")[0].strip().lower() != "multipart/form-data":
-        raise _invalid()
     try:
         length = int(request.headers.get("content-length", "0"))
     except ValueError:
-        raise _invalid() from None
+        raise invalid from None
     if length < 0:
-        raise _invalid()
+        raise invalid
     if length > body_cap:
         raise oversized
-
     body = bytearray()
     async for chunk in request.stream():
         if len(body) + len(chunk) > body_cap:
             raise oversized
         body.extend(chunk)
-    return await asyncio.to_thread(_parse_form, content_type, bytes(body), cap, oversized)
+    return bytes(body)
 
 
-def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError) -> tuple[str, str]:
+async def read_form(request: Request) -> tuple[str, str | TextUpload]:
+    cap = max_bytes()
+    oversized = UploadError(413, "artifact.upload_too_large", "上传的文件超过大小限制")
+    content_type = request.headers.get("content-type", "")
+    if content_type.partition(";")[0].strip().lower() != "multipart/form-data":
+        raise _invalid()
+    body = await _read_body(request, cap, _invalid(), oversized)
+    return await asyncio.to_thread(_parse_form, content_type, body, cap, oversized)
+
+
+async def read_json(request: Request) -> tuple[str, str]:
+    if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
+        raise UploadError(415, "artifact.create_format", "创建制品需要 JSON 正文")
+    invalid = UploadError(400, "invalid", "创建制品需要标题和 HTML 正文")
+    oversized = UploadError(413, "artifact.upload_too_large", "制品的 HTML 超过大小限制")
+    cap = max_bytes()
+    body = await _read_body(request, cap, invalid, oversized)
+    return await asyncio.to_thread(_parse_json, body, cap, invalid, oversized)
+
+
+def _parse_json(body: bytes, cap: int, invalid: UploadError, oversized: UploadError) -> tuple[str, str]:
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (ValueError, RecursionError):
+        raise invalid from None
+    if not isinstance(payload, dict) or set(payload) - {"title", "channelId", "content"}:
+        raise invalid
+    if payload.get("channelId") is not None:
+        raise UploadError(422, "artifact.upload_location", "创建私有制品，暂不支持附到频道")
+    title, content = payload.get("title"), payload.get("content")
+    if not isinstance(title, str) or not isinstance(content, dict) or not isinstance(content.get("kind"), str):
+        raise invalid
+    if content["kind"] != "html":
+        raise UploadError(415, "artifact.upload_format", "通过 JSON 创建制品仅支持 UTF-8 HTML")
+    html = content.get("html")
+    if set(content) != {"kind", "html"} or not isinstance(html, str):
+        raise invalid
+    title = title.strip()
+    if not _valid_content(title, html):
+        raise invalid
+    try:
+        title.encode("utf-8")
+        length = len(html.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise invalid from None
+    if length > cap:
+        raise oversized
+    return title, html
+
+
+def _valid_content(title: str, html: str) -> bool:
+    return bool(
+        title and len(title) <= 200 and all(ord(char) >= 32 for char in title)
+        and html.strip() and "\x00" not in html
+    )
+
+
+def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError) -> tuple[str, str | TextUpload]:
     if "\r" in content_type or "\n" in content_type:
         raise _invalid()
     message = BytesParser(policy=policy.HTTP).parsebytes(
@@ -68,23 +135,34 @@ def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError
     if file is None:
         raise _invalid()
     filename = file.get_filename() or ""
-    if (not filename.lower().endswith((".html", ".htm")) or file.get_content_type() != "text/html"):
+    extension = "." + filename.rsplit(".", maxsplit=1)[-1].lower() if "." in filename else ""
+    mime = file.get_content_type()
+    is_html = extension in {".html", ".htm"} and mime == "text/html"
+    text_mimes = _TEXT_MIME.get(extension)
+    if not is_html and (text_mimes is None or mime not in (*text_mimes, "application/octet-stream", "text/plain")):
         raise _unsupported_file()
     if "/" in filename or "\\" in filename or not filename.strip():
         raise _invalid()
+    if not is_html and (len(filename) > 200 or any(ord(char) < 32 for char in filename)):
+        raise _invalid()
 
-    raw_html = file.get_payload(decode=True) or b""
-    if len(raw_html) > cap:
+    data = file.get_payload(decode=True) or b""
+    if len(data) > cap:
         raise oversized
     title_part = fields.get("title")
     raw_title = (title_part.get_payload(decode=True) or b"") if title_part else b""
     if len(raw_title) > 800:
         raise _invalid()
     try:
-        html = raw_html.decode("utf-8")
+        decoded = data.decode("utf-8")
         title = raw_title.decode("utf-8").strip() or filename
     except UnicodeError:
         raise _unsupported_file() from None
-    if not html.strip() or "\x00" in html or len(title) > 200 or any(ord(char) < 32 for char in title):
+    if "\x00" in decoded or len(title) > 200 or any(ord(char) < 32 for char in title):
         raise _invalid()
-    return title, html
+    if is_html:
+        if not decoded.strip():
+            raise _invalid()
+        return title, decoded
+    assert text_mimes is not None
+    return title, TextUpload(filename, text_mimes[0], data)

@@ -283,7 +283,7 @@ class StaffService:
                     condition.notify_all()
 
     def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
-               via=None):
+               via=None, channel=None):
         """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。
 
         via：这件事经哪个 AI 应用发来（``{"kind": "ai_app", "grant", "name"}``，只由 web 层的 /mcp 填）。
@@ -291,6 +291,12 @@ class StaffService:
         if via is not None and (not isinstance(via, dict) or via.get('kind') != 'ai_app'
                                 or not isinstance(via.get('name'), str)):
             raise ValueError('来源标记无效')
+        # channel：团队频道里被 @ 的那条（web 层填 {"id", "thread", "message"}）。频道里谁都能写，按外部内容处理。
+        if channel is not None and (not isinstance(channel, dict) or set(channel) != {'id', 'thread', 'message'}
+                                    or not all(isinstance(channel[key], str) and channel[key] for key in channel)):
+            raise ValueError('频道来源标记无效')
+        if channel is not None and routine:
+            raise ValueError('例行工作不从频道发起')
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)
@@ -314,12 +320,13 @@ class StaffService:
                           **({'notes': notes} if notes is not None else {}),
                           **({'initiator': started_by} if started_by is not None else {}),
                           **({'via': dict(via)} if via is not None else {}),
+                          **({'channel': dict(channel)} if channel is not None else {}),
                           'delivery': args.get('delivery', 'review'), 'max_steps': role['max_steps'],
                           'timeout_seconds': role['timeout_seconds'], **({'routine': routine} if routine else {})})
             from src.workflow.staff.recovery import seed_queue_proof
             def seed(current):
                 seed_queue_proof(current)
-                if via is not None:
+                if via is not None or channel is not None:
                     current.collaboration['tainted'] = True
             task = self.collaboration(owner).update_staff_action(task.id, 1, seed)
             try:

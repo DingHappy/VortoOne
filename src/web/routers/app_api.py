@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import logging
 import os
 import sqlite3
 from contextlib import suppress
@@ -26,6 +28,7 @@ from src.gateway import app_protocol as F
 from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_artifact_upload
 from src.web import app_artifacts
+from src.web import app_channel_agents
 from src.web import app_views as views
 from src.web import (
     app_board, app_calendar, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox,
@@ -36,7 +39,7 @@ from src.web.app_bridge import NoModel, existing_bridge, main_chat_bridge
 from src.workflow.members.channel_history import REACTION_MAX_LENGTH
 from src.workflow.members.channel_threads import ThreadArchived
 from src.workflow.members.channels import ChannelCategoryNameConflict, TeamChannels, is_team_channel
-from src.workflow.members.registry import MAX_MEMBERS, MemberRegistry
+from src.workflow.members.registry import MAX_GROUPS, MAX_MEMBERS, MemberRegistry
 from src.workflow.private_calendar import CalendarError, PrivateCalendar, date_range
 from src.workflow.wiki import MAX_BODY, Wiki, WikiError, WikiReader
 
@@ -443,18 +446,40 @@ async def device_sign_out(request: Request, response: Response):
 
 # ── 主人与空间 ────────────────────────────────────────────────────────────────
 
+async def _current_profile(root: str, request: Request, actor):
+    if actor.is_owner:
+        result = views.me(root)
+    else:
+        result = await _members_call(lambda: app_members.me(root, actor, request.state.member_account))
+    if isinstance(result, dict) and result["organizations"] and (not actor.is_owner or app_staff.owner_proof(request)):
+        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
+    return result
+
+
 @router.get("/api/app/me")
 async def me(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
-    account = getattr(request.state, "member_account", None)
-    if account is None:
-        result = views.me(root)
-    else:
-        result = await _members_call(lambda: app_members.me(root, member_auth.principal(request, root), account))
-    if isinstance(result, dict) and result["organizations"] and (account or app_staff.owner_proof(request)):
-        result["organizations"][0]["logo"] = await asyncio.to_thread(app_org_logo.current, root)
-    return result
+    return await _current_profile(root, request, member_auth.principal(request, root))
+
+
+@router.get("/api/app/device-accounts")
+async def device_accounts(request: Request, response: Response):
+    """Report the account of this session. Each browser session holds at most one account."""
+    response.headers["Cache-Control"] = "no-store"
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not views.owner_connection():
+            return {"accounts": []}
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", "读取当前账号需要已认证的同源会话")
+    profile = await _current_profile(root, request, actor)
+    if isinstance(profile, JSONResponse):
+        return profile
+    user = profile["user"]
+    return {"accounts": [{"current": True, "user": {key: user[key] for key in ("id", "name", "email", "image")},
+                          "organizations": profile["organizations"], "unread": []}]}
 
 
 @router.get("/api/app/me/unread")
@@ -874,6 +899,34 @@ async def create_role(org_id: str, body: Dict[str, Any], request: Request):
     return await _members_call(lambda: {"id": app_members.create_role(root, who, body)}, write=True)
 
 
+class _PermissionRowHolder(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(min_length=1, max_length=128)
+    level: int
+
+
+class _PermissionRow(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    everyone: int
+    roles: List[_PermissionRowHolder] = Field(max_length=MAX_GROUPS)
+
+
+@router.put(_ORG + "/permissions/{row}")
+async def set_role_permission_row(org_id: str, row: str, body: _PermissionRow, request: Request,
+                                  response: Response):
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    response.headers["Cache-Control"] = "no-store"
+    if not who.is_owner or not app_staff.owner_proof(request):
+        result = _error(403, "owner_proof_required", "批量改身份组权限需要已认证的所有者会话")
+    else:
+        result = await _members_call(lambda: app_members.set_role_row(
+            root, who, row, body.everyone, [(holder.id, holder.level) for holder in body.roles]), write=True)
+    if isinstance(result, JSONResponse):
+        result.headers["Cache-Control"] = "no-store"
+    return result
+
+
 # 先于 /roles/{role_id} 登记：否则 "order" 会被当成一个身份组的 id
 @router.put(_ORG + "/roles/order", status_code=204)
 async def reorder_roles(org_id: str, body: Dict[str, Any], request: Request):
@@ -1173,9 +1226,7 @@ async def agents(org_id: str, request: Request):
     who = _who(request, root)
     if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    if who.is_owner:
-        return {"agents": views.agents(root)}
-    return await _members_call(lambda: {"agents": app_members.member_agents(root, who)})
+    return await _members_call(lambda: {"agents": app_members.directory_agents(root, who)})
 
 
 @router.get(_ORG + "/agent-status")
@@ -1200,6 +1251,27 @@ async def agent_team_directory(org_id: str, request: Request, response: Response
     response.headers["Cache-Control"] = "no-store"
     return await _members_call(lambda: app_members.team_directory(
         root, who, activity=who.is_member or owner_activity, main_running=main_running))
+
+
+class _AgentLineChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    agentId: str = Field(min_length=1, max_length=128)
+    reportsToAgentId: str | None = Field(min_length=1, max_length=128)
+
+
+class _TeamLinesChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    changes: list[_AgentLineChange] = Field(max_length=500)
+
+
+@router.put(_ORG + "/agent-lines")
+async def set_agent_lines(org_id: str, body: _TeamLinesChange, request: Request, response: Response):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "设置团队图的汇报关系需要已认证的所有者")
+    response.headers["Cache-Control"] = "no-store"
+    changes = [row.model_dump() for row in body.changes]
+    return await _members_call(lambda: app_members.set_agent_lines(root, changes))
 
 
 @router.get(_ORG + "/ai-status")
@@ -1283,6 +1355,20 @@ def _member_dm(request: Request, org_id: str, channel_id: str):
     if staff_id is None or app_members.member_staff(root, who, views.member_agent_id(root, staff_id)) is None:
         raise LookupError("没有这个对话")
     return root, staff_id, who
+
+
+async def _call_channel_agents(request: Request, org_id: str, channel_id: str, message: Dict[str, Any]) -> None:
+    """消息已经发出：叫到的 agent 接活。出了什么问题都不影响这条消息本身（agent 会在话题里说明）。
+    留在事件循环线程：派活要把任务登记进执行池。"""
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return
+    try:
+        await _dispatch_ready(root)
+        app_channel_agents.call(root, app_channels.channels(root), actor, channel_id, message)
+    except Exception:  # noqa: BLE001 —— 消息已存好，叫 agent 失败不能让发消息报错
+        logging.getLogger(__name__).warning("频道里叫 agent 失败", exc_info=True)
 
 
 async def _dispatch_ready(root: str) -> None:
@@ -1402,7 +1488,40 @@ class _ChannelPlacement(BaseModel):
 
 class _ChannelPerson(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    userId: str
+    userId: str | None = None
+    agentId: str | None = None
+
+
+class _AgentAutoReply(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    autoReply: StrictBool
+
+
+class _AgentChannel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channelId: str
+    autoReply: StrictBool | None = None
+
+
+class _AgentChannels(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channels: list[_AgentChannel] = Field(max_length=500)
+
+
+_AUTO_REPLY_OFF = "不 @ 也回答第一期不做：频道里的 agent 只在被 @ 时回答"
+_AGENT_NOT_IN_CHANNELS = "这个 agent 不能进团队频道：主助理、用本机 CLI 或连着登记项目的 agent 第一期只在私聊里"
+
+
+def _channel_agent(root: str, agent_id: str):
+    """(专员 id, 错误)：主助理和不能进频道的回 409，不认识的回 404。"""
+    if agent_id == views.main_agent_id(root):
+        return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
+    staff = next((key for key, row in app_channels.channel_agents(root).items() if row["id"] == agent_id), None)
+    if staff is None:
+        return None, _error(404, "not_found", "没有这个 agent")
+    if not app_channels.channel_agents(root)[staff]["joinable"]:
+        return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
+    return staff, None
 
 
 class _ChannelOverrideTarget(BaseModel):
@@ -1482,8 +1601,8 @@ async def update_team_channel(org_id: str, channel_id: str, body: _TeamChannelCh
 
 @router.get(_ORG + "/channels/{channel_id}/card")
 async def team_channel_card(org_id: str, channel_id: str, request: Request):
-    return _team_response(await _team_call(request, org_id, lambda service, actor: service.card(actor, channel_id),
-                                          channel_id=channel_id))
+    return _team_response(await _team_call(request, org_id, lambda service, actor: service.card(
+        actor, channel_id, agents=app_channels.channel_agents(_root(org_id))), channel_id=channel_id))
 
 
 @router.delete(_ORG + "/channels/{channel_id}", status_code=204)
@@ -1502,8 +1621,41 @@ async def join_team_channel(org_id: str, channel_id: str, request: Request):
 
 @router.post(_ORG + "/channels/{channel_id}/members", status_code=204)
 async def add_team_channel_member(org_id: str, channel_id: str, body: _ChannelPerson, request: Request):
+    if (body.userId is None) == (body.agentId is None):
+        return _error(422, "invalid", "要么加一个人（userId），要么加一个 agent（agentId）")
+    if body.agentId is None:
+        return _team_response(await _team_call(request, org_id, lambda service, actor:
+            _team_receipt(lambda: service.set_person(actor, channel_id, body.userId, True)), channel_id=channel_id))
+    if not is_team_channel(channel_id):
+        return _error(404, "not_found", "没有这个频道")
+    staff, refused = await asyncio.to_thread(_channel_agent, _root(org_id), body.agentId)
+    if refused is not None:
+        return refused
     return _team_response(await _team_call(request, org_id, lambda service, actor:
-        _team_receipt(lambda: service.set_person(actor, channel_id, body.userId, True)), channel_id=channel_id))
+        _team_receipt(lambda: service.set_agent(actor, channel_id, staff, True)), channel_id=channel_id))
+
+
+@router.delete(_ORG + "/channels/{channel_id}/members/agents/{agent_id}", status_code=204)
+async def remove_team_channel_agent(org_id: str, channel_id: str, agent_id: str, request: Request):
+    staff = await asyncio.to_thread(_staff_of, _root(org_id), agent_id)      # 删掉的 agent 也能拿出来
+    if staff is None:
+        return _error(404, "not_found", "没有这个 agent")
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.set_agent(actor, channel_id, staff, False)), channel_id=channel_id))
+
+
+@router.patch(_ORG + "/channels/{channel_id}/members/agents/{agent_id}", status_code=204)
+async def set_team_channel_agent(org_id: str, channel_id: str, agent_id: str, body: _AgentAutoReply,
+                                 request: Request):
+    staff = await asyncio.to_thread(_staff_of, _root(org_id), agent_id)
+
+    def change(service, actor):
+        if staff is None or not service.has_agent(actor, channel_id, staff):
+            raise LookupError("这个 agent 不在这个频道里")
+        if body.autoReply:
+            return _error(409, "agent_channels.auto_reply_unavailable", _AUTO_REPLY_OFF)
+        return Response(status_code=204)                    # 本来就只在被 @ 时回答
+    return _team_response(await _team_call(request, org_id, change, channel_id=channel_id))
 
 
 @router.delete(_ORG + "/channels/{channel_id}/members/people/{person_id}", status_code=204)
@@ -1515,7 +1667,8 @@ async def remove_team_channel_member(org_id: str, channel_id: str, person_id: st
 @router.get(_ORG + "/channels/{channel_id}/roster")
 async def team_channel_roster(org_id: str, channel_id: str, request: Request):
     return _team_response(await _team_call(request, org_id, lambda service, actor:
-        {"members": service.roster(actor, channel_id)}, channel_id=channel_id))
+        {"members": service.roster(actor, channel_id, agents=app_channels.channel_agents(_root(org_id)))},
+        channel_id=channel_id))
 
 
 @router.get(_ORG + "/channels/{channel_id}/permissions")
@@ -1618,6 +1771,13 @@ async def act_team_thread(org_id: str, thread_id: str, request: Request, body: _
     return await _team_call(request, org_id, lambda service, actor: service.change_thread(actor, thread_id, action))
 
 
+@router.put(_THREAD + "/follow")
+@router.delete(_THREAD + "/follow")
+async def follow_team_thread(org_id: str, thread_id: str, request: Request, body: _ThreadAction | None = None):
+    return await _team_call(request, org_id, lambda service, actor:
+                            service.set_thread_follow(actor, thread_id, request.method == "PUT"))
+
+
 @router.post(_THREAD + "/read", status_code=204)
 async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor:
@@ -1627,7 +1787,8 @@ async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
 @router.get(_ORG + "/channels/{channel_id}/members")
 async def channel_members(org_id: str, channel_id: str, request: Request):
     team = await _team_call(request, org_id, lambda service, actor: {"members": [
-        {"type": person["type"], "id": person["id"]} for person in service.roster(actor, channel_id)]},
+        {"type": person["type"], "id": person["id"]}
+        for person in service.roster(actor, channel_id, agents=app_channels.channel_agents(_root(org_id)))]},
         channel_id=channel_id)
     if team is not None:
         return team
@@ -1715,9 +1876,12 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             media = await _gif_for_message(org_id, wanted_media)
             if isinstance(media, JSONResponse):
                 return media
-        return await _team_call(request, org_id, lambda service, actor: service.post(
+        posted = await _team_call(request, org_id, lambda service, actor: service.post(
             actor, channel_id, text, client_id=client_id, thread=body.threadId or None,
             reply_to=body.replyTo or None, opened=bool(body.threadId and body.openThread), media=media))
+        if isinstance(posted, dict) and "@" in text:
+            await _call_channel_agents(request, org_id, channel_id, posted)
+        return posted
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     answer = await _as_member(request, org_id, channel_id,
@@ -1751,7 +1915,7 @@ async def channel_active_runs(org_id: str, channel_id: str, request: Request):
     def team_runs(service, actor):
         if not service.can_read(actor, channel_id):
             raise LookupError("没有这个频道")
-        return {"runs": []}
+        return {"runs": app_channel_agents.runs(_root(org_id), channel_id)}
 
     team = await _team_call(request, org_id, team_runs, channel_id=channel_id)
     if team is not None:
@@ -1801,6 +1965,23 @@ async def task_manager(org_id: str, request: Request, since: str = "", doneToday
     view = await asyncio.to_thread(app_work.task_manager, root, main, approving, after, staff=staff,
                                    done_today=doneToday == "true")
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/task-manager/{run_id}/steps")
+async def task_manager_steps(org_id: str, run_id: str, request: Request):
+    from src.web import app_work
+
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "任务步骤只有已认证的所有者能看")
+    if len(run_id) > 160:
+        return _error(404, "not_found", "没有此回合的任务步骤记录")
+    bridge = existing_bridge(root)
+    running = bridge is not None and any(row["runId"] == run_id for row in bridge.active_runs())
+    value = await asyncio.to_thread(app_work.task_steps, root, run_id, running=running)
+    if value is None:
+        return _error(404, "not_found", "没有此回合的任务步骤记录")
+    return JSONResponse(value, headers={"Cache-Control": "no-store"})
 
 
 @router.get(_ORG + "/waiting")
@@ -2777,8 +2958,9 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None, rea
         if actor.is_member and actor.id not in state["members"]:
             raise WikiError(403, "forbidden", _NOT_MEMBER)
         keys = app_members.permission_keys(root, actor)
-        people = frozenset({views.owner_id(root), *state["members"]})
-        return Wiki(root, WikiReader(actor, people, "edit_wiki" in keys, "configure" in keys,
+        owner_id = views.owner_id(root)
+        people = frozenset({owner_id, *state["members"]})
+        return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
                                      TeamChannels.readable_public_names(state, actor)))
 
     def execute():
@@ -2813,6 +2995,21 @@ async def wiki_graph(org_id: str, request: Request):
     return await _wiki_call(request, org_id, lambda wiki: wiki.graph())
 
 
+@router.get(_WIKI + "/search")
+async def search_wiki(org_id: str, request: Request, q: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.search(q))
+
+
+@router.get(_WIKI + "/folder-audience")
+async def wiki_folder_audience(org_id: str, request: Request, folder: str = ""):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.folder_audience(folder))
+
+
+@router.put(_WIKI + "/folder-audience")
+async def narrow_wiki_folder_audience(org_id: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_folder_audience(body))
+
+
 async def _wiki_import_body(request: Request) -> bytearray:
     if request.headers.get("content-type", "").partition(";")[0].strip().lower() != "application/json":
         raise WikiError(415, "invalid", "Markdown 导入只接受 JSON 请求")
@@ -2836,6 +3033,26 @@ async def import_wiki_notes(org_id: str, request: Request):
         return wiki.import_notes(data)
 
     return await _wiki_call(request, org_id, import_notes, read_body=_wiki_import_body)
+
+
+@router.get(_WIKI + "/import/github")
+async def preview_wiki_github(org_id: str, request: Request, url: str = Query(..., max_length=2048)):
+    from src.web import app_wiki_github
+
+    def plan(wiki):
+        if not wiki.reader.actor.is_owner:
+            raise WikiError(403, "forbidden", "GitHub 导入需要通过认证的工作区所有者")
+        return app_wiki_github.parse_link(url)
+
+    target = await _wiki_call(request, org_id, plan)
+    if isinstance(target, Response):
+        return target
+    try:
+        data = await app_wiki_github.fetch_notes(target)
+    except WikiError as error:
+        return _error(error.status, error.code, str(error))
+    return Response(data, media_type="application/zip",
+                    headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.post(_WIKI + "/pages", status_code=201)
@@ -2881,6 +3098,11 @@ async def change_wiki_page(org_id: str, slug: str, body: Dict[str, Any], request
             return _error(400, "invalid", "必须指定是否进入上下文")
         return await _wiki_call(request, org_id, lambda wiki: wiki.context(slug, value))
     return await _wiki_call(request, org_id, lambda wiki: wiki.change(slug, attribute, value))
+
+
+@router.put(_WIKI + "/pages/{slug}/audience")
+async def narrow_wiki_audience(org_id: str, slug: str, body: Dict[str, Any], request: Request):
+    return await _wiki_call(request, org_id, lambda wiki: wiki.narrow_audience(slug, body))
 
 
 @router.get(_WIKI + "/pages/{slug}/history")
@@ -2998,6 +3220,8 @@ async def _mission_request(org_id, request, action, *, status=200):
         return _error(409, "mission.thread_in_use", str(error))
     except AgentUnavailable as error:
         return _error(409, "mission.agent_unavailable", str(error))
+    except ThreadArchived as error:
+        return _error(409, "thread.archived", str(error))
     except (Damaged, OSError, ValueError):
         return _error(409, "mission.unavailable", "读取或保存任务草案失败")
     return value if isinstance(value, Response) else JSONResponse(value, status_code=status,
@@ -3094,6 +3318,34 @@ async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
         row = drafts.get(actor, mission_id)
         return {"missionId": row["id"], "text": row["goal"], "plan": _mission_progress(),
                 "running": 0, "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
+
+    return await _mission_request(org_id, request, read)
+
+
+@router.get(_ORG + "/missions/{mission_id}/brain")
+async def mission_draft_brain(org_id: str, mission_id: str, request: Request):
+    def read(drafts, actor):
+        from src.llm import endpoints
+        from src.llm.client import LLMConfig
+        from src.llm.providers import DEFAULT_PROVIDER, chat_target, providers
+        from src.memory.write_policy import redact_secret_like
+
+        configured = drafts.assigned_model(actor, mission_id)
+        with endpoints.LOCK:
+            target = chat_target(configured)
+            if target is not None:
+                available, model = True, target[1]
+            elif endpoints.is_endpoint_model(configured):
+                available, model = False, None
+            else:
+                available = providers()[DEFAULT_PROVIDER].usable
+                model = configured or LLMConfig().model
+        display_model = redact_secret_like(model)[0][:160] if model else None
+        return {"missionId": mission_id, "brain": None, "model": None,
+                "effectiveBrain": "model", "effectiveModel": display_model,
+                "options": [{"kind": "model", "available": available, "defaultModel": display_model,
+                             "models": [{"value": display_model, "label": display_model}] if display_model else []}],
+                "canSetBrain": False, "canSetModel": False}
 
     return await _mission_request(org_id, request, read)
 
@@ -4086,27 +4338,52 @@ async def learned_skills(org_id: str, agent_id: str):
     return {"skills": []}
 
 
-_NO_AGENTS_IN_CHANNELS = "团队频道里还没有 agent：agent 现在只在私聊里回应"
-
-
 @router.get(_ORG + "/agents/{agent_id}/channels")
-async def agent_channels(org_id: str, agent_id: str):
-    if _agent(org_id, agent_id) is None:
+async def agent_channels(org_id: str, agent_id: str, request: Request):
+    root = _root(org_id)
+    if agent_id == views.main_agent_id(root):
+        return {"channels": []}
+    staff = await asyncio.to_thread(_staff_of, root, agent_id)
+    if staff is None or _agent(org_id, agent_id) is None:
         return _error(404, "not_found", "没有这个角色")
-    return {"channels": []}
+    return await _team_call(request, org_id, lambda service, actor: {"channels": service.agent_channels(actor, staff)},
+                            empty_listing={"channels": []})
 
 
 @router.put(_ORG + "/agents/{agent_id}/channels")
 async def set_agent_channels(org_id: str, agent_id: str, request: Request):
-    """只接受「一个频道都不进」；要把 agent 放进团队频道的如实拒绝。"""
-    if _agent(org_id, agent_id) is None:
-        return _error(404, "not_found", "没有这个角色")
-    body = await _body(request)
-    if set(body) != {"channels"} or not isinstance(body["channels"], list):
+    """整组替换 agent 所在的团队频道（只有所有者）。有一项不行就什么都不改。"""
+    from pydantic import ValidationError
+    root = _root(org_id)
+    try:
+        body = _AgentChannels.model_validate(await _body(request))
+    except ValidationError:
         return _error(400, "invalid", "要给出 agent 所在的频道列表")
-    if body["channels"]:
-        return _error(409, "agent_channels.unavailable", _NO_AGENTS_IN_CHANNELS)
-    return {"channels": []}
+    if any(entry.autoReply for entry in body.channels):
+        return _error(409, "agent_channels.auto_reply_unavailable", _AUTO_REPLY_OFF)
+    wanted = [entry.channelId for entry in body.channels]
+    if any(not is_team_channel(channel_id) for channel_id in wanted):
+        return _error(404, "not_found", "没有这个频道")
+    main = agent_id == views.main_agent_id(root)
+    if not wanted:              # 拿出所有频道：主助理本来就不在，不能再进的 agent 也要能拿出来
+        staff = None if main else await asyncio.to_thread(_staff_of, root, agent_id)
+        if not main and staff is None:
+            return _error(404, "not_found", "没有这个角色")
+
+        def clear(service, actor):
+            service.require_owner(actor)
+            if staff is not None:
+                service.replace_agent_channels(actor, staff, [])
+            return {"channels": []}
+        return await _team_call(request, org_id, clear)
+    staff, refused = await asyncio.to_thread(_channel_agent, root, agent_id)
+    if refused is not None:
+        return refused
+
+    def replace(service, actor):
+        service.replace_agent_channels(actor, staff, wanted)
+        return {"channels": service.agent_channels(actor, staff)}
+    return await _team_call(request, org_id, replace)
 
 
 @router.get(_ORG + "/usage")
@@ -4828,26 +5105,121 @@ async def artifacts(org_id: str, request: Request, response: Response, q: str = 
 
 @router.post(_ORG + "/artifacts/files", status_code=201)
 async def upload_artifact(org_id: str, request: Request, response: Response):
-    from src.utils.home_maintenance import HomeMaintenanceError
+    return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_form)
 
+
+@router.post(_ORG + "/artifacts", status_code=201)
+async def create_artifact(org_id: str, request: Request, response: Response):
+    """Create a private HTML artifact without the multipart upload envelope."""
+    return await _create_private_artifact(org_id, request, response, app_artifact_upload.read_json)
+
+
+async def _create_private_artifact(org_id: str, request: Request, response: Response, read):
     root = _root(org_id)
     if not _may_access_desktop_uploads(request, root):
-        return _error(403, "owner_proof_required", "上传 HTML 制品需要已认证的所有者")
+        return _error(403, "owner_proof_required", "创建或上传制品需要已认证的所有者")
     try:
-        title, html = await app_artifact_upload.read_form(request)
-        artifact = await asyncio.to_thread(views.upload_artifact, root, title, html)
+        title, content = await read(request)
+        artifact = await asyncio.to_thread(views.upload_artifact, root, title, content)
     except app_artifact_upload.UploadError as error:
         return _error(error.status, error.code, str(error))
     except HomeMaintenanceError:
         return _error(409, "unavailable", "工作区正在处理其他变更，请稍后重试")
     except (OSError, ValueError):
-        return _error(503, "unavailable", "暂时无法保存 HTML 制品")
+        return _error(503, "unavailable", "暂时无法保存上传文件")
     response.headers["Cache-Control"] = "no-store"
     return artifact
 
 
+_CARD = re.compile(r"blk_[a-f0-9]{32}")
+
+
+async def _card_call(request: Request, org_id: str, card_id: str, action):
+    """频道里的投票、选择卡：按卡片所在频道判定谁能看、能投、能答。"""
+    from src.workflow.members.channel_cards import CardConflict
+    if not _CARD.fullmatch(card_id):
+        return _error(404, "not_found", "没有这张卡片")
+
+    def guarded(service, actor):
+        try:
+            return action(service, actor)
+        except CardConflict as error:
+            return _error(409, error.code, str(error))
+    result = await _team_call(request, org_id, guarded)
+    if isinstance(result, dict):
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    return result
+
+
+@router.get(_ORG + "/polls/{poll_id}")
+async def channel_poll(org_id: str, poll_id: str, request: Request):
+    def read(service, actor):
+        card = service.card_view(actor, poll_id)
+        if card["kind"] != "poll":
+            raise LookupError("没有这个投票")
+        return app_channel_agents.poll(service, card)
+    return await _card_call(request, org_id, poll_id, read)
+
+
+class _PollVote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    options: list[int] = Field(max_length=10)
+
+
+@router.put(_ORG + "/polls/{poll_id}/vote")
+async def vote_channel_poll(org_id: str, poll_id: str, body: _PollVote, request: Request):
+    def vote(service, actor):
+        service.vote(actor, poll_id, body.options)
+        return app_channel_agents.poll(service, service.card_view(actor, poll_id))
+    return await _card_call(request, org_id, poll_id, vote)
+
+
+@router.get(_ORG + "/choices/{choices_id}")
+async def channel_choices(org_id: str, choices_id: str, request: Request):
+    def read(service, actor):
+        card = service.card_view(actor, choices_id)
+        if card["kind"] != "choices":
+            raise LookupError("没有这张选择卡")
+        return app_channel_agents.choices(service, card)
+    return await _card_call(request, org_id, choices_id, read)
+
+
+class _ChoicesAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    picks: list[int] = Field(max_length=4)
+    clientId: str = Field(min_length=1, max_length=120)
+    others: list[str | None] | None = Field(default=None, max_length=4)
+
+
+@router.post(_ORG + "/choices/{choices_id}/answer")
+async def answer_channel_choices(org_id: str, choices_id: str, body: _ChoicesAnswer, request: Request):
+    """先答的算：答案作为这个人的消息发在话题里，再交给发卡的 agent 接着做。"""
+    answered = {}
+
+    def answer(service, actor):
+        card, message = service.answer_choices(actor, choices_id, body.picks, body.others, body.clientId)
+        answered.update(card=card, message=message, actor=actor, service=service)
+        return {"choices": app_channel_agents.choices(service, service.card_view(actor, choices_id)),
+                "messageId": message["id"]}
+    result = await _card_call(request, org_id, choices_id, answer)
+    if answered:
+        root = _root(org_id)
+        try:
+            await _dispatch_ready(root)
+            app_channel_agents.answered(root, answered["service"], answered["actor"], answered["card"],
+                                        answered["message"])
+        except Exception:  # noqa: BLE001 —— 答案已存好；交给 agent 失败时它会在话题里说明，或在下一次 @ 时接上
+            logging.getLogger(__name__).warning("选择卡的答案没能交给 agent", exc_info=True)
+    return result
+
+
 @router.get(_ORG + "/artifacts/{artifact_id}")
 async def artifact(org_id: str, artifact_id: str, request: Request, response: Response, version: int | None = None):
+    if _CARD.fullmatch(artifact_id):                    # 频道里 agent 发的投票、选择卡
+        if version not in (None, 1):
+            return _error(404, "not_found", "没有这个制品")
+        return await _card_call(request, org_id, artifact_id, lambda service, actor: app_channel_agents.artifact(
+            _root(org_id), service.card_view(actor, artifact_id)))
     root = _root(org_id)
     include_uploads = _may_access_desktop_uploads(request, root)
     if include_uploads:
@@ -5034,17 +5406,18 @@ def _known_agent(org_id: str, agent_id: str) -> bool:
 
 @router.get(_ORG + "/agents/{agent_id}")
 async def agent_detail(org_id: str, agent_id: str, request: Request):
+    root = _root(org_id)
     if getattr(request.state, "member_account", None) is not None:
-        root = _root(org_id)
         who = _who(request, root)
         if who is None:
             return _error(403, "forbidden", _NOT_MEMBER)
         detail = await asyncio.to_thread(app_members.member_agent_detail, root, who, agent_id)
         return detail if detail is not None else _error(404, "not_found", "没有这个角色")
-    agent = next((a for a in views.agents(_root(org_id)) if a["id"] == agent_id), None)
+    roster = app_members.directory_agents(root, member_auth.principal(request, root))
+    agent = next((a for a in roster if a["id"] == agent_id), None)
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
-    return views.agent_detail(_root(org_id), agent)
+    return views.agent_detail(root, agent)
 
 
 # ── 新建、修改、归档、恢复、删除 agent（src/workflow/staff/agent_lifecycle.py）──────────

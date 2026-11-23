@@ -15,6 +15,13 @@ from src.workflow.members import channel_threads, thread_reads
 from src.workflow.members.registry import Damaged, Missing
 
 OWNER_KEY = "owner"
+# 频道里 agent 发的消息：作者记成 "agent:<界面上的 agent id>"。人的键（成员 id、owner）不会以它开头。
+AGENT_AUTHOR = "agent:"
+
+
+def _card_title(card: dict) -> str:
+    content = card["content"]
+    return content["question"] if content["kind"] == "poll" else content["questions"][0]["question"]
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (
     sequence INTEGER PRIMARY KEY,
@@ -154,13 +161,19 @@ class ChannelHistory:
     def __init__(self, directory: Path, owner_id: str):
         self.path = directory / "channel-messages.sqlite3"
         self.owner_id = owner_id
+        self.cards = None           # TeamChannels 接上：agent 发的投票、选择卡跟着消息显示
 
     def person_id(self, key: str) -> str:
         return self.owner_id if key == OWNER_KEY else key
 
+    def author(self, key: str) -> dict:
+        if key.startswith(AGENT_AUTHOR):
+            return {"type": "agent", "id": key[len(AGENT_AUTHOR):]}
+        return {"type": "person", "id": self.person_id(key)}
+
     def message(self, row, viewer, *, reactions=None) -> dict:
         result = {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
-                  "author": {"type": "person", "id": self.person_id(row["author"])}, "body": row["body"],
+                  "author": self.author(row["author"]), "body": row["body"],
                   "mentionedAgentIds": [], "agentRunId": None,
                   "createdAt": row["created"], "sequence": row["sequence"]}
         meta = {}
@@ -173,6 +186,10 @@ class ChannelHistory:
                 meta["voice"] = {key: value for key, value in media.items() if key != "kind"}
             else:
                 meta["media"] = media
+        if self.cards is not None and row["author"].startswith(AGENT_AUTHOR):
+            cards = self.cards.by_message([row["id"]]).get(row["id"])
+            if cards:
+                meta["artifacts"] = [{"id": card["id"], "version": 1, "title": _card_title(card)} for card in cards]
         if meta:
             result["meta"] = meta
         if viewer == row["author"] and row["client"] is not None:
@@ -380,7 +397,7 @@ class ChannelHistory:
 
     def thread_summary(self, conn, channel, root, title, *, reader, can_manage=False):
         def actor(row):
-            return {"type": "person", "id": self.person_id(row["author"])}
+            return self.author(row["author"])
 
         reply_count, opened = conn.execute(
             "SELECT count(*), min(CASE WHEN opened = 1 THEN created END) FROM messages "
@@ -400,7 +417,7 @@ class ChannelHistory:
                 "lastActivityAt": latest["created"] if latest else root["created"],
                 "lastMessage": ({"author": actor(latest), "excerpt": latest["body"][:140],
                                  "createdAt": latest["created"]} if latest else None),
-                "participants": [{"type": "person", "id": self.person_id(person)} for person in participants],
+                "participants": [self.author(person) for person in participants],
                 "working": False, "needsYou": False, "openedByReplyAt": opened,
                 "suggestedResolved": False, "canManage": can_manage and reply_count > 0,
                 **thread_reads.info(conn, channel, root, reader, archived=bool(state.archived_at))}
@@ -471,6 +488,10 @@ class ChannelHistory:
     def mark_thread_read(self, channel, thread, person):
         with self.database(write=True) as conn:
             thread_reads.mark(conn, channel, thread, person)
+
+    def set_thread_follow(self, thread, person, following):
+        with self.database(write=True) as conn:
+            thread_reads.set_follow(conn, thread, person, following)
 
     def unread_thread_count(self, readers):
         if not readers:

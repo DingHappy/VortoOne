@@ -210,6 +210,14 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
 
         check = check_initiator
         check()
+    elif task.collaboration['dispatch'].get('channel'):
+        # 频道里的回答所有人都看得到（主人 2026-11-22 定）：所有者叫的也只用团队安全工具，不读私人来源
+        from src.workflow.staff.registry import StaffRegistry
+        turn_role = role_for_member(StaffRegistry(root), turn_role, 'execute')
+    if task.collaboration['dispatch'].get('channel'):
+        # 频道里的话谁都能写：抓网页的网址（GET 的查询串）就是外传通道，只留搜索（主人 2026-11-22 定）。成员叫的也一样
+        turn_role = {**turn_role, 'grants': {**turn_role['grants'],
+                                             'tools': [name for name in turn_role['grants']['tools'] if name != 'web_fetch']}}
     if task.collaboration['dispatch'].get('source') == 'team' and role['id'] == 'developer':
         from src.agents.team_members import execute_team_developer
         return await execute_team_developer(root, task, work)
@@ -272,8 +280,11 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     if principal is not None:
         options.update(principal=principal, member_allowed=tuple(sorted(preapproved)))
     dispatch = task.collaboration['dispatch']
-    if dispatch.get('source') == 'staff' and not dispatch.get('routine'):
+    if dispatch.get('source') == 'staff' and not dispatch.get('routine') and not dispatch.get('channel'):
         options['extra_tools'] = (build_question_tool(work, task),)
+    elif dispatch.get('channel'):
+        from src.agents.tools.channel_cards import build_channel_card_tools
+        options['extra_tools'] = tuple(build_channel_card_tools(root, task))      # 投票、选择卡：跟着回答发在话题里
     if downgraded:
         options.pop('confirm_action', None)
         options['unattended'] = True
@@ -319,7 +330,7 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
 def _continues_conversation(task):
     """私聊里直接交给 agent 的事（不是小组的活、不是例行工作、不是返工轮）才接着之前的对话。"""
     dispatch = task.collaboration['dispatch']
-    return (dispatch.get('source') == 'staff' and not dispatch.get('routine')
+    return (dispatch.get('source') == 'staff' and not dispatch.get('routine') and not dispatch.get('channel')
             and int(task.collaboration.get('round') or 1) == 1)
 
 

@@ -1,7 +1,8 @@
-"""新版界面里每个人自己的显示偏好：侧栏、界面语言和个人时区。
+"""新版界面的显示偏好：侧栏、界面语言、个人时区和团队图。
 
-只是界面的摆放，不涉及权限、不进模型上下文。所有者和成员各存各的，键是调用人的身份
+只是界面展示，不涉及权限、不进模型上下文。个人偏好按调用人的身份保存
 （``member_auth.principal`` 给的 id）；语言跟着账号走，侧栏和时区跟着「这个人在这个家里」走。
+团队图的汇报连线属于工作区，只有所有者可以编辑。
 存在 ``.vortoone/app_prefs.json``，坏了就如实报错（ValueError），不悄悄换成默认值覆盖掉。
 
 字段和取值按界面合同（frontend/packages/client/src/api/types.ts 的 SidebarItem / SidebarPlace /
@@ -356,6 +357,54 @@ def set_home_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
             data.pop("home")
         _write(root, data)
     return home_settings(root)
+
+
+# ── 团队图的汇报关系 ────────────────────────────────────────────────────────
+
+def _agent_lines(data: Dict[str, Any]) -> Dict[str, str]:
+    saved = data.get("agentLines", {})
+    if not isinstance(saved, dict) or any(not key or not isinstance(value, str) or not value
+                                          for key, value in saved.items()):
+        raise ValueError("团队图的汇报关系记录无效")
+    return dict(saved)
+
+
+def agent_lines(root: str) -> Dict[str, str]:
+    return _agent_lines(_read(root))
+
+
+def set_agent_lines(root: str, changes: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+    """保存经过名册校验的批量更改，返回每一条实际更改前的汇报对象。"""
+    with _LOCK:
+        data = _read(root)
+        lines = _agent_lines(data)
+        previous = {}
+        for agent, supervisor in changes.items():
+            if lines.get(agent) == supervisor:
+                continue
+            previous[agent] = lines.get(agent)
+            if supervisor is None:
+                lines.pop(agent, None)
+            else:
+                lines[agent] = supervisor
+        # 与客户端契约相同，一条线最多三位智能体，不能把自己或下属当作上级。
+        for agent in lines:
+            seen = {agent}
+            supervisor = lines.get(agent)
+            while supervisor is not None:
+                if supervisor in seen:
+                    raise ValueError("团队图的汇报关系不能形成环")
+                seen.add(supervisor)
+                if len(seen) > 3:
+                    raise ValueError("团队图的汇报链最多三位智能体")
+                supervisor = lines.get(supervisor)
+        if previous:
+            if lines:
+                data["agentLines"] = lines
+            else:
+                data.pop("agentLines", None)
+            _write(root, data)
+    return previous
 
 
 # ── 看板怎么看（每个人自己的）─────────────────────────────────────────────────

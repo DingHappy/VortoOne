@@ -4,6 +4,7 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.workflow.members.registry import MemberRegistry
@@ -68,6 +69,44 @@ def test_without_import_id_a_batch_can_be_imported_again(home):
     assert second["title"] == "单次导入 (2)"
 
 
+def test_obsidian_markdown_import_preserves_source_and_links(home):
+    owner, member, wiki = home["owner"], _join(home), home["base"] + "/wiki"
+    source = {"type": "obsidian", "name": "项目笔记"}
+    body = "# 上线准备\n\n参见 [[部署/发布流程|上线步骤]]。"
+    chapter = {"title": "上线准备", "body": body, "folder": "手册", "tags": ["ops"], "aliases": []}
+    first_batch = _batch(chapter, source=source)
+    second_batch = _batch({"title": "发布流程", "body": "# 发布", "folder": "部署", "aliases": []}, source=source)
+
+    first = member.post(wiki + "/import", json=first_batch)
+    assert first.status_code == 200, first.text
+    [note] = first.json()["created"]
+    assert (note["sourceType"], note["sourceName"], note["folder"], note["tags"]) == (
+        "obsidian", "项目笔记", "手册", ["ops"],
+    )
+    assert note["updatedBy"] == {"type": "person", "id": member.member_id}
+    assert note["agentContext"] is False
+    assert member.post(wiki + "/import", json=first_batch).json() == first.json()
+
+    second = member.post(wiki + "/import", json=second_batch)
+    assert second.status_code == 200, second.text
+    [target] = second.json()["created"]
+    assert target["importId"] == note["importId"]
+    assert owner.get(f"{wiki}/pages/{note['slug']}/versions/1").json() == {"version": 1, "body": body}
+    assert owner.get(f"{wiki}/pages/{target['slug']}").json()["backlinks"] == [
+        {"kind": "page", "slug": note["slug"], "title": note["title"]},
+    ]
+
+
+@pytest.mark.parametrize("extra", [{"aliases": ["别名"]}, {"attachments": {"preview.png": "artifact-id"}}])
+def test_obsidian_import_refuses_unusable_aliases_or_attachments(home, extra):
+    owner, wiki = home["owner"], home["base"] + "/wiki"
+    good = {"title": "供导入", "body": "正文"}
+    payload = _batch(good, good | extra, source={"type": "obsidian", "name": "项目笔记"})
+    response = owner.post(wiki + "/import", json=payload)
+    assert response.status_code == 409, response.text
+    assert owner.get(wiki + "/pages").json() == {"pages": []}
+
+
 def test_conflicts_only_check_visible_titles_and_never_replace_notes(home):
     owner, member, base = home["owner"], _join(home), home["base"]
     wiki = base + "/wiki"
@@ -114,8 +153,7 @@ def test_import_refuses_unsupported_payloads_and_checks_current_permissions(home
     route = base + "/wiki/import"
     good = {"title": "供导入", "body": ""}
     for batch, code in (
-        (_batch(good, source={"type": "obsidian", "name": "vault"}), 409),
-        (_batch(good, source={"type": "github", "name": "org/repo"}), 409),
+        (_batch(good, source={"type": "unsupported", "name": "store"}), 409),
         (_batch(good, good | {"aliases": ["别名"]}), 409),
         (_batch(good, good | {"attachments": {"preview.png": "artifact-id"}}), 409),
         (_batch(good, good | {"folder": "../目录"}), 400),
@@ -126,7 +164,7 @@ def test_import_refuses_unsupported_payloads_and_checks_current_permissions(home
         assert owner.post(route, json=batch).status_code == code
     assert owner.get(base + "/wiki/pages").json() == {"pages": []}
 
-    payload = _batch(good)
+    payload = _batch(good, source={"type": "obsidian", "name": "项目笔记"})
     assert TestClient(home["app"]).post(route, json=payload).status_code == 401
     assert member.post(route, json=payload, headers={"Origin": "https://different.test"}).status_code == 403
     assert member.post("/api/app/organizations/other/wiki/import", json=payload).status_code == 404
@@ -135,6 +173,7 @@ def test_import_refuses_unsupported_payloads_and_checks_current_permissions(home
     assert member.post(route, json=payload).status_code == 200
     MemberRegistry(home["root"]).change_group(OWNER_P, "everyone", items=[])
     assert member.post(route, json=payload).status_code == 403
+    assert owner.post(route, json=payload).status_code == 200
     monkeypatch.setattr("src.web.routers.app_api._MAX_WIKI_IMPORT_BYTES", 64)
     assert owner.post(route, json=payload).status_code == 413
 

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from src.agents import identity_groups as rules
 from src.gateway.session_store import ChannelNameConflict, channel_metadata, normalize_channel
 from src.workflow.members import channel_threads
-from src.workflow.members.channel_history import OWNER_KEY, ChannelHistory, _before, _stamp
+from src.workflow.members.channel_history import AGENT_AUTHOR, OWNER_KEY, ChannelHistory, _before, _stamp
 from src.workflow.members.registry import Damaged, MemberRegistry, Missing, Refused
 from src.workflow.members.thread_reads import ThreadReader
 
@@ -50,6 +50,9 @@ class TeamChannels:
     def __init__(self, root: str, owner_id: str, owner_name: str = "我"):
         self.registry = MemberRegistry(root)
         self.history = ChannelHistory(self.registry.directory, owner_id)
+        from src.workflow.members.channel_cards import ChannelCards
+        self.cards = ChannelCards(self.registry.directory)
+        self.history.cards = self.cards
         self.owner_id = owner_id
         self.owner_name = owner_name
 
@@ -331,11 +334,161 @@ class TeamChannels:
             # Someone can restrict a channel enough to lose their own access. Return only a receipt.
             return self._describe(channel, access, self._position(state, actor, channel)) if access.visible else None
 
-    def card(self, actor, channel_id):
+    def card(self, actor, channel_id, *, agents=None):
+        """agents：调用方认得、还在团队里的 agent（专员 id → 界面资料），已删掉的不算。"""
         state = self.registry.snapshot()
         channel, access = self._find(state, actor, channel_id)
+        count = sum(1 for staff in channel.get("agents") or {} if staff in (agents or {}))
         return {**self._describe(channel, access, self._position(state, actor, channel)), "archived": bool(channel["archived"]),
-                "people": len(channel["joined"]), "agents": 0}
+                "people": len(channel["joined"]), "agents": count}
+
+    # ── 频道里的 agent（主人 2026-11-22 定：只有所有者能放进、拿出；第一期不做不 @ 自动回答）──
+    # 记在频道记录的 "agents" 里：专员 id → 加入时间。哪些 agent 能进由调用方判定（这里不读专员登记）。
+
+    @staticmethod
+    def _require_owner(state, actor):
+        owner, _ = MemberRegistry._actor(state, actor)
+        if not owner:
+            raise Refused("只有所有者能把 agent 放进或移出频道")
+
+    def set_agent(self, actor, channel_id, staff_id, joined):
+        with self.registry._change() as state:
+            self._require_owner(state, actor)
+            channel, _ = self._find(state, actor, channel_id, archived=False)
+            agents = channel.setdefault("agents", {})
+            if joined:
+                agents.setdefault(staff_id, _stamp(datetime.now(timezone.utc)))
+            elif staff_id not in agents:
+                raise Missing("这个 agent 不在这个频道里")
+            else:
+                del agents[staff_id]
+
+    def agents_here(self, actor, channel_id):
+        """在频道里的 agent（专员 id）。和名册一样，加入了频道的人才看得到。"""
+        state = self.registry.snapshot()
+        channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
+        return set(channel.get("agents") or {})
+
+    def can_call_agents(self, actor, channel_id):
+        state = self.registry.snapshot()
+        _, access = self._find(state, actor, channel_id, archived=False, joined=True)
+        return "talk_to_agents" in access.permissions
+
+    def post_as_agent(self, channel_id, staff_id, agent_id, text, *, thread, client, cards_of=None):
+        """agent 交回的话。发之前再核对一次：频道还在、没归档、agent 还在里面；不满足就不发（抛 Missing）。
+        client 让同一件事的回答只发一次（重试、重启后补发都落到同一条）。"""
+        with self.registry._locked_state() as state:
+            channel = state["channels"].get(channel_id)
+            if channel is None or channel["archived"] or staff_id not in (channel.get("agents") or {}):
+                raise Missing("agent 已不在这个频道里，没有发出回答")
+            message = self.history.append(channel_id, AGENT_AUTHOR + agent_id, text, client, thread, None, False)
+            if cards_of is not None:                # 这件事发的投票、选择卡：和回答同时出现，不留空档
+                self.cards.attach(cards_of, message["id"])
+                message = self.history.messages(channel_id, None, thread=thread, after=message["sequence"] - 1,
+                                                limit=1)[0]
+            return message
+
+    # ── agent 在频道里发的投票和选择卡 ──
+    def _card(self, state, actor, card_id, *, permission=None):
+        card = self.cards.get(card_id)
+        if card is None or card["message"] is None:              # 还没跟着回答发出来的卡片谁也看不到
+            raise Missing("没有这张卡片")
+        channel, access = self._find(state, actor, card["channel"], joined=True, permission=permission)
+        return card, channel, access
+
+    def card_view(self, actor, card_id):
+        state = self.registry.snapshot()
+        card, channel, _ = self._card(state, actor, card_id)
+        people = sum(1 for _ in channel["joined"])
+        return {**card, "people": people, "votes": self.cards.votes(card_id) if card["kind"] == "poll" else [],
+                "answer": self.cards.answer(card_id) if card["kind"] == "choices" else None}
+
+    def vote(self, actor, card_id, options):
+        """替换这个人的选择；空列表是收回。截止以后不能再投。"""
+        with self.registry._locked_state() as state:
+            card, channel, _ = self._card(state, actor, card_id, permission="post")
+            if card["kind"] != "poll":
+                raise Missing("没有这个投票")
+            if channel["archived"] or card["closes"] <= _stamp(datetime.now(timezone.utc)):
+                from src.workflow.members.channel_cards import CardConflict
+                raise CardConflict("poll.closed", "投票已经截止")
+            content = card["content"]
+            if (not isinstance(options, list) or any(type(o) is not int or not 0 <= o < len(content["options"])
+                                                     for o in options) or len(set(options)) != len(options)
+                    or (not content["multiple"] and len(options) > 1)):
+                raise ValueError("投票的选项无效")
+            self.cards.set_votes(card_id, self._actor_key(actor), sorted(options))
+
+    def answer_choices(self, actor, card_id, picks, others, client):
+        """先答的算。答案作为这个人的一条消息发在话题里，返回 (卡片, 消息)；调用方再把它交给 agent。"""
+        with self.registry._locked_state() as state:
+            card, channel, _ = self._card(state, actor, card_id, permission="post")
+            if card["kind"] != "choices" or channel["archived"]:
+                raise Missing("没有这张选择卡")
+            _, access = self._find(state, actor, card["channel"], joined=True)
+            if "talk_to_agents" not in access.permissions:
+                raise Refused("你在这个频道里没有叫 agent 办事的权限")
+            questions = card["content"]["questions"]
+            if (not isinstance(picks, list) or len(picks) != len(questions)
+                    or any(type(p) is not int or not 0 <= p <= len(q["options"]) for p, q in zip(picks, questions))):
+                raise ValueError("选择卡的答案无效")
+            written = others if isinstance(others, list) else []
+            if len(written) > len(questions) or any(o is not None and not isinstance(o, str) for o in written):
+                raise ValueError("选择卡的答案无效")
+            written = [*written, *[None] * (len(questions) - len(written))]
+            lines = []
+            for index, (pick, question) in enumerate(zip(picks, questions)):
+                if pick == len(question["options"]):
+                    text = " ".join(str(written[index] or "").split())[:1000]
+                    if not text:
+                        raise ValueError("写下的答案不能为空")
+                    written[index] = text
+                    lines.append(f"{question['question']}：{text}")
+                else:
+                    written[index] = None
+                    lines.append(f"{question['question']}：{chr(65 + pick)}. {question['options'][pick]['label']}")
+            if not self.cards.claim_answer(card_id, self._actor_key(actor), picks,
+                                           written if any(written) else None):
+                from src.workflow.members.channel_cards import CardConflict
+                raise CardConflict("choices.answered", "这张选择卡已经有人答过了")
+            message = self.history.append(card["channel"], self._actor_key(actor), "\n".join(lines), client,
+                                          card["thread"], None, False)
+            self.cards.answer_message(card_id, message["id"])
+            return card, message
+
+    def require_owner(self, actor):
+        self._require_owner(self.registry.snapshot(), actor)
+
+    def has_agent(self, actor, channel_id, staff_id):
+        state = self.registry.snapshot()
+        self._require_owner(state, actor)
+        channel, _ = self._find(state, actor, channel_id, archived=False)
+        return staff_id in (channel.get("agents") or {})
+
+    def agent_channels(self, actor, staff_id):
+        """这个 agent 所在的、没归档的频道（只给所有者看）。"""
+        state = self.registry.snapshot()
+        self._require_owner(state, actor)
+        return [{"id": channel["id"], "name": channel["title"], "autoReply": False}
+                for channel in self._ordered_channels(state, False) if staff_id in (channel.get("agents") or {})]
+
+    def replace_agent_channels(self, actor, staff_id, channel_ids):
+        """整组替换：先核对全部频道，有一个不对就什么都不改。"""
+        with self.registry._change() as state:
+            self._require_owner(state, actor)
+            wanted = set()
+            for channel_id in channel_ids:
+                self._find(state, actor, channel_id, archived=False)
+                wanted.add(channel_id)
+            stamp = _stamp(datetime.now(timezone.utc))
+            for channel in state["channels"].values():
+                if channel["archived"]:
+                    continue
+                agents = channel.get("agents") or {}
+                if channel["id"] in wanted:
+                    channel.setdefault("agents", agents).setdefault(staff_id, stamp)
+                elif staff_id in agents:
+                    del agents[staff_id]
 
     def archive(self, actor, channel_id, archived):
         with self.registry._change() as state:
@@ -361,9 +514,18 @@ class TeamChannels:
             else:
                 channel["joined"].pop(person, None)
 
-    def roster(self, actor, channel_id):
+    def roster(self, actor, channel_id, *, agents=None):
         state = self.registry.snapshot()
         channel, _ = self._find(state, actor, channel_id, archived=False, joined=True)
+        people = self._people(state, channel)
+        for staff, joined_at in (channel.get("agents") or {}).items():
+            agent = (agents or {}).get(staff)
+            if agent is not None:                   # 已删掉、调用方不认得的 agent 不列出
+                people.append({"type": "agent", "id": agent["id"], "name": agent["name"], "handle": agent["handle"],
+                               "autoReply": False, "joinedAt": joined_at})
+        return people
+
+    def _people(self, state, channel):
         people = []
         for person, joined_at in channel["joined"].items():
             name = self.owner_name if person == OWNER_KEY else MemberRegistry._member(state, person)["name"]
@@ -597,6 +759,18 @@ class TeamChannels:
                     raise Missing("没有这个话题")
             self.history.mark_thread_read(channel["id"], thread_id, self._actor_key(actor))
 
+    def set_thread_follow(self, actor, thread_id, following):
+        with self.registry._locked_state() as state:
+            with self.history.database() as conn:
+                try:
+                    row, channel, _ = self._message_access(state, conn, actor, thread_id)
+                except Missing as error:
+                    raise Missing("没有这个话题") from error
+                if row["thread"] is not None or not self.history.has_thread_replies(conn, channel["id"], thread_id):
+                    raise Missing("没有这个话题")
+            self.history.set_thread_follow(thread_id, self._actor_key(actor), following)
+            return {"threadId": thread_id, "channelId": channel["id"], "following": following}
+
     def unread_thread_count(self, actor):
         with self.registry._locked_state() as state:
             MemberRegistry._actor(state, actor)
@@ -650,7 +824,10 @@ def check_channels(state):
                 or not isinstance(channel.get("joined"), dict) or not isinstance(channel.get("overrides"), list)
                 or any(not isinstance(joined_at, str) for joined_at in channel["joined"].values())
                 or not isinstance(channel.get("creator"), str) or not isinstance(channel.get("created"), str)
-                or (channel.get("archived") is not None and not isinstance(channel["archived"], str))):
+                or (channel.get("archived") is not None and not isinstance(channel["archived"], str))
+                or not isinstance(channel.get("agents", {}), dict)
+                or any(not isinstance(key, str) or not isinstance(value, str)
+                       for key, value in channel.get("agents", {}).items())):
             raise Damaged("频道权限记录无效")
         category_id = channel.get("category_id")
         if category_id is not None and (not isinstance(category_id, str) or category_id not in category_ids):

@@ -10,6 +10,7 @@ from src.web.routers import desktop_releases
 from src.web.server import app
 
 
+_PATH = "/api/desktop/latest"
 _URL = "https://github.com/DingHappy/VortoOne/releases/download/v1.2.3/VortoOne_1.2.3_aarch64.dmg"
 _PUBLISHED = "2026-11-15T06:51:47Z"
 _SHA256 = "2a" * 32
@@ -23,8 +24,17 @@ def release():
                         "state": "uploaded", "digest": "sha256:" + _SHA256, "size": 4096}]}
 
 
+@pytest.fixture(params=["default", "general"])
+def workspace_scope(request, monkeypatch):
+    if request.param == "general":
+        monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
+    else:
+        monkeypatch.delenv("VORTOONE_WORKSPACE_SCOPE", raising=False)
+    return request.param
+
+
 @pytest.fixture
-def upstream(monkeypatch, release):
+def upstream(monkeypatch, release, workspace_scope):
     source = SimpleNamespace(raw=json.dumps(release).encode(), status=200, calls=[])
     monkeypatch.setattr(desktop_releases, "_cache", (0, 503, None))
     monkeypatch.setenv("VORTOONE_API_TOKEN", "fixture-owner-token")
@@ -53,12 +63,10 @@ def upstream(monkeypatch, release):
 
 def test_public_desktop_release_serves_checked_metadata_once(upstream):
     client = TestClient(app)
-    path = "/api/desktop/latest"
-    result = client.get(path, params={"target": "darwin", "arch": "aarch64"})
+    result = client.get(_PATH, params={"target": "darwin", "arch": "aarch64"})
     assert result.status_code == 200 and result.json() == _RESULT
     assert result.headers["cache-control"] == "public, max-age=60"
-    assert client.get(path, params={"target": "darwin", "arch": "arm64"}).json() == _RESULT
-    assert client.post(path, json={}).status_code == 401
+    assert client.get(_PATH, params={"target": "darwin", "arch": "arm64"}).json() == _RESULT
 
     url, headers, redirects = upstream.calls[0]
     assert len(upstream.calls) == 1
@@ -67,9 +75,21 @@ def test_public_desktop_release_serves_checked_metadata_once(upstream):
     assert set(headers) == {"Accept", "Accept-Encoding", "User-Agent"}
 
 
+@pytest.mark.parametrize(("method", "path"), [
+    ("POST", _PATH), ("PATCH", _PATH), ("DELETE", _PATH), ("HEAD", _PATH),
+    ("GET", _PATH + "/extra"), ("GET", _PATH + "/"), ("GET", _PATH + "-other"),
+])
+def test_desktop_release_exemptions_require_exact_method_and_path(upstream, workspace_scope, method, path):
+    result = TestClient(app).request(method, path, params={"target": "darwin", "arch": "aarch64"})
+    assert result.status_code == (409 if workspace_scope == "general" else 401)
+    if workspace_scope == "general" and method != "HEAD":
+        assert result.json()["error"]["code"] == "workspace_required"
+    assert not upstream.calls
+
+
 @pytest.mark.parametrize(("target", "arch"), [("darwin", "x86_64"), ("linux", "x86_64"), ("windows", "aarch64")])
 def test_unpublished_platform_does_not_query_upstream(upstream, target, arch):
-    result = TestClient(app).get("/api/desktop/latest", params={"target": target, "arch": arch})
+    result = TestClient(app).get(_PATH, params={"target": target, "arch": arch})
     assert result.status_code == 404 and not upstream.calls
 
 

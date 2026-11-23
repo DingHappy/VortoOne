@@ -242,8 +242,8 @@ async def test_real_store_server_and_worker_pair_connect_and_persist_before_revo
             assert connections.online(str(tmp_path), grant['connector_id'])
             # Revoke just after the first pong, while the previous implementation slept.
             await asyncio.sleep(0.03)
-            store.revoke(grant['connector_id'])
-            connections.revoked(str(tmp_path), grant['connector_id'])
+            retired_epoch = store.revoke_epoch(grant['connector_id'], current_only=False)
+            connections.revoked(str(tmp_path), grant['connector_id'], credential_epoch=retired_epoch)
             await event_before(revoked, 0.8)
             assert not ack_seen.is_set() and not task.done()
             persisted.set()
@@ -1378,9 +1378,9 @@ async def test_staged_file_action_keeps_control_live_and_obeys_revocation(tmp_pa
                 assert second.generation != first.generation
                 assert process.returncode is None and not process.stdin.is_closing()
             else:
-                store.revoke(grant["connector_id"])
+                retired_epoch = store.revoke_epoch(grant["connector_id"], current_only=False)
                 persisted.set()
-                connections.revoked(root, grant["connector_id"])
+                connections.revoked(root, grant["connector_id"], credential_epoch=retired_epoch)
                 await event_before(acknowledged)
                 await asyncio.wait_for(until(process.stdin.is_closing), 2)
             with pytest.raises(FileConnectionUnavailable):

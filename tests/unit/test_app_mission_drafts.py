@@ -82,6 +82,49 @@ def test_owner_creates_and_reads_real_draft_without_dispatch_or_channel_post(hom
     assert saved == ("owner", home["staff"]["id"], home["staff"]["revision"], role["id"], role["revision"], 1)
 
 
+@pytest.mark.parametrize(("assigned", "expected_model", "ready"), [
+    ("", "fixture-default-model", False),
+    ("qwen-fixture:7b", "qwen-fixture:7b", False),
+    ("fixture:endpoint-model", "endpoint-model", True),
+    ("custom:cred-0123456789ab:removed-model", None, False),
+])
+def test_draft_brain_reads_the_attached_models_without_execution(home, monkeypatch, assigned, expected_model, ready):
+    monkeypatch.setenv("OPENAI_API_BASE", "https://models.example.invalid/v1")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("DEFAULT_MODEL", "fixture-default-model")
+    monkeypatch.setenv("VORTOONE_PROVIDER_FIXTURE_BASE", "https://private-models.example.invalid/v1")
+    monkeypatch.setenv("VORTOONE_PROVIDER_FIXTURE_KEY", "fixture-provider-secret")
+    monkeypatch.setattr(home["service"], "assign", lambda *args, **kwargs: pytest.fail("草案详情不派活"))
+    monkeypatch.setattr("src.llm.client.LLMClient", lambda *args, **kwargs: pytest.fail("草案详情不构造模型客户端"))
+    staff = StaffRegistry(home["root"]).register_member({**home["staff"], "model": assigned})
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "brain-draft")
+    thread, _ = _thread(owner, channel)
+    draft = _draft(home, thread)
+    path = f"{base}/missions/{draft['id']}/brain"
+
+    model_options = [] if expected_model is None else [{"value": expected_model, "label": expected_model}]
+    response = owner.get(path)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {"missionId": draft["id"], "brain": None, "model": None,
+                               "effectiveBrain": "model", "effectiveModel": expected_model,
+                               "options": [{"kind": "model", "available": ready, "defaultModel": expected_model,
+                                            "models": model_options}],
+                               "canSetBrain": False, "canSetModel": False}
+    assert owner.put(path, json={"model": "changed"}).status_code == 405
+    assert home["pool"].jobs == {} and TaskLedger(home["root"]).list() == []
+    assert owner.get(f"{base}/missions/{draft['id']}").json() == draft
+
+    StaffRegistry(home["root"]).register_member({**staff, "model": "changed"})
+    stale = owner.get(path)
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "mission.agent_unavailable"
+    assert owner.get(f"{base}/missions/{draft['id']}").json() == draft
+    assert owner.get(f"{base}/missions/unknown/brain").status_code == 404
+    assert owner.delete(channel).status_code == 204
+    assert owner.get(path).status_code == 404
+
+
 def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch):
     owner, base = home["owner"], home["base"]
     member = _join(home)
@@ -94,7 +137,7 @@ def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch
     draft = _draft(home, thread_id)
     route = f"{base}/missions/{draft['id']}"
     reads = [base + "/missions", route, route + "/plan", route + "/summary", route + "/participants",
-             f"{base}/threads/{thread_id}/mission"]
+             route + "/brain", f"{base}/threads/{thread_id}/mission"]
     assert member.get(f"{base}/threads/{thread_id}").status_code == 200
     for path in reads:
         assert member.get(path).status_code == 403
@@ -105,15 +148,65 @@ def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch
     browser = TestClient(home["app"], headers=ORIGIN)
     assert browser.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
     assert browser.get(route).status_code == 200
+    assert browser.get(route + "/brain").status_code == 200
     assert browser.post(base + "/missions", json=_input(home, thread_id)).status_code == 201
     hostile = {"Origin": "https://elsewhere.example"}
     assert browser.get(route, headers=hostile).status_code == 403
+    assert browser.get(route + "/brain", headers=hostile).status_code == 403
     assert browser.post(base + "/missions", json=_input(home, thread_id), headers=hostile).status_code == 403
     monkeypatch.delenv("VORTOONE_API_TOKEN")
     assert browser.get(route).status_code == 403
     assert browser.get(base + "/missions").json() == {
         "missions": [], "counts": {"active": 0, "waitingYou": 0, "closed": 0}}
     assert browser.post(base + "/missions", json=_input(home, thread_id)).status_code == 403
+
+
+def test_archiving_a_thread_rejects_a_stale_draft_submission_until_unarchive(home, monkeypatch):
+    owner, base = home["owner"], home["base"]
+    channel = _create(home, "stale-mission")
+    thread_id, _ = _thread(owner, channel)
+    thread = f"{base}/threads/{thread_id}"
+    assert owner.get(thread).json()["state"] == "open"
+    stale = _input(home, thread_id)
+    assert owner.post(thread + "/archive", json={}).json()["state"] == "archived"
+    history = owner.get(channel + "/messages", params={"threadId": thread_id}).json()
+
+    with monkeypatch.context() as archived:
+        archived.setattr(home["service"], "assignment", lambda *args, **kwargs: pytest.fail("先检查话题状态"))
+        rejected = owner.post(base + "/missions", json=stale)
+    assert rejected.status_code == 409 and rejected.json()["error"]["code"] == "thread.archived"
+    assert owner.get(thread + "/mission").status_code == 404
+    assert owner.get(channel + "/messages", params={"threadId": thread_id}).json() == history
+    assert owner.post(thread + "/unarchive", json={}).json()["state"] == "open"
+    draft = _draft(home, thread_id)
+    assert draft["threadId"] == thread_id
+    assert owner.get(channel + "/messages", params={"threadId": thread_id}).json() == history
+    assert home["pool"].jobs == {} and TaskLedger(home["root"]).list() == []
+
+
+def test_archived_drafts_still_read_and_replay_only_with_source_access(home):
+    owner, base = home["owner"], home["base"]
+    member = _join(home)
+    channel = _create(home, "private-draft", visibility="private", people=[member.member_id])
+    thread_id, _ = _thread(owner, channel)
+    thread = f"{base}/threads/{thread_id}"
+    draft = _draft(home, thread_id)
+    assert owner.post(thread + "/archive", json={}).json()["state"] == "archived"
+
+    path = base + "/missions"
+    draft_path = f"{path}/{draft['id']}"
+    assert owner.get(draft_path).json() == draft
+    assert owner.get(thread + "/mission").json() == draft
+    assert _draft(home, thread_id) == draft
+    conflict = owner.post(path, json=_input(home, thread_id, goal="其他目标"))
+    assert conflict.status_code == 409 and conflict.json()["error"]["code"] == "mission.thread_in_use"
+    assert member.post(path, json=_input(home, thread_id)).status_code == 403
+    assert owner.post(channel + "/leave", json={}).status_code == 204
+    missing_source = owner.post(path, json=_input(home, thread_id))
+    missing_thread = owner.post(path, json=_input(home, "unknown-thread"))
+    assert missing_source.status_code == missing_thread.status_code == 404
+    assert missing_source.json() == missing_thread.json()
+    assert owner.get(draft_path).status_code == 404
 
 
 def test_draft_filters_count_visible_matches_before_status_and_limit(home):
