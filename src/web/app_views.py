@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlsplit
 
 from src.agents.tools.artifacts import EDITABLE_ARTIFACT_KINDS
-from src.web.app_artifact_upload import TextUpload
+from src.web.app_artifact_upload import TEXT_CONTENT_TYPES, FileUpload
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
 
@@ -1320,12 +1320,16 @@ def _artifact_content(shown: Dict[str, Any], html: str, version: int, *, version
 _UPLOADED_FILE_PREVIEW_BYTES = 32 * 1024
 
 
-def _uploaded_file_detail(shown: Dict[str, Any], meta: Dict[str, Any], data: Optional[bytes]) -> Dict[str, Any]:
-    content = {"kind": "file", "name": meta["name"], "contentType": meta["content_type"],
-               "size": meta["bytes"], "sha256": meta["sha256"]}
-    if data is not None and len(data) <= _UPLOADED_FILE_PREVIEW_BYTES:
+def uploaded_file_detail(root: str, meta: Dict[str, Any], snapshot: Dict[str, Any],
+                         version: int, data: Optional[bytes]) -> Dict[str, Any]:
+    shown = _artifact(root, meta, desktop_upload=True)
+    versioned = snapshot["content_type"] in TEXT_CONTENT_TYPES
+    content = {"kind": "file", "name": snapshot["name"], "contentType": snapshot["content_type"],
+               "size": snapshot["bytes"], "sha256": snapshot["sha256"]}
+    if versioned and data is not None and len(data) <= _UPLOADED_FILE_PREVIEW_BYTES:
         content["text"] = data.decode("utf-8")
-    return {**shown, "shownVersion": 1, "content": content, "versioned": False}
+    return {**shown, "shownVersion": version, "content": content, "versioned": versioned,
+            "canEdit": versioned and version == shown["version"]}
 
 
 def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
@@ -1346,18 +1350,20 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
                 if content["kind"] != shown["kind"]:
                     raise ValueError("制品版本格式不符")
                 return _structured_artifact(shown, content, wanted)
-            if version is not None and version != shown["version"]:
-                return None
             if shown["kind"] == "file":
-                if not uploads.has_snapshot(artifact_id, 1):
+                wanted = shown["version"] if version is None else version
+                snapshot = uploads.uploaded_version(meta, wanted)
+                if snapshot is None or not uploads.has_snapshot(artifact_id, wanted):
                     return None
                 data = None
-                size = int(meta["bytes"])
-                if size <= _UPLOADED_FILE_PREVIEW_BYTES:
-                    data = uploads.uploaded_file(artifact_id, 1, size)
+                size = int(snapshot["bytes"])
+                if size <= _UPLOADED_FILE_PREVIEW_BYTES and snapshot["content_type"] in TEXT_CONTENT_TYPES:
+                    data = uploads.uploaded_file(artifact_id, wanted, size, snapshot.get("sha256"))
                     if data is None:
                         return None
-                return _uploaded_file_detail(shown, meta, data)
+                return uploaded_file_detail(root, meta, snapshot, wanted, data)
+            if version is not None and version != shown["version"]:
+                return None
             html = uploads.html(artifact_id)
             return _artifact_content(shown, html, shown["version"], versioned=False) if html is not None else None
     store = ArtifactStore(root)
@@ -1389,7 +1395,7 @@ def append_structured_artifact(root: str, artifact_id: str, base_version: int, c
     return _structured_artifact(_artifact(root, meta, desktop_upload=True), content, meta["version"])
 
 
-def upload_artifact(root: str, title: str, content: str | TextUpload | dict) -> Dict[str, Any]:
+def upload_artifact(root: str, title: str, content: str | FileUpload | dict) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     from src.utils.home_maintenance import home_maintenance
     from src.utils.state_dir import ensure_state_gitignore
@@ -1400,9 +1406,9 @@ def upload_artifact(root: str, title: str, content: str | TextUpload | dict) -> 
         if isinstance(content, dict):
             meta = store.publish_structured(title, content)
             return _structured_artifact(_artifact(root, meta, desktop_upload=True), content, meta["version"])
-        if isinstance(content, TextUpload):
+        if isinstance(content, FileUpload):
             meta = store.publish_file(title, content.name, content.content_type, content.data)
-            return _uploaded_file_detail(_artifact(root, meta, desktop_upload=True), meta, content.data)
+            return uploaded_file_detail(root, meta, meta, 1, content.data)
         meta = store.publish_new(title, content)
     return _artifact_content(_artifact(root, meta, desktop_upload=True), content, 1, versioned=False)
 

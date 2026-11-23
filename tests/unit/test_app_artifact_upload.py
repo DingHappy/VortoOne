@@ -1,13 +1,17 @@
 """The private Desktop HTML upload shares storage code with agent artifacts."""
+from base64 import b64decode
 from hashlib import sha256
 from pathlib import Path
+import struct
 from urllib.parse import quote
+import zlib
 
 from fastapi.testclient import TestClient
 import pytest
 
 from src.agents.tools.artifacts import ArtifactStore
 from src.utils.home_maintenance import home_maintenance
+from tests.unit.test_app_profile_avatar import _JPEG, _png
 from tests.unit.test_member_login import ORIGIN, TOKEN, _join
 from tests.unit.test_member_login import home  # noqa: F401
 
@@ -93,7 +97,8 @@ def test_private_drive_uploads_offer_text_preview_and_original_attachment(home, 
     aid = detail["id"]
     assert detail["kind"] == "file" and detail["title"] == name
     assert detail["version"] == detail["shownVersion"] == 1
-    assert detail["untrusted"] is True and detail["canEdit"] is False and detail["canShare"] is False
+    assert detail["untrusted"] is True and detail["canEdit"] is True and detail["canShare"] is False
+    assert detail["versioned"] is True
     assert detail["content"] == {"kind": "file", "name": name, "contentType": expected, "size": len(original),
                                  "sha256": sha256(original).hexdigest(), "text": original.decode()}
     assert owner.get(f"{path}/{aid}?version=1").json() == detail
@@ -130,6 +135,107 @@ def test_private_drive_uploads_offer_text_preview_and_original_attachment(home, 
     assert trashed["id"] == aid and trashed["kind"] == "file"
     assert owner.post(f"{path}/{aid}/restore", json={}).status_code == 204
     assert owner.get(f"{path}/{aid}/file").content == original
+
+
+@pytest.mark.parametrize(("name", "original", "declared", "expected"), [
+    ("界面.PNG", _png(), "application/octet-stream", "image/png"),
+    ("picture.jpg", b64decode(_JPEG), "image/jpeg", "image/jpeg"),
+    ("picture.jpeg", b64decode(_JPEG), "application/octet-stream", "image/jpeg"),
+])
+def test_private_drive_uploads_keep_original_image_bytes_and_safe_metadata(home, name, original, declared, expected):
+    owner, base = home["owner"], home["base"]
+    path = f"{base}/artifacts"
+    published = owner.post(f"{path}/files", files=_files(name, original, declared))
+    assert published.status_code == 201, published.text
+    detail = published.json()
+    artifact_id = detail["id"]
+    assert detail["kind"] == "file" and detail["title"] == name
+    assert detail["untrusted"] is True and detail["canShare"] is False and detail["versioned"] is False
+    assert detail["content"] == {"kind": "file", "name": name, "contentType": expected,
+                                 "size": len(original), "sha256": sha256(original).hexdigest()}
+    assert owner.get(f"{path}/{artifact_id}?version=1").json() == detail
+    assert owner.get(f"{path}/{artifact_id}/file?format=html").status_code == 415
+    signed = owner.get(f"{path}/{artifact_id}/download").json()["url"]
+    for url in (f"{path}/{artifact_id}/file", signed):
+        downloaded = owner.get(url)
+        assert downloaded.status_code == 200 and downloaded.content == original
+        assert downloaded.headers["content-type"] == "application/octet-stream"
+        assert downloaded.headers["content-disposition"] == f"attachment; filename*=UTF-8''{quote(name, safe='')}"
+        assert downloaded.headers["x-content-type-options"] == "nosniff"
+        assert downloaded.headers["content-security-policy"] == "sandbox; default-src 'none'"
+        assert downloaded.headers["cross-origin-resource-policy"] == "same-origin"
+        assert downloaded.headers["cache-control"] == "no-store"
+
+    member = _join(home)
+    assert member.post(f"{path}/files", files=_files(name, original, declared)).status_code == 403
+    assert member.get(path, params={"kinds": "file"}).json()["artifacts"] == []
+    assert member.get(f"{path}/{artifact_id}").status_code == 403
+    assert member.get(f"{path}/{artifact_id}/file").status_code == 403
+    assert member.get(signed).status_code == 403
+
+
+def _image_chunk(kind, content):
+    return struct.pack(">I", len(content)) + kind + content + struct.pack(">I", zlib.crc32(kind + content))
+
+
+@pytest.mark.parametrize(("name", "data", "mime"), [
+    ("spoof.png", HTML.encode(), "image/png"),
+    ("spoof.jpg", _png(), "image/jpeg"),
+    ("spoof.png", _png(), "text/html"),
+    ("extra.png", _png() + b"trailing bytes", "image/png"),
+    ("extra.jpg", b64decode(_JPEG) + b"trailing bytes\xff\xd9", "image/jpeg"),
+    ("truncated.png", _png()[:-12], "image/png"),
+    ("truncated.jpg", b64decode(_JPEG)[:-2], "image/jpeg"),
+    ("animated.png", _png()[:33] + _image_chunk(b"acTL", struct.pack(">II", 2, 0)) + _png()[33:], "image/png"),
+])
+def test_invalid_image_upload_does_not_publish_metadata_or_bytes(home, name, data, mime):
+    owner, base, root = home["owner"], home["base"], home["root"]
+    path = f"{base}/artifacts"
+    response = owner.post(f"{path}/files", files=_files(name, data, mime))
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "artifact.upload_format"
+    assert owner.get(path).json()["artifacts"] == []
+    assert not ArtifactStore(root, desktop_uploads=True).root.exists()
+
+
+@pytest.mark.parametrize(("width", "height"), [(12_001, 2), (8_000, 8_000)])
+def test_image_dimension_limits_are_independent_of_compressed_byte_size(home, width, height):
+    owner, base = home["owner"], home["base"]
+    path = f"{base}/artifacts"
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    fixture = _png()
+    image = fixture[:8] + _image_chunk(b"IHDR", header) + fixture[33:]
+    rejected = owner.post(f"{path}/files", files=_files("large.png", image, "image/png"))
+    assert rejected.status_code == 413
+    assert rejected.json()["error"]["code"] == "artifact.upload_too_large"
+    assert owner.get(path).json()["artifacts"] == []
+
+
+def test_image_upload_obeys_artifact_byte_limit(home, monkeypatch):
+    monkeypatch.setenv("VORTOONE_ARTIFACT_MAX_BYTES", "30")
+    owner, base = home["owner"], home["base"]
+    path = f"{base}/artifacts"
+    rejected = owner.post(f"{path}/files", files=_files("large.png", _png(), "image/png"))
+    assert rejected.status_code == 413
+    assert rejected.json()["error"]["code"] == "artifact.upload_too_large"
+    assert owner.get(path).json()["artifacts"] == []
+
+
+def test_download_rejects_a_same_size_uploaded_file_replacement(home):
+    owner, base, root = home["owner"], home["base"], home["root"]
+    path = f"{base}/artifacts"
+    png = _png()
+    posted = owner.post(f"{path}/files", files=_files("original.png", png, "image/png"))
+    assert posted.status_code == 201, posted.text
+    artifact_id = posted.json()["id"]
+    signed = owner.get(f"{path}/{artifact_id}/download").json()["url"]
+
+    uploaded = ArtifactStore(root, desktop_uploads=True).root / artifact_id / "upload.bin"
+    uploaded.write_bytes(b"x" * len(png))
+    for url in (f"{path}/{artifact_id}/file", signed):
+        response = owner.get(url)
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "artifact.unavailable"
 
 
 def test_large_text_file_can_be_downloaded_without_inline_content(home):

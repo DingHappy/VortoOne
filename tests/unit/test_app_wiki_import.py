@@ -169,6 +169,12 @@ def test_obsidian_import_embeds_private_upload_for_owner_without_sharing_it(home
 
     file_path = f"{drive}/{aid}/file?version=1"
     assert owner.get(file_path).content == original
+    new_bytes = b"type,total\nrelease,8\n"
+    revision = owner.post(f"{drive}/{aid}/files", files={"file": ("report.csv", new_bytes, "text/csv")})
+    assert revision.status_code == 201, revision.text
+    assert owner.get(f"{drive}/{aid}/file").content == new_bytes
+    assert owner.get(file_path).content == original
+    assert owner.get(path).json()["source"]["attachments"] == bindings
     assert member.get(file_path).status_code == 403
     assert member.post(wiki + "/import", json=payload).status_code == 403
     assert owner.post(wiki + "/import", json=payload).json() == imported.json()
@@ -180,6 +186,7 @@ def test_obsidian_import_embeds_private_upload_for_owner_without_sharing_it(home
     assert owner.get(file_path).status_code == 404
     assert owner.post(f"{drive}/{aid}/restore").status_code == 204
     assert owner.get(path).json()["source"]["attachments"] == bindings
+    assert owner.get(file_path).content == original
 
     store = ArtifactStore(home["root"], desktop_uploads=True).root
     unavailable = store.with_suffix(".unavailable")
