@@ -9,7 +9,9 @@ Public ``vc`` wrappers are retained temporarily while their callers migrate.
 from __future__ import annotations
 
 import argparse
+import io
 import os
+import sys
 from collections.abc import Sequence
 
 
@@ -125,4 +127,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # Windows uses an ANSI code page for file/pipe stdio unless explicitly configured.
+    # Native launch redirects both streams, and diagnostics are read as UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     raise SystemExit(main())

@@ -174,6 +174,16 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     outcome
 }
 
+fn desktop_titlebar_script() -> String {
+    let platform = if cfg!(target_os = "macos") {
+        "mac"
+    } else {
+        std::env::consts::OS
+    };
+    let script = include_str!("../../desktop-titlebar.js");
+    format!("((platform) => {{\n{script}\n}})({platform:?});")
+}
+
 /// 主窗口打开 url（本机服务的交接登录地址，或别处服务的页面）。已开着就原地导航。
 fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
     let handle = app.clone();
@@ -193,14 +203,17 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
         let setup_handle = handle.clone();
         let builder = WebviewWindowBuilder::new(&handle, LIVE, WebviewUrl::External(url))
             .title("VortoOne Dev")
-            .initialization_script(include_str!("../../desktop-titlebar.js"))
+            .initialization_script(desktop_titlebar_script())
             .inner_size(1440.0, 960.0)
             .min_inner_size(900.0, 600.0)
             .center()
             // 窗口只在后端自己的地址里走；外部链接交给系统浏览器
             .on_navigation(move |target| {
                 if target.path() == SETUP_MODEL_PATH && address.allows(target) {
-                    open_setup_model_settings(&setup_handle, target);
+                    // WebView2 must finish this navigation callback before opening another window.
+                    let app = setup_handle.clone();
+                    let target = target.clone();
+                    tauri::async_runtime::spawn_blocking(move || open_setup_model_settings(&app, &target));
                     return false;
                 }
                 if address.allows(target) {
@@ -304,11 +317,11 @@ fn open_consent(app: &tauri::AppHandle, port: u16, id: &str) {
 }
 
 fn main() {
-    if std::env::args().any(|arg| arg == "--check-standalone") {
-        let result = std::env::current_exe().map_err(|e| e.to_string()).and_then(|exe| {
-            let contents = exe.parent().and_then(|p| p.parent()).ok_or("安装包路径无效")?;
-            backend::verify_standalone(&contents.join("Resources"))
-        });
+    let context = tauri::generate_context!();
+    if std::env::args_os().any(|arg| arg == "--check-standalone") {
+        let result = tauri::utils::platform::resource_dir(context.package_info(), &tauri::utils::Env::default())
+            .map_err(|error| error.to_string())
+            .and_then(|resources| backend::verify_standalone(&resources));
         match result {
             Ok(()) => println!("{{\"standalone\":true,\"freshProfile\":true,\"login\":true,\"ui\":true,\"inferenceSent\":false}}"),
             Err(error) => { eprintln!("安装验收失败：{error}"); std::process::exit(1); }
@@ -367,8 +380,8 @@ fn main() {
             app.set_menu(menu)?;
             app.add_capability(shell::capability())?;
             connector::resume(app.handle().clone());
-            let bundled = app.path().resource_dir()?.join("runtime").join(
-                if cfg!(windows) { "vortocode-runtime.exe" } else { "vortocode-runtime" }).is_file();
+            let bundled = app.path().resource_dir()?
+                .join("runtime").join(backend::BUNDLED_RUNTIME).is_file();
             // 先打开哪个：上次选的服务；什么都还没选就是首次引导（HOME_AND_MEMBERS_DESIGN 第 4 节）
             let (config, data) = (app.path().app_config_dir()?, app.path().app_data_dir()?);
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
@@ -468,7 +481,7 @@ fn main() {
                 eprintln!("无法打开开发版窗口: {error}");
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("VortoOne Dev failed to start")
         .run(|app, event| match event {
             // 退出时带走后端；被强杀时由后端看监护进程 pid 自己退出
@@ -490,6 +503,18 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    fn native_titlebar_script_receives_the_build_platform() {
+        #[cfg(target_os = "macos")]
+        let expected = "mac";
+        #[cfg(target_os = "linux")]
+        let expected = "linux";
+        #[cfg(target_os = "windows")]
+        let expected = "windows";
+        assert!(desktop_titlebar_script().ends_with(&format!("}})({expected:?});")));
+    }
 
     #[test]
     fn download_matches_only_a_transfer_id_without_parameters() {

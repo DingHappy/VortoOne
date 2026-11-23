@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { checkDevConfig } from "./desktop-dev-model.mjs";
+import { runNpm } from "./run-npm.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const config = JSON.parse(
@@ -16,20 +17,11 @@ const stable = JSON.parse(
 );
 checkDevConfig(config, stable);
 if (!process.argv.includes("--skip-build")) {
-  execFileSync("npm", ["run", "build:preview"], {
-    cwd: root,
-    stdio: "inherit",
-  });
+  runNpm(["run", "build:preview"], root);
   // 连本机后端时由后端提供的界面（随包资源 web/）
-  execFileSync("npm", ["run", "build", "--workspace", "@vortoone/web"], {
-    cwd: root,
-    stdio: "inherit",
-  });
+  runNpm(["run", "build", "--workspace", "@vortoone/web"], root);
   // 首次引导、偏好设置窗口：连真外壳的那一份（不是示例数据），外壳从 shell/index.html 打开
-  execFileSync("npm", ["run", "build", "--workspace", "@vortoone/desktop", "--", "--outDir", "dist-live"], {
-    cwd: root,
-    stdio: "inherit",
-  });
+  runNpm(["run", "build", "--workspace", "@vortoone/desktop", "--", "--outDir", "dist-live"], root);
 }
 const output = new URL("../apps/desktop-dev/dist/", import.meta.url);
 await rm(output, { recursive: true, force: true });
@@ -48,6 +40,8 @@ const commit = execFileSync("git", ["rev-parse", "HEAD"], {
   cwd: root,
   encoding: "utf8",
 }).trim();
+const application = process.platform === "darwin" ? "VortoOne Dev.app" : "VortoOne Dev";
+const stableApplication = process.platform === "darwin" ? "VortoOne.app" : "VortoOne";
 const info = {
   channel: "development",
   version: config.version,
@@ -74,8 +68,8 @@ await writeFile(
   new URL("versions.html", output),
   `<!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VortoOne Dev · 版本管理</title>
 <link rel="stylesheet" href="version-manager.css"><main><h1>版本管理</h1><p>稳定使用与开发验收，分别管理。</p>
-<section><h2>公开稳定版</h2><strong>VortoOne ${escape(stable.version)}</strong><p>已发布的正式桌面 App，继续使用现有自动更新。</p><p>应用：VortoOne.app</p></section>
-<section><h2>当前开发版</h2><strong>VortoOne Dev ${escape(config.version)}</strong><p>内置 Python 后端 · 本机持久数据 · 安装后即可配置模型</p><p>应用：VortoOne Dev.app</p><p>通过独立开发安装包更新；发布草稿由你管理。</p></section>
+<section><h2>公开稳定版</h2><strong>VortoOne ${escape(stable.version)}</strong><p>已发布的正式桌面 App，继续使用现有自动更新。</p><p>应用：${escape(stableApplication)}</p></section>
+<section><h2>当前开发版</h2><strong>VortoOne Dev ${escape(config.version)}</strong><p>内置 Python 后端 · 本机持久数据 · 安装后即可配置模型</p><p>应用：${escape(application)}</p><p>通过独立开发安装包更新；发布草稿由你管理。</p></section>
 <p>在菜单「开发版」中打开公开稳定版下载或 GitHub 发布管理。</p><details><summary>构建信息</summary><p>提交：${escape(commit)}</p><p>应用标识：${escape(config.identifier)}</p></details></main></html>`,
 );
 await writeFile(

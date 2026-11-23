@@ -9,22 +9,28 @@ Desktop 正常退出时会 `RunEvent::Exit` → 终止 runtime 进程组，这�
 一眼那个进程还在不在，不在就退出。没有这个环境变量（`vc server` 手工起、systemd 托管、CI）
 时看门狗完全不启动——那些场景的生命周期本来就不归 Desktop 管。
 
-只用 `os.kill(pid, 0)`：不发信号、只问"这个 pid 还在吗"，不依赖 psutil。误判方向也是安全的
-——宿主还在却误判为没了，最坏是 runtime 退出，Desktop 会重启它；反过来漏判只是多活一会儿。
+Unix 使用 `os.kill(pid, 0)` 探活。Windows 用只具备同步权限的进程句柄，因为 Windows 的
+`os.kill(pid, 0)` 会终止目标进程。无法探测时保守地当进程还在。
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import ctypes
 import logging
 import os
+from ctypes import wintypes
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 ENV_VAR = "VORTOONE_SUPERVISOR_PID"
 _DEFAULT_INTERVAL = 5.0
+_WINDOWS = os.name == "nt"
+_SYNCHRONIZE = 0x00100000
+_ERROR_INVALID_PARAMETER = 87
+_WAIT_OBJECT_0 = 0
 
 
 def supervisor_pid(env: Optional[dict] = None) -> Optional[int]:
@@ -39,8 +45,32 @@ def supervisor_pid(env: Optional[dict] = None) -> Optional[int]:
     return pid
 
 
+def _windows_process_alive(pid: int) -> bool:
+    if not 1 < pid <= 0xFFFFFFFF:
+        return False
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_process = kernel.OpenProcess
+    open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    open_process.restype = wintypes.HANDLE
+    wait = kernel.WaitForSingleObject
+    wait.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    wait.restype = wintypes.DWORD
+    close = kernel.CloseHandle
+    close.argtypes = (wintypes.HANDLE,)
+    close.restype = wintypes.BOOL
+    handle = open_process(_SYNCHRONIZE, False, pid)
+    if not handle:
+        return ctypes.get_last_error() != _ERROR_INVALID_PARAMETER
+    try:
+        return wait(handle, 0) != _WAIT_OBJECT_0
+    finally:
+        close(handle)
+
+
 def process_alive(pid: int) -> bool:
-    """这个 pid 还在吗。``os.kill(pid, 0)`` 不发信号，只做存在性探测。"""
+    """用本平台的只读探活接口检查监护进程。"""
+    if _WINDOWS:
+        return _windows_process_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

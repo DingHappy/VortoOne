@@ -119,7 +119,7 @@ fn backups(data: &Path, copy_to: Option<&str>) -> Vec<Value> {
 pub fn status(app: &tauri::AppHandle) -> Value {
     let Ok((config, data)) = dirs(app) else { return json!({}) };
     let local = places::read_local(&config, &data);
-    let bundled = app.path().resource_dir().map(|r| r.join("runtime").join("vortocode-runtime").is_file()).unwrap_or(false);
+    let bundled = app.path().resource_dir().map(|r| r.join("runtime").join(backend::BUNDLED_RUNTIME).is_file()).unwrap_or(false);
     let phase = phase(app);
     let url = if phase == "running" { local.url.clone() } else { None };
     let reach = local.public_url.is_some();
@@ -138,7 +138,7 @@ pub fn status(app: &tauri::AppHandle) -> Value {
         "usage": false,
         "version": app.package_info().version.to_string(),
         "dir": data.display().to_string(),
-        "systemName": std::env::var("USER").ok(),
+        "systemName": std::env::var(if cfg!(windows) { "USERNAME" } else { "USER" }).ok(),
         "serving": false,
         "claim": Value::Null,
         "backTo": Value::Null,
@@ -486,11 +486,11 @@ fn erase(app: &tauri::AppHandle) -> Result<String, String> {
 /// 用随包后端（源码开发时用 backend.json 的 Python）在这个家的目录里跑一个子命令，读它打的那一行 JSON。
 fn runtime_tool(app: &tauri::AppHandle, args: &[&str]) -> Result<Value, String> {
     let (config, data) = dirs(app)?;
-    let runtime = app.path().resource_dir().map_err(|e| e.to_string())?.join("runtime").join("vortocode-runtime");
+    let runtime = app.path().resource_dir().map_err(|e| e.to_string())?.join("runtime").join(backend::BUNDLED_RUNTIME);
     let home = data.join("home");
     std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
     let mut command = if runtime.is_file() {
-        let mut command = Command::new(&runtime);
+        let mut command = backend::runtime_command(&runtime);
         command.env_remove("PYTHONPATH");
         command
     } else {

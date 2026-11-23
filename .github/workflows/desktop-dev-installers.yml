@@ -1,0 +1,134 @@
+name: VortoOne Dev installers
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-dev-installers.yml"
+      - "frontend/apps/desktop-dev/**"
+      - "frontend/scripts/**"
+      - "frontend/package-lock.json"
+      - "desktop/scripts/**"
+      - "desktop/requirements-runtime.*"
+      - "desktop/runtime_entry.py"
+      - "src/gateway/supervisor_watchdog.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-installers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package and install (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            platform: windows-x64
+          - runner: ubuntu-24.04
+            platform: ubuntu-amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    env:
+      RUSTUP_TOOLCHAIN: stable
+      INSTALLER_OUTPUT: frontend/apps/desktop-dev/src-tauri/target/release/channel/${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: "3.13.13"
+          architecture: x64
+      - name: Install Ubuntu WebKit and build libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+      - name: Install current stable Rust and locked frontend dependencies
+        run: |
+          rustup update stable --no-self-update
+          npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: Verify Windows supervisor checks a real child without terminating it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          import subprocess
+          import sys
+          from src.gateway.supervisor_watchdog import process_alive
+
+          child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+          try:
+              assert process_alive(child.pid)
+              assert child.poll() is None
+          finally:
+              child.terminate()
+              child.wait(timeout=5)
+          assert not process_alive(child.pid)
+          '@ | python -
+      - name: Build native Dev installer and bundled backend
+        env:
+          VORTOONE_SIDECAR_BOOTSTRAP_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: node frontend/scripts/bundle-desktop-dev-portable.mjs
+      - name: Install Ubuntu package and check isolated local bootstrap
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd "$INSTALLER_OUTPUT"
+          sha256sum --check SHA256SUMS
+          package=(./*.deb)
+          test "$(dpkg-deb -f "${package[0]}" Architecture)" = amd64
+          sudo apt-get install --yes "${package[0]}"
+          timeout 180s /usr/bin/vortoone-desktop-dev --check-standalone | tee smoke.json
+          python -c 'import json; assert json.load(open("smoke.json")) == dict(standalone=True, freshProfile=True, login=True, ui=True, inferenceSent=False)'
+      - name: Install Windows package and check isolated local bootstrap
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = Resolve-Path $env:INSTALLER_OUTPUT
+          $installer = Get-ChildItem $output -Filter *.exe -File
+          $manifest = Get-Content (Join-Path $output 'desktop-dev.json') -Raw | ConvertFrom-Json
+          if ((Get-FileHash $installer.FullName -Algorithm SHA256).Hash -ne $manifest.sha256) {
+            throw 'Installer SHA-256 mismatch'
+          }
+          $installDir = Join-Path $env:RUNNER_TEMP 'vortoone-dev-installed'
+          $install = Start-Process $installer.FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "NSIS installation failed ($($install.ExitCode))" }
+          $stdout = Join-Path $output 'smoke.json'
+          $stderr = Join-Path $env:RUNNER_TEMP 'vortoone-smoke-errors.txt'
+          $app = Join-Path $installDir 'vortoone-desktop-dev.exe'
+          $smoke = Start-Process $app -ArgumentList '--check-standalone' -PassThru `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (!$smoke.WaitForExit(180000)) {
+            $smoke.Kill($true)
+            throw 'Installed application self-check timed out'
+          }
+          if ($smoke.ExitCode -ne 0) {
+            Get-Content $stderr
+            throw "Installed application self-check failed ($($smoke.ExitCode))"
+          }
+          $result = Get-Content $stdout -Raw | ConvertFrom-Json
+          if ($result.standalone -ne $true -or $result.freshProfile -ne $true -or
+              $result.login -ne $true -or $result.ui -ne $true -or $result.inferenceSent -ne $false) {
+            throw 'Installed application did not verify fresh local bootstrap'
+          }
+          Get-Content $stdout
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VortoOne-Dev-${{ matrix.platform }}
+          path: ${{ env.INSTALLER_OUTPUT }}
+          if-no-files-found: error
+          retention-days: 14

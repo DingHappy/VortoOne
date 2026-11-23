@@ -10,7 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { RUNTIME_DIR_NAME, filesBelow, runtimeExecutableName, sha256Tree, treeSize } from "./runtime-tree.mjs";
@@ -155,7 +155,7 @@ for (const [source, destination] of [
   [join(repoRoot, "config"), "config"],
   [join(repoRoot, "skills"), "skills"],
 ]) {
-  args.push("--add-data", `${source}${delimiter}${destination}`);
+  args.push("--add-data", `${source}:${destination}`);
 }
 for (const module of excludedModules) args.push("--exclude-module", module);
 args.push("--collect-all", "openai", "--copy-metadata", "httpx");
@@ -213,6 +213,7 @@ const manifest = {
   python: pythonVersion,
   pythonDistribution: inventory.pythonRuntime.distribution,
   pythonMachine: sidecarEnvironment.pythonDetails.machine,
+  pythonPlatform: sidecarEnvironment.pythonDetails.platform,
   pythonProvenance: sidecarEnvironment.pythonProvenance,
   pythonProvider: inventory.pythonRuntime.provider,
   runtimeLockSha256: sidecarEnvironment.lockSha256,

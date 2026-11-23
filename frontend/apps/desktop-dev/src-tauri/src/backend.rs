@@ -8,7 +8,7 @@
 //! 窗口拿到的是一次性的交接码（`POST /api/auth/handover` → `GET /api/auth/handover/<码>`），后端核对后种下登录 Cookie。
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -220,21 +220,21 @@ pub fn allowed_env(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn free_port() -> Result<u16, String> {
-    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
+fn probe_port(port: u16) -> Result<u16, String> {
+    let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| e.to_string())?;
     Ok(listener.local_addr().map_err(|e| e.to_string())?.port())
 }
 
 /// 上次用的端口还空着就接着用：AI 应用里配好的地址（`http://127.0.0.1:<端口>/mcp`）重启后照样能连。
 /// 被占了才换一个新的，并记下来。
-fn stable_port(remember: &Path) -> Result<u16, String> {
+fn stable_port(remember: &Path, probe: impl Fn(u16) -> Result<u16, String>) -> Result<u16, String> {
     let saved = fs::read_to_string(remember).ok().and_then(|text| text.trim().parse::<u16>().ok());
     if let Some(port) = saved.filter(|port| *port >= 1024) {
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        if probe(port).is_ok() {
             return Ok(port);
         }
     }
-    let port = free_port()?;
+    let port = probe(0)?;
     let _ = fs::write(remember, port.to_string());
     Ok(port)
 }
@@ -262,7 +262,7 @@ pub fn consent_url(port: u16, id: &str) -> String {
 
 fn new_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes)).map_err(|e| e.to_string())?;
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -382,8 +382,21 @@ fn native_request(
     Ok((status, body))
 }
 
+pub fn runtime_command(program: &Path) -> Command {
+    let command = Command::new(program);
+    #[cfg(windows)]
+    let command = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let mut command = command;
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    };
+    command
+}
+
 pub fn command(config: &Config, home: &Path, ui: &Path, port: u16, token: &str) -> Command {
-    let mut command = Command::new(&config.python);
+    let mut command = runtime_command(&config.python);
     command
         .args([
             "-m",
@@ -406,7 +419,7 @@ pub fn bundled_command(
     port: u16,
     token: &str,
 ) -> Command {
-    let mut command = Command::new(runtime);
+    let mut command = runtime_command(runtime);
     command
         .args(["server", "--host", "127.0.0.1", "--port"])
         .arg(port.to_string());
@@ -523,7 +536,7 @@ fn start_with(
     }
     fs::create_dir_all(home).map_err(|e| e.to_string())?;
     let (port, token) = (
-        stable_port(&home.with_file_name("backend.port"))?,
+        stable_port(&home.with_file_name("backend.port"), probe_port)?,
         token.to_string(),
     );
     let output = fs::File::create(log).map_err(|e| e.to_string())?;
@@ -589,21 +602,71 @@ fn good_code(code: &str) -> bool {
     (20..=200).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+fn isolate_standalone_environment(command: &mut Command, scratch: &Path) {
+    command.env_clear().env("HOME", scratch);
+    #[cfg(not(windows))]
+    command.env("PATH", "/usr/bin:/bin");
+    #[cfg(windows)]
+    {
+        for name in ["SystemRoot", "WINDIR"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            command.env("PATH", PathBuf::from(root).join("System32"));
+        }
+        for name in ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"] {
+            command.env(name, scratch);
+        }
+    }
+}
+
+/// Render only trace locations and exception classes. The log may contain
+/// local paths or arbitrary exception messages that do not belong in CI output.
+fn standalone_trace_locations(log: &str) -> Vec<String> {
+    let mut locations = Vec::new();
+    for line in log.lines().map(str::trim) {
+        if let Some(row) = line.strip_prefix("File \"") {
+            let Some((path, rest)) = row.split_once("\", line ") else { continue; };
+            let file = path.rsplit(['/', '\\']).next().unwrap_or_default();
+            let number = rest.split(',').next().unwrap_or_default();
+            if file.ends_with(".py") && file.len() <= 80
+                && file.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+                && number.parse::<u32>().is_ok()
+            {
+                locations.push(format!("{file}:{number}"));
+            }
+        } else if let Some((kind, _)) = line.split_once(':') {
+            if (kind.ends_with("Error") || kind.ends_with("Exception")) && kind.len() <= 64
+                && kind.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                locations.push(kind.to_string());
+            }
+        } else if line == "本机启动票据不可用，服务未启动" {
+            locations.push(line.to_string());
+        }
+    }
+    locations
+}
+
+fn report_standalone_trace(path: &Path) {
+    const MAX_BYTES: u64 = 16 * 1024;
+    let Ok(mut log) = fs::File::open(path) else { return; };
+    let Ok(metadata) = log.metadata() else { return; };
+    if log.seek(SeekFrom::Start(metadata.len().saturating_sub(MAX_BYTES))).is_err() { return; }
+    let mut bytes = Vec::new();
+    if log.take(MAX_BYTES).read_to_end(&mut bytes).is_err() { return; }
+    let locations = standalone_trace_locations(&String::from_utf8_lossy(&bytes));
+    let tail = &locations[locations.len().saturating_sub(12)..];
+    if !tail.is_empty() {
+        eprintln!("独立安装临时后端诊断：{}", tail.join(" -> "));
+    }
+}
+
 /// 安装验收：在全新的临时家里启动随包后端并完成登录，不读取用户配置，不调用模型。
 pub fn verify_standalone(resources: &Path) -> Result<(), String> {
     let runtime = resources.join("runtime").join(BUNDLED_RUNTIME);
-    let capabilities = Command::new(&runtime)
-        .arg("model-capabilities")
-        .output()
-        .map_err(|_| "内置后端无法运行")?;
-    if !capabilities.status.success() {
-        return Err("内置模型客户端无法启动".into());
-    }
-    let capabilities: serde_json::Value =
-        serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
-    if capabilities["native_tools_client"] != true || capabilities["inference_sent"] != false {
-        return Err("内置模型客户端核验失败".into());
-    }
     let scratch = std::env::temp_dir().join(format!(
         "vortoone-installed-check-{}-{}",
         std::process::id(),
@@ -612,16 +675,27 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
     let outcome = (|| {
         let fixture_name = "Standalone installer fixture";
         crate::places::prepare_local_home(&scratch, true, Some(fixture_name)).map_err(|e| e.to_string())?;
+        let mut probe = runtime_command(&runtime);
+        probe.current_dir(&scratch).arg("model-capabilities");
+        isolate_standalone_environment(&mut probe, &scratch);
+        let capabilities = probe.output().map_err(|_| "内置后端无法运行")?;
+        if !capabilities.status.success() {
+            return Err("内置模型客户端无法启动".into());
+        }
+        let capabilities: serde_json::Value =
+            serde_json::from_slice(&capabilities.stdout).map_err(|_| "内置模型客户端不可用")?;
+        if capabilities["native_tools_client"] != true || capabilities["inference_sent"] != false {
+            return Err("内置模型客户端核验失败".into());
+        }
         let ui = resources.join("web");
         let home = scratch.join("home");
         let log = scratch.join("backend.log");
         let (mut child, port, token, _native) =
             start_with(&home, &ui, &log, &new_token()?, |port, token| {
                 let mut cmd = bundled_command(&runtime, None, &home, &ui, port, token);
-                cmd.env_clear();
+                isolate_standalone_environment(&mut cmd, &scratch);
                 cmd = configure(cmd, None, &home, &ui, token);
-                cmd.env("VORTOONE_BUNDLED_DESKTOP", "1")
-                    .env("PATH", "/usr/bin:/bin").env("HOME", &scratch);
+                cmd.env("VORTOONE_BUNDLED_DESKTOP", "1").env("VORTOONE_TURN_DIGEST", "0");
                 cmd
             })?;
         let result = (|| {
@@ -647,6 +721,9 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
         let _ = child.wait();
         result
     })();
+    if outcome.is_err() {
+        report_standalone_trace(&scratch.join("backend.log"));
+    }
     let _ = fs::remove_dir_all(&scratch);
     outcome
 }
@@ -660,6 +737,22 @@ pub fn own_page(url: &tauri::Url, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standalone_trace_exposes_locations_without_messages_or_paths() {
+        let log = r#"
+Traceback (most recent call last):
+  File "C:\private\runner\runtime_entry.py", line 40, in main
+    raise RuntimeError("secret message")
+  File "/private/another/server.py", line 97, in start_server
+UnicodeEncodeError: secret error context
+Authorization: Bearer hidden
+本机启动票据不可用，服务未启动
+"#;
+        assert_eq!(standalone_trace_locations(log), vec![
+            "runtime_entry.py:40", "server.py:97", "UnicodeEncodeError", "本机启动票据不可用，服务未启动"
+        ]);
+    }
 
     #[test]
     fn the_public_address_reaches_the_server_only_when_it_is_https() {
@@ -730,30 +823,58 @@ mod tests {
 
     #[test]
     fn the_port_is_kept_while_it_is_free() {
-        let dir = std::env::temp_dir().join(format!("vortoone-port-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vortoone-port-{}", new_token().unwrap()));
         fs::create_dir_all(&dir).unwrap();
         let remember = dir.join("backend.port");
-        let first = stable_port(&remember).unwrap();
-        assert_eq!(stable_port(&remember).unwrap(), first);
-        let held = TcpListener::bind(("127.0.0.1", first)).unwrap();
-        let second = stable_port(&remember).unwrap();
-        assert_ne!(second, first);
+        let first = 49152;
+        let second = 49153;
+
+        let port = stable_port(&remember, |port| {
+            assert_eq!(port, 0);
+            Ok(first)
+        }).unwrap();
+        assert_eq!(port, first);
+        assert_eq!(fs::read_to_string(&remember).unwrap(), first.to_string());
+
+        let port = stable_port(&remember, |port| {
+            assert_eq!(port, first);
+            Ok(first)
+        }).unwrap();
+        assert_eq!(port, first);
+
+        let port = stable_port(&remember, |port| {
+            if port == first {
+                Err("Address already in use".to_string())
+            } else {
+                assert_eq!(port, 0);
+                Ok(second)
+            }
+        }).unwrap();
+        assert_eq!(port, second);
         assert_eq!(fs::read_to_string(&remember).unwrap(), second.to_string());
-        drop(held);
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn config_needs_absolute_paths() {
-        let ok = parse_config(r#"{"python": "/usr/bin/python3", "source": "/Users/me/Vorto One", "env_file": "/Users/me/.env"}"#).unwrap();
-        assert_eq!(ok.python, PathBuf::from("/usr/bin/python3"));
-        assert_eq!(ok.source, PathBuf::from("/Users/me/Vorto One"));
-        assert_eq!(ok.env_file, Some(PathBuf::from("/Users/me/.env")));
-        assert_eq!(parse_config(r#"{"python":"/p","source":"/s"}"#).unwrap().env_file, None);
-        assert!(parse_config(r#"{"python": "python3", "source": "/s"}"#).is_err());
-        assert!(parse_config(r#"{"python": "/p", "source": "../s"}"#).is_err());
-        assert!(parse_config(r#"{"python": "/p"}"#).is_err());
-        assert!(parse_config(r#"{"python": "/p", "source": "/s", "env_file": "rel"}"#).is_err());
+        let fixture = std::env::current_dir().unwrap();
+        let python = fixture.join("python");
+        let source = fixture.join("Vorto One");
+        let env_file = fixture.join(".env");
+        let config = serde_json::json!({"python": python, "source": source, "env_file": env_file});
+        let parsed = parse_config(&config.to_string()).unwrap();
+        assert_eq!(parsed.python, python);
+        assert_eq!(parsed.source, source);
+        assert_eq!(parsed.env_file, Some(env_file));
+
+        let text = |python: &Path, source: &Path| {
+            serde_json::json!({"python": python, "source": source}).to_string()
+        };
+        assert_eq!(parse_config(&text(&python, &source)).unwrap().env_file, None);
+        assert!(parse_config(&text(Path::new("python"), &source)).is_err());
+        assert!(parse_config(&text(&python, Path::new("../source"))).is_err());
+        assert!(parse_config(&serde_json::json!({"python": python}).to_string()).is_err());
+        assert!(parse_config(&serde_json::json!({"python": python, "source": source, "env_file": "relative"}).to_string()).is_err());
     }
 
     #[test]
