@@ -5,7 +5,7 @@ import hashlib
 
 from src.scheduling.routine_schedule import RoutineSchedule, instant, zone
 from src.workflow.staff.registry import StaffRegistry, _ID
-from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger
+from src.workflow.tasks.tasks import MAX_SCAN_RECORD_BYTES, TASK_STATE_LOCK, TaskLedger
 
 PUBLIC_FIELDS = {'id', 'name', 'member', 'prompt', 'acceptance', 'delivery', 'schedule', 'timezone', 'enabled', 'revision', 'token_budget'}
 
@@ -196,9 +196,9 @@ class Routines:
             self.registry._write('routines.json', value)
             return deepcopy(item)
 
-    def check_binding(self, item):
+    def check_binding(self, item, *, persist_defaults=True):
         member = self.registry.member(item['member'])
-        role = self.registry.role(member['role'])
+        role = self.registry.role(member['role'], persist_defaults=persist_defaults)
         if member != item['binding']['member'] or role != item['binding']['role'] or member['status'] != 'active' or not role['enabled']:
             raise ValueError('专员或岗位版本已变化，请重新提议例行工作')
         if member['department'] and self.registry.department(member['department'])['status'] != 'active':
@@ -262,6 +262,23 @@ class Routines:
     def awaiting_takeover_resume(item):
         receipt = item['state'].get('takeover')
         return isinstance(receipt, dict) and receipt.get('awaiting_enable') is True
+
+    @staticmethod
+    def _claim_held(item, task):
+        return (task.status in {'queued', 'running', 'blocked'}
+                or task.status == 'done' and item['delivery'] == 'review'
+                and task.collaboration['review'] != 'accepted')
+
+    def schedule_held(self, item):
+        """An outstanding or incomplete claim makes the next automatic dispatch uncertain."""
+        claim = item['state'].get('task')
+        if not claim:
+            return False
+        try:
+            task = TaskLedger(self.root).load(claim, max_bytes=MAX_SCAN_RECORD_BYTES)
+            return task is None or self._claim_held(item, task)
+        except (KeyError, OSError, TypeError):
+            return True
 
     def take_over(self, routine_id, owner, owner_session, expected_digest):
         """Transfer future runs after an explicit owner decision on the stored definition."""
@@ -404,7 +421,7 @@ class Routines:
                         task = TaskLedger(self.root).load(item['state']['task'])
                         if task is None:
                             raise ValueError('认领记录缺少原任务，请核对后显式恢复')
-                        if task.status in {'queued', 'running', 'blocked'} or task.status == 'done' and item['delivery'] == 'review' and task.collaboration['review'] != 'accepted':
+                        if self._claim_held(item, task):
                             continue
                         self.settle(task)
                         value = self.read(); item = next(x for x in value['routines'] if x['id'] == original['id'])

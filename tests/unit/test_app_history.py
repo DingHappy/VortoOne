@@ -1,6 +1,7 @@
 """新版界面的运行记录、本月用量与例行工作历史：来自任务台账和用量账本。"""
 
-from datetime import date, datetime, timedelta
+from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -106,6 +107,53 @@ async def test_routine_history_comes_from_its_tasks(home, monkeypatch):
     assert any(msg["id"] == link["messageId"] and msg["body"] == "逐条交回结论" for msg in messages)
 
 
+def test_routine_health_and_usage_use_seven_days_without_trimming_history(home, monkeypatch):
+    from src.web import app_views
+    from src.workflow.staff.routines import Routines
+    from src.workflow.tasks.tasks import TaskLedger
+
+    now = datetime(2026, 11, 22, 15, 0, tzinfo=timezone.utc)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    monkeypatch.setattr(app_views, "datetime", FrozenDatetime)
+    client, base, service, member = (home[k] for k in ("client", "base", "service", "member"))
+    root = str(home["root"])
+    routine_id = "routine-week"
+    Routines(root).register({
+        "id": routine_id, "name": "健康统计", "member": member["id"], "prompt": "核对",
+        "schedule": "at 09:00", "timezone": "UTC",
+    })
+    marker = {"id": routine_id, "revision": 1, "slot": "2026-11-16T09:00:00+00:00", "legacy": None,
+              "token_budget": 0}
+    task = service.assign("sid-owner", {"member": member["id"], "prompt": "核对"}, routine=marker)
+    ledger = TaskLedger(root)
+    configs = [
+        ("in-flight", "queued", timedelta(hours=1)),
+        ("stopped", "cancelled", timedelta(days=1)),
+        ("recent", "failed", timedelta(days=2)),
+        ("boundary", "failed", timedelta(days=7)),
+        ("older-failure", "failed", timedelta(days=7, milliseconds=1)),
+        ("older-success", "done", timedelta(days=9)),
+    ]
+    for index, (suffix, status, age) in enumerate(configs):
+        when = (now - age).isoformat()
+        record = replace(task, id=task.id if index == 0 else f"task-test-{suffix}",
+                         created=when, updated=when, status=status)
+        assert ledger.save(record)
+
+    routine = client.get(f"{base}/routines").json()["routines"][0]
+    assert routine["health"] == {"ok": 0, "silent": 0, "failed": 2, "skipped": 0, "missed": 0, "total": 2}
+    assert routine["usage"]["runs"] == 2
+    assert routine["failuresInRow"] == 3
+    rows = client.get(f"{base}/routines/{routine_id}/runs").json()["runs"]
+    assert [row["id"] for row in rows] == [task.id] + [f"task-test-{key}" for key, _, _ in configs[1:]]
+    assert routine["recentRuns"] == rows
+
+
 async def test_routine_runs_are_bounded_and_do_not_conflate_unrelated_tasks(home):
     from copy import deepcopy
     from src.workflow.staff.routines import Routines
@@ -132,6 +180,8 @@ async def test_routine_runs_are_bounded_and_do_not_conflate_unrelated_tasks(home
     assert len(rows) == 30 and rows[0]["id"] == stopped.id
     assert [row["id"] for row in rows[1:]] == [f"task-test-routine-{n:02}" for n in range(30, 1, -1)]
     assert all(row["status"] == "canceled" and row["finishedAt"] and row["link"] is None for row in rows)
+    routines = {row["id"]: row for row in client.get(f"{base}/routines").json()["routines"]}
+    assert routines["routine-one"]["recentRuns"] == rows[:14]
     assert client.get(f"{base}/routines/routine-two/runs").json() == {"runs": []}
     assert client.get(f"{base}/routines/unknown/runs").status_code == 404
     registry.control("routine-one", registry.get("routine-one")["revision"], retire=True)
