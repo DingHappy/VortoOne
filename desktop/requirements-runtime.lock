@@ -1,6 +1,6 @@
 # Fully resolved Desktop Gateway + OpenAI-compatible tool client environment.
 # Core pins retained from CPython 3.13 on macOS arm64. Platform markers select
-# native build dependencies for CPython 3.12 on Windows x64 and Linux x86_64.
+# native build dependencies for CPython 3.13 on Windows x64 and Linux x86_64.
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.5
 aiosignal==1.4.0
@@ -32,7 +32,8 @@ packaging==26.2
 parso==0.8.7
 pefile==2024.8.26 ; sys_platform == "win32"
 propcache==0.5.4
-psutil==5.9.0
+psutil==5.9.0 ; sys_platform == "darwin"
+psutil==7.2.2 ; sys_platform == "linux" or sys_platform == "win32"
 pycparser==3.11
 pydantic==2.13.4
 pydantic_core==2.46.4
@@ -47,6 +48,7 @@ starlette==1.3.1
 truststore==0.10.4
 typing-inspection==0.4.2
 typing_extensions==4.16.0
+tzdata==2026.2 ; sys_platform == "win32"
 uvicorn==0.47.0
 websockets==16.0
 yarl==1.25.1

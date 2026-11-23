@@ -85,6 +85,7 @@ jobs:
         run: node frontend/scripts/bundle-desktop-dev-portable.mjs
       - name: Install Ubuntu package and check isolated local bootstrap
         if: runner.os == 'Linux'
+        shell: bash
         run: |
           cd "$INSTALLER_OUTPUT"
           sha256sum --check SHA256SUMS

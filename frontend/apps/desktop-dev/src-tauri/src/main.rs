@@ -210,7 +210,10 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
             // 窗口只在后端自己的地址里走；外部链接交给系统浏览器
             .on_navigation(move |target| {
                 if target.path() == SETUP_MODEL_PATH && address.allows(target) {
-                    open_setup_model_settings(&setup_handle, target);
+                    // WebView2 must finish this navigation callback before opening another window.
+                    let app = setup_handle.clone();
+                    let target = target.clone();
+                    tauri::async_runtime::spawn_blocking(move || open_setup_model_settings(&app, &target));
                     return false;
                 }
                 if address.allows(target) {

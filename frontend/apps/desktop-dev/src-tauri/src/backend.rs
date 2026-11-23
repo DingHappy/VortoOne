@@ -382,8 +382,21 @@ fn native_request(
     Ok((status, body))
 }
 
+pub fn runtime_command(program: &Path) -> Command {
+    let command = Command::new(program);
+    #[cfg(windows)]
+    let command = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let mut command = command;
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    };
+    command
+}
+
 pub fn command(config: &Config, home: &Path, ui: &Path, port: u16, token: &str) -> Command {
-    let mut command = Command::new(&config.python);
+    let mut command = runtime_command(&config.python);
     command
         .args([
             "-m",
@@ -406,7 +419,7 @@ pub fn bundled_command(
     port: u16,
     token: &str,
 ) -> Command {
-    let mut command = Command::new(runtime);
+    let mut command = runtime_command(runtime);
     command
         .args(["server", "--host", "127.0.0.1", "--port"])
         .arg(port.to_string());
@@ -620,7 +633,7 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
     let outcome = (|| {
         let fixture_name = "Standalone installer fixture";
         crate::places::prepare_local_home(&scratch, true, Some(fixture_name)).map_err(|e| e.to_string())?;
-        let mut probe = Command::new(&runtime);
+        let mut probe = runtime_command(&runtime);
         probe.current_dir(&scratch).arg("model-capabilities");
         isolate_standalone_environment(&mut probe, &scratch);
         let capabilities = probe.output().map_err(|_| "内置后端无法运行")?;

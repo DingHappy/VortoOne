@@ -490,7 +490,7 @@ fn runtime_tool(app: &tauri::AppHandle, args: &[&str]) -> Result<Value, String> 
     let home = data.join("home");
     std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
     let mut command = if runtime.is_file() {
-        let mut command = Command::new(&runtime);
+        let mut command = backend::runtime_command(&runtime);
         command.env_remove("PYTHONPATH");
         command
     } else {
