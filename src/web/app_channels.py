@@ -9,6 +9,7 @@ from fastapi import WebSocketDisconnect
 from src.gateway import app_protocol as F
 from src.web import app_views as views
 from src.workflow.members.channels import TeamChannels, is_team_channel
+from src.workflow.members.direct_messages import DirectMessages, is_person_dm
 from src.workflow.members.registry import Damaged, Missing, Refused
 
 
@@ -17,14 +18,20 @@ def channels(root: str) -> TeamChannels:
     return TeamChannels(root, owner["userId"], owner["name"])
 
 
+def person_dms(root: str) -> DirectMessages:
+    return DirectMessages(root, views.person(root))
+
+
 def streaming_service(root: str, channel_id: str):
     from src.web.app_issue_chat import IssueChat, is_channel
+    if is_person_dm(channel_id):
+        return person_dms(root)
     return IssueChat(root) if is_channel(channel_id) else channels(root)
 
 
 def is_streamed_channel(channel_id: str) -> bool:
     from src.web.app_issue_chat import is_channel
-    return is_team_channel(channel_id) or is_channel(channel_id)
+    return is_team_channel(channel_id) or is_person_dm(channel_id) or is_channel(channel_id)
 
 
 def channel_agents(root: str) -> dict:
@@ -49,7 +56,7 @@ async def subscribe(socket, service, actor, channel_id, *, session_valid, interv
     if not await _acknowledge_subscription(socket, service, actor, channel_id, session_valid):
         return None
     return asyncio.create_task(watch(socket, service, actor, channel_id, cursor, reaction_cursor, thread_cursor,
-                                     session_valid=session_valid, interval=interval))
+                                     session_valid=session_valid, interval=interval, read_receipts=is_person_dm(channel_id)))
 
 
 async def _acknowledge_subscription(socket, service, actor, channel_id, session_valid):
@@ -85,7 +92,7 @@ async def subscribe_channel(socket, root, actor, channel_id, watches, *, session
         watches[channel_id] = subscription
 
 
-async def watch(socket, service, actor, channel_id, after, reaction_after, thread_after, *, session_valid, interval=1.0):
+async def watch(socket, service, actor, channel_id, after, reaction_after, thread_after, *, session_valid, interval=1.0, read_receipts=False):
     """Follow committed messages, reactions, and thread changes. Recheck access before each push."""
     async def send(kind, **fields):
         if not session_valid():
@@ -98,6 +105,7 @@ async def watch(socket, service, actor, channel_id, after, reaction_after, threa
         await socket.send_json(F.make_app_frame(F.EVENT, channelId=channel_id, event=event))
         return True
 
+    last_read = ""
     try:
         while session_valid():
             batch = await asyncio.to_thread(service.messages, actor, channel_id, after=after)
@@ -106,6 +114,15 @@ async def watch(socket, service, actor, channel_id, after, reaction_after, threa
                                   authorUserId=message["author"]["id"], threadId=message["threadId"]):
                     return
                 after = message["sequence"]
+            if read_receipts:
+                receipts = await asyncio.to_thread(service.reads, actor, channel_id)
+                for receipt in receipts:
+                    if receipt["lastReadAt"] > last_read:
+                        if not await send("channel.read", **receipt):
+                            return
+                        last_read = receipt["lastReadAt"]
+                await asyncio.sleep(interval)
+                continue
             changes = await asyncio.to_thread(service.reaction_changes, actor, channel_id, reaction_after)
             for sequence, message_id, reactions in changes:
                 if not await send("message.reactions", messageId=message_id, reactions=reactions):

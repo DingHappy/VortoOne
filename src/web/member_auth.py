@@ -149,6 +149,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/ai-status"),
     ("GET", _ORG + r"/dms"),
     ("POST", _ORG + r"/dms"),
+    ("POST", _ORG + r"/channels/pd_[a-f0-9]{32}/read"),
+    ("GET", _ORG + r"/channels/pd_[a-f0-9]{32}/reads"),
     ("GET", _ORG + r"/channels/[^/]+/members"),
     ("GET", _ORG + r"/channels/[^/]+/messages"),
     ("POST", _ORG + r"/channels/[^/]+/messages"),
