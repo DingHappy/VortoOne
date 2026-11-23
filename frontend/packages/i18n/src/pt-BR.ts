@@ -3209,6 +3209,7 @@ export const ptBR = {
   },
   /** No AI connected (ADR 0061): the banner, the agent's card, its chip and the receipt under a message. */
   noAi: {
+    sendFailure: "Conecte um modelo e tente enviar a mensagem novamente.",
     banner: {
       org: "Os agentes ainda não têm uma\u00a0IA.",
       orgHint: "Você também pode pedir no chat, como “usar meu plano do Claude”.",

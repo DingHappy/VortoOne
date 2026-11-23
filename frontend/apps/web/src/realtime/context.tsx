@@ -333,6 +333,15 @@ export function createStreamsStore(
         receipts: moving && !receipts[toId] ? { ...receipts, [toId]: moving } : receipts,
       });
     },
+    /** Retain the failed bubble while dropping unconfirmed work and receipts for that send. */
+    rejectSend: (channelId: string, messageId: string) => {
+      let receipts = state.receipts;
+      if (receipts[messageId] && !receipts[messageId].confirmed) {
+        receipts = { ...receipts };
+        delete receipts[messageId];
+      }
+      set({ ...state, streams: dropProvisional(state.streams, new Set([messageId]), channelId), receipts });
+    },
     /**
      * Safety net: a "pensando…" the server never confirmed (no event for
      * `PROVISIONAL_TTL_MS`) is dropped, with its unconfirmed receipt. Returns
@@ -345,7 +354,7 @@ export function createStreamsStore(
       const receipts = Object.fromEntries(
         Object.entries(state.receipts).filter(([id, r]) => !(asked.has(id) && !r.confirmed)),
       );
-      set({ ...state, streams: dropProvisional(state.streams, new Set(stale.map((r) => r.threadId))), receipts });
+      set({ ...state, streams: dropProvisional(state.streams, asked), receipts });
       return [...new Set(stale.map((r) => r.channelId))];
     },
     /** The agent won't answer me: show the notice and drop its "pensando…" on that message. */
@@ -603,9 +612,10 @@ export function RealtimeProvider({
 
   // What I sent while the connection was down (or the server restarting) goes out once it's back, whatever page
   // is open. One the server then refuses is said here, since its conversation may not be on screen.
-  useSendWaiting(orgId, connection, (error) =>
-    toast.show(knownErrorText(tRef.current, error) ?? tRef.current("channel.sendFailed"), "error"),
-  );
+  useSendWaiting(orgId, connection, (error, local) => {
+    streams.rejectSend(local.channelId, local.id);
+    toast.show(knownErrorText(tRef.current, error) ?? tRef.current("channel.sendFailed"), "error");
+  });
 
   // Stable across the layout's re-renders (every navigation): only a new socket changes it.
   const value = useMemo(() => ({ connection, streams }), [connection, streams]);

@@ -1183,7 +1183,8 @@ function ChannelView({
     // A thread archived meanwhile (`thread.archived`), GIFs or stickers turned off or a GIF gone (`message.media_*`):
     // say so in the person's language. Without a connection (or with the server restarting) it waits instead, "sai
     // quando a conexão voltar" (`useSendWaiting`).
-    onFailed: (error) => {
+    onFailed: (error, { local, waits }) => {
+      if (local && !waits) live.rejectSend(local.channelId, local.id);
       const code = errorCode(error);
       if (code?.startsWith("thread.") || code?.startsWith("message.media_") || code === "message.reply_not_found")
         toast.show(errorText(t, error), "error");
