@@ -719,9 +719,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ### org/task-manager（2 个，要做 1）
 
+既有 `GET ORG/task-manager` 向已认证所有者显示 `since` 窗口内主聊天明确记录的完成、失败和取消。旧记录缺少终态时不推断。
+
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` |  |
+| ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` | 暂无跳过预算继续同一回合的能力。 |
 | ☑ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 所有者的任务详情读取主聊天已记录的工具名称、调用开始与结果状态。专员无逐步记录时返回 404。 |
 
 ### /api/app/telemetry（2 个，要做 0）

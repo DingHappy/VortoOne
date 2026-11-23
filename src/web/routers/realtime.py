@@ -805,11 +805,12 @@ def _ws_agent(websocket):
     return _get_session(websocket)["agent"]
 
 
-def _record(websocket, role: str, text: str, *, rid: Optional[str] = None, source_tainted: bool | None = None) -> None:
+def _record(websocket, role: str, text: str, *, rid: Optional[str] = None,
+            source_tainted: bool | None = None) -> Optional[Dict[str, Any]]:
     """把一条用户输入/最终回复记进展示 transcript，供重连回放（截断防膨胀）。"""
     sess = _SESSIONS.get(_session_key(websocket))
     if sess is None:
-        return
+        return None
     t = sess["transcript"]
     from datetime import datetime, timezone
     # at：助理模式的动态按时间分组；旧存档没有这个字段，读的一侧当未知处理。
@@ -824,6 +825,14 @@ def _record(websocket, role: str, text: str, *, rid: Optional[str] = None, sourc
     _touch_session(sess)
     if len(t) > _MAX_TRANSCRIPT:
         del t[:-_MAX_TRANSCRIPT]
+    return item
+
+
+def _finish_transcript_turn(item: Optional[Dict[str, Any]], status: str) -> None:
+    """Record the first terminal result, before the client can refresh task history."""
+    if item is not None and item.get("rid") and "outcome" not in item:
+        from datetime import datetime, timezone
+        item["outcome"] = {"status": status, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
 
 def _record_activity(websocket, event: Dict[str, Any]) -> None:
@@ -1065,16 +1074,18 @@ def _key_actor_context(key: str) -> ActorContext:
     return context
 
 
-def _append_transcript(sess: Dict[str, Any], role: str, text: str, *, rid: str, source: str) -> None:
+def _append_transcript(sess: Dict[str, Any], role: str, text: str, *, rid: str, source: str) -> Dict[str, Any]:
     from datetime import datetime, timezone
     from src.gateway.transcript_order import next_transcript_sequence
     transcript = sess["transcript"]
-    transcript.append({"role": role, "text": str(text), "rid": rid, "source": source,
-                       "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                       "sequence": next_transcript_sequence(transcript)})
+    item = {"role": role, "text": str(text), "rid": rid, "source": source,
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "sequence": next_transcript_sequence(transcript)}
+    transcript.append(item)
     _touch_session(sess)
     if len(transcript) > _MAX_TRANSCRIPT:
         del transcript[:-_MAX_TRANSCRIPT]
+    return item
 
 
 def _keep_external_activities(sess: Dict[str, Any], rid: str, events: List[Dict[str, Any]]) -> None:
@@ -1107,7 +1118,7 @@ async def _run_main_conversation_turn(*, key: str, source: str, user_text: str, 
         from src.agents.conversation_state import agent_compression, restore_agent_compression
         if agent is not None:
             restore_agent_compression(agent, agent_compression(sess['agent']))
-        _append_transcript(sess, "user", user_text, rid=rid, source=source)
+        request = _append_transcript(sess, "user", user_text, rid=rid, source=source)
 
         def record_incomplete(message: str) -> None:
             _append_transcript(sess, "assistant", message, rid=rid, source=source)
@@ -1117,7 +1128,10 @@ async def _run_main_conversation_turn(*, key: str, source: str, user_text: str, 
             ]
 
         try:
-            await _publish_session_event(key, P.make_event(P.AGENT_HISTORY, items=list(sess["transcript"])))
+            # The running request will receive an outcome. Keep its earlier replay event intact.
+            history_before_turn = list(sess["transcript"])
+            history_before_turn[-1] = dict(request)
+            await _publish_session_event(key, P.make_event(P.AGENT_HISTORY, items=history_before_turn))
             history, reply = await run(list(previous_history))
             sess["agent"].history = list(history)
             if agent is not None:
@@ -1126,13 +1140,16 @@ async def _run_main_conversation_turn(*, key: str, source: str, user_text: str, 
                     restore_agent_compression(sess['agent'], compression)
             _append_transcript(sess, "assistant", reply, rid=rid, source=source)
             outcome["reply"] = str(reply)
+            _finish_transcript_turn(request, "done")
             _schedule_turn_digest(key, rid)
         except asyncio.CancelledError:
+            _finish_transcript_turn(request, "canceled")
             message = "本轮已取消，未确认完成；可能已有部分操作，请核对结果后再继续。"
             record_incomplete(message)
             await _publish_session_event(key, P.make_event(P.AGENT_CANCELLED, rid=rid, text=message))
             raise
         except Exception:
+            _finish_transcript_turn(request, "failed")
             message = "本轮执行失败，未确认完成；可能已有部分操作，请核对结果后再继续。"
             record_incomplete(message)
             await _publish_session_event(key, P.make_event(P.AGENT_ERROR, rid=rid, text=message))
@@ -1553,7 +1570,7 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
              ([f"🎧×{len(audio)}"] if audio else []) +
              ([f"📎×{len(context_items)}"] if context_items else []))  # 正文不落 transcript
     rec = f"{text}　{' '.join(marks)}" if marks else text
-    _record(websocket, "user", rec, rid=rid)  # 记进展示历史，供重连回放并让富客户端按回合插入轨迹
+    turn_record = _record(websocket, "user", rec, rid=rid)  # 供回放和回合轨迹定位
     q: asyncio.Queue = asyncio.Queue()
     turn_key = rid or ("turn-" + uuid.uuid4().hex[:12])
     phase_started: Dict[str, float] = {}
@@ -1768,6 +1785,7 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
             raise
         except Exception as e:  # noqa: BLE001
             outcome = "failed"
+            _finish_transcript_turn(turn_record, "failed")
             q.put_nowait(P.make_event(P.AGENT_ERROR, text=str(e)))
         finally:
             slow_notice.cancel()
@@ -1790,6 +1808,7 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
             _record_activity(websocket, evt)
             await _publish_session_event(_session_key(websocket), evt, fallback=websocket)
         await inner
+        _finish_transcript_turn(turn_record, "done")
         await _publish_session_event(
             _session_key(websocket), P.make_event(P.AGENT_DONE, rid=rid), fallback=websocket)
     except asyncio.CancelledError:            # 收到「停止」：连同在飞的 LLM 调用一起取消
@@ -1797,6 +1816,7 @@ async def _run_agent_turn(websocket, text: str, mode: str, images: Optional[list
         # 注意 CancelledError 是 BaseException，suppress(Exception) 抓不到，必须显式列出
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await inner
+        _finish_transcript_turn(turn_record, "canceled")
         # inner 的 finally 会留下阶段取消更新；当前 drain 已被取消，补发队列尾部后再发 cancelled。
         while not q.empty():
             evt = q.get_nowait()

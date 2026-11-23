@@ -1,6 +1,7 @@
 """新版界面发消息、实时事件、停止与审批：用替身助理走真实的会话回合路径。"""
 
 import asyncio
+from datetime import datetime
 
 import httpx
 import pytest
@@ -43,6 +44,9 @@ class _Agent:
             self.confirmed = await realtime.turn_bindings(self).confirm("删除 notes.txt？", "write")
             emit("已删除" if self.confirmed else "没有删除")
             return
+        if text == "回复后失败":
+            emit("这一段已经发出")
+            raise RuntimeError("任务未完成")
         if text == "查看步骤":
             binding = realtime.turn_bindings(self)
             call = {"id": "demo-call", "name": "read_file", "args": {"path": "synthetic-private-path"}}
@@ -156,6 +160,14 @@ async def test_task_manager_steps_use_live_and_archived_main_chat_records(app_ho
     assert saved.status_code == 200, saved.text
     assert "synthetic-private" not in saved.text and "查看步骤" not in saved.text
     assert saved.json()["run"]["finishedAt"] is not None
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    [ended] = history.json()["ended"]
+    assert (ended["runId"], ended["status"], ended["channelId"], history.json()["doneToday"]) == (
+        run["runId"], "done", channel, 1)
+    assert datetime.fromisoformat(ended["finishedAt"].replace("Z", "+00:00")) == datetime.fromisoformat(
+        saved.json()["run"]["finishedAt"])
+    assert "查看步骤" not in history.text
     started, finished = saved.json()["steps"]
     assert started == call
     assert finished["kind"] == "tool_result" and finished["seq"] == 2
@@ -181,6 +193,100 @@ async def test_task_manager_steps_use_terminal_phase_for_cancelled_run(app_home,
     payload = response.json()
     assert payload["run"]["finishedAt"] is not None
     assert [step["kind"] for step in payload["steps"]] == ["tool_call"]
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    [ended] = history.json()["ended"]
+    assert (ended["runId"], ended["status"], history.json()["doneToday"]) == (run_id, "canceled", 0)
+
+
+async def test_task_manager_shows_failed_main_turn_even_after_one_reply(app_home, monkeypatch):
+    from src.gateway.session_store import load_session
+    from src.web.routers import realtime
+
+    token = "synthetic-desktop-owner"
+    monkeypatch.setenv("VORTOONE_API_TOKEN", token)
+    headers = {"Authorization": f"Bearer {token}"}
+    http, base, channel, socket, bridge = (app_home[k] for k in ("http", "base", "channel", "socket", "bridge"))
+    on_finished = []
+    send_json = socket.send_json
+
+    async def read_at_finished(frame):
+        if frame.get("event", {}).get("type") == "run.finished":
+            on_finished.append(await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers))
+        await send_json(frame)
+
+    monkeypatch.setattr(socket, "send_json", read_at_finished)
+    sent = await http.post(f"{base}/channels/{channel}/messages", json={"body": "回复后失败"}, headers=headers)
+    assert sent.status_code == 200
+    await _until(lambda: any(event["status"] == "failed" for event in socket.events("run.finished")))
+    [immediate] = on_finished
+    assert immediate.status_code == 200, immediate.text
+    assert [row["status"] for row in immediate.json()["ended"]] == ["failed"]
+    assert immediate.json()["tasks"] == [] and immediate.json()["doneToday"] == 0
+    await _until(lambda: bool(load_session(bridge.root, bridge.key)))
+    monkeypatch.setattr(realtime, "live_session_view", lambda *args, **kwargs: None)
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    [ended] = history.json()["ended"]
+    assert ended["status"] == "failed"
+    assert history.json()["doneToday"] == 0
+    assert "这一段已经发出" not in history.text and "任务未完成" not in history.text
+    future = {"doneToday": "true", "since": "2099-11-01T00:00:00Z"}
+    outside_window = await http.get(f"{base}/task-manager", params=future, headers=headers)
+    assert outside_window.status_code == 200
+    assert outside_window.json()["ended"] == []
+
+    legacy = [{key: value for key, value in item.items() if key != "outcome"}
+              for item in load_session(bridge.root, bridge.key)["transcript"]]
+    records = legacy + [{"role": "user", "rid": "corrupt", "at": legacy[0]["at"],
+                         "outcome": {"status": "done", "at": "9999-12-31T23:59:59-23:00"}}]
+    monkeypatch.setattr(realtime, "live_session_view", lambda *args, **kwargs: {"transcript": records})
+    unknown = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert unknown.status_code == 200
+    assert unknown.json()["ended"] == [] and unknown.json()["doneToday"] == 0
+
+
+async def test_task_manager_main_history_requires_owner_proof(app_home, monkeypatch):
+    from src.web.auth import SESSION_COOKIE
+    from src.web.server import app
+
+    token = "synthetic-desktop-owner"
+    monkeypatch.setenv("VORTOONE_API_TOKEN", token)
+    headers = {"Authorization": f"Bearer {token}"}
+    http, base, channel, socket = (app_home[k] for k in ("http", "base", "channel", "socket"))
+    secret_text = "synthetic private main chat question"
+    sent = await http.post(f"{base}/channels/{channel}/messages", json={"body": secret_text}, headers=headers)
+    assert sent.status_code == 200, sent.text
+    await _until(lambda: socket.events("run.finished"))
+    run = socket.events("run.finished")[0]["runId"]
+    path = f"{base}/task-manager?doneToday=true"
+    owner = await http.get(path, headers=headers)
+    assert owner.status_code == 200 and owner.headers["cache-control"] == "no-store"
+    assert [item["runId"] for item in owner.json()["ended"]] == [run]
+    assert secret_text not in owner.text
+    assert (await http.get(path)).status_code == 401
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://home",
+                                 cookies={SESSION_COOKIE: token}, headers={"Origin": "http://other.test"}) as browser:
+        unproved = await browser.get(path)
+        assert unproved.status_code == 200
+        assert unproved.json()["ended"] == [] and unproved.json()["doneToday"] == 0
+
+    member_email = "task-history-member@example.test"
+    invite = await http.post(f"{base}/invitations", json={"email": member_email}, headers=headers)
+    assert invite.status_code == 200, invite.text
+    invite_token = invite.json()["url"].rsplit("/", 1)[1]
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://home",
+                                 headers={"Origin": "http://home"}) as member:
+        signed_up = await member.post("/api/auth/sign-up/email", headers={"x-invitation-token": invite_token},
+                                      json={"name": "Synthetic Member", "email": member_email,
+                                            "password": "synthetic-member-test-password"})
+        assert signed_up.status_code == 200, signed_up.text
+        accepted = await member.post(f"/api/app/invitations/{invite_token}/accept", json={})
+        assert accepted.status_code == 200, accepted.text
+        denied = await member.get(path)
+        assert denied.status_code == 403
+        assert run not in denied.text and secret_text not in denied.text
 
 
 async def test_a_message_runs_a_turn_and_the_reply_arrives(app_home):
@@ -210,12 +316,19 @@ async def test_a_message_runs_a_turn_and_the_reply_arrives(app_home):
 
 async def test_empty_or_modelless_messages_do_not_start_a_turn(app_home, monkeypatch):
     http, base, channel = (app_home[k] for k in ("http", "base", "channel"))
-    assert (await http.post(f"{base}/channels/{channel}/messages", json={"body": "  "})).status_code == 400
+    token = "synthetic-desktop-owner"
+    monkeypatch.setenv("VORTOONE_API_TOKEN", token)
+    headers = {"Authorization": f"Bearer {token}"}
+    endpoint = f"{base}/channels/{channel}/messages"
+    assert (await http.post(endpoint, json={"body": "  "}, headers=headers)).status_code == 400
     monkeypatch.delenv("OPENAI_API_KEY")
-    refused = await http.post(f"{base}/channels/{channel}/messages", json={"body": "在吗"})
+    refused = await http.post(endpoint, json={"body": "在吗"}, headers=headers)
     assert refused.status_code == 409 and refused.json()["error"]["code"] == "no_ai"
     assert not app_home["agent"].started.is_set()
-    assert (await http.get(f"{base}/channels/{channel}/messages")).json()["messages"] == []
+    assert (await http.get(endpoint, headers=headers)).json()["messages"] == []
+    history = await http.get(f"{base}/task-manager", params={"doneToday": "true"}, headers=headers)
+    assert history.status_code == 200
+    assert history.json()["tasks"] == [] and history.json()["ended"] == [] and history.json()["doneToday"] == 0
 
 
 async def test_stop_interrupts_the_running_turn(app_home):

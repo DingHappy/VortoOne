@@ -176,9 +176,12 @@ async def test_web_host_appends_persists_and_broadcasts(tmp_path, monkeypatch):
     from src.web.routers import realtime
 
     events = []
+    history_snapshots = []
 
     async def capture(key, event, *, fallback=None):
         events.append((key, event["type"]))
+        if event["type"] == "agent_history":
+            history_snapshots.append(event["items"])
 
     monkeypatch.setattr(realtime, "_publish_session_event", capture)
     monkeypatch.setattr(realtime, "_schedule_turn_digest", lambda key, rid: None)
@@ -198,6 +201,11 @@ async def test_web_host_appends_persists_and_broadcasts(tmp_path, monkeypatch):
         assert [m["content"] for m in sess["agent"].history][-1] == "收到"
         saved = load_session(str(tmp_path), key)
         assert [(i["role"], i["source"]) for i in saved["transcript"]] == [("user", "telegram"), ("assistant", "telegram")]
+        assert saved["transcript"][0]["outcome"]["status"] == "done"
+        assert saved["transcript"][0]["outcome"]["at"] >= saved["transcript"][0]["at"]
+        started, finished = history_snapshots
+        assert "outcome" not in started[0]
+        assert finished[0]["outcome"] == saved["transcript"][0]["outcome"]
         assert ("sid-maintest", "agent_history") in events and ("sid-maintest", "agent_done") in events
         assert not realtime._ACTORS.busy(key)
     finally:
@@ -429,9 +437,14 @@ async def test_incomplete_phone_turn_is_consistent_in_display_context_and_saved_
     from src.web.routers import realtime
 
     events = []
+    reported_terminal = []
 
     async def capture(key, event, *, fallback=None):
         events.append(event)
+        if event["type"] in {"agent_cancelled", "agent_error"}:
+            view = realtime.live_session_view(key)
+            [related] = [item for item in view["transcript"] if item["role"] == "user"]
+            reported_terminal.append(related.get("outcome"))
 
     monkeypatch.setattr(realtime, "_publish_session_event", capture)
     key = "sid-incomplete-phone"
@@ -459,6 +472,8 @@ async def test_incomplete_phone_turn_is_consistent_in_display_context_and_saved_
         assert "未确认完成" in message
         assert saved["transcript"][-1]["text"] == message
         assert saved["transcript"][-1]["source"] == "telegram"
+        assert saved["transcript"][-2]["outcome"]["status"] == ("canceled" if cancelled else "failed")
+        assert reported_terminal == [saved["transcript"][-2]["outcome"]]
         assert any(event["type"] == ("agent_cancelled" if cancelled else "agent_error") for event in events)
         assert not realtime._ACTORS.busy(key)
     finally:
