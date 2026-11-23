@@ -481,7 +481,7 @@ def staff_action_approval(root: str, task: Any, card: Dict[str, Any], *, status:
     title = f"{name} 要{_OPERATION_WORDS.get(kind, kind)}：{tool}"
     if tool.startswith(PREFIX):         # 连接器工具给模型的名字带哈希，人看不懂：用确认文案里的连接器名和工具名
         title = f"{name}：{str(p.get('message') or '').strip().splitlines()[0] if p.get('message') else tool}"
-    where = task.collaboration["dispatch"].get("channel")      # 频道里的事：审批卡指回那个话题
+    where = ((getattr(task, "collaboration", None) or {}).get("dispatch") or {}).get("channel")  # 频道里的事：审批卡指回那个话题
     return {"id": f"{p['id']}~{card['digest'][:16]}", "runId": task.id, "agentId": agent,
             "channelId": where["id"] if where else dm_channel_id(agent),
             "threadId": where["thread"] if where else message_id(task.id, "user"), "messageId": None,

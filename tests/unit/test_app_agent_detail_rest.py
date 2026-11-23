@@ -30,8 +30,9 @@ def test_agent_pages_say_what_is_true(home):
     assert owner.get(f"{base}/agents/{agent}/learned-skills").json() == {"skills": []}
     assert owner.get(f"{base}/agents/{agent}/channels").json() == {"channels": []}
     assert owner.put(f"{base}/agents/{agent}/channels", json={"channels": []}).json() == {"channels": []}
-    refused = owner.put(f"{base}/agents/{agent}/channels", json={"channels": [{"id": "c", "autoReply": True}]})
-    assert refused.status_code == 409 and "团队频道" in refused.json()["error"]["message"]
+    # agent 可以进团队频道了（主人 2026-11-22 定），但不 @ 也回答第一期如实拒绝
+    refused = owner.put(f"{base}/agents/{agent}/channels", json={"channels": [{"channelId": "c", "autoReply": True}]})
+    assert refused.status_code == 409 and "被 @" in refused.json()["error"]["message"]
     assert owner.put(f"{base}/agents/{agent}/channels", json={}).status_code == 400
     for path in ("approval-rules", "learned-skills", "channels"):
         assert owner.get(f"{base}/agents/agent-missing/{path}").status_code == 404
