@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import stat
 import tempfile
+from unicodedata import category
 
 from src.utils.home_maintenance import FileLease
 from src.utils.state_dir import state_dir
@@ -45,7 +46,7 @@ def _read(path: Path) -> dict | None:
     state = json.loads(raw)
     if not isinstance(state, dict):
         raise ValueError("本机引导文件无效")
-    allowed = {"step", "mode", "name", "context", "workArea"}
+    allowed = {"step", "mode", "name", "context", "workArea", "ownerDisplayName"}
     if set(state) - allowed or not all(isinstance(value, str) for value in state.values()):
         raise ValueError("本机引导数据无效")
     if state == {"step": "inactive"}:
@@ -121,6 +122,12 @@ def preferences(root: str) -> dict:
         return read(root) or {}
     except (ValueError, OSError):
         return {}
+
+
+def initial_owner_name(root: str) -> str:
+    """The name from the bundled installer is display metadata for token-only local owners."""
+    name = preferences(root).get("ownerDisplayName", "").strip()
+    return name if len(name) <= MAX_NAME and not any(category(char) == "Cc" for char in name) else ""
 
 
 def rename_workspace(root: str, value: str) -> bool:

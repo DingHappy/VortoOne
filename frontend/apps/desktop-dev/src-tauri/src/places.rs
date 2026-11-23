@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
 pub const SERVERS_FILE: &str = "servers.json";
@@ -152,7 +152,7 @@ pub fn write_local(config: &Path, state: &LocalState) -> Result<(), String> {
 }
 
 /// Only an install that creates a new home may put the service into first-run setup.
-pub fn prepare_local_home(data: &Path, seed_setup: bool) -> std::io::Result<()> {
+pub fn prepare_local_home(data: &Path, seed_setup: bool, owner_display_name: Option<&str>) -> std::io::Result<()> {
     fs::create_dir_all(data)?;
     let home = data.join("home");
     match fs::create_dir(&home) {
@@ -170,7 +170,11 @@ pub fn prepare_local_home(data: &Path, seed_setup: bool) -> std::io::Result<()> 
                 fs::create_dir(state)?;
                 let mut file = options.open(&path)?;
                 let result = (|| {
-                    file.write_all(br#"{"step":"purpose"}"#)?;
+                    let mut setup = serde_json::json!({"step": "purpose"});
+                    if let Some(name) = owner_display_name {
+                        setup["ownerDisplayName"] = serde_json::json!(name);
+                    }
+                    serde_json::to_writer(&mut file, &setup).map_err(std::io::Error::other)?;
                     file.sync_all()?;
                     #[cfg(unix)]
                     for directory in [state, &home, data] {
@@ -384,20 +388,22 @@ mod tests {
     #[test]
     fn a_bundled_install_seeds_only_the_new_home_and_leaves_older_progress_intact() {
         let fresh = temp("fresh-setup");
-        prepare_local_home(&fresh, true).unwrap();
+        prepare_local_home(&fresh, true, Some("新安装的所有者")).unwrap();
         let home = fresh.join("home");
         let marker = home.join(DESKTOP_SETUP);
-        assert_eq!(fs::read_to_string(&marker).unwrap(), r#"{"step":"purpose"}"#);
+        let setup: serde_json::Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
+        assert_eq!(setup, serde_json::json!({"step": "purpose", "ownerDisplayName": "新安装的所有者"}));
         assert!(!desktop_setup_at_model(&home));
         fs::write(&marker, r#"{"step":"model","mode":"team"}"#).unwrap();
-        prepare_local_home(&fresh, true).unwrap();
+        prepare_local_home(&fresh, true, Some("不能覆盖")).unwrap();
+        assert_eq!(fs::read_to_string(&marker).unwrap(), r#"{"step":"model","mode":"team"}"#);
         assert!(desktop_setup_at_model(&home));
         fs::write(&marker, r#"{"step":"done","mode":"team"}"#).unwrap();
         assert!(!desktop_setup_at_model(&home));
 
         let old = temp("existing-setup");
-        prepare_local_home(&old, false).unwrap();
-        prepare_local_home(&old, true).unwrap();
+        prepare_local_home(&old, false, Some("不能给现有工作区补录")).unwrap();
+        prepare_local_home(&old, true, Some("不能给现有工作区补录")).unwrap();
         let old_home = old.join("home");
         assert!(!old_home.join(DESKTOP_SETUP).exists());
         fs::write(old_home.join(LEGACY_DESKTOP_SETUP), r#"{"step":"model","mode":"personal"}"#).unwrap();

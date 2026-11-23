@@ -481,7 +481,8 @@ async def _local_setup(request: Request):
 
 
 def _setup_view(state: dict) -> dict:
-    return {**state, "modelConfigured": views.model_connected()}
+    fields = ("step", "mode", "name", "context", "workArea")
+    return {**{key: state[key] for key in fields if key in state}, "modelConfigured": views.model_connected()}
 
 
 @router.get("/api/app/me")

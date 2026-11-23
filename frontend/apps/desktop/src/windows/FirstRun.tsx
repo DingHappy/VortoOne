@@ -901,7 +901,7 @@ function RunHere({
               <Input
                 autoFocus
                 value={name}
-                maxLength={100}
+                maxLength={80}
                 autoComplete="name"
                 onChange={(e) => setName(e.target.value)}
               />

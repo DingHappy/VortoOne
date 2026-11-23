@@ -51,6 +51,52 @@ def advance(browser, step, next_step, **answer):
     assert response.json()["step"] == next_step
 
 
+def test_native_owner_name_is_display_metadata_but_changes_no_credentials(installed):
+    from src.workflow.members.owner_account import OwnerAccount
+
+    spawn, marker = installed
+    marker.write_text(json.dumps({"step": "purpose", "ownerDisplayName": "安装者名字"}), encoding="utf-8")
+    owner = spawn()
+    sign_in(owner)
+    profile = owner.get("/api/app/me").json()
+    assert profile["user"]["name"] == "安装者名字"
+    assert profile["user"]["email"] == ""
+    assert profile["desktopSetup"] == {"step": "purpose", "modelConfigured": False}
+    advance(owner, "purpose", "about", mode="personal")
+    assert json.loads(marker.read_text())["ownerDisplayName"] == "安装者名字"
+
+    account = OwnerAccount(str(Path.cwd()))
+    assert not account.path.exists()
+    assert account.profile() is None
+    assert not account.is_owner_email("local-contact@example.test")
+    attempt = spawn().post("/api/auth/sign-in/email",
+                           json={"email": "local-contact@example.test", "password": "unused-fixture-password"},
+                           headers=ORIGIN)
+    assert attempt.status_code == 401
+
+    org = profile["organizations"][0]["id"]
+    members = owner.get(f"/api/app/organizations/{org}/members").json()["members"]
+    [row] = members
+    assert row["name"] == "安装者名字" and row["email"] == ""
+
+
+def test_claimed_account_name_takes_precedence_over_install_display_name(installed):
+    from src.workflow.members.owner_account import OwnerAccount
+
+    spawn, marker = installed
+    marker.write_text(json.dumps({"step": "purpose", "ownerDisplayName": "安装者名字"}), encoding="utf-8")
+    account = OwnerAccount(str(Path.cwd()))
+    claim, _expires = account.claim_link()
+    account.claim(claim, "认领的名字", "claimed@example.test", "a-claimed-fixture-password")
+
+    owner = spawn()
+    sign_in(owner)
+    profile = owner.get("/api/app/me").json()
+    assert profile["user"]["name"] == "认领的名字"
+    assert profile["user"]["email"] == "claimed@example.test"
+    assert json.loads(marker.read_text())["ownerDisplayName"] == "安装者名字"
+
+
 def test_team_guide_restarts_at_model_and_finishes_with_editable_settings(installed):
     spawn, marker = installed
     browser = spawn()

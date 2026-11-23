@@ -223,10 +223,13 @@ def ai_status(root: str) -> Dict[str, Any]:
 
 
 def _owner_card(root: str) -> Dict[str, str]:
-    """所有者显示的名字和邮箱：认领时填的；只用令牌的老家照旧叫「我」、没有邮箱。"""
+    """已认领账号优先。用令牌的本机所有者可显示安装时填写的姓名。"""
+    from src.workflow import desktop_setup
     from src.workflow.members.owner_account import OwnerAccount
     found = OwnerAccount(root).profile()
-    return {"name": (found or {}).get("name") or OWNER_NAME, "email": (found or {}).get("email") or ""}
+    if found is not None:
+        return {"name": found["name"] or OWNER_NAME, "email": found["email"]}
+    return {"name": desktop_setup.initial_owner_name(root) or OWNER_NAME, "email": ""}
 
 
 def me(root: str) -> Dict[str, Any]:

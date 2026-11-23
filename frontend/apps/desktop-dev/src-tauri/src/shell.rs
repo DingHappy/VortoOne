@@ -271,7 +271,8 @@ fn install(app: &tauri::AppHandle, choice: LocalChoice) -> Result<(), String> {
     let bundled = app.path().resource_dir().is_ok_and(|root| {
         root.join("runtime").join(backend::BUNDLED_RUNTIME).is_file()
     });
-    places::prepare_local_home(&data, bundled && !local.installed).map_err(|e| e.to_string())?;
+    let owner_name = short(choice.name, 80);
+    places::prepare_local_home(&data, bundled && !local.installed, owner_name.as_deref()).map_err(|e| e.to_string())?;
     backend::owner_key(&data.join(places::OWNER_KEY_FILE))?;
     emit_step(app, "database", "done", None);
     if cancelled() { return Err("cancelled".into()); }
@@ -281,7 +282,7 @@ fn install(app: &tauri::AppHandle, choice: LocalChoice) -> Result<(), String> {
     local.held = false;
     local.held_until = None;
     local.erased = None;
-    if let Some(name) = short(choice.name.clone(), 80) { local.owner_name = Some(name); }
+    if let Some(name) = owner_name { local.owner_name = Some(name); }
     if let Some(email) = short(choice.email.clone(), 254) { local.owner_email = Some(email); }
     places::write_local(&config, &local)?;
     let started = crate::connect_now(app).and_then(|_| {

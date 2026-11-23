@@ -610,7 +610,8 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
         new_token()?
     ));
     let outcome = (|| {
-        crate::places::prepare_local_home(&scratch, true).map_err(|e| e.to_string())?;
+        let fixture_name = "Standalone installer fixture";
+        crate::places::prepare_local_home(&scratch, true, Some(fixture_name)).map_err(|e| e.to_string())?;
         let ui = resources.join("web");
         let home = scratch.join("home");
         let log = scratch.join("backend.log");
@@ -629,6 +630,8 @@ pub fn verify_standalone(resources: &Path) -> Result<(), String> {
             if request(port, "GET", "/api/app/me", None)?.0 != 401
                 || status != 200
                 || profile["desktopSetup"]["step"] != "purpose"
+                || profile["user"]["name"] != fixture_name
+                || profile["user"]["email"] != ""
                 || request(port, "GET", "/onboarding", None)?.0 != 200
             {
                 return Err("独立后端或界面未能通过验收".into());
