@@ -285,9 +285,9 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/artifacts` | `artifacts.create` | 已接所有者通过 JSON 创建私有 HTML，与 Drive HTML 上传使用同一存储和隔离预览。其它种类回 415，附到频道回 422。界面代码里没调用。 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV 和 JSON。非 HTML 原样下载，小文本在 Drive 以纯文本预览。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
-| ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML、已存历史版本及私有文本原件 |
-| ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者：原始 HTML、已存历史版本和私有文本原件 |
+| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG。Drive 预览小文本和不超过 25 MiB 的图片，非 HTML 原样下载并核对 SHA-256。图片最长边 12000 像素，总像素最多 4000 万，上传大小沿用制品上限。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
+| ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者的原始 HTML、已存历史版本及私有文本和图片原件 |
+| ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者的原始 HTML、已存历史版本及私有文本和图片原件 |
 | ☐ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` |  |
 | ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
 | ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |

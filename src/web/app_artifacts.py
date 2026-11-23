@@ -96,7 +96,7 @@ def file(root: str, org_id: str, artifact_id: str, supplied: int | None,
     if meta and meta.get("kind") == "file":
         if format:
             raise ArtifactReadError(415, "artifact.format_unavailable", "此制品只提供原始文件")
-        content = store.uploaded_file(artifact_id, version, int(meta["bytes"]))
+        content = store.uploaded_file(artifact_id, version, int(meta["bytes"]), meta.get("sha256"))
         name = meta["name"]
     else:
         content = store.html(artifact_id, version, strict=True)

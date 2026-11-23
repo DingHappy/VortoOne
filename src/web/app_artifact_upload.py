@@ -1,4 +1,4 @@
-"""Private HTML creation and HTML or text uploads for Desktop Drive."""
+"""Private HTML creation and file uploads for Desktop Drive."""
 import asyncio
 import json
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ from email.parser import BytesParser
 from fastapi import Request
 
 from src.agents.tools.artifacts import max_bytes
+from src.web.app_raster_image import jpeg_dimensions, png_dimensions
 
 _TEXT_MIME = {
     ".txt": ("text/plain",),
@@ -15,10 +16,14 @@ _TEXT_MIME = {
     ".csv": ("text/csv", "application/vnd.ms-excel"),
     ".json": ("application/json", "text/json"),
 }
+TEXT_CONTENT_TYPES = frozenset(mimes[0] for mimes in _TEXT_MIME.values())
+_IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+_MAX_IMAGE_EDGE = 12_000
+_MAX_IMAGE_PIXELS = 40_000_000
 
 
 @dataclass(frozen=True)
-class TextUpload:
+class FileUpload:
     name: str
     content_type: str
     data: bytes
@@ -36,7 +41,7 @@ def _invalid():
 
 
 def _unsupported_file():
-    return UploadError(415, "artifact.upload_format", "目前只能上传 UTF-8 编码的 HTML、TXT、Markdown、CSV 或 JSON 文件")
+    return UploadError(415, "artifact.upload_format", "仅支持 UTF-8 编码的 HTML、TXT、Markdown、CSV、JSON 以及静态 PNG 和 JPEG")
 
 
 async def _read_body(request: Request, cap: int, invalid: UploadError, oversized: UploadError) -> bytes:
@@ -57,7 +62,7 @@ async def _read_body(request: Request, cap: int, invalid: UploadError, oversized
     return bytes(body)
 
 
-async def read_form(request: Request) -> tuple[str, str | TextUpload]:
+async def read_form(request: Request) -> tuple[str, str | FileUpload]:
     cap = max_bytes()
     oversized = UploadError(413, "artifact.upload_too_large", "上传的文件超过大小限制")
     content_type = request.headers.get("content-type", "")
@@ -114,7 +119,7 @@ def _valid_content(title: str, html: str) -> bool:
     )
 
 
-def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError) -> tuple[str, str | TextUpload]:
+def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError) -> tuple[str, str | FileUpload]:
     if "\r" in content_type or "\n" in content_type:
         raise _invalid()
     message = BytesParser(policy=policy.HTTP).parsebytes(
@@ -139,7 +144,14 @@ def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError
     mime = file.get_content_type()
     is_html = extension in {".html", ".htm"} and mime == "text/html"
     text_mimes = _TEXT_MIME.get(extension)
-    if not is_html and (text_mimes is None or mime not in (*text_mimes, "application/octet-stream", "text/plain")):
+    image_mime = _IMAGE_MIME.get(extension)
+    if image_mime:
+        compatible_mimes = (image_mime, "application/octet-stream")
+    elif text_mimes:
+        compatible_mimes = (*text_mimes, "application/octet-stream", "text/plain")
+    else:
+        compatible_mimes = ()
+    if not is_html and mime not in compatible_mimes:
         raise _unsupported_file()
     if "/" in filename or "\\" in filename or not filename.strip():
         raise _invalid()
@@ -154,15 +166,31 @@ def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError
     if len(raw_title) > 800:
         raise _invalid()
     try:
-        decoded = data.decode("utf-8")
         title = raw_title.decode("utf-8").strip() or filename
     except UnicodeError:
         raise _unsupported_file() from None
-    if "\x00" in decoded or len(title) > 200 or any(ord(char) < 32 for char in title):
+    if len(title) > 200 or any(ord(char) < 32 for char in title):
+        raise _invalid()
+
+    if image_mime:
+        try:
+            width, height = (png_dimensions(data, allow_animation=False) if image_mime == "image/png"
+                             else jpeg_dimensions(data))
+        except ValueError as error:
+            raise UploadError(415, "artifact.upload_format", str(error)) from None
+        if max(width, height) > _MAX_IMAGE_EDGE or width * height > _MAX_IMAGE_PIXELS:
+            raise UploadError(413, "artifact.upload_too_large", "图片最长边不能超过 12000 像素，总像素不能超过 4000 万")
+        return title, FileUpload(filename, image_mime, data)
+
+    try:
+        decoded = data.decode("utf-8")
+    except UnicodeError:
+        raise _unsupported_file() from None
+    if "\x00" in decoded:
         raise _invalid()
     if is_html:
         if not decoded.strip():
             raise _invalid()
         return title, decoded
     assert text_mimes is not None
-    return title, TextUpload(filename, text_mimes[0], data)
+    return title, FileUpload(filename, text_mimes[0], data)

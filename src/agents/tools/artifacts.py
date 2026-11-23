@@ -281,10 +281,12 @@ class ArtifactStore:
         path = directory / "upload.bin"
         return path if not directory.is_symlink() and not path.is_symlink() and path.is_file() else None
 
-    def uploaded_file(self, artifact_id: str, version: int, size: int) -> Optional[bytes]:
+    def uploaded_file(self, artifact_id: str, version: int, size: int, digest: Optional[str]) -> Optional[bytes]:
         path = self._desktop_file_path(artifact_id, version)
         if path is None:
             return None
+        if not digest:
+            raise ValueError("制品文件缺少登记摘要")
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
         with os.fdopen(fd, "rb") as handle:
             info = os.fstat(handle.fileno())
@@ -293,6 +295,8 @@ class ArtifactStore:
             data = handle.read(size + 1)
         if len(data) != size:
             raise ValueError("制品文件与登记大小不符")
+        if sha256(data).hexdigest() != digest:
+            raise ValueError("制品文件与登记摘要不符")
         return data
 
     def versions(self, artifact_id: str) -> list[dict]:

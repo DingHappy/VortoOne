@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlsplit
 
-from src.web.app_artifact_upload import TextUpload
+from src.web.app_artifact_upload import FileUpload, TEXT_CONTENT_TYPES
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
 
@@ -1302,7 +1302,8 @@ _UPLOADED_FILE_PREVIEW_BYTES = 32 * 1024
 def _uploaded_file_detail(shown: Dict[str, Any], meta: Dict[str, Any], data: Optional[bytes]) -> Dict[str, Any]:
     content = {"kind": "file", "name": meta["name"], "contentType": meta["content_type"],
                "size": meta["bytes"], "sha256": meta["sha256"]}
-    if data is not None and len(data) <= _UPLOADED_FILE_PREVIEW_BYTES:
+    if (data is not None and len(data) <= _UPLOADED_FILE_PREVIEW_BYTES
+            and meta["content_type"] in TEXT_CONTENT_TYPES):
         content["text"] = data.decode("utf-8")
     return {**shown, "shownVersion": 1, "content": content, "versioned": False}
 
@@ -1322,8 +1323,8 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
                     return None
                 data = None
                 size = int(meta["bytes"])
-                if size <= _UPLOADED_FILE_PREVIEW_BYTES:
-                    data = uploads.uploaded_file(artifact_id, 1, size)
+                if size <= _UPLOADED_FILE_PREVIEW_BYTES and meta["content_type"] in TEXT_CONTENT_TYPES:
+                    data = uploads.uploaded_file(artifact_id, 1, size, meta.get("sha256"))
                     if data is None:
                         return None
                 return _uploaded_file_detail(shown, meta, data)
@@ -1344,7 +1345,7 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
     return _artifact_content(shown, html, wanted, versioned=len(known_versions) > 1)
 
 
-def upload_artifact(root: str, title: str, content: str | TextUpload) -> Dict[str, Any]:
+def upload_artifact(root: str, title: str, content: str | FileUpload) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     from src.utils.home_maintenance import home_maintenance
     from src.utils.state_dir import ensure_state_gitignore
@@ -1352,7 +1353,7 @@ def upload_artifact(root: str, title: str, content: str | TextUpload) -> Dict[st
     with home_maintenance(root):
         ensure_state_gitignore(root)
         store = ArtifactStore(root, desktop_uploads=True)
-        if isinstance(content, TextUpload):
+        if isinstance(content, FileUpload):
             meta = store.publish_file(title, content.name, content.content_type, content.data)
             return _uploaded_file_detail(_artifact(root, meta, desktop_upload=True), meta, content.data)
         meta = store.publish_new(title, content)

@@ -10,13 +10,11 @@ import os
 from pathlib import Path
 import re
 import stat
-import struct
 import tempfile
-import zlib
 
-from src.gateway.computer_browser_wire import validate_png
 from src.utils.home_maintenance import home_maintenance
 from src.utils.state_dir import ensure_state_gitignore, state_dir
+from src.web.app_raster_image import jpeg_dimensions, png_dimensions
 
 _MAX_BYTES = 768 * 1024
 _MAX_BASE64 = 4 * ((_MAX_BYTES + 2) // 3)
@@ -43,49 +41,6 @@ def _path(root: str, person_id: str) -> Path:
     return directory / f"{person_id}.image"
 
 
-def _png_size(data: bytes) -> tuple[int, int]:
-    try:
-        validate_png(data)
-    except ValueError as error:
-        raise ValueError("图片不是有效的 PNG") from error
-    offset = 8
-    has_pixels = False
-    while offset + 12 <= len(data):
-        size, kind = struct.unpack_from(">I4s", data, offset)
-        end = offset + 8 + size
-        if end + 4 > len(data) or zlib.crc32(data[offset + 4:end]) != struct.unpack_from(">I", data, end)[0]:
-            break
-        if kind == b"IDAT" and size:
-            has_pixels = True
-        if kind == b"IEND" and has_pixels and end + 4 == len(data):
-            return struct.unpack_from(">II", data, 16)
-        offset = end + 4
-    raise ValueError("PNG 图像数据无效")
-
-
-def _jpeg_size(data: bytes) -> tuple[int, int]:
-    if not data.startswith(b"\xff\xd8\xff") or not data.endswith(b"\xff\xd9"):
-        raise ValueError("图片不是有效的 JPEG")
-    offset = 2
-    size = None
-    while offset + 4 <= len(data) and data[offset] == 0xFF:
-        while offset < len(data) and data[offset] == 0xFF:
-            offset += 1
-        if offset + 3 > len(data):
-            break
-        marker = data[offset]
-        length = int.from_bytes(data[offset + 1:offset + 3], "big")
-        if length < 2 or offset + 1 + length > len(data):
-            break
-        if marker in (0xC0, 0xC1, 0xC2) and length >= 8:
-            height, width = struct.unpack_from(">HH", data, offset + 4)
-            size = width, height
-        if marker == 0xDA and size is not None and offset + 1 + length < len(data) - 2:
-            return size
-        offset += 1 + length
-    raise ValueError("JPEG 图像头或扫描数据无效")
-
-
 def _image(body: object) -> tuple[str, bytes, str]:
     if (not isinstance(body, dict) or not {"imageBase64", "contentType"} <= body.keys()
             or body.keys() - {"imageBase64", "contentType", "portrait"}):
@@ -105,7 +60,7 @@ def _image(body: object) -> tuple[str, bytes, str]:
         raise ValueError("头像的 Base64 编码无效") from error
     if len(data) > _MAX_BYTES:
         raise AvatarTooLarge("头像最大 768 KiB")
-    width, height = _png_size(data) if content_type == "image/png" else _jpeg_size(data)
+    width, height = png_dimensions(data) if content_type == "image/png" else jpeg_dimensions(data)
     if not 0 < width == height <= _MAX_SIDE:
         raise ValueError("请上传最大 512 × 512 像素的正方形头像")
     return content_type, data, portrait
