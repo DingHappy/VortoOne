@@ -571,12 +571,12 @@ class LLMClient:
 
         # 从环境变量读取配置
         if not self.config.api_key:
-            from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, local_model_endpoint
+            from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, direct_keyless_endpoint
             # Default client consumes the launcher's endpoint/key pair (Desktop profile).
             # An explicit keyless local config must never borrow an ambient cloud key.
             configured_key = os.getenv("OPENAI_API_KEY", "").strip() if config is None else ""
             self.config.api_key = configured_key or (
-                LOCAL_MODEL_PLACEHOLDER if local_model_endpoint(self.config.base_url)
+                LOCAL_MODEL_PLACEHOLDER if direct_keyless_endpoint(self.config.base_url)
                 else os.getenv("OPENAI_API_KEY", ""))
         if not self.config.base_url:
             self.config.base_url = os.getenv(
@@ -965,8 +965,8 @@ class LLMClient:
                 "tool_calls": tool_calls, "model": model or self.config.model}
 
     def _keyless_redirect(self, option: str) -> dict[str, bool]:
-        from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, local_model_endpoint
-        if self.config.api_key == LOCAL_MODEL_PLACEHOLDER and local_model_endpoint(self.config.base_url):
+        from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, direct_keyless_endpoint
+        if self.config.api_key == LOCAL_MODEL_PLACEHOLDER and direct_keyless_endpoint(self.config.base_url):
             return {option: False}
         return {}
 

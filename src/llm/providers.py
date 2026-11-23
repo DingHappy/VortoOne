@@ -60,6 +60,20 @@ LOCAL_MODEL_PLACEHOLDER = "not-required"
 
 
 def local_model_endpoint(base_url: str) -> bool:
+    """Use the established transport for a loopback model that supplies its own key."""
+    try:
+        parsed = urlsplit(base_url)
+        local = (parsed.scheme in ("http", "https")
+                 and parsed.hostname in ("127.0.0.1", "localhost")
+                 and parsed.username is None and parsed.password is None
+                 and not parsed.query and not parsed.fragment)
+        _ = parsed.port
+        return local
+    except ValueError:
+        return False
+
+
+def direct_keyless_endpoint(base_url: str) -> bool:
     """Check the original direct-loopback spelling before enabling keyless transport."""
     if not base_url or len(base_url) > 2048 or any(
         char.isspace() or ord(char) < 33 or ord(char) == 127 or char in "?#\\%" for char in base_url
@@ -83,13 +97,14 @@ def default_chat_ready() -> bool:
         if _env("OPENAI_API_KEY"):
             return True
         model = _env("DEFAULT_MODEL") or _env("OPENAI_MODEL")
-        return (bool(model and not _env("OPENAI_CUSTOM_HEADERS"))
-                and local_model_endpoint(_env("OPENAI_API_BASE")))
+        valid_model = 0 < len(model) <= 256 and all(ord(char) >= 32 and ord(char) != 127 for char in model)
+        return (valid_model and not _env("OPENAI_CUSTOM_HEADERS")
+                and direct_keyless_endpoint(_env("OPENAI_API_BASE")))
 
 
 def _provider_key(base_url: str, api_key: str) -> str:
     """Non-secret SDK placeholder only for loopback; never borrow the default key."""
-    return api_key or (LOCAL_MODEL_PLACEHOLDER if local_model_endpoint(base_url) else "")
+    return api_key or (LOCAL_MODEL_PLACEHOLDER if direct_keyless_endpoint(base_url) else "")
 
 
 def providers() -> Dict[str, ProviderSpec]:
