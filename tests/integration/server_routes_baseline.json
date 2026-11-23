@@ -1868,6 +1868,12 @@
     ]
   },
   {
+    "path": "/api/app/me/password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/me/unread",
     "methods": [
       "GET"

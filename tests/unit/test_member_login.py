@@ -661,3 +661,76 @@ def test_workspace_details_require_join_or_proven_owner(home, monkeypatch):
 
     monkeypatch.delenv("VORTOONE_API_TOKEN")
     assert TestClient(home["app"]).get(path).status_code == 403
+
+
+def test_member_can_update_only_own_password_after_explicit_sign_in(home):
+    from starlette.websockets import WebSocketDisconnect
+    from src.workflow.ai_apps.store import AiApps
+    from src.workflow.members.owner_account import OwnerAccount
+
+    path = "/api/app/me/password"
+    proposed = "a brand new password"
+    payload = {"password": proposed}
+    origin = ORIGIN
+    claimed_by = TestClient(home["app"], headers=origin)
+    claim, _ = OwnerAccount(home["root"]).claim_link()
+    assert claimed_by.post("/api/auth/owner-claim", json={
+        "token": claim, "name": "所有者", "email": "owner@example.test", "password": PASSWORD,
+    }).status_code == 200
+
+    activation = _join(home)
+    other = _join(home, "other@example.test")
+    member_id = activation.get("/api/app/me").json()["user"]["id"]
+    assert activation.get("/api/app/me").json()["user"]["hasPassword"] is True
+    bearer_refused = home["owner"].post(path, json=payload, headers=origin)
+    assert bearer_refused.status_code == 409 and bearer_refused.json()["error"]["code"] == "account.password_unsupported"
+    refused = claimed_by.post(path, json=payload)
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "account.password_unsupported"
+    assert TestClient(home["app"], headers=origin).post(path, json=payload).status_code == 401
+
+    def sign_in(client, password):
+        return client.post("/api/auth/sign-in/email", json={"email": "ana@example.com", "password": password})
+
+    refused = activation.post(path, json=payload)
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "reauth.sign_in"
+    issued = activation.post("/api/app/phone-sign-in", json={})
+    assert issued.status_code == 200
+    phone = TestClient(home["app"], headers=origin)
+    assert phone.post("/api/auth/sign-in/one-time-token", json={"token": issued.json()["token"]}).status_code == 200
+    refused = phone.post(path, json=payload)
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "reauth.sign_in"
+    pending = phone.post("/api/app/phone-sign-in", json={})
+    assert pending.status_code == 200
+
+    current, sibling = TestClient(home["app"], headers=origin), TestClient(home["app"], headers=origin)
+    assert sign_in(current, PASSWORD).status_code == 200
+    assert sign_in(sibling, PASSWORD).status_code == 200
+    assert current.post(path, json=payload, headers={"Origin": "https://cross-origin.example.test"}).status_code == 403
+    assert current.post(path, json={**payload, "userId": other.get("/api/app/me").json()["user"]["id"]}).status_code == 422
+
+    apps = AiApps(home["root"])
+    _, secret = apps.create_token(member_id, "Member testing token", "read", None)
+    other_id = other.get("/api/app/me").json()["user"]["id"]
+    _, other_secret = apps.create_token(other_id, "Other testing token", "read", None)
+    assert apps.authenticate(secret) is not None
+    with sibling.websocket_connect("/api/ws", params={"orgId": home["org"]}) as subscription:
+        assert subscription.receive_json()["type"] == "ready"
+        response = current.post(path, json=payload)
+        assert response.status_code == 204 and response.content == b""
+        subscription.send_json({"type": "ping"})
+        with pytest.raises(WebSocketDisconnect) as closed:
+            subscription.receive_json()
+        assert closed.value.code == 1008
+    assert current.get("/api/app/me").json()["user"]["id"] == member_id
+    assert other.get("/api/app/me").status_code == 200
+    assert apps.authenticate(secret) is None and apps.authenticate(other_secret) is not None
+    for ended in (activation, sibling, phone):
+        assert ended.get("/api/app/me").status_code == 401
+    one_time = {"token": pending.json()["token"]}
+    assert TestClient(home["app"], headers=origin).post("/api/auth/sign-in/one-time-token", json=one_time).status_code == 401
+    new_session = TestClient(home["app"], headers=origin)
+    assert sign_in(new_session, PASSWORD).status_code == 401
+    assert sign_in(new_session, proposed).status_code == 200
+    assert claimed_by.post("/api/auth/sign-in/email", json={
+        "email": "owner@example.test", "password": PASSWORD,
+    }).status_code == 200
