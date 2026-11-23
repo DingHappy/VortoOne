@@ -237,3 +237,193 @@ def test_personal_vault_concurrent_writes_are_serialized(home, configured):
     for response in responses:
         _assert_masked(response, 200)
     assert {item["keyName"] for item in client.get(url).json()["items"]} == {f"FIXTURE_{n}" for n in range(10)}
+
+
+def _csv(text, *, dry_run=False, scope="personal"):
+    return {"scope": scope, "csv": text, "dryRun": dry_run}
+
+
+def _key_import(name, secret=FIXTURE_VALUE, *, replace=False):
+    return {"keyName": name, "secret": secret, "replace": replace}
+
+
+def test_csv_preview_matches_import_and_keeps_saved_login_metadata(home, configured, caplog):
+    url, client = home["base"] + "/vault", _tls(home)
+    saved = client.post(url + "/items", json=_login(description="之前的说明")).json()
+    sealed, = configured.glob("*.sealed")
+    original = sealed.read_bytes()
+    csv = (
+        "\ufeffname,url,username,password,note\r\n"
+        f'"导入, 标题",https://EXAMPLE.test:1443/sign-in,operator,{ROTATED_VALUE},plaintext notes omitted\r\n'
+        f"再次导入,https://example.test:1443/again,operator,{FIXTURE_VALUE},\r\n"
+        f'新账户,https://new.example.test/login?target=feed,reporter,"{FIXTURE_VALUE},quote ""value""",\r\n'
+        f"非加密,http://plain.example.test,operator,{FIXTURE_VALUE},\r\n"
+        f"无密码,https://other.example.test,publisher,,\r\n"
+        f"列数不对,https://other.example.test,{FIXTURE_VALUE}\r\n"
+    )
+    preview = client.post(url + "/import", json=_csv(csv, dry_run=True))
+    _assert_masked(preview, 200)
+    assert preview.headers["cache-control"] == "no-store"
+    expected = {"added": 1, "updated": 1, "format": "chrome", "skipped": [
+        {"reason": reason, "count": 1} for reason in ("duplicate", "invalid", "no_password", "not_https")
+    ]}
+    assert preview.json() == expected
+    assert sealed.read_bytes() == original
+    assert client.get(url).json()["items"] == [saved]
+
+    imported = client.post(url + "/import", json=_csv(csv))
+    _assert_masked(imported, 200)
+    assert imported.json() == expected
+    listing = client.get(url).json()["items"]
+    saved_again, added = listing
+    assert saved_again["id"] == saved["id"]
+    assert saved_again["title"] == saved["title"]
+    assert saved_again["description"] == saved["description"]
+    assert added["website"] == "https://new.example.test"
+    private = implementation.PersonalVault(home["root"], saved["ownerUserId"])._read()
+    assert private[saved["id"]]["secret"] == ROTATED_VALUE
+    assert private[added["id"]]["secret"] == f'{FIXTURE_VALUE},quote "value"'
+    assert FIXTURE_VALUE.encode() not in sealed.read_bytes()
+    assert ROTATED_VALUE.encode() not in sealed.read_bytes()
+    retry = client.post(url + "/import", json=_csv(csv))
+    assert retry.json() == {**expected, "added": 0, "updated": 0, "skipped": [
+        {"reason": "duplicate", "count": 3}, *expected["skipped"][1:],
+    ]}
+    assert client.get(url).json()["items"] == listing
+    assert FIXTURE_VALUE not in caplog.text and ROTATED_VALUE not in caplog.text
+
+
+@pytest.mark.parametrize("header,row,format_name", [
+    ("Title,Website,Username,Password,Notes", "Test,https://one.example.test,member,{value},extra", "1password"),
+    ("folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp",
+     ",,login,Test,,,,https://one.example.test,member,{value},", "bitwarden"),
+    ("url,username,password", "https://one.example.test,member,{value}", "generic"),
+])
+def test_csv_recognizes_supported_capitalization_and_export_formats(home, configured, header, row, format_name):
+    url, client = home["base"] + "/vault", _tls(home)
+    uploaded = client.post(url + "/import", json=_csv(header + "\n" + row.format(value=FIXTURE_VALUE)))
+    _assert_masked(uploaded, 200)
+    assert uploaded.json() == {"added": 1, "updated": 0, "skipped": [], "format": format_name}
+    item, = client.get(url).json()["items"]
+    assert item["scope"] == "personal" and item["kind"] == "login" and item["description"] == ""
+
+
+def test_csv_matches_explicit_https_default_port_without_merging_other_ports(home, configured):
+    url, client = home["base"] + "/vault", _tls(home)
+    saved = client.post(url + "/items", json=_login(website="https://example.test:443")).json()
+    data = (f"url,username,password\nhttps://example.test/login,operator,{ROTATED_VALUE}\n"
+            f"https://example.test:1443/login,operator,{FIXTURE_VALUE}")
+    imported = client.post(url + "/import", json=_csv(data))
+    _assert_masked(imported, 200)
+    assert imported.json() == {"added": 1, "updated": 1, "skipped": [], "format": "generic"}
+    private = implementation.PersonalVault(home["root"], saved["ownerUserId"])._read()
+    assert private[saved["id"]]["secret"] == ROTATED_VALUE
+    assert {entry["website"] for entry in private.values()} == {"https://example.test:443", "https://example.test:1443"}
+
+
+def test_key_import_skips_or_replaces_explicitly_and_returns_only_counts(home, configured, caplog):
+    url, client = home["base"] + "/vault", _tls(home)
+    existing = client.post(url + "/items", json={
+        "scope": "personal", "kind": "key", "title": "原名称", "description": "原说明",
+        "keyName": "EXISTING", "secret": FIXTURE_VALUE,
+    }).json()
+    path = url + "/keys"
+    result = client.post(path, json={"scope": "personal", "keys": [
+        _key_import("EXISTING", ROTATED_VALUE), _key_import("NEW"),
+    ]})
+    _assert_masked(result, 200)
+    assert result.json() == {"added": 1, "replaced": 0, "skipped": 1}
+    private = implementation.PersonalVault(home["root"], existing["ownerUserId"])
+    assert private._read()[existing["id"]]["secret"] == FIXTURE_VALUE
+    request = {"scope": "personal", "keys": [_key_import("EXISTING", ROTATED_VALUE, replace=True)]}
+    updated = client.post(path, json=request)
+    _assert_masked(updated, 200)
+    assert updated.json() == {"added": 0, "replaced": 1, "skipped": 0}
+    seen = private._read()[existing["id"]]
+    assert seen["secret"] == ROTATED_VALUE and seen["title"] == "原名称" and seen["description"] == "原说明"
+    assert client.post(path, json=request).json() == updated.json()
+    assert private._read()[existing["id"]] == seen
+    assert ROTATED_VALUE.encode() not in private.path.read_bytes()
+    assert FIXTURE_VALUE not in caplog.text and ROTATED_VALUE not in caplog.text
+
+
+def test_key_import_refuses_to_choose_between_duplicate_existing_names(home, configured):
+    url, client = home["base"] + "/vault", _tls(home)
+    for title in ("第一条", "第二条"):
+        response = client.post(url + "/items", json={
+            "scope": "personal", "kind": "key", "title": title, "keyName": "SAME", "secret": FIXTURE_VALUE,
+        })
+        _assert_masked(response, 200)
+    sealed, = configured.glob("*.sealed")
+    original = sealed.read_bytes()
+    response = client.post(url + "/keys", json={"scope": "personal", "keys": [
+        _key_import("NEW"), _key_import("SAME", ROTATED_VALUE, replace=True),
+    ]})
+    _assert_masked(response, 409)
+    assert response.json()["error"]["code"] == "vault.conflict"
+    assert sealed.read_bytes() == original
+
+
+@pytest.mark.parametrize("suffix,body", [
+    ("/import", _csv(f"url,username,password\nhttps://same.example.test,operator,{FIXTURE_VALUE}")),
+    ("/keys", {"scope": "personal", "keys": [_key_import("SHARED_NAME")]}),
+])
+def test_vault_imports_are_available_only_to_each_active_vault_owner(home, configured, suffix, body):
+    url, owner = home["base"] + "/vault", _tls(home)
+    member = _tls(home, _join(home, "han@example.com", "Han"))
+    outsider = _tls(home, _join(home, "lee@example.com", "Lee"))
+    member_id = member.get("/api/app/me").json()["user"]["id"]
+    anonymous = TestClient(home["app"], base_url="https://testserver")
+    assert anonymous.post(url + suffix, json=body).status_code == 401
+    assert home["owner"].post(url + suffix, json=body).json()["error"]["code"] == "vault.secure_transport_required"
+    assert member.post(url + suffix, json=body, headers={"Origin": "https://other.example.test"}).status_code == 403
+    owner_import = owner.post(url + suffix, json=body)
+    _assert_masked(owner_import, 200)
+    assert owner_import.json()["added"] == 1
+    assert member.get(url).json()["items"] == []
+    member_import = member.post(url + suffix, json=body)
+    _assert_masked(member_import, 200)
+    assert member_import.json()["added"] == 1
+    owned, = owner.get(url).json()["items"]
+    saved, = member.get(url).json()["items"]
+    assert owned["id"] != saved["id"] and saved["ownerUserId"] == member_id
+    assert outsider.get(url).json()["items"] == []
+    assert owner.delete(f"{home['base']}/members/{member_id}").status_code == 204
+    assert member.post(url + suffix, json=body).status_code == 401
+
+
+@pytest.mark.parametrize("suffix,body,status,code", [
+    ("/import", _csv(f"unknown,fields,only\n{FIXTURE_VALUE},value,row"), 422, "vault.invalid"),
+    ("/import", _csv(f'url,username,password\n"https://one.example.test,operator,{FIXTURE_VALUE}'), 422, "vault.invalid"),
+    ("/import", _csv("x" * (2 * 1024 * 1024 + 1)), 413, "vault.too_large"),
+    ("/import", _csv("url,username,password", scope="team"), 403, "vault.personal_only"),
+    ("/keys", {"scope": "team", "keys": [_key_import("OTHER")]}, 403, "vault.personal_only"),
+    ("/keys", {"scope": "personal", "access": {"allAgents": True}, "keys": [_key_import("OTHER")]},
+     403, "vault.sharing_unavailable"),
+    ("/keys", {"scope": "personal", "keys": [_key_import("GOOD"), _key_import("bad.name")]}, 422, "vault.invalid"),
+    ("/keys", {"scope": "personal", "keys": [_key_import("SAME"), _key_import("SAME", ROTATED_VALUE)]},
+     422, "vault.invalid"),
+    ("/keys", {"scope": "personal", "keys": [_key_import(f"KEY_{n}") for n in range(201)]}, 413, "vault.too_large"),
+])
+def test_import_rejections_return_no_secrets_or_partial_rows(home, configured, suffix, body, status, code):
+    url, client = home["base"] + "/vault", _tls(home)
+    response = client.post(url + suffix, json=body)
+    _assert_masked(response, status)
+    assert response.json()["error"]["code"] == code
+    assert not list(configured.glob("*.sealed"))
+
+
+def test_vault_imports_enforce_capacity_atomically(home, configured, monkeypatch):
+    monkeypatch.setattr(implementation, "_MAX_ITEMS", 1)
+    url, client = home["base"] + "/vault", _tls(home)
+    csv = (f"url,username,password\nhttps://same.example.test,operator,{FIXTURE_VALUE}\n"
+           f"https://other.example.test,operator,{FIXTURE_VALUE}")
+    for suffix, body in [
+        ("/import", _csv(csv, dry_run=True)),
+        ("/import", _csv(csv)),
+        ("/keys", {"scope": "personal", "keys": [_key_import("FIRST"), _key_import("SECOND")]}),
+    ]:
+        response = client.post(url + suffix, json=body)
+        _assert_masked(response, 409)
+        assert response.json()["error"]["code"] == "vault.limit"
+        assert not list(configured.glob("*.sealed"))
