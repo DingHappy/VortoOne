@@ -236,8 +236,16 @@ def _import_note(note: Any, folder: str) -> dict | str:
     if not isinstance(note, dict):
         _fail("invalid", "每条 Markdown 笔记必须是对象")
     _fields(note, {"title", "folder", "body", "tags", "aliases", "attachments"})
-    if note.get("aliases", []) != []:
-        _fail("wiki_import_unsupported", "Markdown 导入暂不支持笔记别名", status=409)
+    raw_aliases = note.get("aliases", [])
+    if not isinstance(raw_aliases, list) or len(raw_aliases) > 50:
+        _fail("invalid", "每页最多 50 个别名")
+    aliases = {}
+    for raw in raw_aliases:
+        label = _text(raw, 300, "别名", required=True).strip()
+        key = _fold(label)
+        if not key or any(ord(char) < 32 for char in label):
+            _fail("invalid", "别名不可为空或包含控制字符")
+        aliases.setdefault(key, label)
     if not isinstance(note.get("title"), str) or not isinstance(note.get("body"), str):
         _fail("invalid", "Markdown 笔记必须提供标题和正文")
     destination = _folder("/".join(filter(None, (folder, _folder(note.get("folder", ""))))))
@@ -255,7 +263,8 @@ def _import_note(note: Any, folder: str) -> dict | str:
     if any(not isinstance(name, str) or not name.strip() or len(name) > 300 or any(ord(c) < 32 for c in name)
            or not isinstance(aid, str) or not _UPLOAD_ID.fullmatch(aid) for name, aid in attachments.items()):
         _fail("invalid", "Drive 附件名称或编号无效")
-    return {"title": title, "folder": destination, "tags": tags, "body": body, "attachments": attachments}
+    return {"title": title, "folder": destination, "tags": tags, "body": body,
+            "aliases": list(aliases.values()), "attachments": attachments}
 
 
 class Wiki:
@@ -470,26 +479,35 @@ class Wiki:
         return sorted(pages, key=lambda page: page["updatedAt"], reverse=True)
 
     def search(self, query: str) -> dict:
-        query = _text(query, 200, "搜索词").strip().lower()
+        query = _fold(_text(query, 200, "搜索词"))
         with self._database() as conn:
             pages = self._visible_pages(conn)
-        titles = [(page, page["title"].lower()) for page in pages]
-        matches = [(page, title) for page, title in titles if query in title]
-        matches.sort(key=lambda match: not match[1].startswith(query))
-        return {"pages": [self._summary(page) for page, _ in matches]}
+        matches = []
+        for page in pages:
+            title = _fold(page["title"])
+            if query in title:
+                matches.append((0 if title.startswith(query) else 1, page))
+            elif any(query in _fold(label) for label in page.get("aliases", [])):
+                matches.append((2, page))
+        matches.sort(key=lambda match: match[0])
+        return {"pages": [self._summary(page) for _, page in matches]}
 
     @staticmethod
     def _links(conn, pages):
         """Resolve page links against the same visible pages for the graph and backlinks."""
         by_id = {page["id"]: page["slug"] for page in pages}
-        aliases = {row["slug"]: by_id[row["page_id"]] for row in conn.execute("SELECT slug, page_id FROM slugs")
-                   if row["page_id"] in by_id}
-        titles, paths = {}, {}
+        slugs = {row["slug"]: by_id[row["page_id"]] for row in conn.execute("SELECT slug, page_id FROM slugs")
+                 if row["page_id"] in by_id}
+        titles, paths, aliases = {}, {}, {}
         for page in pages:
             title, folder, slug = page["title"], page["folder"], page["slug"]
             titles.setdefault(_fold(title), slug)
             if folder:
                 paths.setdefault(_fold(f"{folder}/{title}"), slug)
+            for label in page.get("aliases", []):
+                key = _fold(label)
+                # Two visible pages with the same alias make it ambiguous.
+                aliases[key] = None if key in aliases else slug
 
         for page in pages:
             source = page["slug"]
@@ -497,7 +515,7 @@ class Wiki:
             for match in _PAGE_LINK.finditer(page["body"]):
                 title = re.split(r"[|#]", match[1], maxsplit=1)[0].strip()
                 key = _fold(title)
-                target = titles.get(key) or paths.get(key) or aliases.get(_slug(title, ""))
+                target = titles.get(key) or paths.get(key) or slugs.get(_slug(title, "")) or aliases.get(key)
                 if target is not None and target != source and target not in targets:
                     targets.add(target)
                     yield source, target
@@ -518,6 +536,7 @@ class Wiki:
         self, conn, *, title: str, folder: str, tags: list[str], body: str,
         audience: dict | None = None, provenance: dict | None = None,
         rules: dict[str, frozenset[str]] | None = None, attachments: dict[str, str] | None = None,
+        aliases: list[str] | None = None,
     ) -> dict:
         page_id = uuid.uuid4().hex
         page = {"id": page_id, "title": title, "folder": folder, "tags": tags, "body": body,
@@ -532,6 +551,8 @@ class Wiki:
             page["slug"] = f"{page['slug']}-{page_id}"
         if attachments:
             page["attachments"] = attachments
+        if aliases:
+            page["aliases"] = aliases
         conn.execute("INSERT INTO pages VALUES (?, ?)", (page_id, "{}"))
         self._save(conn, page)
         return page
