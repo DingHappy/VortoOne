@@ -15,6 +15,8 @@ from src.workflow.members import channel_threads, thread_reads
 from src.workflow.members.registry import Damaged, Missing
 
 OWNER_KEY = "owner"
+# 频道里 agent 发的消息：作者记成 "agent:<界面上的 agent id>"。人的键（成员 id、owner）不会以它开头。
+AGENT_AUTHOR = "agent:"
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (
     sequence INTEGER PRIMARY KEY,
@@ -158,9 +160,14 @@ class ChannelHistory:
     def person_id(self, key: str) -> str:
         return self.owner_id if key == OWNER_KEY else key
 
+    def author(self, key: str) -> dict:
+        if key.startswith(AGENT_AUTHOR):
+            return {"type": "agent", "id": key[len(AGENT_AUTHOR):]}
+        return {"type": "person", "id": self.person_id(key)}
+
     def message(self, row, viewer, *, reactions=None) -> dict:
         result = {"id": row["id"], "channelId": row["channel"], "threadId": row["thread"],
-                  "author": {"type": "person", "id": self.person_id(row["author"])}, "body": row["body"],
+                  "author": self.author(row["author"]), "body": row["body"],
                   "mentionedAgentIds": [], "agentRunId": None,
                   "createdAt": row["created"], "sequence": row["sequence"]}
         meta = {}
@@ -380,7 +387,7 @@ class ChannelHistory:
 
     def thread_summary(self, conn, channel, root, title, *, reader, can_manage=False):
         def actor(row):
-            return {"type": "person", "id": self.person_id(row["author"])}
+            return self.author(row["author"])
 
         reply_count, opened = conn.execute(
             "SELECT count(*), min(CASE WHEN opened = 1 THEN created END) FROM messages "
@@ -400,7 +407,7 @@ class ChannelHistory:
                 "lastActivityAt": latest["created"] if latest else root["created"],
                 "lastMessage": ({"author": actor(latest), "excerpt": latest["body"][:140],
                                  "createdAt": latest["created"]} if latest else None),
-                "participants": [{"type": "person", "id": self.person_id(person)} for person in participants],
+                "participants": [self.author(person) for person in participants],
                 "working": False, "needsYou": False, "openedByReplyAt": opened,
                 "suggestedResolved": False, "canManage": can_manage and reply_count > 0,
                 **thread_reads.info(conn, channel, root, reader, archived=bool(state.archived_at))}

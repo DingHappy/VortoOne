@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 from contextlib import suppress
@@ -26,6 +27,7 @@ from src.gateway import app_protocol as F
 from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
 from src.web import app_artifact_upload
 from src.web import app_artifacts
+from src.web import app_channel_agents
 from src.web import app_views as views
 from src.web import (
     app_board, app_calendar, app_channels, app_covers, app_feedback, app_gifs, app_members, app_notice_inbox,
@@ -1285,6 +1287,20 @@ def _member_dm(request: Request, org_id: str, channel_id: str):
     return root, staff_id, who
 
 
+async def _call_channel_agents(request: Request, org_id: str, channel_id: str, message: Dict[str, Any]) -> None:
+    """消息已经发出：叫到的 agent 接活。出了什么问题都不影响这条消息本身（agent 会在话题里说明）。
+    留在事件循环线程：派活要把任务登记进执行池。"""
+    root = _root(org_id)
+    actor = _who(request, root)
+    if actor is None:
+        return
+    try:
+        await _dispatch_ready(root)
+        app_channel_agents.call(root, app_channels.channels(root), actor, channel_id, message)
+    except Exception:  # noqa: BLE001 —— 消息已存好，叫 agent 失败不能让发消息报错
+        logging.getLogger(__name__).warning("频道里叫 agent 失败", exc_info=True)
+
+
 async def _dispatch_ready(root: str) -> None:
     """派活要用主要聊天的会话当发起身份；新界面里还没打开过主要聊天时（直接去 agent 私聊派活）先登记上。"""
     if not views.main_chat_key(root):
@@ -1402,7 +1418,40 @@ class _ChannelPlacement(BaseModel):
 
 class _ChannelPerson(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    userId: str
+    userId: str | None = None
+    agentId: str | None = None
+
+
+class _AgentAutoReply(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    autoReply: StrictBool
+
+
+class _AgentChannel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channelId: str
+    autoReply: StrictBool | None = None
+
+
+class _AgentChannels(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channels: list[_AgentChannel] = Field(max_length=500)
+
+
+_AUTO_REPLY_OFF = "不 @ 也回答第一期不做：频道里的 agent 只在被 @ 时回答"
+_AGENT_NOT_IN_CHANNELS = "这个 agent 不能进团队频道：主助理、用本机 CLI 或连着登记项目的 agent 第一期只在私聊里"
+
+
+def _channel_agent(root: str, agent_id: str):
+    """(专员 id, 错误)：主助理和不能进频道的回 409，不认识的回 404。"""
+    if agent_id == views.main_agent_id(root):
+        return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
+    staff = next((key for key, row in app_channels.channel_agents(root).items() if row["id"] == agent_id), None)
+    if staff is None:
+        return None, _error(404, "not_found", "没有这个 agent")
+    if not app_channels.channel_agents(root)[staff]["joinable"]:
+        return None, _error(409, "agent_channels.unsupported", _AGENT_NOT_IN_CHANNELS)
+    return staff, None
 
 
 class _ChannelOverrideTarget(BaseModel):
@@ -1482,8 +1531,8 @@ async def update_team_channel(org_id: str, channel_id: str, body: _TeamChannelCh
 
 @router.get(_ORG + "/channels/{channel_id}/card")
 async def team_channel_card(org_id: str, channel_id: str, request: Request):
-    return _team_response(await _team_call(request, org_id, lambda service, actor: service.card(actor, channel_id),
-                                          channel_id=channel_id))
+    return _team_response(await _team_call(request, org_id, lambda service, actor: service.card(
+        actor, channel_id, agents=app_channels.channel_agents(_root(org_id))), channel_id=channel_id))
 
 
 @router.delete(_ORG + "/channels/{channel_id}", status_code=204)
@@ -1502,8 +1551,41 @@ async def join_team_channel(org_id: str, channel_id: str, request: Request):
 
 @router.post(_ORG + "/channels/{channel_id}/members", status_code=204)
 async def add_team_channel_member(org_id: str, channel_id: str, body: _ChannelPerson, request: Request):
+    if (body.userId is None) == (body.agentId is None):
+        return _error(422, "invalid", "要么加一个人（userId），要么加一个 agent（agentId）")
+    if body.agentId is None:
+        return _team_response(await _team_call(request, org_id, lambda service, actor:
+            _team_receipt(lambda: service.set_person(actor, channel_id, body.userId, True)), channel_id=channel_id))
+    if not is_team_channel(channel_id):
+        return _error(404, "not_found", "没有这个频道")
+    staff, refused = await asyncio.to_thread(_channel_agent, _root(org_id), body.agentId)
+    if refused is not None:
+        return refused
     return _team_response(await _team_call(request, org_id, lambda service, actor:
-        _team_receipt(lambda: service.set_person(actor, channel_id, body.userId, True)), channel_id=channel_id))
+        _team_receipt(lambda: service.set_agent(actor, channel_id, staff, True)), channel_id=channel_id))
+
+
+@router.delete(_ORG + "/channels/{channel_id}/members/agents/{agent_id}", status_code=204)
+async def remove_team_channel_agent(org_id: str, channel_id: str, agent_id: str, request: Request):
+    staff = await asyncio.to_thread(_staff_of, _root(org_id), agent_id)      # 删掉的 agent 也能拿出来
+    if staff is None:
+        return _error(404, "not_found", "没有这个 agent")
+    return _team_response(await _team_call(request, org_id, lambda service, actor:
+        _team_receipt(lambda: service.set_agent(actor, channel_id, staff, False)), channel_id=channel_id))
+
+
+@router.patch(_ORG + "/channels/{channel_id}/members/agents/{agent_id}", status_code=204)
+async def set_team_channel_agent(org_id: str, channel_id: str, agent_id: str, body: _AgentAutoReply,
+                                 request: Request):
+    staff = await asyncio.to_thread(_staff_of, _root(org_id), agent_id)
+
+    def change(service, actor):
+        if staff is None or not service.has_agent(actor, channel_id, staff):
+            raise LookupError("这个 agent 不在这个频道里")
+        if body.autoReply:
+            return _error(409, "agent_channels.auto_reply_unavailable", _AUTO_REPLY_OFF)
+        return Response(status_code=204)                    # 本来就只在被 @ 时回答
+    return _team_response(await _team_call(request, org_id, change, channel_id=channel_id))
 
 
 @router.delete(_ORG + "/channels/{channel_id}/members/people/{person_id}", status_code=204)
@@ -1515,7 +1597,8 @@ async def remove_team_channel_member(org_id: str, channel_id: str, person_id: st
 @router.get(_ORG + "/channels/{channel_id}/roster")
 async def team_channel_roster(org_id: str, channel_id: str, request: Request):
     return _team_response(await _team_call(request, org_id, lambda service, actor:
-        {"members": service.roster(actor, channel_id)}, channel_id=channel_id))
+        {"members": service.roster(actor, channel_id, agents=app_channels.channel_agents(_root(org_id)))},
+        channel_id=channel_id))
 
 
 @router.get(_ORG + "/channels/{channel_id}/permissions")
@@ -1627,7 +1710,8 @@ async def mark_team_thread_read(org_id: str, thread_id: str, request: Request):
 @router.get(_ORG + "/channels/{channel_id}/members")
 async def channel_members(org_id: str, channel_id: str, request: Request):
     team = await _team_call(request, org_id, lambda service, actor: {"members": [
-        {"type": person["type"], "id": person["id"]} for person in service.roster(actor, channel_id)]},
+        {"type": person["type"], "id": person["id"]}
+        for person in service.roster(actor, channel_id, agents=app_channels.channel_agents(_root(org_id)))]},
         channel_id=channel_id)
     if team is not None:
         return team
@@ -1715,9 +1799,12 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             media = await _gif_for_message(org_id, wanted_media)
             if isinstance(media, JSONResponse):
                 return media
-        return await _team_call(request, org_id, lambda service, actor: service.post(
+        posted = await _team_call(request, org_id, lambda service, actor: service.post(
             actor, channel_id, text, client_id=client_id, thread=body.threadId or None,
             reply_to=body.replyTo or None, opened=bool(body.threadId and body.openThread), media=media))
+        if isinstance(posted, dict) and "@" in text:
+            await _call_channel_agents(request, org_id, channel_id, posted)
+        return posted
     if body.threadId:
         return _error(400, "threads_unsupported", "这里还不支持在话题里回复")
     answer = await _as_member(request, org_id, channel_id,
@@ -1751,7 +1838,7 @@ async def channel_active_runs(org_id: str, channel_id: str, request: Request):
     def team_runs(service, actor):
         if not service.can_read(actor, channel_id):
             raise LookupError("没有这个频道")
-        return {"runs": []}
+        return {"runs": app_channel_agents.runs(_root(org_id), channel_id)}
 
     team = await _team_call(request, org_id, team_runs, channel_id=channel_id)
     if team is not None:
@@ -4086,27 +4173,52 @@ async def learned_skills(org_id: str, agent_id: str):
     return {"skills": []}
 
 
-_NO_AGENTS_IN_CHANNELS = "团队频道里还没有 agent：agent 现在只在私聊里回应"
-
-
 @router.get(_ORG + "/agents/{agent_id}/channels")
-async def agent_channels(org_id: str, agent_id: str):
-    if _agent(org_id, agent_id) is None:
+async def agent_channels(org_id: str, agent_id: str, request: Request):
+    root = _root(org_id)
+    if agent_id == views.main_agent_id(root):
+        return {"channels": []}
+    staff = await asyncio.to_thread(_staff_of, root, agent_id)
+    if staff is None or _agent(org_id, agent_id) is None:
         return _error(404, "not_found", "没有这个角色")
-    return {"channels": []}
+    return await _team_call(request, org_id, lambda service, actor: {"channels": service.agent_channels(actor, staff)},
+                            empty_listing={"channels": []})
 
 
 @router.put(_ORG + "/agents/{agent_id}/channels")
 async def set_agent_channels(org_id: str, agent_id: str, request: Request):
-    """只接受「一个频道都不进」；要把 agent 放进团队频道的如实拒绝。"""
-    if _agent(org_id, agent_id) is None:
-        return _error(404, "not_found", "没有这个角色")
-    body = await _body(request)
-    if set(body) != {"channels"} or not isinstance(body["channels"], list):
+    """整组替换 agent 所在的团队频道（只有所有者）。有一项不行就什么都不改。"""
+    from pydantic import ValidationError
+    root = _root(org_id)
+    try:
+        body = _AgentChannels.model_validate(await _body(request))
+    except ValidationError:
         return _error(400, "invalid", "要给出 agent 所在的频道列表")
-    if body["channels"]:
-        return _error(409, "agent_channels.unavailable", _NO_AGENTS_IN_CHANNELS)
-    return {"channels": []}
+    if any(entry.autoReply for entry in body.channels):
+        return _error(409, "agent_channels.auto_reply_unavailable", _AUTO_REPLY_OFF)
+    wanted = [entry.channelId for entry in body.channels]
+    if any(not is_team_channel(channel_id) for channel_id in wanted):
+        return _error(404, "not_found", "没有这个频道")
+    main = agent_id == views.main_agent_id(root)
+    if not wanted:              # 拿出所有频道：主助理本来就不在，不能再进的 agent 也要能拿出来
+        staff = None if main else await asyncio.to_thread(_staff_of, root, agent_id)
+        if not main and staff is None:
+            return _error(404, "not_found", "没有这个角色")
+
+        def clear(service, actor):
+            service.require_owner(actor)
+            if staff is not None:
+                service.replace_agent_channels(actor, staff, [])
+            return {"channels": []}
+        return await _team_call(request, org_id, clear)
+    staff, refused = await asyncio.to_thread(_channel_agent, root, agent_id)
+    if refused is not None:
+        return refused
+
+    def replace(service, actor):
+        service.replace_agent_channels(actor, staff, wanted)
+        return {"channels": service.agent_channels(actor, staff)}
+    return await _team_call(request, org_id, replace)
 
 
 @router.get(_ORG + "/usage")

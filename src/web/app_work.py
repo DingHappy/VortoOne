@@ -62,6 +62,10 @@ def _status(task: Any, approving: Collection[str], question: Optional[Dict[str, 
 
 def _place(root: str, task: Any) -> Dict[str, Any]:
     agent = views.member_agent_id(root, str(task.collaboration["dispatch"]["member"]))
+    where = task.collaboration["dispatch"].get("channel")
+    if where:                                       # 团队频道里被 @ 的事：在那个话题里
+        return {"runId": task.id, "agentId": agent, "channelId": where["id"], "channelKind": "channel",
+                "channelName": None, "threadId": where["thread"], "label": None, "background": False}
     # 私聊是平的：threadId 为 null
     return {"runId": task.id, "agentId": agent, "channelId": views.dm_channel_id(agent), "channelKind": "dm",
             "channelName": None, "threadId": None, "label": None,

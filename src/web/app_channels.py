@@ -17,6 +17,16 @@ def channels(root: str) -> TeamChannels:
     return TeamChannels(root, owner["userId"], owner["name"])
 
 
+def channel_agents(root: str) -> dict:
+    """团队里的 agent（专员 id → 界面资料），归档、删掉的和主助理不在里面。
+
+    joinable：能不能放进频道。第一期只要自有框架、不连登记项目的（和成员能用的 agent 同一条判据）：
+    本机 CLI 没有确认门，开发 agent 要在项目副本里跑。主助理连着主要聊天，不进频道。"""
+    return {row["handle"]: {"id": row["id"], "name": row["name"], "handle": row["handle"],
+                            "joinable": bool(row.get("supportsMemberPolicy")) and bool(row.get("canTalk"))}
+            for row in views.agents(root) if row["id"] != views.main_agent_id(root)}
+
+
 async def subscribe(socket, service, actor, channel_id, *, session_valid, interval=1.0):
     try:
         cursor, reaction_cursor, thread_cursor = await asyncio.to_thread(service.subscribe, actor, channel_id)

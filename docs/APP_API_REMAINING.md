@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 328 个，剩 **303** 个：
-- **要做：228**（其中 34 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 330 个，剩 **301** 个：
+- **要做：226**（其中 34 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：4**（投票与选择卡，等智能体进团队频道）
@@ -130,8 +130,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/browser/open` | `browser.open` |  |
 | ☐ | POST | `ORG/agents/{x}/browser/restart` | `browser.restart` |  |
 | ☐ | POST | `ORG/agents/{x}/browser/stop` | `browser.stop` |  |
-| ☑ | GET | `ORG/agents/{x}/channels` | `agents.channels` | agent 还不进团队频道，是空的 |
-| ☑ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` | 只接受空列表，要放进频道回 409 |
+| ☑ | GET | `ORG/agents/{x}/channels` | `agents.channels` | agent 所在的团队频道（只给所有者） |
+| ☑ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` | 所有者整组替换；主助理、本机 CLI、连登记项目的 agent 不进频道；不 @ 也回答回 409 |
 | ☐ | PUT | `ORG/agents/{x}/computer/target` | `sandbox.setTarget` |  |
 | ☐ | GET | `ORG/agents/{x}/databases` | `databases.agent` |  |
 | ☐ | PUT | `ORG/agents/{x}/databases/{x}` | `databases.setAgent` |  |
@@ -311,7 +311,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 
-### org/channels（10 个，要做 7）
+### org/channels（10 个，要做 5）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -319,8 +319,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/channels/{x}/consultations/{x}` | `agents.consultation` |  |
 | ☐ | POST | `ORG/channels/{x}/delete` | `chat.deleteChannel` |  |
 | ☐ | GET | `ORG/channels/{x}/follow-ups` | `chat.followUps` |  |
-| ☐ | DELETE | `ORG/channels/{x}/members/agents/{x}` | `chat.removeMember` |  |
-| ☐ | PATCH | `ORG/channels/{x}/members/agents/{x}` | `chat.setAutoReply` |  |
+| ☑ | DELETE | `ORG/channels/{x}/members/agents/{x}` | `chat.removeMember` | 所有者把 agent 拿出频道（删掉的 agent 也能拿出来） |
+| ☑ | PATCH | `ORG/channels/{x}/members/agents/{x}` | `chat.setAutoReply` | 只认「被 @ 才回答」；开不 @ 也回答第一期如实回 409（主人 2026-11-22 定） |
 | ☑ | DELETE | `ORG/channels/{x}/mute` | `reads.mute` | 解除自己已加入的团队频道静音，保留未读进度。私聊和其他非团队频道不支持。 |
 | ☑ | PUT | `ORG/channels/{x}/mute` | `reads.mute` | 静音自己已加入的团队频道，频道列表隐藏普通未读提示。私聊和其他非团队频道不支持。 |
 | ☑ | PUT | `ORG/channels/{x}/place` | `chat.place` |  |
