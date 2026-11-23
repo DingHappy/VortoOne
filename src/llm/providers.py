@@ -23,7 +23,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,11 @@ def _env(name: str) -> str:
     return (os.getenv(name) or "").strip()
 
 
+LOCAL_MODEL_PLACEHOLDER = "not-required"
+
+
 def local_model_endpoint(base_url: str) -> bool:
-    """Exact Desktop loopback policy; no DNS lookup or host-prefix exemptions."""
+    """Use the established transport for a loopback model that supplies its own key."""
     try:
         parsed = urlsplit(base_url)
         local = (parsed.scheme in ("http", "https")
@@ -70,12 +73,47 @@ def local_model_endpoint(base_url: str) -> bool:
         return False
 
 
-def _provider_key(base_url: str, api_key: str) -> str:
-    """Non-secret SDK placeholder only for loopback; never borrow the default key.
+def keyless_loopback_base(base_url: str) -> str | None:
+    """Validate the configured address and replace the localhost alias before dialing."""
+    if not base_url or len(base_url) > 2048 or any(
+        char.isspace() or ord(char) < 33 or ord(char) == 127 or char in "?#\\%" for char in base_url
+    ):
+        return None
+    try:
+        parsed = urlsplit(base_url)
+        host = parsed.hostname
+        port = parsed.port
+        authority = host if port is None else f"{host}:{port}"
+        if (parsed.scheme not in ("http", "https") or host not in ("127.0.0.1", "localhost")
+                or port == 0 or parsed.netloc.lower() != authority):
+            return None
+        if host == "127.0.0.1":
+            return base_url
+        loopback = "127.0.0.1" if port is None else f"127.0.0.1:{port}"
+        return urlunsplit((parsed.scheme, loopback, parsed.path, "", ""))
+    except ValueError:
+        return None
 
-    This is not authentication and cannot bypass a server requiring its own token.
-    """
-    return api_key or ("not-required" if local_model_endpoint(base_url) else "")
+
+def direct_keyless_endpoint(base_url: str) -> bool:
+    return keyless_loopback_base(base_url) is not None
+
+
+def default_chat_ready() -> bool:
+    """A key, or a directly configured local OpenAI-compatible chat model."""
+    from src.llm import endpoints
+    with endpoints.LOCK:
+        if _env("OPENAI_API_KEY"):
+            return True
+        model = _env("DEFAULT_MODEL") or _env("OPENAI_MODEL")
+        valid_model = 0 < len(model) <= 256 and all(ord(char) >= 32 and ord(char) != 127 for char in model)
+        return (valid_model and not _env("OPENAI_CUSTOM_HEADERS")
+                and direct_keyless_endpoint(_env("OPENAI_API_BASE")))
+
+
+def _provider_key(base_url: str, api_key: str) -> str:
+    """Non-secret SDK placeholder only for loopback; never borrow the default key."""
+    return api_key or (LOCAL_MODEL_PLACEHOLDER if direct_keyless_endpoint(base_url) else "")
 
 
 def providers() -> Dict[str, ProviderSpec]:

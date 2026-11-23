@@ -1,14 +1,11 @@
 import { helpDocument } from "@vortoone/i18n/help";
 /**
- * The welcome window: how the app finds its server. "Onde fica o seu workspace?" first, the Cloud chosen and one's
- * own server beside it; one's own server leads to Connect (an address, or one found on this computer or the Tailscale
- * network, and the one-command setup for a server that has none yet) or to running VortoOne on this
- * computer. A connect link (`vortoone://connect`) opens here
+ * The welcome window: choose to run VortoOne here or connect to an existing server.
+ * Connect can discover servers on the Tailscale network and open installation instructions. A connect link (`vortoone://connect`) opens here
  * too: the server in large type, nothing changes before Connect. Choosing a server opens the main window there
  * and closes this one. A pair link (`vortoone://pair`) asks to connect this computer instead (`PairLinkSheet`).
  */
 import {
-  CLOUD_SERVER,
   type ConnectLink,
   connectLink,
   isLoopback,
@@ -24,7 +21,6 @@ import {
   Field,
   Icon,
   Input,
-  OptionList,
   PixelSpinner,
   type Place,
   PlaceScene,
@@ -47,6 +43,7 @@ import {
   linkView,
   ownAddresses,
   PROBLEM_TEXT,
+  serverLocation,
   terminalStartCommand,
   typedServer,
 } from "../control/first-run";
@@ -80,15 +77,11 @@ export function FirstRun() {
   const [screen, setScreen] = useState<FirstScreen>("choose");
   // Opened by the site's "Add a workspace" (ADR 0154): its first screen says so.
   const [adding, setAdding] = useState(false);
-  // Adding a workspace with VortoOne already signed in here: making one is the big button, not signing in.
-  const [cloudSignedIn, setCloudSignedIn] = useState(false);
   const [trail, setTrail] = useState<FirstScreen[]>([]);
   // `typed`: the sheet confirms an address typed or picked in Connect, so Cancel goes back there with it.
   const [link, setLink] = useState<{ raw: string; parsed: ConnectLink | null; view: LinkView; typed?: boolean } | null>(
     null,
   );
-  // This build carries the server: "On this computer" is offered.
-  const [canRunHere, setCanRunHere] = useState(false);
   // The VortoOne this computer runs (the app's, or one from the terminal): named as such, never by its address,
   // and its owner page opened directly while it waits for one.
   const [local, setLocal] = useState<LocalServerStatus | null>(null);
@@ -191,20 +184,13 @@ export function FirstRun() {
         setScreen("here");
       })
       .catch(() => setAdding(false));
-    void host
-      .workspaces()
-      .then((list) => setCloudSignedIn(list.some((s) => s.server === CLOUD_SERVER && s.signedIn)))
-      .catch(() => setCloudSignedIn(false));
   }, [host]);
   useEffect(takeMode, [takeMode]);
 
   useEffect(() => {
     void host
       .localServer()
-      .then((s) => {
-        setCanRunHere(s.bundled);
-        setLocal(s);
-      })
+      .then(setLocal)
       .catch(() => {});
   }, [host]);
   const own = ownAddresses(local?.run || local?.installed === "terminal" ? local : null);
@@ -250,17 +236,9 @@ export function FirstRun() {
     <div className="dk-fr" data-screen={screen}>
       <div className="dk-fr__body" key={screen}>
         {screen === "choose" && (
-          <Choose
-            adding={adding}
-            cloudSignedIn={cloudSignedIn}
-            canRunHere={canRunHere}
-            onCloud={(page) => void finish(CLOUD_SERVER, page)}
-            onHere={() => go("here")}
-            onBox={() => go("install")}
-            onConnect={() => go("connect")}
-          />
+          <ChooseServerLocation adding={adding} canRunHere={local?.bundled === true} onContinue={go} />
         )}
-        {screen === "install" && <Install onBack={back} onConnect={() => go("connect")} />}
+        {screen === "install" && <Install onBack={back} />}
         {screen === "connect" && (
           <Connect
             onBack={back}
@@ -315,97 +293,90 @@ export function FirstRun() {
   );
 }
 
-/**
- * "Onde seu workspace vai ficar?" (ADR 0066 §1, amended 2026-11-14): the drawing on the left follows the place picked on
- * the right: the Cloud (recommended, the VortoOne agent on a cloud), this computer (where the build carries the
- * server: the agents work while the app is open) or a computer that's always on (the one-command install). Each says
- * what happens to the agents, never "server". One button goes on with the pick, and a line under it signs in to one
- * that exists already. `adding` (the site's "Add a workspace", ADR 0154): its own title, the Cloud's button signs in to
- * the workspaces an account has (a new workspace the line under it); with VortoOne already signed in here, making
- * one is the button.
- */
-function Choose({
+/** The selected row previews its destination on the left. Only local install and remote connect can continue. */
+function ChooseServerLocation({
   adding,
-  cloudSignedIn,
   canRunHere,
-  onCloud,
-  onHere,
-  onBox,
-  onConnect,
+  onContinue,
 }: {
   adding: boolean;
-  cloudSignedIn: boolean;
-  /** This build carries the server: "On this computer" is offered. */
   canRunHere: boolean;
-  onCloud: (page: string) => void;
-  onHere: () => void;
-  onBox: () => void;
-  onConnect: () => void;
+  onContinue: (next: "here" | "connect") => void;
 }) {
   const { t } = useTranslation();
-  const host = useHost();
-  const [pick, setPick] = useState<Place>("cloud");
-  const makeFirst = adding && cloudSignedIn;
-  const places: Place[] = canRunHere ? ["cloud", "here", "box"] : ["cloud", "box"];
-  const go = () => {
-    if (pick === "here") return onHere();
-    if (pick === "box") return onBox();
-    onCloud(makeFirst ? "/onboarding" : "/login");
-  };
+  const { platform } = useHost();
+  const [pick, setPick] = useState<Place>("here");
+  const { place, next } = serverLocation(pick, canRunHere);
   return (
     <div className="dk-choose">
       <div className="dk-choose__sky">
-        <PlaceScene place={pick} computer={host.platform} shape="tall" />
+        <PlaceScene place={place} computer={platform} shape="tall" />
         <span className="dk-choose__brand" aria-hidden="true">
           <BrandFace size="sm" />
           VortoOne
         </span>
       </div>
       <div className="dk-choose__main">
-        <h1>{t(adding ? "desktop.first.addTitle" : "desktop.place.title")}</h1>
-        <p className="dk-lead">{t(adding ? "desktop.first.addLead" : "desktop.place.lead")}</p>
-        <OptionList<Place>
-          className="dk-choose__list"
-          aria-label={t("desktop.place.title")}
-          value={pick}
-          onValueChange={setPick}
-          options={places.map((p) => ({
-            value: p,
-            title:
-              p === "cloud" ? (
-                <>
-                  {t("desktop.place.cloud")}
-                  <span className="dk-choose__rec">{t("desktop.place.recommended")}</span>
-                </>
-              ) : (
-                t(`desktop.place.${p}`)
-              ),
-            description: t(`desktop.place.${p}Text`),
-          }))}
-        />
-        <Button variant="primary" className="dk-btn-lg dk-choose__go" autoFocus onClick={go}>
-          {pick === "here"
-            ? t("desktop.place.goHere")
-            : pick === "box"
-              ? t("desktop.place.goBox")
-              : t(makeFirst ? "desktop.first.addCloud" : "desktop.place.goCloud")}
+        <h1 id="choose-server-location">
+          {t(adding ? "desktop.first.addTitle" : "desktop.place.title")}
+        </h1>
+        <div
+          className="dk-choose__destinations"
+          role="group"
+          aria-labelledby="choose-server-location"
+        >
+          {canRunHere && (
+            <button
+              type="button"
+              className="dk-choose__destination"
+              aria-pressed={place === "here"}
+              onClick={() => setPick("here")}
+            >
+              <Icon name="computer" size={20} />
+              <span>
+                <strong>{t("desktop.place.installHere")}</strong>
+                <small>{t("desktop.place.installHereText")}</small>
+              </span>
+              {place === "here" && <Icon name="check" size={16} />}
+            </button>
+          )}
+          <button
+            type="button"
+            className="dk-choose__destination"
+            aria-pressed={place === "box"}
+            onClick={() => setPick("box")}
+          >
+            <Icon name="globe" size={20} />
+            <span>
+              <strong>{t("desktop.place.remote")}</strong>
+              <small>{t("desktop.place.remoteText")}</small>
+            </span>
+            {place === "box" && <Icon name="check" size={16} />}
+          </button>
+          <button
+            type="button"
+            className="dk-choose__destination dk-choose__destination--cloud"
+            aria-pressed={place === "cloud"}
+            onClick={() => setPick("cloud")}
+          >
+            <Icon name="cloud" size={20} />
+            <strong>{t("desktop.place.cloudAccount")}</strong>
+            <span className="dk-choose__status">
+              {t("desktop.place.cloudAccountPending")}
+            </span>
+          </button>
+        </div>
+        <Button
+          variant="primary"
+          className="dk-btn-lg dk-choose__go"
+          disabled={next === null}
+          onClick={() => {
+            if (next) onContinue(next);
+          }}
+        >
+          {t("desktop.common.continue")}
           <Icon name="arrowRight" size={16} />
         </Button>
-        {/* Adding, not signed in to the Cloud here: a new workspace there is the line under it. */}
-        {adding && !makeFirst && pick === "cloud" && (
-          <span className="dk-help dk-choose__more">
-            {t("desktop.first.addNew")}{" "}
-            <button type="button" className="ac-link dk-link" onClick={() => onCloud("/onboarding")}>
-              {t("desktop.first.addNewLink")}
-            </button>
-          </span>
-        )}
-        <span className="dk-help dk-choose__more">
-          {t("desktop.place.haveOne")}{" "}
-          <button type="button" className="ac-link dk-link" onClick={onConnect}>
-            {t("desktop.place.haveOneLink")}
-          </button>
-        </span>
       </div>
     </div>
   );
@@ -424,14 +395,35 @@ function BackLink({ label, onClick }: { label: string; onClick: () => void }) {
  * "Num computador sempre ligado": the one-command install (ADR 0060 §1) in two steps, run on the computer that stays
  * on, whose last line is the link that opens it here; and the same as words to send to whoever installs it.
  */
-function Install({ onBack, onConnect }: { onBack: () => void; onConnect: () => void }) {
+function Install({ onBack }: { onBack: () => void }) {
   const { t, i18n } = useTranslation();
+  const host = useHost();
+  const guide = helpDocument("install-on-a-server", i18n.language);
+  const [failed, setFailed] = useState(false);
+  const openGuide = async () => {
+    setFailed(false);
+    try {
+      await host.openExternal(
+        "https://github.com/DingHappy/VortoOne/blob/main/docs/INSTALL_SERVER.md",
+      );
+    } catch {
+      setFailed(true);
+    }
+  };
   return (
     <>
       <BackLink label={t("desktop.place.title")} onClick={onBack} />
-      <h1 className="dk-fr__h1sm">VortoOne Desktop</h1>
-      <p className="dk-lead">{helpDocument("install-on-a-server", i18n.language).summary}</p>
-      <Button onClick={onConnect}>{t("desktop.place.haveOneLink")}</Button>
+      <h1 className="dk-fr__h1sm">{guide.title}</h1>
+      <p className="dk-lead">{guide.summary}</p>
+      <Button icon="external" onClick={() => void openGuide()}>
+        {t("desktop.connect.installGuide")}
+      </Button>
+      {failed && (
+        <p className="dk-help" role="alert">
+          {t("desktop.common.error")}
+        </p>
+      )}
+      <Button onClick={onBack}>{t("desktop.place.haveOneLink")}</Button>
     </>
   );
 }
@@ -909,7 +901,7 @@ function RunHere({
               <Input
                 autoFocus
                 value={name}
-                maxLength={100}
+                maxLength={80}
                 autoComplete="name"
                 onChange={(e) => setName(e.target.value)}
               />

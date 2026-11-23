@@ -30,8 +30,21 @@ fn view(path: Option<&Path>) -> ModelView {
     ModelView {
         base_url: found.get("OPENAI_API_BASE").cloned().unwrap_or_default(),
         model: found.get("DEFAULT_MODEL").or_else(|| found.get("VORTOONE_MODEL")).cloned().unwrap_or_default(),
-        has_key: found.get("OPENAI_API_KEY").is_some_and(|key| !key.is_empty()),
+        has_key: found.get("OPENAI_API_KEY").is_some_and(|key| !key.trim().is_empty()),
     }
+}
+
+fn keyless_loopback(base: &str) -> bool {
+    if base.chars().any(|c| c.is_whitespace() || c.is_ascii_control() || matches!(c, '%' | '\\' | '?' | '#')) {
+        return false;
+    }
+    let Some((scheme, rest)) = base.split_once("://") else { return false; };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") { return false; }
+    let authority = rest.split('/').next().unwrap_or_default();
+    let (host, port) = authority.split_once(':').map_or((authority, None), |(host, port)| (host, Some(port)));
+    (host == "127.0.0.1" || host.eq_ignore_ascii_case("localhost")) && port.is_none_or(|raw| {
+        raw.parse::<u16>().is_ok_and(|port| port != 0 && port.to_string() == raw)
+    })
 }
 
 fn save(target: &Path, previous: Option<&Path>, input: ModelInput) -> Result<(), String> {
@@ -50,6 +63,12 @@ fn save(target: &Path, previous: Option<&Path>, input: ModelInput) -> Result<(),
     let key = if input.clear_key { String::new() } else if input.api_key.is_empty() {
         found.get("OPENAI_API_KEY").cloned().unwrap_or_default()
     } else { input.api_key };
+    let key = if key.trim().is_empty() {
+        if !keyless_loopback(base) {
+            return Err("请填写 API Key。只有本机回环地址（localhost 或 127.0.0.1）允许留空。".into());
+        }
+        String::new()
+    } else { key };
     let quote = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('$', "\\$"));
     found.insert("OPENAI_API_BASE".into(), base.into());
     found.insert("DEFAULT_MODEL".into(), model.into());
@@ -117,6 +136,23 @@ mod tests {
             ("model-settings", "tauri://localhost/index.html")] {
             assert!(!trusted(label, &url.parse().unwrap()));
         }
+    }
+
+    #[test]
+    fn only_an_exact_local_endpoint_can_be_saved_without_a_key() {
+        for base in ["http://127.1/v1", "http://user@127.0.0.1/v1", "http://127.0.0.1:0/v1",
+                     "http://127.0.0.1:080/v1", "http://localhost.example.test/v1",
+                     "http://192.0.2.1/v1", "http://localhost/v1?", "http://localhost/%76%31"] {
+            assert!(!keyless_loopback(base), "{base}");
+        }
+        for base in ["http://127.0.0.1:11434/v1", "http://LOCALHOST/v1", "https://localhost:80/v1"] {
+            assert!(keyless_loopback(base), "{base}");
+        }
+        let target = std::env::temp_dir().join(format!("vortoone-model-invalid-{}", std::process::id()));
+        let error = save(&target, None, ModelInput { base_url: "https://provider.example.test/v1".into(),
+            model: "example-model".into(), api_key: " ".into(), clear_key: false }).unwrap_err();
+        assert!(error.contains("API Key"));
+        assert!(!target.exists());
     }
 
     #[test]

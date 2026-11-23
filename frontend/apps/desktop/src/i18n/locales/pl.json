@@ -155,6 +155,12 @@
     "addNewLink": "Utwórz go"
   },
   "place": {
+    "cloudAccount": "Konto w chmurze",
+    "cloudAccountPending": "Jeszcze niedostępne",
+    "installHere": "Zainstaluj na tym urządzeniu",
+    "installHereText": "Uruchom serwer VortoOne i przechowuj dane obszaru roboczego na tym urządzeniu.",
+    "remote": "Połącz z serwerem zdalnym",
+    "remoteText": "Wpisz adres serwera VortoOne działającego na innym komputerze.",
     "title": "Gdzie będzie twój workspace?",
     "lead": "Twoi agenci pracują tam, gdzie on jest. Możesz to później zmienić.",
     "recommended": "Polecane",
@@ -182,6 +188,7 @@
     "text": "Aby zainstalować VortoOne na komputerze, który jest zawsze włączony (Mac mini, komputer w biurze lub serwer):\n\n1. Na tym komputerze otwórz Terminal i wklej to:\n{{command}}\n\n2. Na końcu pojawi się link. Wyślij mi go: otwiera workspace w aplikacji."
   },
   "connect": {
+    "installGuide": "Instrukcja instalacji serwera",
     "title": "Zaloguj się do istniejącego workspace'u",
     "lead": "Jego adres, ten sam, który otwierasz w przeglądarce.",
     "label": "Adres serwera",

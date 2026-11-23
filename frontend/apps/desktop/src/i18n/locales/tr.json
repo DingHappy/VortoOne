@@ -149,6 +149,12 @@
     "addNewLink": "Bir tane oluştur"
   },
   "place": {
+    "cloudAccount": "Bulut hesabı",
+    "cloudAccountPending": "Henüz kullanılamıyor",
+    "installHere": "Bu cihaza yükle",
+    "installHereText": "VortoOne sunucusunu bu cihazda çalıştır ve çalışma alanı verilerini burada sakla.",
+    "remote": "Uzak sunucuya bağlan",
+    "remoteText": "Başka bir bilgisayarda çalışan VortoOne sunucusunun adresini gir.",
     "title": "Workspace'iniz nerede olacak?",
     "lead": "Ajanlarınız onun bulunduğu yerde çalışır. Daha sonra değiştirebilirsiniz.",
     "recommended": "Önerilen",
@@ -176,6 +182,7 @@
     "text": "VortoOne'i hep açık kalan bir bilgisayara (bir Mac mini, bir ofis bilgisayarı ya da bir sunucu) kurmak için:\n\n1. O bilgisayarda Terminal'i açın ve bunu yapıştırın:\n{{command}}\n\n2. Sonunda bir bağlantı çıkar. Onu bana gönderin: workspace'i uygulamada açar."
   },
   "connect": {
+    "installGuide": "Sunucu kurulum kılavuzu",
     "title": "Var olan bir workspace'e giriş yap",
     "lead": "Adresi, tarayıcıda açtığınızla aynı.",
     "label": "Sunucu adresi",

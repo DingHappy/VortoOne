@@ -1224,8 +1224,6 @@ async def handle_agent_message(websocket, message: Dict[str, Any], *, owner_turn
     """启动一个 agent 回合（**后台任务**），随即返回——好让接收循环在回合执行期间
     仍能收到新消息（尤其是 agent_cancel「停止」）。回合事件由 _run_agent_turn 发回。
     """
-    import os
-
     text = str(message.get("text", "")).strip()
     images = _sanitize_images(message.get("images"))       # 多模态：前端传来的 data 图
     audio = _sanitize_audio(message.get("audio"))          # 多模态：前端传来的 data 音频
@@ -1257,7 +1255,8 @@ async def handle_agent_message(websocket, message: Dict[str, Any], *, owner_turn
             await websocket.send_json(P.make_event(
                 P.AGENT_ERROR, text=f"待运行队列已满（最多 {_MAX_PROMPT_QUEUE} 条）", rid=rid))
         return
-    if not os.getenv("OPENAI_API_KEY"):
+    from src.llm.providers import default_chat_ready
+    if not default_chat_ready():
         if owner_turn is not None:
             discard_prompt(item["id"])
         await websocket.send_json(P.make_event(

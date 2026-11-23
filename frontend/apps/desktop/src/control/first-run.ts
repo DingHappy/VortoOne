@@ -11,9 +11,17 @@ import {
   type ServerProblem,
   serverHost,
 } from "@vortoone/client/lib/server";
+import type { Place } from "@vortoone/ui";
 import { appServer, serverName } from "./server";
 
 export type FirstScreen = "choose" | "install" | "connect" | "here" | "link" | "pair";
+
+const LOCATION_SCREEN = { here: "here", box: "connect", cloud: null } as const;
+
+export function serverLocation(selection: Place, bundled: boolean) {
+  const place = selection === "here" && !bundled ? "box" : selection;
+  return { place, next: LOCATION_SCREEN[place] };
+}
 
 /**
  * Esc in the first run: back a screen, or the window closes (when a server is open already); never while

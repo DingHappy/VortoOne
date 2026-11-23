@@ -888,6 +888,19 @@
     }
   },
   "onboarding": {
+    "desktopSetup": {
+      "businessHint": "简单介绍一下这个工作区的用途。",
+      "agentsHint": "这些智能体已经在工作区里。完成设置后，你可以继续添加。",
+      "modelTitle": "配置模型",
+      "modelSaved": "已保存模型配置",
+      "modelMissing": "配置模型后，智能体就可以回复你。",
+      "modelInApp": "请在这台电脑上打开 VortoOne 桌面版来修改模型配置。",
+      "openModelSettings": "打开模型设置",
+      "configureLater": "稍后配置",
+      "inviteHint": "让其他人能够访问这个工作区后，就可以在成员设置中发送邀请。",
+      "openWorkspace": "打开工作区",
+      "openMembers": "打开成员设置"
+    },
     "stepsLabel": "入门步骤",
     "deleteLink": "删除此工作区",
     "optionalTag": "可选",

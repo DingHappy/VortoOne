@@ -268,11 +268,13 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     state = MemberRegistry(root).snapshot()
     joined = actor.id in state["members"]
     avatar = app_profile_avatar.current(root, views.home_id(root), actor.id) if joined else None
+    workspace_name, mode = views.workspace_identity(root)
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
                  "email": str(account["email"]), "image": avatar,
                  **views.ui_account_preferences(root, member_auth_key(account))},
-        "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
+        "organizations": [{"id": views.home_id(root), "name": workspace_name, "role": "member",
+                           **({"mode": mode} if mode else {}),
                            **views.workspace_display(root, actor), "permissions": permission_keys(root, actor),
                            "memberRoutineProposals": True, "teamChannels": True,
                            "channelCategories": True}] if joined else [],

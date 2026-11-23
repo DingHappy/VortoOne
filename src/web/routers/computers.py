@@ -115,9 +115,13 @@ def has_owner_browser_session(connection: HTTPConnection) -> bool:
             and _secure(connection) and len(connection.headers.getlist('origin')) == 1 and _same_origin(connection))
 
 
-def has_local_owner_browser_session(request: Request) -> bool:
-    return (_native_loopback(request) and has_owner_browser_session(request)
+def direct_local_request(request: Request) -> bool:
+    return (_native_loopback(request)
             and not any(name == 'forwarded' or name.startswith('x-forwarded-') for name in request.headers))
+
+
+def has_local_owner_browser_session(request: Request) -> bool:
+    return direct_local_request(request) and has_owner_browser_session(request)
 
 
 def _pairer(request: Request, org_id: str) -> tuple[str, ConnectedComputers, str | None, str]:

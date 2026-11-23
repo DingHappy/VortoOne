@@ -1,6 +1,7 @@
 interface DesktopMetadata {
   platform?: unknown;
   renderer?: unknown;
+  desktopSetupModelSettings?: unknown;
   system?: unknown;
   connectorReturn?: unknown;
   workspaces?: unknown;

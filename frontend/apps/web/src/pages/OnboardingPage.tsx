@@ -43,7 +43,7 @@ import {
   setGaze,
 } from "@vortoone/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";
@@ -72,6 +72,7 @@ import { useToast } from "@/lib/toast";
 import { AiHost, AiStage, AiStep } from "./onboarding/AiStep";
 import { OnboardingPreview, type PreviewAgent } from "./onboarding/OnboardingPreview";
 import { PeopleStep } from "./onboarding/PeopleStep";
+import { DesktopSetupPage } from "./onboarding/DesktopSetupPage";
 import { PurposeCards } from "./onboarding/PurposeCards";
 import { BusinessStep, PlanStep, TeamStep, useTemplate } from "./onboarding/steps";
 import { TeamSource, useTeamSource } from "./onboarding/TeamSource";
@@ -101,6 +102,29 @@ const TEAM_POLL_MS = 5000;
  * the beta notice alone once the rail offered an AI, or when the plan was left (the card there leads with the plan).
  */
 export function OnboardingPage() {
+  const api = useApi();
+  const me = useQuery({
+    ...meQuery(api),
+    refetchOnWindowFocus: "always",
+    refetchInterval: (query) => (query.state.data?.desktopSetup?.step === "model" ? 3000 : false),
+  });
+  // Stay mounted until the last answer removes the pending step and opens the workspace.
+  const desktopOwner = useRef<string | null>(null);
+  if (me.data?.desktopSetup) desktopOwner.current = me.data.user.id;
+  if (me.data && desktopOwner.current === me.data.user.id) return <DesktopSetupPage me={me.data} />;
+  if (me.isPending) return <BootSplash />;
+  if (me.isError) return <ErrorState error={me.error} onRetry={() => void me.refetch()} />;
+  if (
+    me.data?.user.canCreateWorkspace === false &&
+    me.data.organizations.length > 0 &&
+    !me.data.organizations.some(settingUp)
+  ) {
+    return <Navigate to="/" replace />;
+  }
+  return <WorkspaceOnboardingPage />;
+}
+
+function WorkspaceOnboardingPage() {
   const { t, i18n } = useTranslation();
   const api = useApi();
   const auth = useAuth();

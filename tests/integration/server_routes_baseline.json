@@ -3344,6 +3344,12 @@
     ]
   },
   {
+    "path": "/api/app/desktop-setup",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/device-accounts",
     "methods": [
       "GET"

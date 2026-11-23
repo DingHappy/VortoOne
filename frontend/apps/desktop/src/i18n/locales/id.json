@@ -146,6 +146,12 @@
     "addNewLink": "Buat satu"
   },
   "place": {
+    "cloudAccount": "Akun cloud",
+    "cloudAccountPending": "Belum tersedia",
+    "installHere": "Instal di perangkat ini",
+    "installHereText": "Jalankan server VortoOne dan simpan data ruang kerja di perangkat ini.",
+    "remote": "Hubungkan ke server jarak jauh",
+    "remoteText": "Masukkan alamat server VortoOne yang berjalan di komputer lain.",
     "title": "Di mana workspace-mu akan berada?",
     "lead": "Agenmu bekerja di mana pun ia berada. Bisa diubah nanti.",
     "recommended": "Disarankan",
@@ -173,6 +179,7 @@
     "text": "Untuk memasang VortoOne di komputer yang selalu menyala (Mac mini, komputer kantor, atau server):\n\n1. Di komputer itu, buka Terminal dan tempel ini:\n{{command}}\n\n2. Di akhir muncul tautan. Kirimkan ke saya: tautan itu membuka workspace di aplikasi."
   },
   "connect": {
+    "installGuide": "Panduan instalasi server",
     "title": "Masuk ke workspace yang sudah ada",
     "lead": "Alamatnya, sama dengan yang kamu buka di browser.",
     "label": "Alamat server",

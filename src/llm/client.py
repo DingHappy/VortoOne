@@ -6,6 +6,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -571,12 +572,12 @@ class LLMClient:
 
         # 从环境变量读取配置
         if not self.config.api_key:
-            from src.llm.providers import local_model_endpoint
+            from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, direct_keyless_endpoint
             # Default client consumes the launcher's endpoint/key pair (Desktop profile).
             # An explicit keyless local config must never borrow an ambient cloud key.
-            configured_key = os.getenv("OPENAI_API_KEY", "") if config is None else ""
+            configured_key = os.getenv("OPENAI_API_KEY", "").strip() if config is None else ""
             self.config.api_key = configured_key or (
-                "not-required" if local_model_endpoint(self.config.base_url)
+                LOCAL_MODEL_PLACEHOLDER if direct_keyless_endpoint(self.config.base_url)
                 else os.getenv("OPENAI_API_KEY", ""))
         if not self.config.base_url:
             self.config.base_url = os.getenv(
@@ -662,11 +663,27 @@ class LLMClient:
                 from src.llm.providers import local_model_endpoint
                 # 本机模型不走代理环境变量。用 SDK 自带的客户端类：openai 3.x 底层换成了 httpx2，
                 # 裸 httpx.AsyncClient 类型不符。None 即 SDK 默认客户端。
-                http_client = (DefaultAsyncHttpxClient(trust_env=False)
-                               if local_model_endpoint(self.config.base_url) else None)
+                base = self.config.base_url
+                keyless_base = self._keyless_base()
+                http_client = None
+                if local_model_endpoint(base):
+                    http_options: dict[str, Any] = {}
+                    if keyless_base and keyless_base != base:
+                        # Keep the configured HTTP authority and TLS identity after pinning the TCP peer.
+                        original = urlsplit(base)
+
+                        async def preserve_localhost(request: Any) -> None:
+                            request.headers["Host"] = original.netloc
+                            if original.scheme == "https":
+                                request.extensions["sni_hostname"] = "localhost"
+
+                        http_options["event_hooks"] = {"request": [preserve_localhost]}
+                    http_client = DefaultAsyncHttpxClient(
+                        trust_env=False, follow_redirects=keyless_base is None, **http_options,
+                    )
                 self._client = AsyncOpenAI(
                     http_client=http_client,
-                    base_url=self.config.base_url,
+                    base_url=keyless_base or base,
                     api_key=self.config.api_key,
                     timeout=_sdk_timeout(self.config),
                     max_retries=self.config.max_retries,   # 暂时性错误的内建退避重试（原先用 SDK 默认 2、不可调）
@@ -964,6 +981,26 @@ class LLMClient:
                 "reasoning_content": reasoning,
                 "tool_calls": tool_calls, "model": model or self.config.model}
 
+    def _keyless_base(self) -> str | None:
+        from src.llm.providers import LOCAL_MODEL_PLACEHOLDER, keyless_loopback_base
+
+        if self.config.api_key == LOCAL_MODEL_PLACEHOLDER:
+            return keyless_loopback_base(self.config.base_url)
+        return None
+
+    def _aio_request(self, path: str, headers: dict[str, str]) -> tuple[str, dict[str, Any]]:
+        base = self.config.base_url
+        keyless_base = self._keyless_base()
+        options: dict[str, Any] = {"headers": headers}
+        if keyless_base is not None:
+            options["allow_redirects"] = False
+            if keyless_base != base:
+                original = urlsplit(base)
+                options["headers"] = {**headers, "Host": original.netloc}
+                if original.scheme == "https":
+                    options["server_hostname"] = "localhost"
+        return f"{keyless_base or base}/{path}", options
+
     def _endpoint_session(self, **kwargs):
         from src.llm.providers import local_model_endpoint
         factory = local_session if local_model_endpoint(self.config.base_url) else outbound_session
@@ -984,11 +1021,11 @@ class LLMClient:
         """
         import aiohttp
 
-        url = f"{self.config.base_url}/chat/completions"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.config.api_key}",
         }
+        url, request_options = self._aio_request("chat/completions", headers)
         payload: Dict[str, Any] = {
             "model": model or self.config.model,
             "messages": messages,
@@ -1004,7 +1041,7 @@ class LLMClient:
                 await asyncio.sleep(self.config.retry_base_delay * (2 ** (attempt - 1)))
             try:
                 async with self._endpoint_session(timeout=timeout) as session:
-                    async with session.post(url, json=payload, headers=headers) as response:
+                    async with session.post(url, json=payload, **request_options) as response:
                         if response.status == 200:
                             data = await response.json()
                             if not isinstance(data, dict):
@@ -1058,13 +1095,13 @@ class LLMClient:
         import aiohttp
 
         self._prepare_request()
-        url = f"{self.config.base_url}/models"
         headers = {}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
+        url, request_options = self._aio_request("models", headers)
         timeout = aiohttp.ClientTimeout(total=min(self.config.timeout, 10.0))
         async with self._endpoint_session(timeout=timeout) as session:
-            async with session.get(url, headers=headers) as response:
+            async with session.get(url, **request_options) as response:
                 if response.status != 200:
                     raise Exception(f"获取模型列表失败：HTTP {response.status}")
                 payload = await response.json()
@@ -1098,12 +1135,12 @@ class LLMClient:
         if voice:
             payload["voice"] = voice
         self._prepare_request(payload["model"])
-        url = f"{self.config.base_url}/chat/completions"
         headers = {"Content-Type": "application/json",
                    "Authorization": f"Bearer {self.config.api_key}"}
+        url, request_options = self._aio_request("chat/completions", headers)
         timeout = _aiohttp_timeout(self.config)
         async with self._endpoint_session(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=headers) as resp:
+            async with session.post(url, json=payload, **request_options) as resp:
                 if resp.status != 200:
                     raise Exception(f"TTS 请求失败: {resp.status} - {(await resp.text())[:300]}")
                 data = await resp.json()

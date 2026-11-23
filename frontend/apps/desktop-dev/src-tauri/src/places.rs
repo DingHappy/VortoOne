@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
 pub const SERVERS_FILE: &str = "servers.json";
@@ -16,6 +17,9 @@ pub const OWNER_KEY_FILE: &str = "owner-key";
 /// 经 Tailscale 对外的地址，后端启动时读它设 `VORTOONE_PUBLIC_URL`（外壳写；没开就没有这个文件）。
 pub const PUBLIC_URL_FILE: &str = "public-url";
 const MAX_SERVERS: usize = 50;
+const DESKTOP_SETUP: &str = ".vortoone/desktop-setup.json";
+const LEGACY_DESKTOP_SETUP: &str = ".vortoone-desktop-setup.json";
+const MAX_SETUP_BYTES: u64 = 8192;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ServerList {
@@ -145,6 +149,69 @@ pub fn read_local(config: &Path, data: &Path) -> LocalState {
 
 pub fn write_local(config: &Path, state: &LocalState) -> Result<(), String> {
     write_json(&config.join(LOCAL_FILE), state)
+}
+
+/// Only an install that creates a new home may put the service into first-run setup.
+pub fn prepare_local_home(data: &Path, seed_setup: bool, owner_display_name: Option<&str>) -> std::io::Result<()> {
+    fs::create_dir_all(data)?;
+    let home = data.join("home");
+    match fs::create_dir(&home) {
+        Ok(()) if seed_setup => {
+            let path = home.join(DESKTOP_SETUP);
+            let state = path.parent().expect("setup marker has a parent");
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let result = (|| {
+                fs::create_dir(state)?;
+                let mut file = options.open(&path)?;
+                let result = (|| {
+                    let mut setup = serde_json::json!({"step": "purpose"});
+                    if let Some(name) = owner_display_name {
+                        setup["ownerDisplayName"] = serde_json::json!(name);
+                    }
+                    serde_json::to_writer(&mut file, &setup).map_err(std::io::Error::other)?;
+                    file.sync_all()?;
+                    #[cfg(unix)]
+                    for directory in [state, &home, data] {
+                        fs::File::open(directory)?.sync_all()?;
+                    }
+                    Ok(())
+                })();
+                drop(file);
+                if result.is_err() { let _ = fs::remove_file(&path); }
+                result
+            })();
+            if result.is_err() {
+                let _ = fs::remove_dir(state);
+                let _ = fs::remove_dir(&home);
+            }
+            result
+        }
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists && home.is_dir() => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+pub fn desktop_setup_at_model(home: &Path) -> bool {
+    let mut path = home.join(DESKTOP_SETUP);
+    if path.symlink_metadata().is_err_and(|error| error.kind() == ErrorKind::NotFound) {
+        path = home.join(LEGACY_DESKTOP_SETUP);
+    }
+    let Ok(metadata) = path.symlink_metadata() else { return false; };
+    if !metadata.is_file() || metadata.len() > MAX_SETUP_BYTES { return false; }
+    let mut data = Vec::new();
+    if fs::File::open(path).and_then(|file| file.take(MAX_SETUP_BYTES + 1).read_to_end(&mut data)).is_err()
+        || data.len() as u64 > MAX_SETUP_BYTES {
+        return false;
+    }
+    serde_json::from_slice::<serde_json::Value>(&data)
+        .is_ok_and(|value| value.get("step").and_then(|step| step.as_str()) == Some("model"))
 }
 
 impl LocalState {
@@ -316,6 +383,33 @@ mod tests {
         let state = read_local(&config, &data);
         assert!(state.installed && state.run);
         assert_eq!(opening(&ServerList::default(), &state, 0), Opening::Local);
+    }
+
+    #[test]
+    fn a_bundled_install_seeds_only_the_new_home_and_leaves_older_progress_intact() {
+        let fresh = temp("fresh-setup");
+        prepare_local_home(&fresh, true, Some("新安装的所有者")).unwrap();
+        let home = fresh.join("home");
+        let marker = home.join(DESKTOP_SETUP);
+        let setup: serde_json::Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
+        assert_eq!(setup, serde_json::json!({"step": "purpose", "ownerDisplayName": "新安装的所有者"}));
+        assert!(!desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"model","mode":"team"}"#).unwrap();
+        prepare_local_home(&fresh, true, Some("不能覆盖")).unwrap();
+        assert_eq!(fs::read_to_string(&marker).unwrap(), r#"{"step":"model","mode":"team"}"#);
+        assert!(desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"done","mode":"team"}"#).unwrap();
+        assert!(!desktop_setup_at_model(&home));
+
+        let old = temp("existing-setup");
+        prepare_local_home(&old, false, Some("不能给现有工作区补录")).unwrap();
+        prepare_local_home(&old, true, Some("不能给现有工作区补录")).unwrap();
+        let old_home = old.join("home");
+        assert!(!old_home.join(DESKTOP_SETUP).exists());
+        fs::write(old_home.join(LEGACY_DESKTOP_SETUP), r#"{"step":"model","mode":"personal"}"#).unwrap();
+        assert!(desktop_setup_at_model(&old_home));
+        let _ = fs::remove_dir_all(fresh);
+        let _ = fs::remove_dir_all(old);
     }
 
     #[test]

@@ -54,7 +54,7 @@ _APPROVAL_BROWSER_PREVIEW = _ORG + "/approvals/{approval_id}/browser-preview"
 # 界面接口的版本是区间，不要求两边相等（HOME_AND_MEMBERS_DESIGN 第 4 节）：这个服务能给 MIN_API 到 API_CONTRACT
 # 的界面用，App 自己也声明它能用的最老的服务（packages/client/src/lib/server.ts 的 APP_API_MIN）。两段有重叠就能连，
 # 没有重叠时界面说清是哪一边要升级。加了界面要用的新东西就把 API_CONTRACT 加一；去掉老界面还在用的东西时才动 MIN_API。
-API_CONTRACT = 11
+API_CONTRACT = 12
 MIN_API = 1
 
 
@@ -363,7 +363,15 @@ async def handover_finish(code: str, request: Request):
     token = get_api_token()
     if expires is None or expires <= time.monotonic() or not token:
         return RedirectResponse("/login", status_code=303)
-    response = RedirectResponse("/", status_code=303)
+    redirect_to = "/"
+    try:
+        state = await _local_setup(request)
+        if state and state["step"] != "done":
+            redirect_to = "/onboarding"
+    except (OSError, ValueError):
+        # Keep authentication available so the onboarding page can display and retry this read failure.
+        redirect_to = "/onboarding"
+    response = RedirectResponse(redirect_to, status_code=303)
     response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax",
                         secure=(request.url.scheme == "https"), path="/", max_age=30 * 24 * 3600)
     response.headers["Cache-Control"] = "no-store"
@@ -459,11 +467,81 @@ async def _current_profile(root: str, request: Request, actor):
     return result
 
 
+def _local_setup_enabled(request: Request) -> bool:
+    from src.web.routers.computers import direct_local_request
+    from src.workflow import desktop_setup
+    return desktop_setup.enabled() and direct_local_request(request)
+
+
+async def _local_setup(request: Request):
+    if _local_setup_enabled(request):
+        from src.workflow import desktop_setup
+        return await asyncio.to_thread(desktop_setup.read, os.getcwd())
+    return None
+
+
+def _setup_view(state: dict) -> dict:
+    fields = ("step", "mode", "name", "context", "workArea")
+    return {**{key: state[key] for key in fields if key in state}, "modelConfigured": views.model_connected()}
+
+
 @router.get("/api/app/me")
 async def me(request: Request, response: Response):
+    from src.web.routers.computers import has_computer_owner_proof
+
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
-    return await _current_profile(root, request, member_auth.principal(request, root))
+    actor = member_auth.principal(request, root)
+    result = await _current_profile(root, request, actor)
+    if actor.is_owner and has_computer_owner_proof(request):
+        try:
+            setup = await _local_setup(request)
+        except (OSError, ValueError):
+            return _error(409, "setup_unavailable", "本机引导进度无法读取")
+        if setup and setup["step"] != "done":
+            result["desktopSetup"] = _setup_view(setup)
+    return result
+
+
+class _LocalSetupAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    step: Literal["purpose", "name", "business", "about", "team", "model", "invite"]
+    mode: Literal["personal", "team"] | None = None
+    name: str | None = Field(default=None, max_length=80)
+    context: str | None = Field(default=None, max_length=600)
+    workArea: str | None = Field(default=None, max_length=200)
+
+
+@router.patch("/api/app/desktop-setup")
+async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
+    from src.utils.home_maintenance import HomeMaintenanceError
+    from src.web.routers.computers import has_local_owner_browser_session
+    from src.workflow import desktop_setup
+
+    if not _local_setup_enabled(request):
+        return _error(404, "not_found", "本机引导不可用")
+    root = os.getcwd()
+    if not member_auth.principal(request, root).is_owner or not has_local_owner_browser_session(request):
+        return _error(403, "forbidden", "请在本机工作区完成引导")
+
+    def validate_answer(field: str, value: str) -> None:
+        if field == "workArea" and value not in app_prefs.WORK_AREAS:
+            raise ValueError("请选择工作领域或跳过")
+
+    try:
+        answer = body.model_dump(exclude={"step"}, exclude_none=True)
+        result = await asyncio.to_thread(desktop_setup.advance, root, body.step, answer, validate_answer)
+    except desktop_setup.SetupChanged:
+        return _error(409, "setup_changed", "引导进度已更新，请重试")
+    except HomeMaintenanceError:
+        return _error(409, "setup_busy", "本机引导正在保存，请重试")
+    except ValueError:
+        return _error(400, "invalid_setup_answer", "请检查当前步骤填写的信息")
+    except OSError:
+        return _error(503, "setup_unavailable", "本机引导进度无法保存")
+    if result is None:
+        return _error(404, "not_found", "本机引导不可用")
+    return JSONResponse(_setup_view(result), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/app/device-accounts")
@@ -655,6 +733,7 @@ _HOME_SWITCHES = {"gifs", "gifRating", "voiceMessages"}
 
 def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
     from src.memory import assistant_profile
+    from src.workflow import desktop_setup
     from src.workflow.staff.routines import Routines
     current = views.settings(root)
     unsupported = sorted(key for key, value in body.items()
@@ -667,8 +746,9 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
         name = body["name"]
         if not isinstance(name, str) or not " ".join(name.split()):
             raise ValueError("名字不能为空")
-        if len(" ".join(name.split())) > assistant_profile.MAX_NAME:
-            raise ValueError(f"名字最多 {assistant_profile.MAX_NAME} 个字")
+        limit = desktop_setup.MAX_NAME if desktop_setup.read(root) is not None else assistant_profile.MAX_NAME
+        if len(" ".join(name.split())) > limit:
+            raise ValueError(f"名字最多 {limit} 个字")
     if "context" in body and (not isinstance(body["context"], str)
                               or len(body["context"].strip()) > assistant_profile.MAX_CONTEXT):
         raise ValueError(f"背景信息最多 {assistant_profile.MAX_CONTEXT} 个字")
@@ -678,7 +758,7 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("时区不能为空")
         registry = Routines(root)
         registry.configure_timezone(zone, registry.read()["revision"])     # 时区名不对由登记处拒绝
-    if "name" in body:
+    if "name" in body and not desktop_setup.rename_workspace(root, " ".join(body["name"].split())):
         assistant_profile.save_profile(root, name=body["name"])
     if "context" in body and body["context"] != current["context"]:
         assistant_profile.save_home_context(root, body["context"])
@@ -688,6 +768,7 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _patch_settings(org_id: str, body: Dict[str, Any], request: Request):
+    from src.utils.home_maintenance import HomeMaintenanceError
     root = _root(org_id)
     if not member_auth.principal(request, root).is_owner:
         return _error(403, "forbidden", "空间设置只有所有者能改")
@@ -695,6 +776,8 @@ async def _patch_settings(org_id: str, body: Dict[str, Any], request: Request):
         return _error(403, "forbidden", "改空间设置需要已认证的主人连接")
     try:
         return await asyncio.to_thread(_write_settings, root, body)
+    except HomeMaintenanceError:
+        return _error(409, "settings_busy", "工作区设置正在保存，请重试")
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
 

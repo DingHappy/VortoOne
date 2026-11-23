@@ -195,8 +195,10 @@ def _restore(root: str, archive_path: str) -> Dict[str, Any]:
                     while chunk := source.read(1024 * 1024):
                         out.write(chunk)
                 destination.chmod(0o600)
+            from src.workflow import desktop_setup
             from src.workflow.home_identity import prepare_replaced_home
             prepare_replaced_home(staging, "restore")
+            desktop_setup.suppress_replaced_legacy(root, staging)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise

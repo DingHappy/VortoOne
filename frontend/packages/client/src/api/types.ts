@@ -412,9 +412,22 @@ export interface OrgOnboarding {
   generalChannelId: string;
 }
 
+export type DesktopSetupStep = "purpose" | "name" | "business" | "about" | "team" | "model" | "invite";
+
+/** Pending setup of the bundled local workspace, visible to its local owner. */
+export interface DesktopSetup {
+  step: DesktopSetupStep;
+  mode?: WorkspaceMode;
+  name?: string;
+  context?: string;
+  workArea?: string;
+  modelConfigured: boolean;
+}
+
 export interface Me {
   user: User;
   organizations: OrgSummary[];
+  desktopSetup?: DesktopSetup;
 }
 
 /**
