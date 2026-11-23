@@ -139,7 +139,7 @@ export function ComputerScreenPreview({ orgId, machineId, name, kind, allowContr
     </form>}
     {notice && <p className="small muted" role="status">{notice}</p>}
     {!image && <p className="small muted" role="status">
-      {ended ? "分享已结束或暂不可用。可以在目标电脑的 VortoOne Dev 中开启分享后重新查看。" : `正在连接已分享的${screen}…`}
+      {ended ? "分享已结束或暂不可用。可以在目标电脑的 VortoOne 中开启分享后重新查看。" : `正在连接已分享的${screen}…`}
     </p>}
   </section>;
 }

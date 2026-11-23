@@ -69,7 +69,7 @@ export function ConnectedComputerPairing() {
 
   return <Card>
     <h2>连接的电脑</h2>
-    {canPair && <p>生成配对码后，到目标电脑的 VortoOne Dev 菜单「连接的电脑…」输入。</p>}
+    {canPair && <p>生成配对码后，到目标电脑的 VortoOne 菜单「连接的电脑…」输入。</p>}
     {!owner && <p className="small muted">这里显示你自己配对的电脑。</p>}
     {!canPair && <p className="small muted">你当前的身份组无法生成配对码。</p>}
     {owner && <>

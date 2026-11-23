@@ -1,18 +1,22 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   readlinkSync,
+  readSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -63,16 +67,58 @@ function runtimeTreeSha256(root) {
   return hash.digest("hex");
 }
 
-function architectureForTriple(targetTriple) {
-  if (targetTriple.startsWith("aarch64-")) return "arm64";
-  if (targetTriple.startsWith("x86_64-")) return "x86_64";
-  return targetTriple.split("-")[0];
+function architecture(machine) {
+  switch (machine.toLowerCase()) {
+    case "amd64":
+    case "x86-64":
+      return "x86_64";
+    case "arm64":
+      return "aarch64";
+    default:
+      return machine.toLowerCase();
+  }
+}
+
+function windowsX64Executable(path) {
+  const file = openSync(path, "r");
+  try {
+    const dos = Buffer.alloc(64);
+    if (readSync(file, dos, 0, dos.length, 0) !== dos.length || dos.readUInt16LE(0) !== 0x5a4d) {
+      return false;
+    }
+    // The DOS header points to the PE signature, COFF machine, and optional header.
+    const header = Buffer.alloc(26);
+    return readSync(file, header, 0, header.length, dos.readUInt32LE(0x3c)) === header.length
+      && header.readUInt32LE(0) === 0x4550
+      && header.readUInt16LE(4) === 0x8664
+      && header.readUInt16LE(24) === 0x20b;
+  } finally {
+    closeSync(file);
+  }
+}
+
+function bundledFile(root, name, directory) {
+  const parts = typeof name === "string" ? name.split("/") : [];
+  if (parts[0] !== directory || parts.length < 2 || parts.some(part => !part || /^(?:\.|\.\.)$|[:\\]/.test(part))) {
+    throw new Error("Managed Python metadata contains an invalid archive-relative path");
+  }
+  const subtree = join(root, directory);
+  if (!lstatSync(subtree).isDirectory()) {
+    throw new Error("Managed Python archive directory is missing");
+  }
+  const path = join(root, ...parts);
+  const within = relative(realpathSync(subtree), realpathSync(path));
+  if (!within || within === ".." || within.startsWith(".." + sep) || isAbsolute(within) || !statSync(path).isFile()) {
+    throw new Error("Managed Python archive file escapes its expected directory");
+  }
+  return path;
 }
 
 function loadSources() {
   const raw = readFileSync(sourcesPath);
   const config = JSON.parse(raw.toString("utf8"));
-  if (config.formatVersion !== 1 || !config.provider || !config.release || !config.pythonVersion) {
+  if (config.formatVersion !== 1 || config.provider !== "astral-sh/python-build-standalone"
+    || !/^\d{8}$/.test(config.release) || !/^\d+\.\d+\.\d+$/.test(config.pythonVersion)) {
     throw new Error("managed-python-sources.json has an unsupported or incomplete format");
   }
   return {
@@ -87,20 +133,23 @@ function verifyExtractedRuntime(runtimeRoot, source, config, targetTriple) {
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
   if (metadata.target_triple !== targetTriple
     || metadata.python_version !== config.pythonVersion
-    || metadata.build_options !== "pgo+lto"
+    || metadata.build_options !== source.buildOptions
     || !Array.isArray(metadata.licenses)
-    || !metadata.license_path) {
+    || !metadata.licenses.length) {
     throw new Error(`Managed Python metadata does not match the pinned source for ${targetTriple}`);
   }
-  const python = join(runtimeRoot, metadata.python_exe);
-  const licensePath = join(runtimeRoot, metadata.license_path);
+  const python = bundledFile(runtimeRoot, metadata.python_exe, "install");
+  bundledFile(runtimeRoot, metadata.license_path, "licenses");
   const licensesRoot = join(runtimeRoot, "licenses");
-  if (!existsSync(python) || !existsSync(licensePath) || !existsSync(licensesRoot)) {
-    throw new Error(`Managed Python archive is missing its executable or license bundle for ${targetTriple}`);
-  }
-  const fileOutput = run("file", [python]);
-  if (!fileOutput.includes(architectureForTriple(targetTriple))) {
-    throw new Error(`Managed Python executable architecture does not match ${targetTriple}: ${fileOutput}`);
+  const windows = targetTriple.endsWith("-pc-windows-msvc");
+  const fileOutput = windows ? "" : run("file", ["-bL", python]);
+  const expectedFormat = targetTriple.endsWith("-apple-darwin") ? /^Mach-O\b/ : /^ELF\b/;
+  const detectedArch = fileOutput.match(/\b(?:arm64|aarch64|x86[_-]64|amd64)\b/i)?.[0] || "";
+  const executableMatches = windows
+    ? windowsX64Executable(python)
+    : expectedFormat.test(fileOutput) && architecture(detectedArch) === targetTriple.split("-")[0];
+  if (!executableMatches) {
+    throw new Error(`Managed Python executable format or architecture does not match ${targetTriple}`);
   }
   return { licensesRoot, metadata, metadataPath, python };
 }
@@ -111,8 +160,11 @@ export function prepareManagedPython(targetTriple) {
   if (!source) {
     throw new Error(`No pinned managed Python source is available for ${targetTriple}`);
   }
-  if (!/^[a-f0-9]{64}$/.test(source.sha256) || !source.url.startsWith("https://github.com/astral-sh/python-build-standalone/")) {
-    throw new Error(`Managed Python source for ${targetTriple} has an invalid URL or SHA-256`);
+  const archiveName = `cpython-${config.pythonVersion}+${config.release}-${targetTriple}-${source.buildOptions}-full.tar.zst`;
+  const archiveUrl = `https://github.com/${config.provider}/releases/download/${config.release}/${encodeURIComponent(archiveName)}`;
+  if (!["pgo", "pgo+lto"].includes(source.buildOptions) || source.archive !== archiveName || source.url !== archiveUrl
+    || !Number.isSafeInteger(source.size) || source.size <= 0 || !/^[a-f0-9]{64}$/.test(source.sha256)) {
+    throw new Error(`Managed Python source for ${targetTriple} has an invalid archive pin`);
   }
 
   const downloadsRoot = join(tauriRoot, "target", "managed-python", "downloads");
@@ -139,6 +191,7 @@ export function prepareManagedPython(targetTriple) {
   const expectedManifestBase = {
     archive: source.archive,
     archiveSha256: source.sha256,
+    buildOptions: source.buildOptions,
     configSha256,
     provider: config.provider,
     pythonVersion: config.pythonVersion,
@@ -191,11 +244,13 @@ export function prepareManagedPython(targetTriple) {
 export function ensureManagedPython(targetTriple) {
   const managed = prepareManagedPython(targetTriple);
   const runtime = JSON.parse(run(managed.python, [
+    "-I",
     "-c",
-    "import json, platform; print(json.dumps({'machine': platform.machine(), 'version': platform.python_version()}))",
+    "import json, platform, sys; print(json.dumps({'machine': platform.machine(), 'platform': sys.platform, 'version': platform.python_version()}))",
   ]));
   if (runtime.version !== managed.manifest.pythonVersion
-    || runtime.machine !== architectureForTriple(targetTriple)) {
+    || runtime.platform !== process.platform
+    || architecture(runtime.machine) !== targetTriple.split("-")[0]) {
     throw new Error(`Managed Python cannot execute natively for ${targetTriple}`);
   }
   return managed;

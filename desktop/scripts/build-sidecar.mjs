@@ -64,6 +64,7 @@ const environmentFingerprint = output(python, ["-m", "pip", "freeze"]);
 const fingerprint = createHash("sha256");
 fingerprint.update(targetTriple);
 fingerprint.update(pythonVersion);
+fingerprint.update(JSON.stringify(sidecarEnvironment.pythonProvenance));
 fingerprint.update(pyinstallerVersion);
 fingerprint.update(createHash("sha256").update(environmentFingerprint).digest("hex"));
 
@@ -203,6 +204,13 @@ const notices = spawnSync(python, [
 if (notices.error) throw notices.error;
 if (notices.status !== 0) throw new Error(`Third-party notice generation failed with exit code ${notices.status}`);
 const inventory = JSON.parse(readFileSync(inventoryPath, "utf8"));
+const provenance = sidecarEnvironment.pythonProvenance;
+if (provenance.verifiedArchive && (inventory.pythonRuntime.provider !== provenance.provider
+    || inventory.pythonRuntime.targetTriple !== provenance.targetTriple
+    || inventory.pythonRuntime.version !== provenance.pythonVersion
+    || inventory.pythonRuntime.buildOptions !== provenance.buildOptions)) {
+  throw new Error("Packaged CPython licensing inventory does not match the verified archive");
+}
 const manifest = {
   binary: binaryName,
   fileCount: filesBelow(runtimeDir).length,
@@ -214,7 +222,7 @@ const manifest = {
   pythonDistribution: inventory.pythonRuntime.distribution,
   pythonMachine: sidecarEnvironment.pythonDetails.machine,
   pythonPlatform: sidecarEnvironment.pythonDetails.platform,
-  pythonProvenance: sidecarEnvironment.pythonProvenance,
+  pythonProvenance: provenance,
   pythonProvider: inventory.pythonRuntime.provider,
   runtimeLockSha256: sidecarEnvironment.lockSha256,
   runtimeSha256Tree: sha256Tree(runtimeDir),

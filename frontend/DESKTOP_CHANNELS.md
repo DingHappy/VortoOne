@@ -85,3 +85,11 @@ Dev7 成品来自提交 [`28d5e294`](https://github.com/DingHappy/VortoOne/commi
 草稿只向有仓库写权限的协作者显示，普通访客看不到安装包；在公开仓库中发布为 Pre-release 后，访客即可下载。`dev` 版本号本身不提供访问限制，已合入公开 main 的源码始终可见。
 
 公开稳定版保留现有可用版本。独立运行和真实桌面验收在开发通道完成后，再核对正式标识、升级保数据、公证与更新清单；不通过修改 Release 标签来替代这些交付步骤。
+
+## 新版 Desktop 正式构建
+
+正式构建使用同一个新版外壳，版本取自 `apps/desktop-dev/src-tauri/tauri.stable.conf.json`。Dev 仍保留独立安装身份。正式版第一次启动创建自己的工作区，不导入旧版项目或凭据。旧版和 Dev 的数据文件保留在原处。
+
+- Windows x64 和 Ubuntu 24.04 amd64 通过「VortoOne stable installer checks」生成 NSIS 与 DEB。两者都从固定的目标平台 CPython 归档构建，在对应平台安装并验证独立后端。
+- Apple Silicon Mac 从已合入 main 的干净提交运行 `node frontend/scripts/bundle-desktop-stable-macos.mjs <发布说明文件>`，生成 Developer ID 签名、公证的 DMG 和签名更新包。
+- 正式发布包使用 `com.vorto.vortoone`，并保留 Mac 更新公钥。验收通过后核对三平台来源提交一致，再上传安装包、校验和、Mac 更新包及更新清单。GitHub 发布可读取后，再切换 OSS 的更新清单。

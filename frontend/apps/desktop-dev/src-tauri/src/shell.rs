@@ -15,7 +15,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl};
 
 pub const PAGE: &str = "shell/index.html";
 const WINDOWS: [&str; 2] = ["welcome", "prefs"];
@@ -167,7 +167,7 @@ pub fn open_window(app: &tauri::AppHandle, name: &str) -> Result<(), String> {
         return Ok(());
     }
     let (title, width, height) = if name == "welcome" { ("VortoOne", 980.0, 700.0) } else { ("偏好设置", 900.0, 680.0) };
-    WebviewWindowBuilder::new(app, name, WebviewUrl::App(PAGE.into()))
+    crate::desktop_window(app, name, WebviewUrl::App(PAGE.into()))
         .title(title)
         .inner_size(width, height)
         .min_inner_size(720.0, 540.0)
@@ -552,7 +552,7 @@ pub fn move_out(app: tauri::AppHandle) {
                 if let Some(live) = app.get_webview_window(crate::LIVE) { let _ = live.close(); }
                 set_phase(&app, "off");
                 let note = if moved.is_ok() { format!("这里的数据留在 {}。", aside.display()) } else { String::new() };
-                tell(&app, "搬家", &format!("搬家包在 {target}。\n\n在新的地方打开 VortoOne Dev，用菜单「开发版 → 从搬家包导入…」导入它。{note}"), false);
+                tell(&app, "搬家", &format!("搬家包在 {target}。\n\n在新的地方打开 {}，用菜单「{} → 从搬家包导入…」导入它。{note}", app.package_info().name, crate::desktop_menu_name(app.config())), false);
                 let _ = open_window(&app, "welcome");
             }
             Err(error) => {
@@ -591,7 +591,7 @@ pub fn move_in(app: tauri::AppHandle) {
                 let _ = places::write_local(&config, &local);
                 if let Some(welcome) = app.get_webview_window("welcome") { let _ = welcome.hide(); }
                 crate::connect(app.clone());
-                tell(&app, "导入好了", "聊天、记忆、agent 和成员都搬过来了。手机、AI 应用要重新连；模型在「开发版 → 模型连接…」重新填。", false);
+                tell(&app, "导入好了", &format!("聊天、记忆、agent 和成员都搬过来了。手机、AI 应用要重新连；模型在「{} → 模型连接…」重新填。", crate::desktop_menu_name(app.config())), false);
             }
             Err(error) => {
                 if places::read_local(&config, &data).should_start(now_ms()) { crate::connect(app.clone()); }
@@ -891,8 +891,8 @@ pub fn local_server_diagnostics(window: tauri::WebviewWindow, app: tauri::AppHan
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let log = std::fs::read_to_string(data.join("backend.log")).unwrap_or_default();
     let tail: Vec<&str> = log.lines().rev().take(40).collect();
-    Ok(format!("VortoOne Dev {} · {} {}\n状态：{}\n\n这台电脑上的环境：\n{}\n\n后端日志（末尾）：\n{}",
-               app.package_info().version, std::env::consts::OS, std::env::consts::ARCH, status(&app),
+    Ok(format!("{} {} · {} {}\n状态：{}\n\n这台电脑上的环境：\n{}\n\n后端日志（末尾）：\n{}",
+               app.package_info().name, app.package_info().version, std::env::consts::OS, std::env::consts::ARCH, status(&app),
                places::tools_report(&places::tools(home.as_deref())),
                tail.into_iter().rev().collect::<Vec<_>>().join("\n")))
 }
