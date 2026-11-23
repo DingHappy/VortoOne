@@ -12,9 +12,12 @@ import hashlib
 import os
 import re
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlsplit
+
+from src.web.app_artifact_upload import TextUpload
 
 _NAMESPACE = uuid.UUID("6f1d2a57-6f0e-4f0b-9c7e-0a7e5c0f1a11")
 
@@ -1249,7 +1252,8 @@ def _artifact(root: str, meta: Dict[str, Any], *, desktop_upload: bool = False) 
         agent_id = main_agent_id(root)
         author = {"type": "agent", "id": agent_id}
         channel_id = dm_channel_id(agent_id)
-    row = {"id": str(meta["id"]), "kind": "html", "title": str(meta.get("title") or meta["id"]),
+    kind = "file" if desktop_upload and meta.get("kind") == "file" else "html"
+    row = {"id": str(meta["id"]), "kind": kind, "title": str(meta.get("title") or meta["id"]),
            "version": int(meta.get("pinned") or meta.get("version") or 1),
            "channelId": channel_id, "threadId": None, "createdBy": author,
            "updatedBy": author, "createdAt": _iso(meta.get("created_at")), "updatedAt": _iso(meta.get("updated_at")),
@@ -1269,7 +1273,7 @@ def trashed_artifact(root: str, meta: Dict[str, Any], deleted_at: datetime, purg
 def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
               include_uploads: bool = False) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
-    if kinds is not None and "html" not in kinds:
+    if kinds is not None and "html" not in kinds and not (include_uploads and "file" in kinds):
         return {"artifacts": [], "nextCursor": None, "counts": {}}
     needle = query.strip().lower()
     rows = [_artifact(root, meta) for meta in ArtifactStore(root).list() if isinstance(meta, dict) and meta.get("id")]
@@ -1277,13 +1281,26 @@ def artifacts(root: str, *, query: str = "", kinds: Optional[Set[str]] = None,
         rows.extend(_artifact(root, meta, desktop_upload=True) for meta in ArtifactStore(root, desktop_uploads=True).list()
                     if isinstance(meta, dict) and meta.get("id"))
         rows.sort(key=lambda row: row["updatedAt"], reverse=True)
+    if kinds is not None:
+        rows = [row for row in rows if row["kind"] in kinds]
     if needle:
         rows = [row for row in rows if needle in row["title"].lower()]
-    return {"artifacts": rows, "nextCursor": None, "counts": {"html": len(rows)} if rows else {}}
+    return {"artifacts": rows, "nextCursor": None, "counts": dict(Counter(row["kind"] for row in rows))}
 
 
 def _artifact_content(shown: Dict[str, Any], html: str, version: int, *, versioned: bool) -> Dict[str, Any]:
     return {**shown, "shownVersion": version, "content": {"kind": "html", "html": html}, "versioned": versioned}
+
+
+_UPLOADED_FILE_PREVIEW_BYTES = 32 * 1024
+
+
+def _uploaded_file_detail(shown: Dict[str, Any], meta: Dict[str, Any], data: Optional[bytes]) -> Dict[str, Any]:
+    content = {"kind": "file", "name": meta["name"], "contentType": meta["content_type"],
+               "size": meta["bytes"], "sha256": meta["sha256"]}
+    if data is not None and len(data) <= _UPLOADED_FILE_PREVIEW_BYTES:
+        content["text"] = data.decode("utf-8")
+    return {**shown, "shownVersion": 1, "content": content, "versioned": False}
 
 
 def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
@@ -1296,6 +1313,16 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
             shown = _artifact(root, meta, desktop_upload=True)
             if version is not None and version != shown["version"]:
                 return None
+            if shown["kind"] == "file":
+                if not uploads.has_snapshot(artifact_id, 1):
+                    return None
+                data = None
+                size = int(meta["bytes"])
+                if size <= _UPLOADED_FILE_PREVIEW_BYTES:
+                    data = uploads.uploaded_file(artifact_id, 1, size)
+                    if data is None:
+                        return None
+                return _uploaded_file_detail(shown, meta, data)
             html = uploads.html(artifact_id)
             return _artifact_content(shown, html, shown["version"], versioned=False) if html is not None else None
     store = ArtifactStore(root)
@@ -1313,15 +1340,19 @@ def artifact(root: str, artifact_id: str, version: Optional[int] = None, *,
     return _artifact_content(shown, html, wanted, versioned=len(known_versions) > 1)
 
 
-def upload_artifact(root: str, title: str, html: str) -> Dict[str, Any]:
+def upload_artifact(root: str, title: str, content: str | TextUpload) -> Dict[str, Any]:
     from src.agents.tools.artifacts import ArtifactStore
     from src.utils.home_maintenance import home_maintenance
     from src.utils.state_dir import ensure_state_gitignore
 
     with home_maintenance(root):
         ensure_state_gitignore(root)
-        meta = ArtifactStore(root, desktop_uploads=True).publish_new(title, html)
-    return _artifact_content(_artifact(root, meta, desktop_upload=True), html, 1, versioned=False)
+        store = ArtifactStore(root, desktop_uploads=True)
+        if isinstance(content, TextUpload):
+            meta = store.publish_file(title, content.name, content.content_type, content.data)
+            return _uploaded_file_detail(_artifact(root, meta, desktop_upload=True), meta, content.data)
+        meta = store.publish_new(title, content)
+    return _artifact_content(_artifact(root, meta, desktop_upload=True), content, 1, versioned=False)
 
 
 # ── 角色资料页 ────────────────────────────────────────────────────────────────
