@@ -69,10 +69,10 @@ def build_question_tool(work, task):
 
 def build_staff_member(root, role, member, *, check, llm=None, agent_factory=None, confirm_action=None,
                        notes=None, budget_check=None, read_delivery=None, on_tool_event=None, principal=None,
-                       member_allowed=(), extra_tools=()):
+                       member_allowed=(), extra_tools=(), unattended=False):
     from src.agents.agent_loop import MainAgent, native_default
     from src.agents.gate import make_confirm_gate
-    from src.agents.capabilities import SessionCapabilities
+    from src.agents.capabilities import SessionCapabilities, UNATTENDED_PROFILE
     from src.agents.permissions import load_permissions
     from src.llm.background import background_client
     from src.workflow.staff.registry import tool_catalog
@@ -88,6 +88,10 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
             raise ValueError('审批缺少可信运行层动作，未执行')
         return await confirm_action(call)
     trust_level, profile, session = 'ask', 'external', {}
+    if unattended:
+        if is_full(role) or confirm_action is not None:
+            raise ValueError('无人值守不用完整能力，也没有人可以问')
+        profile = UNATTENDED_PROFILE
     if is_full(role):
         if confirm_action is None:
             raise ValueError('完整能力的 agent 需要常驻助理的人工审批通道')
@@ -141,6 +145,9 @@ def build_staff_member(root, role, member, *, check, llm=None, agent_factory=Non
     if is_full(role):
         extra += ('\n你可以用主助理的全部工具。读写、执行、对外发送、操控等动作会按主人的授权规则自动放行或等主人批准；'
                   '被拒绝就换个办法或如实说明做不到，不要反复申请同一件事。')
+    if unattended:
+        extra += ('\n这是无人值守的例行工作：只能读列出的本机状态，不联网、不写入、不执行，也没有人可以问。'
+                  '做不了的部分如实写在结果里。')
     if role.get('id') == 'routine-offline':
         from src.memory.assistant_profile import assistant_system_parts
         extra += '\n' + '\n'.join(assistant_system_parts(root))
@@ -181,7 +188,10 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     check()
     from src.workflow.staff.initiators import initiator_of, member_authority, plan_allows, require_member_operations, role_for_member
     principal = initiator_of(task)
-    turn_role = role          # 审批、额度仍按登记的岗位核对；只有装配工具和回合模式用收窄后的
+    from src.workflow.staff.roles import is_full, unattended_role
+    # 完整能力的 agent 担任例行工作：降为无人值守档（主人 2026-11-22 定）。和谁登记的、批过什么档位都无关
+    downgraded = is_full(role) and bool(task.collaboration['dispatch'].get('routine'))
+    turn_role = unattended_role(role) if downgraded else role          # 审批、额度仍按登记的岗位核对；只有装配工具和回合模式用收窄后的
     if principal is not None:
         if task.collaboration['dispatch'].get('source') != 'staff':
             raise ValueError('成员只能直接让 agent 办事，不能发起小组任务')
@@ -190,7 +200,7 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
             raise ValueError('这个 agent 用的是所有者的个人订阅，只回应所有者')
         level, delegated, preapproved = member_authority(
             root, role, member, principal, scheduled=bool(task.collaboration['dispatch'].get('routine')))
-        turn_role = role_for_member(StaffRegistry(root), role, level, acts_for_members=delegated)
+        turn_role = role_for_member(StaffRegistry(root), turn_role, level, acts_for_members=delegated)
         check_assignment = check
         operations = tuple(turn_role['grants']['operations'])
 
@@ -200,9 +210,6 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
 
         check = check_initiator
         check()
-    from src.workflow.staff.roles import is_full
-    if is_full(role) and task.collaboration['dispatch'].get('routine'):
-        raise ValueError('例行工作无人值守，不用完整能力；请交给只读或公开资料的 agent')
     if task.collaboration['dispatch'].get('source') == 'team' and role['id'] == 'developer':
         from src.agents.team_members import execute_team_developer
         return await execute_team_developer(root, task, work)
@@ -267,6 +274,9 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     dispatch = task.collaboration['dispatch']
     if dispatch.get('source') == 'staff' and not dispatch.get('routine'):
         options['extra_tools'] = (build_question_tool(work, task),)
+    if downgraded:
+        options.pop('confirm_action', None)
+        options['unattended'] = True
     agent = build_staff_member(root, turn_role, member, check=check, on_tool_event=observe, **options)
     execution = StaffExecution(work, task, 'vortocode')
     if approval_service is not None:
