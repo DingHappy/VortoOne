@@ -1937,7 +1937,8 @@ async def mute_team_channel(org_id: str, channel_id: str, request: Request, body
 
 @router.get(_ORG + "/messages/{message_id}/card")
 async def team_message_card(org_id: str, message_id: str, request: Request):
-    return await _team_call(request, org_id, lambda service, actor: service.message_details(actor, message_id))
+    return await _team_call(request, org_id, lambda service, actor: service.message_details(
+        actor, message_id, load_agents=lambda: app_channels.channel_agents(_root(org_id))))
 
 
 class _MessageReaction(BaseModel):
@@ -3223,9 +3224,10 @@ async def calendar_update(org_id: str, event_id: str, request: Request, body: Di
 
 
 @router.delete(_CALENDAR + "/events/{event_id}")
-async def calendar_delete(org_id: str, event_id: str, request: Request):
-    series = "scope" in request.query_params or "occurrenceStart" in request.query_params
-    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(event_id, series=series))
+async def calendar_delete(org_id: str, event_id: str, request: Request, scope: str | None = None,
+                          occurrence_start: str | None = Query(None, alias="occurrenceStart")):
+    result = await _calendar_call(org_id, request, lambda calendar, _actor: calendar.delete(
+        event_id, scope=scope, occurrence_start=occurrence_start))
     return result if isinstance(result, Response) else Response(status_code=204)
 
 
@@ -3525,6 +3527,7 @@ def _mission_view(drafts, row):
                     "joinRequests": 0, "commands": 0, "deliveries": 0},
         "joinRequested": False, "runningTasks": 0, "machine": None, "needsComputer": False,
         "role": "owner", "canAct": False, "canManage": False, "createdAt": row["created"],
+        "canCancelDraft": row["current_status"] == "proposed",
         "startedAt": None, "pausedAt": None, "closedAt": row["closed_at"], "closeReason": row["note"],
         "wikiPageId": None,
     }

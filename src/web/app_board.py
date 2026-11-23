@@ -76,25 +76,35 @@ def audience_of(choice: Any, who: Principal, root: str) -> Dict[str, Any]:
     return {"mode": "people", "userIds": list(dict.fromkeys(ids + [who.id])), "channelId": None}
 
 
-def view(root: str, board: Board, issue: Dict[str, Any], *, projects: Optional[Dict[str, Any]] = None,
-         detail: bool = False) -> Dict[str, Any]:
+def _view(board: Board, issue: Dict[str, Any], who: Principal, *, projects: Optional[Dict[str, Any]] = None,
+          issues: Optional[Dict[str, Dict[str, Any]]] = None, detail: bool = False) -> Dict[str, Any]:
     projects = projects if projects is not None else {item["id"]: item for item in board.projects()}
-    project = projects.get(issue.pop("projectId", None) or "")
+    project = projects.get(issue.get("projectId") or "")
     row = {**issue, "project": project, "pullRequests": [], "artifacts": [], "work": None, "blocked": None,
            "backgroundWork": None, "conversation": None}
+    row.pop("projectId", None)
+    parent_id = row["parentIssueId"]
+    if parent_id:
+        try:
+            parent = board.issue(parent_id) if issues is None else issues.get(parent_id)
+        except NotFound:
+            parent = None
+        if parent is None or not can_see(parent, who):
+            row["parentIssueId"] = None
     if detail:
         row["subIssues"] = [{"id": child["id"], "number": child["number"], "title": child["title"],
                              "status": child["status"], "assignee": child["assignee"]}
-                            for child in board.children(issue["id"])]
+                            for child in board.children(issue["id"]) if can_see(child, who)]
     return row
 
 
 def listing(root: str, who: Principal, *, q: str = "", project_id: str = "") -> List[Dict[str, Any]]:
     board = Board(root)
     projects = {item["id"]: item for item in board.projects()}
+    issues = {issue["id"]: issue for issue in board.issues()}
     needle = q.strip().lower()
     rows = []
-    for issue in board.issues():
+    for issue in issues.values():
         if not can_see(issue, who):
             continue
         if project_id and issue.get("projectId") != project_id:
@@ -102,7 +112,7 @@ def listing(root: str, who: Principal, *, q: str = "", project_id: str = "") -> 
         if needle and needle not in issue["title"].lower() and needle not in issue["description"].lower() \
                 and needle != f"#{issue['number']}":
             continue
-        rows.append(view(root, board, issue, projects=projects))
+        rows.append(_view(board, issue, who, projects=projects, issues=issues))
     return rows
 
 
@@ -114,7 +124,7 @@ def _visible(root: str, who: Principal, issue: Dict[str, Any]) -> Dict[str, Any]
 
 def get(root: str, who: Principal, number: int) -> Dict[str, Any]:
     board = Board(root)
-    return view(root, board, _visible(root, who, board.by_number(number)), detail=True)
+    return _view(board, _visible(root, who, board.by_number(number)), who, detail=True)
 
 
 def create(root: str, who: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,7 +138,7 @@ def create(root: str, who: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
     if body.get("parentIssueId"):
         _visible(root, who, board.issue(body["parentIssueId"]))
     issue = board.create(_actor_of(who), body, audience=audience_of(body.get("audience"), who, root))
-    return view(root, board, issue, detail=True)
+    return _view(board, issue, who, detail=True)
 
 
 def update(root: str, who: Principal, issue_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
@@ -136,7 +146,7 @@ def update(root: str, who: Principal, issue_id: str, patch: Dict[str, Any]) -> D
     _visible(root, who, board.issue(issue_id))
     if "assignee" in patch:
         _check_actor(root, patch["assignee"])
-    return view(root, board, board.update(issue_id, _actor_of(who), patch), detail=True)
+    return _view(board, board.update(issue_id, _actor_of(who), patch), who, detail=True)
 
 
 def delete(root: str, who: Principal, issue_id: str) -> None:
@@ -151,13 +161,13 @@ def delete(root: str, who: Principal, issue_id: str) -> None:
 def set_audience(root: str, who: Principal, issue_id: str, choice: Any) -> Dict[str, Any]:
     board = Board(root)
     _visible(root, who, board.issue(issue_id))
-    return view(root, board, board.set_audience(issue_id, audience_of(choice, who, root)), detail=True)
+    return _view(board, board.set_audience(issue_id, audience_of(choice, who, root)), who, detail=True)
 
 
 def set_criterion(root: str, who: Principal, issue_id: str, criterion_id: str, done: Any) -> Dict[str, Any]:
     board = Board(root)
     _visible(root, who, board.issue(issue_id))
-    return view(root, board, board.set_criterion(issue_id, criterion_id, done, _actor_of(who)), detail=True)
+    return _view(board, board.set_criterion(issue_id, criterion_id, done, _actor_of(who)), who, detail=True)
 
 
 def activity(root: str, who: Principal, issue_id: str) -> List[Dict[str, Any]]:
@@ -215,4 +225,4 @@ def ask_agent(root: str, who: Principal, issue_id: str, agent_id: Any, *, owner_
     board.update(issue_id, author, patch)
     board.record(issue_id, author, "agent_asked", "asked an agent to work on it",
                  {"agentId": agent_id, "taskId": str(task.get("id") or "")})
-    return view(root, board, board.issue(issue_id), detail=True)
+    return _view(board, board.issue(issue_id), who, detail=True)

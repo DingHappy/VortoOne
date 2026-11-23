@@ -96,6 +96,54 @@ def test_members_see_only_their_audience_and_need_edit_rights(home):
     assert for_member["audience"]["userIds"]
 
 
+def test_parent_detail_includes_only_children_the_caller_can_read(home):
+    owner, base = home["owner"], home["base"]
+    selected = _join(home)
+    other = _join(home, email="other@example.com", name="另一位成员")
+    parent = _new(owner, base, title="父任务", criteria=["确认"])
+    public = _new(owner, base, title="公开子任务", parentIssueId=parent["id"])
+    private = _new(owner, base, title="指定成员子任务", parentIssueId=parent["id"],
+                   audience={"mode": "people", "userIds": [selected.member_id]})
+
+    def child_ids(response):
+        assert response.status_code == 200, response.text
+        return [child["id"] for child in response.json()["subIssues"]]
+
+    url = f"{base}/issues/by-number/{parent['number']}"
+    assert child_ids(owner.get(url)) == [public["id"], private["id"]]
+    assert child_ids(selected.get(url)) == [public["id"], private["id"]]
+    assert child_ids(other.get(url)) == [public["id"]]
+    assert other.get(f"{base}/issues/by-number/{private['number']}").status_code == 404
+    issue_url = f"{base}/issues/{parent['id']}"
+    assert child_ids(other.patch(issue_url, json={"title": "新的任务名"})) == [public["id"]]
+    assert child_ids(other.put(f"{issue_url}/audience", json={"mode": "everyone"})) == [public["id"]]
+    criterion = parent["criteria"][0]["id"]
+    assert child_ids(other.put(f"{issue_url}/criteria/{criterion}", json={"done": True})) == [public["id"]]
+
+
+def test_public_child_hides_a_parent_after_its_audience_is_restricted(home):
+    owner, base = home["owner"], home["base"]
+    selected = _join(home)
+    other = _join(home, email="other@example.com", name="另一位成员")
+    parent = _new(owner, base, title="父任务")
+    child = _new(owner, base, title="公开子任务", parentIssueId=parent["id"])
+    url = f"{base}/issues/by-number/{child['number']}"
+    assert other.get(url).json()["parentIssueId"] == parent["id"]
+    restricted = owner.put(f"{base}/issues/{parent['id']}/audience",
+                           json={"mode": "people", "userIds": [selected.member_id]})
+    assert restricted.status_code == 200, restricted.text
+    assert other.get(f"{base}/issues/by-number/{parent['number']}").status_code == 404
+
+    assert owner.get(url).json()["parentIssueId"] == parent["id"]
+    assert selected.get(url).json()["parentIssueId"] == parent["id"]
+    assert other.get(url).json()["parentIssueId"] is None
+    [listed] = other.get(f"{base}/issues").json()["issues"]
+    assert listed["id"] == child["id"] and listed["parentIssueId"] is None
+    updated = other.patch(f"{base}/issues/{child['id']}", json={"title": "公开子任务更新"})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["parentIssueId"] is None
+
+
 def _drop_from_everyone(home, key):
     owner, base = home["owner"], home["base"]
     everyone = next(r for r in owner.get(f"{base}/roles").json()["roles"] if r["id"] == "everyone")
