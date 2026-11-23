@@ -270,7 +270,7 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     avatar = app_profile_avatar.current(root, views.home_id(root), actor.id) if joined else None
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
-                 "email": str(account["email"]), "image": avatar,
+                 "email": str(account["email"]), "image": avatar, "hasPassword": True,
                  **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": views.overview(root)["name"], "role": "member",
                            **views.workspace_display(root, actor), "permissions": permission_keys(root, actor),
