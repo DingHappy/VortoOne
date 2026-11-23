@@ -146,6 +146,12 @@
     "addNewLink": "创建一个"
   },
   "place": {
+    "cloudAccount": "云端账号",
+    "cloudAccountPending": "暂未开放",
+    "installHere": "安装到这台 {{device}}",
+    "installHereText": "在这台 {{device}} 上运行 VortoOne 服务，工作区数据保存在本机。",
+    "remote": "连接远程服务器",
+    "remoteText": "输入另一台电脑上的 VortoOne 服务器地址，打开它的工作区。",
     "title": "你的工作区要放在哪里？",
     "lead": "你的智能体会在工作区所在的地方工作。以后可以更改。",
     "recommended": "推荐",
@@ -173,6 +179,7 @@
     "text": "要在一台始终开机的电脑（一台 Mac mini、一台办公室电脑或一台服务器）上安装 VortoOne：\n\n1. 在那台电脑上打开终端，粘贴这一行：\n{{command}}\n\n2. 最后会出现一个链接。把它发给我：它会在应用中打开工作区。"
   },
   "connect": {
+    "installGuide": "服务器安装教程",
     "title": "登录到已有的工作区",
     "lead": "它的地址，就是你在浏览器中打开的那个。",
     "label": "服务器地址",

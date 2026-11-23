@@ -149,6 +149,12 @@
     "addNewLink": "Einen erstellen"
   },
   "place": {
+    "cloudAccount": "Cloud-Konto",
+    "cloudAccountPending": "Noch nicht verfügbar",
+    "installHere": "Auf diesem Gerät installieren",
+    "installHereText": "Betreibe den VortoOne-Server und speichere die Daten des Arbeitsbereichs auf diesem Gerät.",
+    "remote": "Mit einem Remote-Server verbinden",
+    "remoteText": "Gib die Adresse eines VortoOne-Servers auf einem anderen Computer ein.",
     "title": "Wo soll dein Workspace leben?",
     "lead": "Deine Agenten arbeiten dort, wo er ist. Du kannst es später ändern.",
     "recommended": "Empfohlen",
@@ -176,6 +182,7 @@
     "text": "So installierst du VortoOne auf einem Computer, der immer an bleibt (ein Mac mini, ein Bürocomputer oder ein Server):\n\n1. Öffne auf diesem Computer das Terminal und füge das ein:\n{{command}}\n\n2. Am Ende erscheint ein Link. Schick ihn mir: Er öffnet den Workspace in der App."
   },
   "connect": {
+    "installGuide": "Anleitung zur Serverinstallation",
     "title": "Bei einem bestehenden Workspace anmelden",
     "lead": "Seine Adresse, dieselbe, die du im Browser öffnest.",
     "label": "Serveradresse",

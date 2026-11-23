@@ -149,6 +149,12 @@
     "addNewLink": "Maak er een"
   },
   "place": {
+    "cloudAccount": "Cloudaccount",
+    "cloudAccountPending": "Nog niet beschikbaar",
+    "installHere": "Installeren op dit apparaat",
+    "installHereText": "Draai de VortoOne-server en bewaar de gegevens van je werkruimte op dit apparaat.",
+    "remote": "Verbinden met een externe server",
+    "remoteText": "Voer het adres in van een VortoOne-server op een andere computer.",
     "title": "Waar komt je workspace te staan?",
     "lead": "Je agents werken waar hij staat. Je kunt het later veranderen.",
     "recommended": "Aanbevolen",
@@ -176,6 +182,7 @@
     "text": "Zo installeer je VortoOne op een computer die altijd aan blijft (een Mac mini, een computer op kantoor of een server):\n\n1. Open op die computer de Terminal en plak dit:\n{{command}}\n\n2. Aan het eind verschijnt een link. Stuur hem naar mij: hij opent de workspace in de app."
   },
   "connect": {
+    "installGuide": "Installatiehandleiding voor de server",
     "title": "Inloggen bij een workspace die al bestaat",
     "lead": "Het adres ervan, hetzelfde dat je in de browser opent.",
     "label": "Serveradres",

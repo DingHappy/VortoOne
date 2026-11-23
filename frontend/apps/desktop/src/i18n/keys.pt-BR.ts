@@ -157,6 +157,12 @@ export const desktopPtBR = {
     addNewLink: "Criar um",
   },
   place: {
+    cloudAccount: "Conta na nuvem",
+    cloudAccountPending: "Ainda indisponível",
+    installHere: "Instalar neste {{device}}",
+    installHereText: "Execute o servidor VortoOne e mantenha os dados do workspace neste {{device}}.",
+    remote: "Conectar a um servidor remoto",
+    remoteText: "Informe o endereço de um servidor VortoOne em outro computador.",
     title: "Onde seu workspace vai ficar?",
     lead: "Seus agentes trabalham onde ele estiver. Dá para mudar depois.",
     recommended: "Recomendado",
@@ -184,6 +190,7 @@ export const desktopPtBR = {
     text: "Para instalar o VortoOne num computador que fica sempre ligado (um Mac mini, um computador do escritório ou um servidor):\n\n1. Nesse computador, abra o Terminal e cole isto:\n{{command}}\n\n2. No fim aparece um link. Me mande ele: ele abre o workspace no app.",
   },
   connect: {
+    installGuide: "Guia de instalação do servidor",
     title: "Entrar num workspace que já existe",
     lead: "O endereço dele, o mesmo que você abre no navegador.",
     label: "Endereço do servidor",

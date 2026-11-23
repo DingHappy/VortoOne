@@ -155,6 +155,12 @@ export const desktopEn = {
   },
   /** The first screen ("Onde seu workspace vai ficar?", FirstRun.tsx): the three places, the drawing following the one picked. */
   place: {
+    cloudAccount: "Cloud account",
+    cloudAccountPending: "Not yet available",
+    installHere: "Install on this {{device}}",
+    installHereText: "Run the VortoOne server and keep your workspace data on this {{device}}.",
+    remote: "Connect to a remote server",
+    remoteText: "Enter the address of a VortoOne server running on another computer.",
     title: "Where will your workspace live?",
     lead: "Your agents work wherever it is. You can change it later.",
     recommended: "Recommended",
@@ -184,6 +190,7 @@ export const desktopEn = {
     text: "To install VortoOne on a computer that stays on (a Mac mini, an office computer or a server):\n\n1. On that computer, open the Terminal and paste this:\n{{command}}\n\n2. At the end a link shows up. Send it to me: it opens the workspace in the app.",
   },
   connect: {
+    installGuide: "Server installation guide",
     title: "Sign in to a workspace that already exists",
     lead: "Its address, the same one you open in the browser.",
     label: "Server address",
