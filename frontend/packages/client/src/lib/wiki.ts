@@ -24,24 +24,22 @@ export function leafTitle(title: string) {
 /** The title a page's slug spells, for a link to a page that doesn't exist yet: "processos/deploy-final" → "deploy final". */
 export const titleOfSlug = (slug: string) => leafTitle(slug.split("/").pop()?.replace(/-/g, " ") ?? "");
 
-/** Resolves a `[[link]]` title against the pages: by title (case and accents ignored) or by slug. */
-export function resolveWikiLink<T extends { slug: string; title: string; folder: string }>(
+export const wikiLabelKey = (value: string) => value.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").trim();
+
+/** Resolves a `[[link]]` against visible pages; an ambiguous alias never picks a page at random. */
+export function resolveWikiLink<T extends { slug: string; title: string; folder: string; aliases?: string[] }>(
   pages: T[],
   title: string,
 ): T | undefined {
-  const fold = (s: string) =>
-    s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim();
-  const want = fold(splitSection(title).title);
-  const slug = wikiSlug(splitSection(title).title);
-  return (
-    pages.find((p) => fold(p.title) === want) ??
-    pages.find((p) => fold(p.folder ? `${p.folder}/${p.title}` : p.title) === want) ??
-    pages.find((p) => p.slug === slug)
-  );
+  const target = splitSection(title).title;
+  const want = wikiLabelKey(target);
+  const slug = wikiSlug(target);
+  const canonical = pages.find((p) => wikiLabelKey(p.title) === want) ??
+    pages.find((p) => wikiLabelKey(p.folder ? `${p.folder}/${p.title}` : p.title) === want) ??
+    pages.find((p) => p.slug === slug);
+  if (canonical) return canonical;
+  const aliases = pages.filter((p) => p.aliases?.some((alias) => wikiLabelKey(alias) === want));
+  return aliases.length === 1 ? aliases[0] : undefined;
 }
 
 export { wikiLinksIn };

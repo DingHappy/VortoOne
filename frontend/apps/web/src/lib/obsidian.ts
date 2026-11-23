@@ -6,6 +6,7 @@ import type {
   WikiPageSummary,
 } from "@vortoone/client";
 import { readZip } from "@vortoone/client/lib/zip";
+import { wikiLabelKey } from "@vortoone/client/lib/wiki";
 
 /*
  * Notes to import in the browser: an Obsidian vault or plain Markdown as a
@@ -251,7 +252,7 @@ const attachmentOf = (report: Pick<VaultReport, "attachments">, target: string) 
 export async function readVault(
   files: VaultFile[],
   options: {
-    existing?: Pick<WikiPageSummary, "title">[];
+    existing?: Pick<WikiPageSummary, "title" | "aliases">[];
     name?: string;
     source?: WikiImportSource;
     onProgress?: (done: number, total: number, path: string) => void;
@@ -286,11 +287,13 @@ export async function readVault(
   const source = options.source ?? (skipped.config > 0 ? "obsidian" : "files");
 
   const known = new Set(
-    [...notes.flatMap((n) => [n.title, ...n.aliases]), ...(options.existing ?? []).map((p) => p.title)].map(lower),
+    [...notes, ...(options.existing ?? [])].flatMap((page) => [page.title, ...(page.aliases ?? [])].map(wikiLabelKey)),
   );
   const broken = new Set<string>();
   for (const n of notes) {
-    for (const l of n.links) if (!known.has(lower(base(l))) && !attachmentOf({ attachments }, l)) broken.add(l);
+    for (const l of n.links)
+      if (!known.has(wikiLabelKey(l)) && !known.has(wikiLabelKey(base(l))) && !attachmentOf({ attachments }, l))
+        broken.add(l);
   }
   const existing = new Set((options.existing ?? []).map((p) => lower(p.title)));
   const folders = new Map<string, number>();

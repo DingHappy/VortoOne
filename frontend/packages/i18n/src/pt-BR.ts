@@ -11675,7 +11675,7 @@ export const ptBR = {
       nothingYet: "Nada entra antes de você revisar.",
       readingText: "Só no seu navegador por enquanto. Nada foi enviado ainda.",
       notesRead: "notas lidas",
-      reviewText: "Revise antes de entrar na wiki. Os agentes passam a ler essas páginas assim que você importar.",
+      reviewText: "Revise estas páginas antes de importá-las para a wiki.",
       stat: {
         notes_one: "nota",
         notes_other: "notas",

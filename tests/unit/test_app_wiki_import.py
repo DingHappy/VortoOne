@@ -4,13 +4,14 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.agents.tools.artifacts import ArtifactStore
 from src.utils.home_maintenance import home_maintenance
 from src.workflow.members.registry import MemberRegistry
 from src.workflow.wiki import Wiki
-from tests.unit.test_app_wiki import _page
+from tests.unit.test_app_wiki import _page, _wiki_audience
 from tests.unit.test_member_agents import ORIGIN, OWNER_P, TOKEN, _join, home  # noqa: F401 - fixture
 
 
@@ -98,13 +99,47 @@ def test_obsidian_markdown_import_preserves_source_and_links(home):
     ]
 
 
-def test_obsidian_import_refuses_unusable_aliases(home):
+@pytest.mark.parametrize("aliases", ["别名", [" "], ["line\nbreak"], ["x" * 301], ["a"] * 51])
+def test_obsidian_import_refuses_unusable_aliases(home, aliases):
     owner, wiki = home["owner"], home["base"] + "/wiki"
     good = {"title": "供导入", "body": "正文"}
-    payload = _batch(good, good | {"aliases": ["别名"]}, source={"type": "obsidian", "name": "项目笔记"})
+    payload = _batch(good, good | {"aliases": aliases}, source={"type": "obsidian", "name": "项目笔记"})
     response = owner.post(wiki + "/import", json=payload)
-    assert response.status_code == 409, response.text
+    assert response.status_code == 400, response.text
     assert owner.get(wiki + "/pages").json() == {"pages": []}
+
+
+def test_imported_aliases_resolve_and_search_only_visible_pages(home):
+    owner, member, outsider = home["owner"], _join(home), _join(home, "alias-visitor@example.com", "外部")
+    wiki = home["base"] + "/wiki"
+    payload = _batch({"title": "索引", "body": "见 [[CAFE]]"},
+                     {"title": "值班资料", "body": "正文", "aliases": [" Café ", "cafe", "排班"]})
+    imported = member.post(wiki + "/import", json=payload)
+    assert imported.status_code == 200, imported.text
+    source, target = imported.json()["created"]
+    assert target["aliases"] == ["Café", "排班"]
+    assert member.post(wiki + "/import", json=payload).json() == imported.json()
+    target_path = f"{wiki}/pages/{target['slug']}"
+    edge = {"from": source["slug"], "to": target["slug"]}
+    assert outsider.get(wiki + "/graph").json()["edges"] == [edge]
+    assert outsider.get(wiki + "/search", params={"q": "cafe"}).json()["pages"][0]["id"] == target["id"]
+    assert owner.get(target_path).json()["backlinks"][0]["slug"] == source["slug"]
+
+    assert owner.put(target_path + "/audience", json=_wiki_audience(member.member_id)).status_code == 200
+    assert outsider.get(wiki + "/graph").json()["edges"] == []
+    assert outsider.get(wiki + "/search", params={"q": "cafe"}).json() == {"pages": []}
+    assert outsider.get(target_path).status_code == 404
+    assert member.get(wiki + "/graph").json()["edges"] == [edge]
+
+    other = _batch({"title": "其它值班资料", "body": "正文", "aliases": ["cafe"]}, importId="other")
+    received = owner.post(wiki + "/import", json=other)
+    assert received.status_code == 200, received.text
+    [another] = received.json()["created"]
+    assert member.get(wiki + "/graph").json()["edges"] == []
+    assert outsider.get(wiki + "/graph").json()["edges"] == [{"from": source["slug"], "to": another["slug"]}]
+
+    canonical = _page(owner, home["base"], title="Cafe")
+    assert owner.get(wiki + "/graph").json()["edges"] == [{"from": source["slug"], "to": canonical["slug"]}]
 
 
 def test_obsidian_import_embeds_private_upload_for_owner_without_sharing_it(home):
@@ -236,7 +271,7 @@ def test_import_refuses_unsupported_payloads_and_checks_current_permissions(home
     good = {"title": "供导入", "body": ""}
     for batch, code in (
         (_batch(good, source={"type": "unsupported", "name": "store"}), 409),
-        (_batch(good, good | {"aliases": ["别名"]}), 409),
+        (_batch(good, good | {"aliases": [12]}), 400),
         (_batch(good, good | {"attachments": {"preview.png": "artifact-id"}}), 400),
         (_batch(good, good | {"folder": "../目录"}), 400),
         (_batch(good, good | {"audience": {"mode": "everyone"}}), 400),

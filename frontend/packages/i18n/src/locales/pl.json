@@ -12133,7 +12133,7 @@
       "nothingYet": "Nic nie trafi do wiki, zanim tego nie sprawdzisz.",
       "readingText": "Na razie tylko w twojej przeglądarce. Nic jeszcze nie zostało wysłane.",
       "notesRead": "przeczytane notatki",
-      "reviewText": "Sprawdź to, zanim trafi do wiki. Agenci zaczną czytać te strony, gdy tylko je zaimportujesz.",
+      "reviewText": "Sprawdź to, zanim trafi do wiki.",
       "stat": {
         "notes_one": "notatka",
         "notes_few": "notatki",

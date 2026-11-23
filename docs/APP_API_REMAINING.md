@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 347 个，剩 **284** 个：
-- **要做：213**（其中 29 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 348 个，剩 **283** 个：
+- **要做：212**（其中 29 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -154,7 +154,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 3）
+### org/wiki（24 个，要做 2）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -163,7 +163,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
 | ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |
 | ☑ | GET | `ORG/wiki/graph` | `wiki.graph` | 节点与链接两端均按当前查看者的页面权限筛选 |
-| ☐ | POST | `ORG/wiki/import` | `wiki.import` | 支持纯 Markdown 文件、Obsidian 笔记和所有者的 GitHub 笔记，保存来源、目录、标签与正文。所有者可以随导入绑定本空间私有 Drive 文件，附件只在所有者详情可见，回收后隐藏。重发相同导入号及批次内容会复用回执。笔记别名待接。 |
+| ☑ | POST | `ORG/wiki/import` | `wiki.import` | 导入 Markdown、Obsidian 或所有者的 GitHub 笔记，保存来源、目录、标签、正文与别名。别名参与搜索和页面链接，候选仅限当前可见页面，同名别名不自动选页。所有者可绑定本空间私有 Drive 文件，成员不可见，回收后隐藏。重发相同导入号及批次内容复用回执。 |
 | ☑ | GET | `ORG/wiki/import/github` | `wiki.githubNotes` | 所有者预览公开 GitHub 仓库、分支目录或单个 Markdown 文件。仅返回笔记 ZIP，保存在后续导入确认时执行。私有仓库及附件暂不可用。 |
 | ☑ | POST | `ORG/wiki/pages` | `wiki.create` | 读已接、写没接 |
 | ☑ | DELETE | `ORG/wiki/pages/{x}` | `wiki.remove` |  |

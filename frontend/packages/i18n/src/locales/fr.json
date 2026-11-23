@@ -11726,7 +11726,7 @@
       "nothingYet": "Rien n'entre avant que vous l'ayez vérifié.",
       "readingText": "Seulement dans votre navigateur pour l'instant. Rien n'a encore été envoyé.",
       "notesRead": "notes lues",
-      "reviewText": "Vérifiez avant que cela entre dans le wiki. Les agents commencent à lire ces pages dès l'import.",
+      "reviewText": "Vérifiez avant que cela entre dans le wiki.",
       "stat": {
         "notes_one": "note",
         "notes_many": "notes",

@@ -10860,7 +10860,7 @@
       "nothingYet": "검토하기 전에는 아무것도 들어가지 않아요.",
       "readingText": "지금은 브라우저에서만 처리해요. 아직 아무것도 보내지 않았어요.",
       "notesRead": "읽은 노트",
-      "reviewText": "Wiki에 넣기 전에 검토하세요. 가져오는 즉시 에이전트가 이 페이지를 읽기 시작해요.",
+      "reviewText": "Wiki에 넣기 전에 검토하세요.",
       "stat": {
         "notes_other": "노트",
         "folders_other": "폴더",

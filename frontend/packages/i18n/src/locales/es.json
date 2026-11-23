@@ -11657,7 +11657,7 @@
       "nothingYet": "Nada entra antes de que lo revises.",
       "readingText": "Por ahora solo en tu navegador. Todavía no se envió nada.",
       "notesRead": "notas leídas",
-      "reviewText": "Revísalo antes de que entre en la wiki. Los agentes empiezan a leer estas páginas en cuanto importas.",
+      "reviewText": "Revísalo antes de que entre en la wiki.",
       "stat": {
         "notes_one": "nota",
         "notes_many": "notas",

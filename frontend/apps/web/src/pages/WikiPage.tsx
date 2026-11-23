@@ -2,7 +2,7 @@ import type { WikiPageSummary } from "@vortoone/client";
 import { keys, useWikiPage, useWikiReads, useWikiTrash, useWikiTree } from "@vortoone/client";
 import { relativeTime } from "@vortoone/client/lib/format";
 import { can } from "@vortoone/client/lib/permissions";
-import { isImportedPage, outlineOf, type WikiFolder, wikiSlug, wikiTree } from "@vortoone/client/lib/wiki";
+import { isImportedPage, outlineOf, type WikiFolder, wikiLabelKey, wikiSlug, wikiTree } from "@vortoone/client/lib/wiki";
 import {
   Button,
   Checkbox,
@@ -290,13 +290,14 @@ function WikiNav({
         run: () => void copyText(`[[${p.title}]]`, () => toast.show(t("wiki.linkCopied", { title: p.title }))),
       },
     ]);
-  const query = q.trim().toLowerCase();
+  const query = wikiLabelKey(q);
   const filtering = Boolean(query || tag);
   const shown = useMemo(
     () =>
       pages.filter(
         (p) =>
-          (!query || `${p.title} ${p.folder} ${p.excerpt ?? ""}`.toLowerCase().includes(query)) &&
+          (!query || wikiLabelKey(`${p.title} ${p.folder} ${p.excerpt ?? ""}`).includes(query) ||
+            p.aliases?.some((alias) => wikiLabelKey(alias).includes(query))) &&
           (!tag || p.tags.includes(tag)),
       ),
     [pages, query, tag],

@@ -11731,7 +11731,7 @@ export const en = {
       nothingYet: "Nothing goes in before you review it.",
       readingText: "Only in your browser for now. Nothing has been sent yet.",
       notesRead: "notes read",
-      reviewText: "Review it before it goes into the wiki. Agents start reading these pages as soon as you import.",
+      reviewText: "Review these pages before importing them into the wiki.",
       stat: {
         notes_one: "note",
         notes_other: "notes",

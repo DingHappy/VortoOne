@@ -5314,6 +5314,8 @@ export interface WikiPageSummary {
   sourceType?: string | null;
   /** An imported page: the name of what was imported (the vault, the repository, the folder). */
   sourceName?: string | null;
+  /** Alternate names imported with this Wiki page. */
+  aliases?: string[];
   /** The import that brought it (null for pages imported before imports had ids). */
   importId?: string | null;
   updatedAt: string;

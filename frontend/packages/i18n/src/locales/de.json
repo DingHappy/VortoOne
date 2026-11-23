@@ -11308,7 +11308,7 @@
       "nothingYet": "Nichts kommt hinein, bevor du es geprüft hast.",
       "readingText": "Vorerst nur in deinem Browser. Es wurde noch nichts gesendet.",
       "notesRead": "Notizen gelesen",
-      "reviewText": "Prüfe es, bevor es ins Wiki kommt. Agenten beginnen, diese Seiten zu lesen, sobald du importierst.",
+      "reviewText": "Prüfe es, bevor es ins Wiki kommt.",
       "stat": {
         "notes_one": "Notiz",
         "notes_other": "Notizen",
