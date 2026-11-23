@@ -89,8 +89,8 @@ def _profile(root: str) -> Dict[str, str]:
 
 def workspace_identity(root: str) -> tuple[str, str | None]:
     from src.workflow import desktop_setup
-    name, mode = desktop_setup.workspace(root)
-    return name or _profile(root)["name"], mode
+    settings = desktop_setup.preferences(root)
+    return settings.get("name") or _profile(root)["name"], settings.get("mode")
 
 
 def _home_created(root: str) -> str:
@@ -231,7 +231,8 @@ def _owner_card(root: str) -> Dict[str, str]:
 
 def me(root: str) -> Dict[str, Any]:
     from src.agents.principal import OWNER, Principal
-    from src.web import app_profile_avatar
+    from src.web import app_prefs, app_profile_avatar
+    from src.workflow import desktop_setup
 
     card = _owner_card(root)
     name, mode = workspace_identity(root)
@@ -243,6 +244,10 @@ def me(root: str) -> Dict[str, Any]:
     if not requires_auth:
         # 未配置令牌的开发服务也可读 /me，个人引导答案在这种模式下不可见。
         preferences["workArea"] = None
+    elif preferences["workArea"] is None:
+        area = desktop_setup.preferences(root).get("workArea")
+        if area in app_prefs.WORK_AREAS:
+            preferences["workArea"] = area
     return {
         "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": avatar,
                  **preferences},

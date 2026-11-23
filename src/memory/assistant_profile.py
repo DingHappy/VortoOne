@@ -48,7 +48,15 @@ MAX_CONTEXT = 2000
 def load_home_context(root: str) -> str:
     """这个家（空间）是做什么的：所有者在界面上写的背景信息，所有 agent 共用一份。
     和「关于你」（persona.md，说的是主人这个人）分开存。会话装配时读一次，同一会话内不变。"""
-    return _read(_state(root) / "home_context.md")[:MAX_CONTEXT]
+    from src.workflow import desktop_setup
+
+    path = _state(root) / "home_context.md"
+    try:
+        return path.read_text(encoding="utf-8").strip()[:MAX_CONTEXT]
+    except FileNotFoundError:
+        return desktop_setup.preferences(root).get("context", "")[:MAX_CONTEXT]
+    except OSError:
+        return ""
 
 
 def save_home_context(root: str, text: str) -> str:
@@ -56,7 +64,9 @@ def save_home_context(root: str, text: str) -> str:
     state.mkdir(parents=True, exist_ok=True)
     clean = str(text).replace("\0", "").strip()[:MAX_CONTEXT]
     path = state / "home_context.md"
-    if clean:
+    from src.workflow import desktop_setup
+
+    if clean or desktop_setup.preferences(root).get("context"):
         _write(path, clean)
     else:
         try:

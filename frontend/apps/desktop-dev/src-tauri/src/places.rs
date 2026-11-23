@@ -169,7 +169,15 @@ pub fn prepare_local_home(data: &Path, seed_setup: bool) -> std::io::Result<()> 
             let result = (|| {
                 fs::create_dir(state)?;
                 let mut file = options.open(&path)?;
-                let result = file.write_all(br#"{"step":"purpose"}"#).and_then(|()| file.sync_all());
+                let result = (|| {
+                    file.write_all(br#"{"step":"purpose"}"#)?;
+                    file.sync_all()?;
+                    #[cfg(unix)]
+                    for directory in [state, &home, data] {
+                        fs::File::open(directory)?.sync_all()?;
+                    }
+                    Ok(())
+                })();
                 drop(file);
                 if result.is_err() { let _ = fs::remove_file(&path); }
                 result

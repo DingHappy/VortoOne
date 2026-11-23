@@ -486,11 +486,13 @@ def _setup_view(state: dict) -> dict:
 
 @router.get("/api/app/me")
 async def me(request: Request, response: Response):
+    from src.web.routers.computers import has_computer_owner_proof
+
     response.headers["Cache-Control"] = "no-store"
     root = os.getcwd()
     actor = member_auth.principal(request, root)
     result = await _current_profile(root, request, actor)
-    if actor.is_owner and app_staff.owner_proof(request):
+    if actor.is_owner and has_computer_owner_proof(request):
         try:
             setup = await _local_setup(request)
         except (OSError, ValueError):
@@ -511,7 +513,6 @@ class _LocalSetupAnswer(BaseModel):
 
 @router.patch("/api/app/desktop-setup")
 async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
-    from src.memory.assistant_profile import save_home_context
     from src.utils.home_maintenance import HomeMaintenanceError
     from src.web.routers.computers import has_local_owner_browser_session
     from src.workflow import desktop_setup
@@ -522,15 +523,13 @@ async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
     if not member_auth.principal(request, root).is_owner or not has_local_owner_browser_session(request):
         return _error(403, "forbidden", "请在本机工作区完成引导")
 
-    def apply_answer(field: str, value: str) -> None:
-        if field == "context":
-            save_home_context(root, value)
-        elif field == "workArea":
-            app_prefs.set_work_area(root, views.owner_id(root), {"area": value})
+    def validate_answer(field: str, value: str) -> None:
+        if field == "workArea" and value not in app_prefs.WORK_AREAS:
+            raise ValueError("请选择工作领域或跳过")
 
     try:
         answer = body.model_dump(exclude={"step"}, exclude_none=True)
-        result = await asyncio.to_thread(desktop_setup.advance, root, body.step, answer, apply_answer)
+        result = await asyncio.to_thread(desktop_setup.advance, root, body.step, answer, validate_answer)
     except desktop_setup.SetupChanged:
         return _error(409, "setup_changed", "引导进度已更新，请重试")
     except HomeMaintenanceError:
@@ -768,6 +767,7 @@ def _write_settings(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _patch_settings(org_id: str, body: Dict[str, Any], request: Request):
+    from src.utils.home_maintenance import HomeMaintenanceError
     root = _root(org_id)
     if not member_auth.principal(request, root).is_owner:
         return _error(403, "forbidden", "空间设置只有所有者能改")
@@ -775,6 +775,8 @@ async def _patch_settings(org_id: str, body: Dict[str, Any], request: Request):
         return _error(403, "forbidden", "改空间设置需要已认证的主人连接")
     try:
         return await asyncio.to_thread(_write_settings, root, body)
+    except HomeMaintenanceError:
+        return _error(409, "settings_busy", "工作区设置正在保存，请重试")
     except (ValueError, OSError) as error:
         return _error(400, "invalid", str(error))
 

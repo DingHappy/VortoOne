@@ -48,6 +48,8 @@ def _read(path: Path) -> dict | None:
     allowed = {"step", "mode", "name", "context", "workArea"}
     if set(state) - allowed or not all(isinstance(value, str) for value in state.values()):
         raise ValueError("本机引导数据无效")
+    if state == {"step": "inactive"}:
+        return state
     step, mode = state.get("step"), state.get("mode")
     if step == "purpose" and mode is None:
         return state
@@ -57,10 +59,10 @@ def _read(path: Path) -> dict | None:
 
 
 def read(root: str) -> dict | None:
-    if not enabled():
-        return None
     state = _read(state_dir(root) / FILE)
-    return state if state is not None else _read(Path(root) / LEGACY_FILE)
+    if state is None:
+        state = _read(Path(root) / LEGACY_FILE)
+    return None if state == {"step": "inactive"} else state
 
 
 def _write(path: Path, state: dict) -> None:
@@ -85,7 +87,7 @@ def _write(path: Path, state: dict) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def advance(root: str, step: str, answer: dict[str, str], apply_answer) -> dict | None:
+def advance(root: str, step: str, answer: dict[str, str], validate_answer) -> dict | None:
     if read(root) is None:
         return None
     state_home = state_dir(root)
@@ -105,7 +107,7 @@ def advance(root: str, step: str, answer: dict[str, str], apply_answer) -> dict 
                 raise ValueError("请填写当前步骤所需的信息")
             if step == "purpose" and value not in _STEPS:
                 raise ValueError("请选择工作区用途")
-            apply_answer(field, value)
+            validate_answer(field, value)
             state[field] = value
         steps = _STEPS[state["mode"]]
         state["step"] = steps[steps.index(step) + 1]
@@ -113,15 +115,12 @@ def advance(root: str, step: str, answer: dict[str, str], apply_answer) -> dict 
         return state
 
 
-def workspace(root: str) -> tuple[str | None, str | None]:
-    """Workspace presentation stays editable after completing the guide."""
+def preferences(root: str) -> dict:
+    """Initial answers serve as defaults for the ordinary workspace and profile settings."""
     try:
-        state = read(root)
+        return read(root) or {}
     except (ValueError, OSError):
-        return None, None
-    if state is None:
-        return None, None
-    return state.get("name"), state.get("mode")
+        return {}
 
 
 def rename_workspace(root: str, value: str) -> bool:
@@ -136,3 +135,10 @@ def rename_workspace(root: str, value: str) -> bool:
         state["name"] = value
         _write(state_home / FILE, state)
         return True
+
+
+def suppress_replaced_legacy(root: str, staging: Path) -> None:
+    """A legacy marker outside the replaced state directory belongs to the prior home."""
+    target = staging / FILE
+    if os.path.lexists(Path(root) / LEGACY_FILE) and not target.exists():
+        _write(target, {"step": "inactive"})

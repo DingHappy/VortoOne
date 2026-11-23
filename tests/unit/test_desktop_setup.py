@@ -93,6 +93,11 @@ def test_team_guide_restarts_at_model_and_finishes_with_editable_settings(instal
     renamed = final.patch(f"{org}/settings", json={"name": "改名后的工作区"}, headers=ORIGIN)
     assert renamed.status_code == 200
     assert final.get("/api/app/me").json()["organizations"][0]["name"] == "改名后的工作区"
+    cleared = final.patch(f"{org}/settings", json={"context": ""}, headers=ORIGIN)
+    assert cleared.status_code == 200 and cleared.json()["context"] == ""
+    assert final.get(f"{org}/settings").json()["context"] == ""
+    assert final.put("/api/app/me/work-area", json={"area": "ops"}, headers=ORIGIN).status_code == 204
+    assert final.get("/api/app/me").json()["user"]["workArea"] == "ops"
 
 
 def test_personal_guide_and_legacy_progress_never_reset(installed):
@@ -141,6 +146,9 @@ def test_writes_need_the_owner_browser_cookie_and_same_origin(installed):
     assert browser.patch(ROUTE, json=body, headers=ORIGIN).status_code == 401
     assert browser.patch(ROUTE, json=body, headers={**BEARER, **ORIGIN}).status_code == 403
     sign_in(browser)
+    wrong_scheme = browser.get("/api/app/me", headers={"Origin": BASE.replace("http://", "https://")})
+    assert wrong_scheme.status_code == 200
+    assert "desktopSetup" not in wrong_scheme.json()
     assert browser.patch(ROUTE, json=body).status_code == 403
     assert browser.patch(ROUTE, json=body, headers={"Origin": "https://other.example"}).status_code == 403
     assert browser.patch(ROUTE, json={**body, "name": "extra"}, headers=ORIGIN).status_code == 400
@@ -181,3 +189,48 @@ def test_unreadable_progress_never_looks_completed(installed):
     assert refused.status_code == 409
     assert refused.json()["error"]["code"] == "setup_unavailable"
     assert json.loads(marker.read_text()) == {"step": "bad"}
+
+
+def test_failed_progress_write_cannot_publish_the_answer(installed, monkeypatch):
+    from src.memory.assistant_profile import load_home_context
+    from src.workflow import desktop_setup
+
+    spawn, marker = installed
+    browser = spawn()
+    sign_in(browser)
+    advance(browser, "purpose", "name", mode="team")
+    advance(browser, "name", "business", name="测试工作区")
+
+    def disk_error(*args):
+        raise OSError("test disk unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(desktop_setup, "_write", disk_error)
+        failed = browser.patch(ROUTE, json={"step": "business", "context": "尚未落盘"}, headers=ORIGIN)
+    assert failed.status_code == 503
+    assert json.loads(marker.read_text()) == {"step": "business", "mode": "team", "name": "测试工作区"}
+    assert load_home_context(str(marker.parent.parent)) == ""
+    advance(browser, "business", "about", context="成功保存")
+    assert load_home_context(str(marker.parent.parent)) == "成功保存"
+
+
+@pytest.mark.parametrize("replace_kind", ["move", "restore"])
+def test_home_replacement_cannot_resurrect_legacy_setup(installed, tmp_path, replace_kind):
+    from src.workflow import home_backup, home_move
+
+    spawn, marker = installed
+    Path(LEGACY_FILE).write_text('{"step":"model","mode":"personal"}', encoding="utf-8")
+    marker.write_text('{"step":"done","mode":"personal"}', encoding="utf-8")
+    old = tmp_path / "test-source"
+    state_dir(old).mkdir(parents=True)
+    if replace_kind == "move":
+        package = tmp_path / "sample-home.tar.gz"
+        home_move.export_home(str(old), str(package))
+        with pytest.raises(home_move.MoveError, match="已经有数据"):
+            home_move.import_home(str(tmp_path), str(package))
+        home_move.import_home(str(tmp_path), str(package), replace=True)
+    else:
+        created = home_backup.backup(str(old), str(tmp_path / "backups"))
+        home_backup.restore(str(tmp_path), created["path"])
+    assert json.loads(marker.read_text()) == {"step": "inactive"}
+    sign_in(spawn(), "/")

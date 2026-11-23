@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from src.utils.state_dir import state_dir
 from src.utils.home_maintenance import HomeMaintenanceError, home_maintenance
+from src.workflow import desktop_setup
 from src.workflow.home_identity import HomeIdentityError
 
 FORMAT = "vortoone-home"
@@ -37,7 +38,7 @@ LEFT_BEHIND = frozenset({
     "runtime.lock", "worktrees", "worktree_bindings.json", "isolated_deliveries", "shadow.git", "logs",
     "ai_apps", "mobile-devices", "connected-computers", "computer-file-intents", "im-pairings", "im-bots", MARKER,
 })
-_DATA_ROOTS = ("sessions.db", "web_sessions", "staff", "members", "tasks", "memory", "main_chat.json", "connected-computers")
+_DATA_ROOTS = ("sessions.db", "web_sessions", "staff", "members", "tasks", "memory", "main_chat.json", "connected-computers", desktop_setup.FILE)
 
 
 class MoveError(ValueError):
@@ -119,7 +120,8 @@ def _export_home(root: str, destination: str, *, moving: bool) -> Dict[str, Any]
 
 
 def _has_data(state: Path) -> bool:
-    return any((state / name).exists() for name in _DATA_ROOTS)
+    return (any((state / name).exists() for name in _DATA_ROOTS)
+            or (state.parent / desktop_setup.LEGACY_FILE).exists())
 
 
 def _checked_members(archive: tarfile.TarFile) -> List[tarfile.TarInfo]:
@@ -194,6 +196,7 @@ def _import_home(root: str, package: str, *, replace: bool) -> Dict[str, Any]:
                 destination.chmod(0o600)
             from src.workflow.home_identity import prepare_replaced_home
             prepare_replaced_home(staging, "move-in")
+            desktop_setup.suppress_replaced_legacy(root, staging)
             if state.exists():
                 aside = state.with_name(f"{state.name}.before-import-{time.time_ns()}")
                 state.rename(aside)
