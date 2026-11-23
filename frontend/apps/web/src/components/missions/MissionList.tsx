@@ -137,9 +137,15 @@ function MissionCard({ mission: m }: { mission: Mission }) {
       icon: "thread",
       run: () => void navigate(threadLink),
     },
-    ...(open && m.canManage
+    ...(open && (m.canManage || m.canCancelDraft)
       ? ([
-          { kind: "item", id: "close", label: t("missions.actions.close"), icon: "check", run: () => setClosing(true) },
+          {
+            kind: "item",
+            id: "close",
+            label: t(m.canCancelDraft ? "missions.close.cancelDraft" : "missions.actions.close"),
+            icon: "check",
+            run: () => setClosing(true),
+          },
         ] satisfies MenuEntry[])
       : []),
   ];
@@ -216,7 +222,7 @@ function MissionCard({ mission: m }: { mission: Mission }) {
           {t("missions.list.openThread")}
         </Button>
       </div>
-      {closing && <CloseMissionDialog mission={m} open={closing} onOpenChange={setClosing} />}
+      {closing && open && <CloseMissionDialog mission={m} open={closing} onOpenChange={setClosing} />}
     </article>
   );
 }
