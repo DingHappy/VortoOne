@@ -48,6 +48,12 @@
     ]
   },
   {
+    "path": "/api/app/email-undo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/feedback/files",
     "methods": [
       "POST"
@@ -174,6 +180,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/cancel",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/keep",
     "methods": [
       "POST"
@@ -189,6 +201,12 @@
     "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/sharing",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/autonomy-proposals/{signal_id}",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -300,6 +318,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/me/agent-style",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/memories/{memory_id}/revert",
     "methods": [
       "POST"
@@ -336,6 +360,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/refs/{ref_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/reminders",
     "methods": [
       "GET"
@@ -351,6 +381,12 @@
     "path": "/api/app/organizations/{org_id}/reminders/{reminder_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/continue",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -525,6 +561,12 @@
     "path": "/api/app/organizations/{org_id}/usage/report",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/items/{item_id}/move",
+    "methods": [
+      "POST"
     ]
   },
   {

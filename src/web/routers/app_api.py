@@ -2246,6 +2246,51 @@ async def mute_team_channel(org_id: str, channel_id: str, request: Request, body
         _team_receipt(lambda: service.set_muted(actor, channel_id, request.method == "PUT")), channel_id=channel_id))
 
 
+@router.get(_ORG + "/refs/{ref_id}")
+async def id_ref(org_id: str, ref_id: str, request: Request):
+    """文字里的内部编号显示成小标签：看板任务、频道消息、制品。每一种都按它原有的可见性核对，
+    看不到的和不存在的一律 404（不说是哪一种）。"""
+    from src.web import app_board
+    from src.workflow.board.store import Board, NotFound
+    from src.workflow.members.registry import Damaged, Missing, Refused
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    if not 1 <= len(ref_id) <= 128:
+        return _error(404, "not_found", "没有这个编号")
+
+    def resolve():
+        try:
+            issue = Board(root).issue(ref_id)
+            if app_board.can_see(issue, who):
+                return {"kind": "task", "id": issue["id"], "number": issue["number"], "title": issue["title"]}
+        except (NotFound, ValueError, OSError):
+            pass
+        try:
+            card = app_channels.channels(root).message_details(
+                who, ref_id, load_agents=lambda: app_channels.channel_agents(root))
+            return {"kind": "message", "message": card}
+        except (Missing, Refused, Damaged, LookupError, ValueError, OSError):
+            pass
+        if who.is_owner:
+            try:
+                found = views.artifact(root, ref_id, None)
+            except (OSError, ValueError):
+                found = None
+            if found is not None:
+                return {"kind": "file", "id": found["id"], "title": found.get("title") or found["id"],
+                        "artifactKind": found.get("kind") or "file", "fileName": None, "contentType": None}
+        return None
+
+    found = await asyncio.to_thread(resolve)
+    if found is None:
+        return _error(404, "not_found", "没有这个编号")
+    return JSONResponse(found, headers={"Cache-Control": "no-store"})
+
+
 @router.get(_ORG + "/messages/{message_id}/card")
 async def team_message_card(org_id: str, message_id: str, request: Request):
     return await _team_call(request, org_id, lambda service, actor: service.message_details(
@@ -5073,6 +5118,57 @@ async def drop_feedback_file(file_id: str, request: Request):
 async def feedback_offer(message_id: str, body: Dict[str, Any], request: Request):
     """agent 主动提出的反馈报告还没有：没有这条。"""
     return _error(404, "feedback.offer_not_found", "没有这条反馈提议")
+
+
+# ── 零散的如实回答（2026-11-24）──────────────────────────────────────────────────
+
+@router.post(_ORG + "/approvals/{approval_id}/cancel")
+async def cancel_approval(org_id: str, approval_id: str, request: Request):
+    """撤回一项提前批准、还没到时候执行的操作：这里没有提前批准（每次都当场问）。"""
+    return _owner_gate(request, org_id) or _error(409, "approval.not_ahead", "这里没有提前批准的操作：每一项都在当时问你")
+
+
+@router.post(_ORG + "/autonomy-proposals/{signal_id}")
+async def decide_costly_proposal(org_id: str, signal_id: str, body: Dict[str, Any], request: Request):
+    """agent 主动提出、没人要求的高花费工作：还没有这种提议。"""
+    return _owner_gate(request, org_id) or _error(404, "autonomy_proposal.not_found", "没有这条提议")
+
+
+@router.post(_ORG + "/routines/{routine_id}/continue")
+async def continue_routine_usage(org_id: str, routine_id: str, request: Request):
+    """额度快用完时暂停的那一次「现在接着做」：额度等待由额度设置决定，这里不跳过。"""
+    return _owner_gate(request, org_id) or _error(409, "routine.continue_unavailable",
+                                                  "不能跳过额度接着做：调高额度后它会自己接着做，或者停下再重新运行")
+
+
+class _AgentStyle(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+@router.put(_ORG + "/me/agent-style")
+async def set_agent_style(org_id: str, body: _AgentStyle, request: Request):
+    """按个人改 agent 跟你说话的方式还没有：agent 的口吻在它自己的设置里（对所有人一样）。"""
+    return _owner_gate(request, org_id, members_too=True) or _error(
+        409, "agent_style.unavailable", "还不能按个人改 agent 说话的方式：口吻在 agent 自己的设置里")
+
+
+@router.post(_ORG + "/vault/items/{item_id}/move")
+async def move_vault_item(org_id: str, item_id: str, body: Dict[str, Any], request: Request):
+    """保险库没有文件夹：没有可以移去的地方。"""
+    return _owner_gate(request, org_id) or _error(409, "vault.no_folders", "保险库没有文件夹，条目不用移动")
+
+
+class _EmailUndo(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    token: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/api/app/email-undo")
+async def undo_email_change(body: _EmailUndo, request: Request):
+    """「不是我改的」：这里还不能改登录邮箱，也就没有要撤回的改动。"""
+    if not member_auth.same_origin(request):
+        return _error(403, "forbidden", "这里现在不能撤回")
+    return _error(404, "email.undo_gone", "没有要撤回的邮箱改动")
 
 
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────
