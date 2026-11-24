@@ -41,6 +41,10 @@ def get_api_token() -> str:
 SESSION_COOKIE = "vortocode_session"
 
 
+# 公开下载页只读取发行元数据。仅放行已登记的读取方法。
+PUBLIC_DOWNLOAD_ROUTES = frozenset({("GET", "/api/desktop/latest")})
+
+
 # 鉴权豁免：页面 HTML 外壳（本身不含数据，数据走各自需鉴权的 API）、API 文档、健康检查、
 # 登录/状态端点（必须能在鉴权前访问，否则没法登录）。
 # 浏览器对话台与 PWA 已于 2026-10-17 退役；剩下的页面只有服务首页 / 与流水线审批台 /review。
@@ -172,7 +176,8 @@ async def auth_middleware(request, call_next):
     path = request.url.path
     exempt = (path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIXES)
               or (request.method, path) in MOBILE_SELF_AUTHENTICATED
-              or (request.method, path) in COMPUTER_SELF_AUTHENTICATED)
+              or (request.method, path) in COMPUTER_SELF_AUTHENTICATED
+              or (request.method, path) in PUBLIC_DOWNLOAD_ROUTES)
     refused = 0
     if not exempt and not _token_ok(request):
         # 主人令牌没过：成员的会话只在它自己的白名单接口上算数（web/member_auth.py），其余一律不放行
