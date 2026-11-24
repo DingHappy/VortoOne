@@ -48,6 +48,30 @@
     ]
   },
   {
+    "path": "/api/app/account",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/account/deletion",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/account/deletion",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/account/deletion/code",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/device-accounts/switch",
     "methods": [
       "POST"
@@ -273,6 +297,24 @@
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/follow-ups",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/deletion",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/deletion",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/deletion/code",
+    "methods": [
+      "POST"
     ]
   },
   {
