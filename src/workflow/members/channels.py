@@ -451,14 +451,15 @@ class TeamChannels:
         _, access = self._find(state, actor, channel_id, archived=False, joined=True)
         return "talk_to_agents" in access.permissions
 
-    def post_as_agent(self, channel_id, staff_id, agent_id, text, *, thread, client, cards_of=None):
+    def post_as_agent(self, channel_id, staff_id, agent_id, text, *, thread, client, cards_of=None, mission_card=None):
         """agent 交回的话。发之前再核对一次：频道还在、没归档、agent 还在里面；不满足就不发（抛 Missing）。
         client 让同一件事的回答只发一次（重试、重启后补发都落到同一条）。"""
         with self.registry._locked_state() as state:
             channel = state["channels"].get(channel_id)
             if channel is None or channel["archived"] or staff_id not in (channel.get("agents") or {}):
                 raise Missing("agent 已不在这个频道里，没有发出回答")
-            message = self.history.append(channel_id, AGENT_AUTHOR + agent_id, text, client, thread, None, False)
+            message = self.history.append(channel_id, AGENT_AUTHOR + agent_id, text, client, thread, None, False,
+                                          mission_card=mission_card)
             if cards_of is not None:                # 这件事发的投票、选择卡：和回答同时出现，不留空档
                 self.cards.attach(cards_of, message["id"])
                 message = self.history.messages(channel_id, None, thread=thread, after=message["sequence"] - 1,

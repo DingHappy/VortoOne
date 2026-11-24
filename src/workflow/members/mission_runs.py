@@ -26,6 +26,10 @@ class WrongStatus(ValueError):
     """The mission is not in a state that allows this action."""
 
 
+class BadOption(ValueError):
+    """The chosen option is not one the agent offered."""
+
+
 def _now():
     return _stamp(datetime.now(timezone.utc))
 
@@ -194,6 +198,8 @@ class MissionRuns:
                 row = self.drafts._load(conn, mission_id)
                 if row is None or row["current_status"] != "active" or self._open_step(conn, mission_id):
                     return None
+                if _has_table(conn, "mission_decisions") and any(_open_cards(conn, mission_id)):
+                    return None                         # 等人拍板或验收
                 if row["run_steps"] >= MAX_STEPS:
                     self._pause(conn, mission_id, "step_limit")
                     return None
@@ -250,6 +256,12 @@ class MissionRuns:
             if outcome != "done":
                 self._pause(conn, mission_id, "failed")
                 return mission_id, "failed"
+            blocking, delivery = _open_cards(conn, mission_id) if _has_table(conn, "mission_decisions") else (0, 0)
+            if delivery:
+                conn.execute("UPDATE mission_runs SET status = 'awaiting_close' WHERE mission_id = ?", (mission_id,))
+                return mission_id, "delivered"
+            if blocking:
+                return mission_id, "waiting"            # 还是进行中：有人拍板后接着做
             plans = self._plans(conn, mission_id)
             if not plans:
                 self._pause(conn, mission_id, "no_plan")
@@ -299,7 +311,11 @@ class MissionRuns:
                 raise WrongStatus("只有暂停或等收尾的任务能继续")
             conn.execute("UPDATE mission_runs SET status = 'active', paused_at = NULL, pause_reason = NULL, steps = 0"
                          " WHERE mission_id = ?", (mission_id,))
-            task_id = None if self._open_step(conn, mission_id) else self._claim(conn, mission_id, "resume")
+            if row["current_status"] == "awaiting_close" and _has_table(conn, "mission_deliveries"):
+                conn.execute("UPDATE mission_deliveries SET status = 'superseded' WHERE mission_id = ?"
+                             " AND status = 'pending'", (mission_id,))      # 不验收直接继续：那份交付作废
+            waiting = _has_table(conn, "mission_decisions") and _open_cards(conn, mission_id)[0]
+            task_id = None if self._open_step(conn, mission_id) or waiting else self._claim(conn, mission_id, "resume")
             return dict(self.drafts._load(conn, mission_id)), task_id
 
     def stop(self, actor, mission_id):
@@ -345,3 +361,310 @@ def runs_for(root):
     """执行回调和 agent 工具用：不核对看的人（调用方是已经核对过、正在做这一步的任务）。"""
     from src.workflow.members.channels import TeamChannels
     return MissionRuns(MissionDrafts(TeamChannels(root, "")))
+
+
+# ── 决定和交付（主人 2026-11-23 定）────────────────────────────────────────────
+# agent 在一步里提出：要拍板的问题（blocking 时这一步后停下等人；不阻塞且给了建议的，按建议先做，
+# 等人确认或改选），以及交付（这一步后等所有者验收：完成，或提出修改再接着做）。
+# 卡片跟着这一步的回答发在话题里；拍板的结果写进下一步的提示，作为资料。
+
+MAX_CARDS_PER_STEP = 3
+MAX_CHECKLIST = 20
+
+
+def _text(value, limit, what, *, required=True):
+    if value is None and not required:
+        return None
+    if not isinstance(value, str) or (required and not value.strip()) or len(value) > limit:
+        raise ValueError(f"{what}要在 {limit} 字以内" + ("且不能为空" if required else ""))
+    return " ".join(value.split()) or None
+
+
+def check_decision(args):
+    if not isinstance(args, dict) or set(args) - {"question", "options", "recommendation", "why", "impact", "blocking"}:
+        raise ValueError("只能有 question、options、recommendation、why、impact、blocking")
+    options = args.get("options")
+    if not isinstance(options, list) or not 2 <= len(options) <= 6:
+        raise ValueError("要有 2～6 个选项")
+    clean = [_text(option, 120, "每个选项") for option in options]
+    if len(set(clean)) != len(clean):
+        raise ValueError("选项不能重复")
+    recommendation = _text(args.get("recommendation"), 120, "建议", required=False)
+    if recommendation is not None and recommendation not in clean:
+        raise ValueError("建议要是选项之一")
+    blocking = args.get("blocking", True)
+    if type(blocking) is not bool:
+        raise ValueError("blocking 只能是 true 或 false")
+    return {"question": _text(args.get("question"), 300, "问题"), "options": clean, "recommendation": recommendation,
+            "why": _text(args.get("why"), 600, "理由", required=False),
+            "impact": _text(args.get("impact"), 600, "影响", required=False), "blocking": blocking}
+
+
+def check_delivery(args):
+    if not isinstance(args, dict) or set(args) - {"summary", "checklist"}:
+        raise ValueError("只能有 summary、checklist")
+    checklist = args.get("checklist", [])
+    if not isinstance(checklist, list) or len(checklist) > MAX_CHECKLIST:
+        raise ValueError(f"检查项最多 {MAX_CHECKLIST} 条")
+    return {"summary": _text(args.get("summary"), 4000, "交付说明"),
+            "checklist": [{"id": f"c{index + 1}", "text": _text(item, 200, "每条检查项")}
+                          for index, item in enumerate(checklist)]}
+
+
+def _open_cards(conn, mission_id):
+    """还在等人的：阻塞的决定、待验收的交付。"""
+    blocking = conn.execute("SELECT count(*) FROM mission_decisions WHERE mission_id = ? AND status = 'pending'"
+                            " AND blocking = 1 AND message_id IS NOT NULL", (mission_id,)).fetchone()[0]
+    delivery = conn.execute("SELECT count(*) FROM mission_deliveries WHERE mission_id = ? AND status = 'pending'"
+                            " AND message_id IS NOT NULL", (mission_id,)).fetchone()[0]
+    return blocking, delivery
+
+
+class MissionCards:
+    """决定和交付。写操作都在登记锁内核对（和 MissionRuns 同一把）。"""
+
+    def __init__(self, runs: MissionRuns):
+        self.runs = runs
+        self.drafts = runs.drafts
+        self.channels = runs.channels
+        self.history = runs.history
+
+    # ── agent 在一步里提出 ──
+    def _step(self, conn, task_id):
+        step = conn.execute("SELECT * FROM mission_steps WHERE task_id = ?", (task_id,)).fetchone()
+        if step is None or step["finished"] is not None:
+            raise WrongStatus("这一步已经结束")
+        row = self.drafts._load(conn, step["mission_id"])
+        if row is None or row["current_status"] not in ("active", "paused"):
+            raise WrongStatus("这个任务已经收尾")
+        made = conn.execute("SELECT (SELECT count(*) FROM mission_decisions WHERE task_id = ?)"
+                            " + (SELECT count(*) FROM mission_deliveries WHERE task_id = ?)", (task_id, task_id)).fetchone()[0]
+        if made >= MAX_CARDS_PER_STEP:
+            raise ValueError(f"一步最多提 {MAX_CARDS_PER_STEP} 张卡")
+        return step
+
+    def propose_decision(self, task_id, args):
+        clean = check_decision(args)
+        with self.channels.registry._locked_state(), self.history.database(write=True) as conn:
+            step = self._step(conn, task_id)
+            status = "provisional" if not clean["blocking"] and clean["recommendation"] else "pending"
+            decision_id = "decision-" + uuid.uuid4().hex
+            conn.execute("INSERT INTO mission_decisions (id, mission_id, task_id, question, options, recommendation,"
+                         " why, impact, blocking, status, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         (decision_id, step["mission_id"], task_id, clean["question"],
+                          json.dumps(clean["options"], ensure_ascii=False), clean["recommendation"], clean["why"],
+                          clean["impact"], int(clean["blocking"]), status, _now()))
+            return status
+
+    def propose_delivery(self, task_id, args):
+        clean = check_delivery(args)
+        with self.channels.registry._locked_state(), self.history.database(write=True) as conn:
+            step = self._step(conn, task_id)
+            if conn.execute("SELECT 1 FROM mission_deliveries WHERE task_id = ?", (task_id,)).fetchone():
+                raise ValueError("这一步已经交付过了")
+            conn.execute("INSERT INTO mission_deliveries (id, mission_id, task_id, summary, checklist, status, created)"
+                         " VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+                         ("delivery-" + uuid.uuid4().hex, step["mission_id"], task_id, clean["summary"],
+                          json.dumps(clean["checklist"], ensure_ascii=False), _now()))
+
+    def unposted(self, task_id):
+        """这一步提的、还没发到话题里的卡（发回答之后逐张发）。"""
+        with self.history.database() as conn:
+            if not _has_table(conn, "mission_decisions"):
+                return []
+            rows = [("decision", dict(row)) for row in conn.execute(
+                "SELECT * FROM mission_decisions WHERE task_id = ? AND message_id IS NULL ORDER BY created", (task_id,))]
+            rows += [("delivery", dict(row)) for row in conn.execute(
+                "SELECT * FROM mission_deliveries WHERE task_id = ? AND message_id IS NULL ORDER BY created", (task_id,))]
+            return rows
+
+    def posted(self, kind, card_id, message_id):
+        table = "mission_decisions" if kind == "decision" else "mission_deliveries"
+        with self.channels.registry._locked_state(), self.history.database(write=True) as conn:
+            conn.execute(f"UPDATE {table} SET message_id = ? WHERE id = ? AND message_id IS NULL", (message_id, card_id))
+
+    # ── 读 ──
+    def _decision_view(self, conn, row):
+        opinions = [{"userId": self.history.person_id(o["person"]), "option": o["option"], "at": o["created"]}
+                    for o in conn.execute("SELECT * FROM mission_decision_opinions WHERE decision_id = ? ORDER BY created",
+                                          (row["id"],))]
+        return {"id": row["id"], "missionId": row["mission_id"], "taskId": row["task_id"], "messageId": row["message_id"],
+                "question": row["question"], "options": json.loads(row["options"]),
+                "recommendation": row["recommendation"], "why": row["why"], "impact": row["impact"],
+                "blocking": bool(row["blocking"]), "status": row["status"], "chosen": row["chosen"],
+                "chosenBy": self.history.person_id(row["chosen_by"]) if row["chosen_by"] else None,
+                "chosenAt": row["chosen_at"], "opinions": opinions, "createdAt": row["created"]}
+
+    def _delivery_view(self, conn, row):
+        checks = {}
+        for check in conn.execute("SELECT item_id, person FROM mission_delivery_checks WHERE delivery_id = ? ORDER BY person",
+                                  (row["id"],)):
+            checks.setdefault(check["item_id"], []).append(self.history.person_id(check["person"]))
+        return {"id": row["id"], "missionId": row["mission_id"], "taskId": row["task_id"], "messageId": row["message_id"],
+                "auto": False, "summary": row["summary"], "artifactIds": [], "paths": [],
+                "checklist": [{**item, "checkedBy": checks.get(item["id"], [])} for item in json.loads(row["checklist"])],
+                "status": row["status"], "note": row["note"], "saveToWiki": False,
+                "decidedBy": self.history.person_id(row["decided_by"]) if row["decided_by"] else None,
+                "decidedAt": row["decided_at"], "createdAt": row["created"]}
+
+    def decisions(self, actor, mission_id):
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            self.drafts._get_visible(conn, state, actor, mission_id)
+            if not _has_table(conn, "mission_decisions"):
+                return []
+            return [self._decision_view(conn, row) for row in conn.execute(
+                "SELECT * FROM mission_decisions WHERE mission_id = ? AND message_id IS NOT NULL ORDER BY created",
+                (mission_id,))]
+
+    def deliveries(self, actor, mission_id):
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            self.drafts._get_visible(conn, state, actor, mission_id)
+            if not _has_table(conn, "mission_deliveries"):
+                return []
+            return [self._delivery_view(conn, row) for row in conn.execute(
+                "SELECT * FROM mission_deliveries WHERE mission_id = ? AND message_id IS NOT NULL ORDER BY created",
+                (mission_id,))]
+
+    def counts(self, mission_id):
+        """{decisions, provisional, deliveries}：还在等人的（已经发到话题里的）。"""
+        with self.history.database() as conn:
+            if not _has_table(conn, "mission_decisions"):
+                return {"decisions": 0, "provisional": 0, "deliveries": 0}
+            pending = dict(conn.execute("SELECT status, count(*) FROM mission_decisions WHERE mission_id = ?"
+                                        " AND message_id IS NOT NULL AND status != 'taken' GROUP BY status", (mission_id,)))
+            delivery = conn.execute("SELECT count(*) FROM mission_deliveries WHERE mission_id = ? AND status = 'pending'"
+                                    " AND message_id IS NOT NULL", (mission_id,)).fetchone()[0]
+            return {"decisions": pending.get("pending", 0), "provisional": pending.get("provisional", 0),
+                    "deliveries": delivery}
+
+    def taken_since(self, mission_id, limit=10):
+        """写进下一步提示的：人拍过板的决定（最近几条）和最近一次提出修改的交付。"""
+        with self.history.database() as conn:
+            if not _has_table(conn, "mission_decisions"):
+                return [], None
+            taken = [dict(row) for row in conn.execute(
+                "SELECT question, chosen, status, recommendation FROM mission_decisions WHERE mission_id = ?"
+                " AND message_id IS NOT NULL ORDER BY created DESC LIMIT ?", (mission_id, limit))]
+            change = conn.execute("SELECT summary, note FROM mission_deliveries WHERE mission_id = ?"
+                                  " AND status = 'changes_requested' ORDER BY decided_at DESC LIMIT 1", (mission_id,)).fetchone()
+            return list(reversed(taken)), (dict(change) if change else None)
+
+    # ── 人拍板 ──
+    def _decision(self, conn, state, actor, mission_id, decision_id):
+        row = self.drafts._get_visible(conn, state, actor, mission_id)
+        decision = conn.execute("SELECT * FROM mission_decisions WHERE id = ? AND mission_id = ? AND message_id IS NOT NULL",
+                                (decision_id, mission_id)).fetchone() if _has_table(conn, "mission_decisions") else None
+        if decision is None:
+            raise Missing("没有这个决定")
+        return row, decision
+
+    def choose(self, actor, mission_id, decision_id, option):
+        """拍板。返回 (决定视图, 要不要接着派下一步)。同一选项重复点不报错。"""
+        self.drafts._owner(actor)
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row, decision = self._decision(conn, state, actor, mission_id, decision_id)
+            if option not in json.loads(decision["options"]):
+                raise BadOption("不是这个决定的选项")
+            if decision["status"] == "taken":
+                if decision["chosen"] != option:
+                    raise WrongStatus("这个决定已经拍板了")
+                return self._decision_view(conn, decision), False
+            if row["current_status"] in ("done", "canceled"):
+                raise WrongStatus("这个任务已经收尾")
+            conn.execute("UPDATE mission_decisions SET status = 'taken', chosen = ?, chosen_by = ?, chosen_at = ?"
+                         " WHERE id = ?", (option, self.channels._actor_key(actor), _now(), decision_id))
+            blocking, delivery = _open_cards(conn, mission_id)
+            proceed = (bool(decision["blocking"]) and row["current_status"] == "active" and not blocking
+                       and not delivery and self.runs._open_step(conn, mission_id) is None)
+            fresh = conn.execute("SELECT * FROM mission_decisions WHERE id = ?", (decision_id,)).fetchone()
+            return self._decision_view(conn, fresh), proceed
+
+    def opinion(self, actor, mission_id, decision_id, option):
+        """表态：只记下谁倾向哪个，不拍板。再表一次是替换。"""
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row, decision = self._decision(conn, state, actor, mission_id, decision_id)
+            if option not in json.loads(decision["options"]):
+                raise BadOption("不是这个决定的选项")
+            if decision["status"] == "taken" or row["current_status"] in ("done", "canceled"):
+                raise WrongStatus("这个决定已经拍板了")
+            conn.execute("INSERT INTO mission_decision_opinions (decision_id, person, option, created) VALUES (?, ?, ?, ?)"
+                         " ON CONFLICT(decision_id, person) DO UPDATE SET option = excluded.option, created = excluded.created",
+                         (decision_id, self.channels._actor_key(actor), option, _now()))
+            return self._decision_view(conn, decision)
+
+    def approve_provisional(self, actor, mission_id):
+        """agent 按建议先做了的决定：一次全部确认。返回确认了的。"""
+        self.drafts._owner(actor)
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row = self.drafts._get_visible(conn, state, actor, mission_id)
+            if row["current_status"] in ("done", "canceled"):
+                raise WrongStatus("这个任务已经收尾")
+            if not _has_table(conn, "mission_decisions"):
+                return []
+            ids = [r[0] for r in conn.execute("SELECT id FROM mission_decisions WHERE mission_id = ? AND status = 'provisional'"
+                                              " AND message_id IS NOT NULL", (mission_id,))]
+            key, now = self.channels._actor_key(actor), _now()
+            for decision_id in ids:
+                conn.execute("UPDATE mission_decisions SET status = 'taken', chosen = recommendation, chosen_by = ?,"
+                             " chosen_at = ? WHERE id = ?", (key, now, decision_id))
+            return [self._decision_view(conn, r) for r in conn.execute(
+                f"SELECT * FROM mission_decisions WHERE id IN ({','.join('?' for _ in ids)}) ORDER BY created", ids)] if ids else []
+
+    def _delivery(self, conn, state, actor, mission_id, delivery_id):
+        row = self.drafts._get_visible(conn, state, actor, mission_id)
+        delivery = conn.execute("SELECT * FROM mission_deliveries WHERE id = ? AND mission_id = ? AND message_id IS NOT NULL",
+                                (delivery_id, mission_id)).fetchone() if _has_table(conn, "mission_deliveries") else None
+        if delivery is None:
+            raise Missing("没有这份交付")
+        return row, delivery
+
+    def check(self, actor, mission_id, delivery_id, item_id, checked):
+        """勾掉（或取消）一条检查项：每个人各勾各的。"""
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            _, delivery = self._delivery(conn, state, actor, mission_id, delivery_id)
+            if item_id not in {item["id"] for item in json.loads(delivery["checklist"])}:
+                raise Missing("没有这条检查项")
+            if delivery["status"] != "pending":
+                raise WrongStatus("这份交付已经有结论了")
+            key = self.channels._actor_key(actor)
+            if checked:
+                conn.execute("INSERT OR IGNORE INTO mission_delivery_checks (delivery_id, item_id, person) VALUES (?, ?, ?)",
+                             (delivery_id, item_id, key))
+            else:
+                conn.execute("DELETE FROM mission_delivery_checks WHERE delivery_id = ? AND item_id = ? AND person = ?",
+                             (delivery_id, item_id, key))
+            return self._delivery_view(conn, delivery)
+
+    def conclude(self, actor, mission_id, delivery_id, outcome, note):
+        """验收：accepted（Mission 完成）或 changes_requested（Mission 回到进行中，接着做）。
+        返回 (交付视图, 要不要接着派下一步, 要停下的那一步的任务 id)。同样的结论重复发不报错。"""
+        self.drafts._owner(actor)
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row, delivery = self._delivery(conn, state, actor, mission_id, delivery_id)
+            if delivery["status"] != "pending":
+                if (delivery["status"], delivery["note"]) != (outcome, note):
+                    raise WrongStatus("这份交付已经有结论了")
+                return self._delivery_view(conn, delivery), False, None
+            if row["current_status"] in ("done", "canceled"):
+                raise WrongStatus("这个任务已经收尾")
+            now = _now()
+            conn.execute("UPDATE mission_deliveries SET status = ?, note = ?, decided_by = ?, decided_at = ? WHERE id = ?",
+                         (outcome, note, self.channels._actor_key(actor), now, delivery_id))
+            proceed = False
+            if outcome == "accepted":
+                step = self.runs._mark_stop(conn, mission_id)
+                conn.execute("UPDATE mission_runs SET status = 'done', closed_at = ?, close_note = ? WHERE mission_id = ?",
+                             (now, note, mission_id))
+                stop = step["task_id"] if step else None
+            else:
+                conn.execute("UPDATE mission_runs SET status = 'active', paused_at = NULL, pause_reason = NULL, steps = 0"
+                             " WHERE mission_id = ?", (mission_id,))
+                blocking, _ = _open_cards(conn, mission_id)
+                proceed = not blocking and self.runs._open_step(conn, mission_id) is None
+                stop = None
+            fresh = conn.execute("SELECT * FROM mission_deliveries WHERE id = ?", (delivery_id,)).fetchone()
+            return self._delivery_view(conn, fresh), proceed, stop
+
+
+def cards_for(root):
+    return MissionCards(runs_for(root))

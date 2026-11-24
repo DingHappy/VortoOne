@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS messages (
     media TEXT,
     thread_range TEXT,
     removed INTEGER NOT NULL DEFAULT 0,
+    mission_card TEXT,
     UNIQUE (channel, author, client)
 );
 CREATE INDEX IF NOT EXISTS messages_in_channel ON messages(channel, sequence);
@@ -127,6 +128,51 @@ CREATE TABLE IF NOT EXISTS mission_plans (
     created TEXT NOT NULL,
     PRIMARY KEY (mission_id, version)
 );
+CREATE TABLE IF NOT EXISTS mission_decisions (
+    id TEXT PRIMARY KEY NOT NULL,
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    task_id TEXT,
+    message_id TEXT,
+    question TEXT NOT NULL,
+    options TEXT NOT NULL,
+    recommendation TEXT,
+    why TEXT,
+    impact TEXT,
+    blocking INTEGER NOT NULL CHECK(blocking IN (0, 1)),
+    status TEXT NOT NULL CHECK(status IN ('pending', 'provisional', 'taken')),
+    chosen TEXT,
+    chosen_by TEXT,
+    chosen_at TEXT,
+    created TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mission_decisions_of ON mission_decisions(mission_id, created);
+CREATE TABLE IF NOT EXISTS mission_decision_opinions (
+    decision_id TEXT NOT NULL REFERENCES mission_decisions(id) ON DELETE CASCADE,
+    person TEXT NOT NULL,
+    option TEXT NOT NULL,
+    created TEXT NOT NULL,
+    PRIMARY KEY (decision_id, person)
+);
+CREATE TABLE IF NOT EXISTS mission_deliveries (
+    id TEXT PRIMARY KEY NOT NULL,
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    task_id TEXT,
+    message_id TEXT,
+    summary TEXT NOT NULL,
+    checklist TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'changes_requested', 'superseded')),
+    note TEXT,
+    decided_by TEXT,
+    decided_at TEXT,
+    created TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mission_deliveries_of ON mission_deliveries(mission_id, created);
+CREATE TABLE IF NOT EXISTS mission_delivery_checks (
+    delivery_id TEXT NOT NULL REFERENCES mission_deliveries(id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,
+    person TEXT NOT NULL,
+    PRIMARY KEY (delivery_id, item_id, person)
+);
 """
 
 REACTION_MAX_LENGTH = 32
@@ -207,6 +253,8 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE messages ADD COLUMN thread_range TEXT")
     if "removed" not in columns:
         conn.execute("ALTER TABLE messages ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
+    if "mission_card" not in columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN mission_card TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS live_thread_ranges ON messages(channel, sequence) "
                  "WHERE thread_range IS NOT NULL AND removed = 0")
 
@@ -261,6 +309,10 @@ class ChannelHistory:
                 meta["voice"] = {key: value for key, value in media.items() if key != "kind"}
             else:
                 meta["media"] = media
+        card = row["mission_card"] if "mission_card" in row.keys() else None
+        if card:                                    # Mission 的决定卡、交付卡：界面按 id 去取内容
+            kind, mission_id, card_id = card.split(":", 2)
+            meta["missionDecision" if kind == "decision" else "missionDelivery"] = {"missionId": mission_id, "id": card_id}
         if self.cards is not None and row["author"].startswith(AGENT_AUTHOR):
             cards = self.cards.by_message([row["id"]]).get(row["id"])
             if cards:
@@ -397,7 +449,7 @@ class ChannelHistory:
             "SELECT author FROM messages WHERE channel = ? AND thread = ? GROUP BY author "
             "ORDER BY min(sequence) LIMIT 5", (channel, root_id))]
 
-    def append(self, channel, actor, body, client, thread, reply_to, opened, media=None):
+    def append(self, channel, actor, body, client, thread, reply_to, opened, media=None, mission_card=None):
         media = check_media(media)
         stored = json.dumps(media, ensure_ascii=False, sort_keys=True) if media else None
         with self.database(write=True) as conn:
@@ -419,9 +471,9 @@ class ChannelHistory:
             now = self._next_stamp(conn, channel)
             message_id = str(uuid.uuid4())
             conn.execute(
-                "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened, media) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (message_id, channel, actor, body, now, client, thread, reply_to, int(opened), stored))
+                "INSERT INTO messages(id, channel, author, body, created, client, thread, reply_to, opened, media,"
+                " mission_card) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (message_id, channel, actor, body, now, client, thread, reply_to, int(opened), stored, mission_card))
             if thread is not None:
                 channel_threads.apply(conn, channel, thread, actor, "reopen", now)
             return self.message(self.find(conn, channel, message_id), actor)

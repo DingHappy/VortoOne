@@ -2562,6 +2562,54 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/decisions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/decisions/approve-provisional",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/decisions/{decision_id}/choose",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/decisions/{decision_id}/opinion",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/deliveries",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/deliveries/{delivery_id}/accept",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/deliveries/{delivery_id}/changes",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/deliveries/{delivery_id}/checks/{item_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/executor",
     "methods": [
       "PUT"

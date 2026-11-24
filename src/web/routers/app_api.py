@@ -3567,8 +3567,10 @@ def _mission_progress(items=()):
             "doing": statuses.count("doing"), "waiting": statuses.count("waiting_you")}
 
 
-def _mission_view(drafts, row, *, plan=None, running=0):
-    """plan：最新一版计划（{"version", "items"}，没有就 None）；running：正在做的步数。"""
+def _mission_view(drafts, row, *, plan=None, running=0, pending=None):
+    """plan：最新一版计划（{"version", "items"}，没有就 None）；running：正在做的步数；
+    pending：还在等人的决定和交付（{decisions, provisional, deliveries}）。"""
+    pending = pending or {}
     channels = drafts.channels
     status = row["current_status"]
     items = plan["items"] if plan else []
@@ -3582,8 +3584,9 @@ def _mission_view(drafts, row, *, plan=None, running=0):
         "repoDir": "", "resumeTasks": bool(row["resume_tasks"]), "commandApproval": "always",
         "plan": {"version": plan["version"] if plan else 0, **_mission_progress(items),
                  "items": [{"id": item["id"], "title": item["title"], "status": item["status"]} for item in items]},
-        "pending": {"decisions": 0, "provisional": 0, "reviews": 0, "suggestions": 0,
-                    "joinRequests": 0, "commands": 0, "deliveries": 0},
+        "pending": {"decisions": pending.get("decisions", 0), "provisional": pending.get("provisional", 0),
+                    "reviews": 0, "suggestions": 0, "joinRequests": 0, "commands": 0,
+                    "deliveries": pending.get("deliveries", 0)},
         "joinRequested": False, "runningTasks": running, "machine": None, "needsComputer": False,
         # 第一期只有所有者能开始、暂停、收尾（成员加入见后续）
         "role": "owner", "canAct": status not in ("done", "canceled"), "canManage": started,
@@ -3599,14 +3602,17 @@ def _mission_full(drafts, actor, mission_id):
     """一个 Mission 的完整视图：带最新计划和正在做的步数。"""
     from src.web import app_missions
     from src.workflow.members.mission_runs import MissionRuns
-    row, plans, steps = MissionRuns(drafts).details(actor, mission_id)
+    from src.workflow.members.mission_runs import MissionCards
+    runs = MissionRuns(drafts)
+    row, plans, steps = runs.details(actor, mission_id)
     return _mission_view(drafts, row, plan=plans[0] if plans else None,
-                         running=app_missions.running(drafts.channels.registry.root, mission_id, steps))
+                         running=app_missions.running(drafts.channels.registry.root, mission_id, steps),
+                         pending=MissionCards(runs).counts(mission_id))
 
 
 async def _mission_request(org_id, request, action, *, status=200):
     from src.workflow.members.mission_drafts import AgentUnavailable, DraftClosed, DraftConflict, MissionDrafts
-    from src.workflow.members.mission_runs import WrongStatus
+    from src.workflow.members.mission_runs import BadOption, WrongStatus
     from src.workflow.members.registry import Damaged, Missing, Refused
 
     root = _root(org_id)
@@ -3627,6 +3633,8 @@ async def _mission_request(org_id, request, action, *, status=200):
         return _error(409, "mission.agent_unavailable", str(error))
     except WrongStatus as error:
         return _error(409, "mission.wrong_status", str(error))
+    except BadOption as error:
+        return _error(400, "mission.invalid_option", str(error))
     except ThreadArchived as error:
         return _error(409, "thread.archived", str(error))
     except (Damaged, OSError, ValueError):
@@ -3652,10 +3660,14 @@ async def list_mission_drafts(
                                       status=status)
         from src.web import app_missions
         from src.workflow.members.mission_runs import MissionRuns
-        extra = MissionRuns(drafts).latest([row["id"] for row in rows])
+        from src.workflow.members.mission_runs import MissionCards
+        runs = MissionRuns(drafts)
+        extra = runs.latest([row["id"] for row in rows])
+        cards = MissionCards(runs)
         root = drafts.channels.registry.root
         return {"missions": [_mission_view(drafts, row, plan=extra[row["id"]]["plan"],
-                                           running=app_missions.running(root, row["id"], extra[row["id"]]["steps"]))
+                                           running=app_missions.running(root, row["id"], extra[row["id"]]["steps"]),
+                                           pending=cards.counts(row["id"]))
                              for row in rows], "counts": counts}
 
     return await _mission_request(org_id, request, read)
@@ -3903,6 +3915,137 @@ async def mission_message(org_id: str, mission_id: str, body: _MissionMessage, r
                         headers={"Cache-Control": "no-store"})
 
 
+# ── Mission 的决定和交付（主人 2026-11-23 定）：agent 在一步里提出，人在话题里拍板、验收 ──
+
+def _mission_cards(drafts):
+    from src.workflow.members.mission_runs import MissionCards, MissionRuns
+    return MissionCards(MissionRuns(drafts))
+
+
+async def _mission_proceed(org_id, mission_id, proceed):
+    """拍板或提出修改以后：能接着做就派下一步（在事件循环线程里）。"""
+    from src.web import app_missions
+    if not proceed:
+        return
+    root = _root(org_id)
+    await _mission_chat_ready(root)
+    await app_missions.proceed(root, mission_id, proceed)
+
+
+@router.get(_ORG + "/missions/{mission_id}/decisions")
+async def mission_decisions(org_id: str, mission_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: {
+        "decisions": _mission_cards(drafts).decisions(actor, mission_id)})
+
+
+class _MissionOption(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    option: str = Field(min_length=1, max_length=120)
+
+
+@router.post(_ORG + "/missions/{mission_id}/decisions/approve-provisional")
+async def approve_mission_provisional(org_id: str, mission_id: str, request: Request):
+    """agent 按建议先做了的决定：一次全部确认。"""
+    return await _mission_request(org_id, request, lambda drafts, actor: {
+        "decisions": _mission_cards(drafts).approve_provisional(actor, mission_id)})
+
+
+@router.post(_ORG + "/missions/{mission_id}/decisions/{decision_id}/choose")
+async def choose_mission_decision(org_id: str, mission_id: str, decision_id: str, body: _MissionOption,
+                                  request: Request):
+    """拍板。阻塞的问题都有了答案、没有在做的一步时，agent 接着做。"""
+    proceed: Dict[str, Any] = {}
+
+    def choose(drafts, actor):
+        view, go = _mission_cards(drafts).choose(actor, mission_id, decision_id, body.option)
+        if go:
+            proceed["trigger"] = "decision"
+        return view
+
+    response = await _mission_request(org_id, request, choose)
+    await _mission_proceed(org_id, mission_id, proceed.get("trigger"))
+    return response
+
+
+@router.post(_ORG + "/missions/{mission_id}/decisions/{decision_id}/opinion")
+async def mission_decision_opinion(org_id: str, mission_id: str, decision_id: str, body: _MissionOption,
+                                   request: Request):
+    """表态：只记下倾向，不拍板。"""
+    return await _mission_request(org_id, request, lambda drafts, actor:
+                                  _mission_cards(drafts).opinion(actor, mission_id, decision_id, body.option))
+
+
+@router.get(_ORG + "/missions/{mission_id}/deliveries")
+async def mission_deliveries(org_id: str, mission_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor:
+                                  _mission_cards(drafts).deliveries(actor, mission_id))
+
+
+class _MissionCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    checked: bool
+
+
+@router.put(_ORG + "/missions/{mission_id}/deliveries/{delivery_id}/checks/{item_id}")
+async def check_mission_delivery(org_id: str, mission_id: str, delivery_id: str, item_id: str, body: _MissionCheck,
+                                 request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor:
+                                  _mission_cards(drafts).check(actor, mission_id, delivery_id, item_id, body.checked))
+
+
+class _MissionAccept(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    saveToWiki: bool = False
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.post(_ORG + "/missions/{mission_id}/deliveries/{delivery_id}/accept")
+async def accept_mission_delivery(org_id: str, mission_id: str, delivery_id: str, body: _MissionAccept,
+                                  request: Request):
+    """验收通过：Mission 完成。存到 Wiki 还没接（Wiki 内容进 agent 上下文的可信度没定），如实拒绝。"""
+    stop: Dict[str, Any] = {}
+
+    def accept(drafts, actor):
+        if body.saveToWiki:
+            return _error(409, "mission.wiki_unavailable", "存到 Wiki 还没接上：取消「存到 Wiki」再完成")
+        cards = _mission_cards(drafts)
+        _, _, stop["task"] = cards.conclude(actor, mission_id, delivery_id, "accepted",
+                                            (body.note or "").strip() or None)
+        return _mission_full(drafts, actor, mission_id)
+
+    response = await _mission_request(org_id, request, accept)
+    if stop.get("task"):
+        await _stop_mission_step(_root(org_id), stop["task"])
+    return response
+
+
+class _MissionChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    note: str = Field(min_length=1, max_length=2000)
+
+
+@router.post(_ORG + "/missions/{mission_id}/deliveries/{delivery_id}/changes")
+async def request_mission_changes(org_id: str, mission_id: str, delivery_id: str, body: _MissionChanges,
+                                  request: Request):
+    """提出修改：Mission 回到进行中，agent 带着意见接着做。"""
+    proceed: Dict[str, Any] = {}
+    note = body.note.strip()
+    if not note:
+        return _error(400, "mission.delivery_note_required", "请写下要改什么")
+
+    def changes(drafts, actor):
+        _, go, _ = _mission_cards(drafts).conclude(actor, mission_id, delivery_id, "changes_requested", note)
+        if go:
+            proceed["trigger"] = "changes"
+        return None
+
+    response = await _mission_request(org_id, request, changes)
+    if response.status_code >= 300:
+        return response
+    await _mission_proceed(org_id, mission_id, proceed.get("trigger"))
+    return await _mission_request(org_id, request, lambda drafts, actor: _mission_full(drafts, actor, mission_id))
+
+
 # ── 写代码的 Mission 要用的设置：等连接电脑那条线（主人 2026-11-23 定），如实拒绝或回空 ──
 
 def _no_computer():
@@ -4067,7 +4210,10 @@ async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
     def read(drafts, actor):
         from src.web import app_missions
         from src.workflow.members.mission_runs import MissionRuns
-        row, plans, steps = MissionRuns(drafts).details(actor, mission_id)
+        from src.workflow.members.mission_runs import MissionCards
+        runs = MissionRuns(drafts)
+        row, plans, steps = runs.details(actor, mission_id)
+        pending = MissionCards(runs).counts(mission_id)
         text = row["goal"]
         note = app_missions.pending_note(row) if row["current_status"] in ("paused", "awaiting_close") else None
         if row["current_status"] == "awaiting_close":
@@ -4075,7 +4221,8 @@ async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
         return {"missionId": row["id"], "text": text + ("\n\n" + note if note else ""),
                 "plan": _mission_progress(plans[0]["items"] if plans else ()),
                 "running": app_missions.running(drafts.channels.registry.root, mission_id, steps),
-                "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
+                "pendingDecisions": pending["decisions"], "provisionalDecisions": pending["provisional"],
+                "pendingReviews": 0}
 
     return await _mission_request(org_id, request, read)
 
