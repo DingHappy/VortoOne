@@ -408,6 +408,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/onboarding",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/refs/{ref_id}",
     "methods": [
       "GET"
@@ -547,6 +553,18 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/team/channel-move",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/move",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/threads/{thread_id}/return",
     "methods": [
       "POST"
     ]

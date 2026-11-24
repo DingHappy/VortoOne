@@ -2562,6 +2562,8 @@ class _ThreadAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+@router.post(_THREAD + "/move")
+@router.post(_THREAD + "/return")
 @router.post(_THREAD + "/close")
 @router.post(_THREAD + "/reopen")
 @router.post(_THREAD + "/archive")
@@ -5339,6 +5341,31 @@ async def undo_email_change(body: _EmailUndo, request: Request):
     if not member_auth.same_origin(request):
         return _error(403, "forbidden", "这里现在不能撤回")
     return _error(404, "email.undo_gone", "没有要撤回的邮箱改动")
+
+
+class _OnboardingStep(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    step: Literal["workspace", "context", "import", "agents", "computer", "ai", "team", "done"] | None = None
+    finished: Literal[True] | None = None
+
+
+@router.patch(_ORG + "/onboarding")
+async def save_onboarding(org_id: str, body: _OnboardingStep, request: Request):
+    """新建空间的引导：这个家只有一个、早已设好（本机安装走 /api/app/desktop-setup），没有要接着走的引导。
+    照实回「已经完成」，带上主助理和当前的 /me；不另存一份不生效的进度。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_owner:
+        return _error(403, "forbidden", "引导只有所有者能走")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    if (body.step is None) == (body.finished is None):
+        return _error(400, "invalid", "要么给 step，要么给 finished: true")
+    profile = await _current_profile(root, request, who)
+    if isinstance(profile, JSONResponse):
+        return profile
+    return JSONResponse({"step": "done", "finished": True, "rightHandId": views.main_agent_id(root), "me": profile},
+                        headers={"Cache-Control": "no-store"})
 
 
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────

@@ -210,7 +210,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/threads/[^/]+"),
     ("PATCH", _ORG + r"/threads/[^/]+"),
     ("DELETE", _ORG + r"/threads/[^/]+"),
-    ("POST", _ORG + r"/threads/[^/]+/(?:close|reopen|archive|unarchive)"),
+    ("POST", _ORG + r"/threads/[^/]+/(?:move|return|close|reopen|archive|unarchive)"),
     ("POST", _ORG + r"/threads/[^/]+/read"),
     ("PUT", _ORG + r"/threads/[^/]+/follow"),
     ("DELETE", _ORG + r"/threads/[^/]+/follow"),
