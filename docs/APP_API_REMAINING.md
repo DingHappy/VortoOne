@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 384 个，剩 **247** 个：
-- **要做：176**（其中 25 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 392 个，剩 **239** 个：
+- **要做：168**（其中 24 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -69,7 +69,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 8）
+### org/missions（40 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -95,22 +95,22 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` | 仅所有者，每人各勾各的；有结论后不能再勾。 |
 | ☑ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` | 只有 `agent`（原生 agent 自己做）；Claude、Codex 要连电脑，409 `mission.no_computer`。 |
 | ☑ | GET | `ORG/missions/{x}/files` | `missions.files` | 所有者可查看已有草案的空文件列表。草案尚无隔离目录或文件。 |
-| ☐ | GET | `ORG/missions/{x}/join-requests` | `missions.joinRequests` |  |
-| ☐ | POST | `ORG/missions/{x}/join-requests` | `missions.requestJoin` |  |
-| ☐ | POST | `ORG/missions/{x}/join-requests/{x}/{x}` | `missions.decideJoin` |  |
+| ☑ | GET | `ORG/missions/{x}/join-requests` | `missions.joinRequests` | 所有者看全部待处理的，成员只看自己的。 |
+| ☑ | POST | `ORG/missions/{x}/join-requests` | `missions.requestJoin` | 能读这个频道、还不在 Mission 里的成员申请；被谢绝后可以再申请。 |
+| ☑ | POST | `ORG/missions/{x}/join-requests/{x}/{x}` | `missions.decideJoin` | 仅所有者，accept 时给「决定」或「评论」（默认评论）。「决定」要这个人能在频道里叫这个 agent 办事，否则 409。 |
 | ☑ | PUT | `ORG/missions/{x}/machine` | `missions.setMachine` | 如实 409 `mission.no_computer`：Mission 在这个家的服务上跑。 |
 | ☑ | POST | `ORG/missions/{x}/messages` | `missions.message` | 仅所有者，在 Mission 话题里发一条。进行中且没有正在做的一步时马上派下一步（`delivered: true`），否则下一步读到。 |
 | ☑ | GET | `ORG/missions/{x}/participants` | `missions.participants` |  |
-| ☐ | POST | `ORG/missions/{x}/participants` | `missions.json` | 界面代码里没调用 |
-| ☐ | DELETE | `ORG/missions/{x}/participants/{x}` | `missions.removeParticipant` |  |
-| ☐ | PATCH | `ORG/missions/{x}/participants/{x}` | `missions.setParticipant` |  |
+| ☑ | POST | `ORG/missions/{x}/participants` | `missions.json` | 仅所有者直接加人，这个人要在频道里；「决定」的条件同上。 |
+| ☑ | DELETE | `ORG/missions/{x}/participants/{x}` | `missions.removeParticipant` | 仅所有者，移出后身份立刻失效。 |
+| ☑ | PATCH | `ORG/missions/{x}/participants/{x}` | `missions.setParticipant` | 仅所有者改身份；「决定」的条件同上。 |
 | ☑ | GET | `ORG/missions/{x}/plan` | `missions.plan` |  |
 | ☑ | GET | `ORG/missions/{x}/reviews` | `missions.reviews` | 代码审查只来自写代码的 Mission，回空。 |
 | ☑ | POST | `ORG/missions/{x}/reviews/{x}/{x}` | `missions.review` | 没有审查，404。 |
 | ☑ | GET | `ORG/missions/{x}/settings` | `missions.settings` | 仅所有者读取已有草案；审批策略固定，草案没有规则或执行统计。 |
-| ☐ | POST | `ORG/missions/{x}/suggestions/{x}/{x}` | `missions.suggestion` |  |
+| ☑ | POST | `ORG/missions/{x}/suggestions/{x}/{x}` | `missions.suggestion` | 没有拍板权的人在 Mission 话题里说的话记成建议（`meta.missionSuggestion`），采纳前不进 agent 提示。所有者或「决定」成员采纳或谢绝，采纳后交给 agent。 |
 | ☑ | GET | `ORG/missions/{x}/summary` | `missions.summary` |  |
-| ☐ | POST | `ORG/missions/{x}/transfer` | `missions.transfer` |  |
+| ☑ | POST | `ORG/missions/{x}/transfer` | `missions.transfer` | 如实 409 `mission.transfer_unavailable`：每一步以所有者的身份派活，Mission 只能归所有者；可以把对方设成「决定」成员。 |
 | ☑ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` | 没有项目副本，409 `mission.no_worktree`。 |
 | ☑ | POST | `ORG/missions/{x}/{x}` | `missions.control` | 仅所有者，`start/pause/resume/stop`。绑定的 agent 在话题里一步接一步做，只用团队安全工具、按外部内容处理话题；失败、被打断、没列计划、一次累计 10 步时暂停并说明，计划做完等收尾。agent 要先加进频道。 |
 

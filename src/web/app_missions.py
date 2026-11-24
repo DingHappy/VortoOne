@@ -31,6 +31,7 @@ _TRIGGERS = {
     "resume": "Mission 刚继续：先看看计划和话题里的新情况，必要时用 mission_plan 调整，再接着做。",
     "message": "话题里有人发了新消息，先看最后几条再接着做。",
     "decision": "有人拍板了，按上面「拍板」里的结果接着做。",
+    "suggestion": "话题里有一条建议被采纳了（在上面的对话里），看看要不要据此调整，再接着做。",
     "changes": "所有者看过交付，提出了修改意见（见上面「修改意见」）：按意见改好，再用 mission_deliver 重新交付。",
 }
 
@@ -64,9 +65,11 @@ def check_startable(root: str, row: Dict[str, Any]) -> None:
 
 
 def _prompt(root: str, row: Dict[str, Any], plan, trigger: str) -> str:
-    from src.workflow.members.mission_runs import cards_for
+    from src.workflow.members.mission_runs import cards_for, people_for
     service = app_channels.channels(root)
-    lines = app_channel_agents.context_lines(root, service, _owner(root), row["channel_id"], row["thread_id"])
+    # 没有拍板权的人说的话是建议：有拍板权的人采纳之前不交给 agent（主人 2026-11-23 定）
+    hidden = people_for(root).hidden_messages(row["id"])
+    lines = app_channel_agents.context_lines(root, service, _owner(root), row["channel_id"], row["thread_id"], skip=hidden)
     clean = app_channel_agents.clean
     shown_plan = "\n".join(f"- [{item['status']}] {clean(item['title'], 200)}"
                            + (f"（{clean(item['note'], 300)}）" if item.get("note") else "") for item in plan) or "（还没有）"

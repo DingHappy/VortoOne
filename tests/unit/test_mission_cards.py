@@ -141,8 +141,11 @@ async def test_members_and_strangers_cannot_decide_or_see(mission):
         await _note(mission, "拍板")
     [decision] = mission.owner.get(mission.route + "/decisions").json()["decisions"]
     member = mission.member
-    for method, path, body in (("get", "/decisions", None), ("get", "/deliveries", None),
-                               ("post", f"/decisions/{decision['id']}/choose", {"option": "客服"}),
+    # 频道里的成员（还没加入 Mission）看得到决定，但不能拍板、表态
+    assert member.get(mission.route + "/decisions").status_code == 200
+    assert member.get(mission.route + "/deliveries").status_code == 200
+    for method, path, body in ((
+                               "post", f"/decisions/{decision['id']}/choose", {"option": "客服"}),
                                ("post", f"/decisions/{decision['id']}/opinion", {"option": "客服"}),
                                ("post", "/decisions/approve-provisional", {})):
         response = getattr(member, method)(mission.route + path, **({"json": body} if body is not None else {}))
