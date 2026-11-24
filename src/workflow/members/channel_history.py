@@ -339,7 +339,8 @@ class ChannelHistory:
             title = channel_threads.read(conn, row["id"]).title if conn is not None else None
             meta["threadStart"] = {"title": title or row["body"], "contextChannelId": context["channelId"],
                                    "firstMessageId": context["firstMessageId"], "lastMessageId": context["lastMessageId"],
-                                   "count": context["count"], "moved": False, "movedCount": 0}
+                                   "count": context["count"], "moved": bool(context.get("moved")),
+                                   "movedCount": int(context.get("movedCount") or 0)}
         media = row["media"] if "media" in row.keys() else None
         if media:
             media = json.loads(media)
@@ -626,9 +627,56 @@ class ChannelHistory:
         channel_threads.write(conn, channel, identifier, channel_threads.ThreadState(title=title), "created")
         return self.find(conn, channel, identifier)
 
+    def move_range(self, conn, row):
+        """「拿出频道」：选段里的消息改挂到话题根消息下，变成话题的回复，频道主时间线里就看不到了。
+        它们都写在根消息之前（真正的回复都在根消息之后），「放回频道」据此只挑回这几条。"""
+        if not self.is_range(row):
+            raise ValueError("只有从频道选段建立的话题能拿出频道")
+        channel, thread = row["channel"], row["id"]
+        state = channel_threads.read(conn, thread, initialized=True)
+        state.allow_reply()
+        context = _context(row)
+        if context.get("moved"):
+            return self.find(conn, channel, thread)
+        start = self.find(conn, channel, context["firstMessageId"])
+        end = self.find(conn, channel, context["lastMessageId"])
+        excluded = set(context.get("excludedMessageIds") or [])
+        ids = [found[0] for found in conn.execute(
+            "SELECT id FROM messages WHERE channel = ? AND sequence BETWEEN ? AND ? AND thread IS NULL "
+            "AND thread_range IS NULL AND removed = 0 AND created < ? ORDER BY sequence",
+            (channel, start["sequence"], end["sequence"], row["created"])) if found[0] not in excluded]
+        if ids and conn.execute(
+                f"SELECT 1 FROM messages WHERE channel = ? AND thread IN ({','.join('?' for _ in ids)}) LIMIT 1",
+                (channel, *ids)).fetchone():
+            raise channel_threads.ThreadInUse("选段里有消息自己带着回复，不能拿出频道")
+        conn.executemany("UPDATE messages SET thread = ? WHERE id = ?", [(thread, message) for message in ids])
+        context.update(moved=True, movedCount=len(ids))
+        conn.execute("UPDATE messages SET thread_range = ? WHERE id = ?", (json.dumps(context, separators=(",", ":")), thread))
+        channel_threads.write(conn, channel, thread, state, "context")
+        return self.find(conn, channel, thread)
+
+    def return_range(self, conn, row):
+        """「放回频道」：拿出来的那几条（写在根消息之前的回复）挂回频道主时间线。"""
+        if not self.is_range(row):
+            raise ValueError("只有从频道选段建立的话题能放回频道")
+        channel, thread = row["channel"], row["id"]
+        state = channel_threads.read(conn, thread, initialized=True)
+        state.allow_reply()
+        context = _context(row)
+        if not context.get("moved"):
+            return self.find(conn, channel, thread)
+        conn.execute("UPDATE messages SET thread = NULL WHERE channel = ? AND thread = ? AND created < ?",
+                     (channel, thread, row["created"]))
+        context.update(moved=False, movedCount=0)
+        conn.execute("UPDATE messages SET thread_range = ? WHERE id = ?", (json.dumps(context, separators=(",", ":")), thread))
+        channel_threads.write(conn, channel, thread, state, "context")
+        return self.find(conn, channel, thread)
+
     def change_range(self, conn, row, selection, title, *, set_title):
         if not self.is_range(row):
             raise ValueError("只有从频道选段建立的话题可以调整选段")
+        if (_context(row) or {}).get("moved"):
+            raise channel_threads.ThreadInUse("选段已经拿出频道：先放回频道，再调整选段")
         channel, thread = row["channel"], row["id"]
         state = channel_threads.read(conn, thread, initialized=True)
         state.allow_reply()

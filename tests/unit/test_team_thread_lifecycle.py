@@ -99,7 +99,7 @@ def test_management_uses_current_channel_scope_and_same_origin(home):
     for invalid in ({}, {"title": "有效", "firstMessageId": reply["id"]}, {"title": "x" * 201}):
         assert owner.patch(url, json=invalid).status_code == 422
     assert owner.post(f"{url}/archive", json={"as": author.member_id}).status_code == 422
-    assert owner.post(f"{url}/move", json={}).status_code == 404
+    assert owner.post(f"{url}/move", json={}).status_code == 400   # 普通话题没有选段可拿出
     assert owner.post(f"{home['base']}/threads/{reply['id']}/close", json={}).status_code == 404
     blank = owner.post(f"{channel}/messages", json={"body": "未讨论"}).json()["id"]
     assert not owner.get(f"{home['base']}/threads/{blank}").json()["canManage"]
