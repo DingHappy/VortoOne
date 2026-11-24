@@ -301,6 +301,10 @@ class StaffService:
         if mission is not None and (channel is None or not isinstance(mission, str)
                                     or not mission.startswith('mission-') or len(mission) > 80):
             raise ValueError('Mission 来源标记无效')
+        if initiator is not None and not routine:
+            # 成员这个月的用量到了所有者设的上限（且是「拒绝」）：不再替他派活（主人 2026-11-23 定）
+            from src.workflow.usage_month import check_member
+            check_member(self.root, initiator)
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)

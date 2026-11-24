@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 419 个，剩 **212** 个：
-- **要做：141**（其中 17 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 432 个，剩 **199** 个：
+- **要做：128**（其中 17 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -114,7 +114,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` | 没有项目副本，409 `mission.no_worktree`。 |
 | ☑ | POST | `ORG/missions/{x}/{x}` | `missions.control` | 仅所有者，`start/pause/resume/stop`。绑定的 agent 在话题里一步接一步做，只用团队安全工具、按外部内容处理话题；失败、被打断、没列计划、一次累计 10 步时暂停并说明，计划做完等收尾。agent 要先加进频道。 |
 
-### org/agents（35 个，要做 23）
+### org/agents（35 个，要做 20）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -149,9 +149,9 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | PUT | `ORG/agents/{x}/scopes` | `scopes.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页；界面代码里没调用 |
 | ☐ | GET | `ORG/agents/{x}/secrets` | `secrets.list` |  |
 | ☐ | DELETE | `ORG/agents/{x}/secrets/{x}${machineId ` | `secrets.remove` |  |
-| ☐ | GET | `ORG/agents/{x}/usage` | `agents.planUsage` |  |
-| ☐ | GET | `ORG/agents/{x}/usage-queue` | `agents.usageQueue` |  |
-| ☐ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` |  |
+| ☑ | GET | `ORG/agents/{x}/usage` | `agents.planUsage` | 仅所有者。这个 agent 这个月的 token 和折算的美元（只有 API 一个来源）。 |
+| ☑ | GET | `ORG/agents/{x}/usage-queue` | `agents.usageQueue` | 仅所有者。在等额度（专员额度用完）排着的事。 |
+| ☑ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` | 仅所有者。排着的全部停下，走主人的停止决定。 |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
 ### org/wiki（24 个，要做 1）
@@ -333,20 +333,20 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PUT | `ORG/channels/{x}/place` | `chat.place` |  |
 | ☑ | GET | `ORG/channels/{x}/reads` | `dms.reads` | 仅两名当前在册参与人可读，返回对方已确认的持久游标，并向其私聊订阅推送 `channel.read`。 |
 
-### org/usage（10 个，要做 10）
+### org/usage（10 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/usage/composio` | `connectors.composioUsage` |  |
-| ☐ | GET | `ORG/usage/limits` | `orgs.personLimits` |  |
-| ☐ | PUT | `ORG/usage/limits` | `orgs.setPersonLimits` |  |
-| ☐ | POST | `ORG/usage/limits/request` | `orgs.requestMoreUsage` |  |
-| ☐ | GET | `ORG/usage/people` | `orgs.peopleUsage` |  |
-| ☐ | GET | `ORG/usage/people/{x}` | `orgs.personUsage` |  |
-| ☐ | POST | `ORG/usage/people/{x}/raise` | `orgs.raisePersonLimit` |  |
-| ☐ | POST | `ORG/usage/people/{x}/refuse` | `orgs.refuseMoreUsage` |  |
-| ☐ | GET | `ORG/usage/plans` | `orgs.planUsage` |  |
-| ☐ | GET | `ORG/usage/report` | `orgs.usageReport` |  |
+| ☑ | GET | `ORG/usage/composio` | `connectors.composioUsage` | 这里没接 Composio：0 次、不限。 |
+| ☑ | GET | `ORG/usage/limits` | `orgs.personLimits` | 仅所有者。默认、身份组、个人的每月美元上限，到了上限 block（拒绝再派活）或 notify。 |
+| ☑ | PUT | `ORG/usage/limits` | `orgs.setPersonLimits` | 仅所有者。成员到了 block 上限时，再让 agent 干活会被拒绝并说明（派活入口统一核对）。 |
+| ☑ | POST | `ORG/usage/limits/request` | `orgs.requestMoreUsage` | 成员申请这个月加额度。 |
+| ☑ | GET | `ORG/usage/people` | `orgs.peopleUsage` | 仅所有者。每个人这个月：成员交给 agent 的记在成员名下，其余记在所有者名下；带上限状态。 |
+| ☑ | GET | `ORG/usage/people/{x}` | `orgs.personUsage` | 所有者看任何人（带金额）；成员只看自己（`money: false`，占上限的百分比）。 |
+| ☑ | POST | `ORG/usage/people/{x}/raise` | `orgs.raisePersonLimit` | 仅所有者，把这个成员的上限调到给的数（标为「调高过」）。 |
+| ☑ | POST | `ORG/usage/people/{x}/refuse` | `orgs.refuseMoreUsage` | 仅所有者，拒绝加额度的申请。 |
+| ☑ | GET | `ORG/usage/plans` | `orgs.planUsage` | 仅所有者。这里没有订阅套餐账号（accounts 空），只有 API 用量。 |
+| ☑ | GET | `ORG/usage/report` | `orgs.usageReport` | 仅所有者。从 since 起按 agent、按种类（agent/summary）。按所有者给模型填的价格折成美元（没填价格的只记 token，不算钱，`partialCalls` 标出）。agent 没有美元预算（额度按 token 记），预算填 0。 |
 
 ### org/routines（10 个，要做 6）
 

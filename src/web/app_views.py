@@ -1530,11 +1530,18 @@ def month_usage(root: str) -> Dict[str, Dict[str, int]]:
 
 
 def usage(root: str) -> List[Dict[str, Any]]:
-    """用量页。账本只记 token，没有价格，费用一栏是占位的 0，不代表没花钱。"""
+    """用量页。费用按所有者给模型填的价格折算（没填价格的模型不算钱，见 workflow/usage_month）。"""
+    from src.workflow.usage_month import MAIN, entries, month_start
     totals = month_usage(root)
+    members = {str(m.get("id")): member_agent_id(root, str(m.get("id"))) for m in _staff(root).get("members") or []}
+    costs: Dict[str, float] = {}
+    for entry in entries(root, month_start()):
+        agent = main_agent_id(root) if entry.agent == MAIN else members.get(entry.agent)
+        if agent:
+            costs[agent] = costs.get(agent, 0.0) + entry.cost
     return [{"agentId": agent["id"], "handle": agent["handle"], "calls": totals[agent["id"]]["calls"],
              "inputTokens": totals[agent["id"]]["input"], "outputTokens": totals[agent["id"]]["output"],
-             "costUsd": 0} for agent in agents(root) if agent["id"] in totals]
+             "costUsd": round(costs.get(agent["id"], 0.0), 6)} for agent in agents(root) if agent["id"] in totals]
 
 
 def agent_activity(root: str, agent_id: str) -> Dict[str, Any]:

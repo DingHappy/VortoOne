@@ -64,7 +64,7 @@ def _read(path: Path) -> Dict[str, Dict[str, Dict[str, int]]]:
 
 
 def record(prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0, *,
-           source: Optional[str] = None, today: Optional[date] = None) -> None:
+           source: Optional[str] = None, today: Optional[date] = None, model: str = "") -> None:
     day = (today or date.today()).isoformat()
     path = _path()
     try:
@@ -82,6 +82,15 @@ def record(prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0, *
             bucket["prompt"] = int(bucket.get("prompt", 0)) + max(0, int(prompt_tokens or 0))
             bucket["completion"] = int(bucket.get("completion", 0)) + max(0, int(completion_tokens or 0))
             bucket["cached"] = int(bucket.get("cached", 0)) + max(0, int(cached_tokens or 0))
+            if model:                # 按模型再分一层：用量页按登记的价格折成美元（旧版本只看上面四个数，不受影响）
+                name = str(model)[:160]
+                models = bucket.setdefault("models", {})
+                if name in models or len(models) < 20:
+                    row = models.setdefault(name, {"calls": 0, "prompt": 0, "completion": 0, "cached": 0})
+                    row["calls"] += 1
+                    row["prompt"] += max(0, int(prompt_tokens or 0))
+                    row["completion"] += max(0, int(completion_tokens or 0))
+                    row["cached"] += max(0, int(cached_tokens or 0))
             cutoff = (date.fromisoformat(day) - timedelta(days=KEEP_DAYS)).isoformat()
             data = {key: value for key, value in data.items() if key >= cutoff}
             tmp = path.with_name(".daily.json.tmp")

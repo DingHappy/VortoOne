@@ -32,10 +32,13 @@ def test_calls_are_counted_by_source_and_only_numbers_are_kept(monkeypatch):
             add_usage(10, 5, model="m")
             await asyncio.wait_for(_add_in_task(), 1)                 # wait_for 起的任务也带上来源
     asyncio.run(labelled())
+    def row(calls, prompt, completion, cached):
+        numbers = {"calls": calls, "prompt": prompt, "completion": completion, "cached": cached}
+        return {**numbers, "models": {"m": dict(numbers)}}          # 按模型再分一层，好按价格折成美元
     assert ledger.day_usage(TODAY) == {
-        "对话": {"calls": 1, "prompt": 1000, "completion": 200, "cached": 300},
-        "早晚报": {"calls": 1, "prompt": 5000, "completion": 800, "cached": 0},
-        "Codex 判断": {"calls": 2, "prompt": 20, "completion": 10, "cached": 0},
+        "对话": row(1, 1000, 200, 300),
+        "早晚报": row(1, 5000, 800, 0),
+        "Codex 判断": row(2, 20, 10, 0),
     }
     path = ledger._path()
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600

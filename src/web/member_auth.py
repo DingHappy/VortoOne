@@ -34,6 +34,8 @@ _CATEGORY = _CATEGORIES + r"/" + CHANNEL_CATEGORY_ID_PATTERN
 
 # （方法，路径）——成员会话算数的全部接口。每一条的处理函数都用 principal() 分辨调用人。
 MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.compile(pattern + r"\Z")) for method, pattern in (
+    ("GET", _ORG + r"/usage/people/[^/]+"),                # 成员只看自己的（占上限的百分比），处理函数核对
+    ("POST", _ORG + r"/usage/limits/request"),             # 成员申请这个月加额度
     ("GET", r"/api/app/me"),
     ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
     ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读
