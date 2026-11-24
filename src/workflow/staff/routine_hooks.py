@@ -1,6 +1,6 @@
 """例行工作的 webhook 触发（主人 2026-11-24 定：做，带密钥；触发进来的内容按外部内容）。
 
-每条 webhook 例行工作有一个随机的触发地址（``/api/hooks/routines/<地址>``），地址本身就是一道门：
+每条 webhook 例行工作有一个随机的触发地址（``/api/routine-hooks/<地址>``），地址本身就是一道门：
 不知道地址的人叫不动它，换一个新地址旧的立刻失效。另外可以设签名密钥：设了以后每次调用都要在
 ``X-VortoOne-Signature: sha256=<HMAC-SHA256>`` 里带上请求体（GET 是查询串）的签名，对不上一律拒绝。
 
@@ -26,7 +26,7 @@ from src.utils.state_dir import state_dir
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 MAX_BYTES, PER_MINUTE, KEEP_CALLS, KEY_HOURS = 64 * 1024, 30, 20, 24
-PATH = "/api/hooks/routines/"
+PATH = "/api/routine-hooks/"
 _FILE = "routine_hooks.json"
 _LOCK = threading.RLock()
 

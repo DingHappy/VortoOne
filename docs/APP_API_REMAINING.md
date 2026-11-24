@@ -354,7 +354,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | POST | `ORG/routines/{x}/continue` | `routines.continueUsage` | 不跳过额度接着做：409，调高额度后它会自己接着做。 |
 | ☑ | POST | `ORG/routines/{x}/duplicate` | `routines.duplicate` | 所有者可复制现有本人例行定义；先按摘要审核，副本默认暂停 |
-| ☑ | GET | `ORG/routines/{x}/hook` | `routines.hook` | webhook 触发的例行工作：触发地址 `/api/hooks/routines/<随机串>`（不认登录）、是否要签名、允许的方法、最近 20 次调用（只记结果、状态码、大小、进了哪次运行，不存内容）。只给已认证的所有者；不是 webhook 触发的 404。 |
+| ☑ | GET | `ORG/routines/{x}/hook` | `routines.hook` | webhook 触发的例行工作：触发地址 `/api/routine-hooks/<随机串>`（不认登录）、是否要签名、允许的方法、最近 20 次调用（只记结果、状态码、大小、进了哪次运行，不存内容）。只给已认证的所有者；不是 webhook 触发的 404。 |
 | ☑ | POST | `ORG/routines/{x}/hook/address` | `routines.newHookAddress` | 换一个新地址，旧地址立刻 404。 |
 | ☑ | DELETE | `ORG/routines/{x}/hook/secret` | `routines.removeHookSecret` | 去掉签名密钥，之后只凭地址。 |
 | ☑ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` | 新的签名密钥只显示这一次。之后每次调用要带 `X-VortoOne-Signature: sha256=<HMAC-SHA256>`（POST 等签请求体，GET 签查询串），不对 401 `bad_signature`。 |
