@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 376 个，剩 **255** 个：
-- **要做：184**（其中 25 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 384 个，剩 **247** 个：
+- **要做：176**（其中 25 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -69,7 +69,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 16）
+### org/missions（40 个，要做 8）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -85,14 +85,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/missions/{x}/commands` | `missions.commands` | 原生 agent 只用团队安全工具、不跑命令，回空。写代码的 Mission 等连接电脑线。 |
 | ☑ | POST | `ORG/missions/{x}/commands/retry` | `missions.retryCommand` | 如实 409 `mission.no_commands`。 |
 | ☑ | POST | `ORG/missions/{x}/commands/{x}/decide` | `missions.decideCommand` | 没有命令卡，404。 |
-| ☐ | GET | `ORG/missions/{x}/decisions` | `missions.decisions` |  |
-| ☐ | POST | `ORG/missions/{x}/decisions/approve-provisional` | `missions.approveProvisional` |  |
-| ☐ | POST | `ORG/missions/{x}/decisions/{x}/choose` | `missions.choose` |  |
-| ☐ | POST | `ORG/missions/{x}/decisions/{x}/opinion` | `missions.opinion` |  |
-| ☐ | GET | `ORG/missions/{x}/deliveries` | `missions.deliveries` |  |
-| ☐ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` |  |
-| ☐ | POST | `ORG/missions/{x}/deliveries/{x}/changes` | `missions.requestDeliveryChanges` |  |
-| ☐ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` |  |
+| ☑ | GET | `ORG/missions/{x}/decisions` | `missions.decisions` | 仅所有者。agent 在一步里用 `mission_decision` 提出，跟着回答发在话题里（消息带 `meta.missionDecision`）；没做完的一步提的不算。 |
+| ☑ | POST | `ORG/missions/{x}/decisions/approve-provisional` | `missions.approveProvisional` | 仅所有者，只确认 agent 按建议先做了的（provisional），等人选的不动。 |
+| ☑ | POST | `ORG/missions/{x}/decisions/{x}/choose` | `missions.choose` | 仅所有者。阻塞的问题都有答案、没有在做的一步时，agent 接着做，结果写进下一步提示（数据边界内）。已拍板的不能改选。 |
+| ☑ | POST | `ORG/missions/{x}/decisions/{x}/opinion` | `missions.opinion` | 仅所有者（参与者在后续 PR），只记倾向、不拍板。 |
+| ☑ | GET | `ORG/missions/{x}/deliveries` | `missions.deliveries` | 仅所有者。agent 用 `mission_deliver` 交付，这一步后 Mission 等验收（消息带 `meta.missionDelivery`）。 |
+| ☑ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` | 仅所有者，Mission 完成。`saveToWiki: true` 如实 409 `mission.wiki_unavailable`（Wiki 内容进 agent 上下文的可信度还没定）。 |
+| ☑ | POST | `ORG/missions/{x}/deliveries/{x}/changes` | `missions.requestDeliveryChanges` | 仅所有者，要写意见。Mission 回到进行中，agent 带着意见接着做、重新交付。 |
+| ☑ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` | 仅所有者，每人各勾各的；有结论后不能再勾。 |
 | ☑ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` | 只有 `agent`（原生 agent 自己做）；Claude、Codex 要连电脑，409 `mission.no_computer`。 |
 | ☑ | GET | `ORG/missions/{x}/files` | `missions.files` | 所有者可查看已有草案的空文件列表。草案尚无隔离目录或文件。 |
 | ☐ | GET | `ORG/missions/{x}/join-requests` | `missions.joinRequests` |  |
