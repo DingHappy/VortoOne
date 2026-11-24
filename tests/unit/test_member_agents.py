@@ -104,7 +104,8 @@ def test_team_directory_uses_existing_visible_rosters(home):
     assert ana.get(url, headers={"Origin": "https://elsewhere.example"}).status_code == 403
     assert TestClient(home["app"]).get(url).status_code == 401
     assert ana.get("/api/app/organizations/other/team").status_code == 404
-    assert home["owner"].post(url + "/channel-move", json={}).status_code == 404
+    moved = home["owner"].post(url + "/channel-move", json={})        # agent 还不会提议搬移频道：如实 409
+    assert moved.status_code == 409 and moved.json()["error"]["code"] == "channel_move.unavailable"
     # agent 所在频道的接口已经有了（见 test_app_agent_detail_rest.py）：只接受空列表，坏请求 400
     assert home["owner"].put(f"{home['base']}/agents/{home['agent']['id']}/channels", json={}).status_code == 400
 

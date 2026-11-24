@@ -4893,6 +4893,188 @@ async def save_sandbox_settings(org_id: str, body: Dict[str, Any], request: Requ
     return JSONResponse(current, headers={"Cache-Control": "no-store"})
 
 
+# ── 第二批如实回答（2026-11-24）：这里还没有对应能力的，回 4xx 或空，不存一份不生效的数据 ──
+
+def _owner_gate(request: Request, org_id: str, *, members_too: bool = False):
+    """所有者要所有者证明；成员只有 members_too 时能进。返回拒绝的响应或 None。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    if who.is_member and not members_too:
+        return _error(403, "forbidden", "这里只有所有者能用")
+    return None
+
+
+def _no_store(value: Any) -> JSONResponse:
+    return JSONResponse(value, headers={"Cache-Control": "no-store"})
+
+
+def _report_prefs() -> Dict[str, Any]:
+    """常驻助理的早报（每日卡）和周日晚报（带一周总结，每周卡）。时间在服务环境里设
+    （VORTOONE_ASSISTANT_REPORT_TIMES），没有转发地址或 IM 时两张都不发。"""
+    from src.scheduling.assistant_watch import report_times, watch_enabled
+    times = report_times() or ["09:00", "21:00"]
+    on = watch_enabled()
+    first, last = times[0], times[-1]
+    return {"weekOff": not on, "day": 0, "weekHour": int(last.split(":")[0]), "dayOff": not on,
+            "dayHour": int(first.split(":")[0]), "digestOff": False, "remindOff": False,
+            "timezone": "UTC", "dayTimezone": "UTC", "switches": []}
+
+
+@router.get(_ORG + "/team-week")
+async def team_week(org_id: str, request: Request):
+    return _owner_gate(request, org_id) or _no_store(_report_prefs())
+
+
+@router.put(_ORG + "/team-week")
+async def set_team_week(org_id: str, body: Dict[str, Any], request: Request):
+    """早晚报的时间和开关在服务环境里设：和现在一样照原样回，否则如实 409。"""
+    refused = _owner_gate(request, org_id)
+    if refused:
+        return refused
+    current = _report_prefs()
+    if any(key not in current or body[key] != current[key] for key in body):
+        return _error(409, "team_week.fixed", "早晚报的时间在服务的环境里设（VORTOONE_ASSISTANT_REPORT_TIMES），这里改不了")
+    return _no_store(current)
+
+
+@router.post(_ORG + "/team-week/{message_id}")
+async def act_on_team_week(org_id: str, message_id: str, body: Dict[str, Any], request: Request):
+    return _owner_gate(request, org_id) or _error(404, "team_week.not_found", "早晚报里没有可以直接照做的条目")
+
+
+@router.get(_ORG + "/agents/{agent_id}/merge-repositories")
+async def merge_repositories(org_id: str, agent_id: str, request: Request):
+    """不经审批卡就合并的仓库：没有。合并一律要人确认。"""
+    return _owner_gate(request, org_id) or _no_store({"repositories": []})
+
+
+@router.put(_ORG + "/agents/{agent_id}/merge-repositories")
+async def set_merge_repositories(org_id: str, agent_id: str, body: Dict[str, Any], request: Request):
+    refused = _owner_gate(request, org_id)
+    if refused:
+        return refused
+    if body.get("repositories") != []:
+        return _error(409, "repositories.merge_needs_approval", "合并一律要人确认，这里不开免审批合并")
+    return _no_store({"repositories": []})
+
+
+class _AgentCommandApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    commandApproval: Literal["always", "low_risk_auto", "never"]
+
+
+@router.put(_ORG + "/agents/{agent_id}/mission-command-approval")
+async def set_agent_mission_command_approval(org_id: str, agent_id: str, body: _AgentCommandApproval,
+                                             request: Request):
+    """agent 以后的 Mission 默认怎么审批命令：只有「每次都问」，和 Mission 自己的设置一致。"""
+    refused = _owner_gate(request, org_id)
+    if refused:
+        return refused
+    if body.commandApproval != "always":
+        return _error(409, "mission.approval_fixed", "Mission 里需要确认的操作每次都问，不提供自动放行")
+    return _no_store({"commandApproval": "always"})
+
+
+@router.delete(_ORG + "/agents/{agent_id}/holds/{hold_id}")
+async def stop_agent_hold(org_id: str, agent_id: str, hold_id: str, request: Request):
+    """agent 在连接的电脑上开着的程序：这里没有（等连接电脑线）。"""
+    return _owner_gate(request, org_id) or _error(404, "hold.not_found", "这个 agent 没有开着的程序")
+
+
+@router.get(_ORG + "/agents/{agent_id}/for-you")
+async def agent_for_you(org_id: str, agent_id: str, request: Request, limit: int = Query(20, ge=1, le=100)):
+    """agent 主动替人整理的东西还没有：空。"""
+    return _owner_gate(request, org_id) or _no_store({"items": [], "monthCount": 0})
+
+
+@router.get(_ORG + "/imports")
+async def import_sources(org_id: str, request: Request):
+    return _owner_gate(request, org_id) or _no_store({"sources": []})
+
+
+@router.post(_ORG + "/imports")
+async def apply_import(org_id: str, body: Dict[str, Any], request: Request):
+    """从别的应用整包导入 agent 还没有：如实 409（Wiki、技能各有自己的导入）。"""
+    return _owner_gate(request, org_id) or _error(409, "import.unavailable",
+                                                  "整包导入还没有：Wiki、技能可以在各自的页面导入")
+
+
+@router.post(_ORG + "/imports/files")
+async def import_file(org_id: str, request: Request):
+    return _owner_gate(request, org_id) or _error(409, "import.unavailable", "整包导入还没有")
+
+
+@router.get(_ORG + "/blocks/{block_id}/state")
+@router.put(_ORG + "/blocks/{block_id}/state")
+@router.post(_ORG + "/blocks/{block_id}/draw")
+async def block_state(org_id: str, block_id: str, request: Request):
+    """可以多人一起改的互动块还没有（频道卡片是投票和选择卡，各有自己的接口）。"""
+    return _owner_gate(request, org_id, members_too=True) or _error(404, "block.not_found", "没有这个互动块")
+
+
+@router.post(_ORG + "/actions/{action_id}/undo")
+@router.post(_ORG + "/actions/{action_id}/redo")
+async def agent_action(org_id: str, action_id: str, request: Request):
+    """agent 的操作回执还没有：没有可以撤销或重做的。"""
+    return _owner_gate(request, org_id) or _error(404, "action.not_found", "没有这条操作回执")
+
+
+@router.get(_ORG + "/action-cards/{message_id}")
+async def action_card(org_id: str, message_id: str, request: Request):
+    return _owner_gate(request, org_id) or _error(404, "action_card.not_found", "没有这张操作卡")
+
+
+@router.post(_ORG + "/action-cards/{message_id}/{decision}")
+async def decide_action_card(org_id: str, message_id: str, decision: str, request: Request):
+    return _owner_gate(request, org_id) or _error(404, "action_card.not_found", "没有这张操作卡")
+
+
+@router.post(_ORG + "/memories/{memory_id}/revert")
+async def revert_memory(org_id: str, memory_id: str, request: Request):
+    """记忆没有留旧版本：没法退回。要改就直接编辑或删掉。"""
+    return _owner_gate(request, org_id) or _error(409, "memory.no_history", "记忆没有留旧版本，请直接编辑或删掉")
+
+
+@router.post(_ORG + "/task-manager/continue")
+async def task_manager_continue(org_id: str, body: Dict[str, Any], request: Request):
+    """跳过额度、让同一件事接着做还没有：额度等待由额度设置决定。"""
+    return _owner_gate(request, org_id) or _error(409, "task.continue_unavailable",
+                                                  "还不能跳过额度接着做：可以调高额度，或停下再重新派")
+
+
+@router.post(_ORG + "/team/channel-move")
+async def propose_channel_move(org_id: str, body: Dict[str, Any], request: Request):
+    return _owner_gate(request, org_id) or _error(409, "channel_move.unavailable",
+                                                  "agent 还不会提议搬移频道：可以直接在频道设置里改分类")
+
+
+@router.post("/api/app/organizations")
+async def create_organization(request: Request):
+    """一台服务只有一个家：这里不能再建新的空间。"""
+    return _error(409, "organization.single_home", "这台服务只有一个家，不能再建新的空间")
+
+
+@router.post("/api/app/feedback/files")
+async def upload_feedback_file(request: Request):
+    """反馈暂时只收文字：图片、视频请描述一下，或直接发给所有者。"""
+    return _error(409, "feedback.files_unavailable", "反馈暂时只收文字，附件还不能上传")
+
+
+@router.delete("/api/app/feedback/files/{file_id}")
+async def drop_feedback_file(file_id: str, request: Request):
+    return _error(404, "feedback.file_not_found", "没有这个附件")
+
+
+@router.post("/api/app/feedback/offers/{message_id}")
+async def feedback_offer(message_id: str, body: Dict[str, Any], request: Request):
+    """agent 主动提出的反馈报告还没有：没有这条。"""
+    return _error(404, "feedback.offer_not_found", "没有这条反馈提议")
+
+
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────
 # 密钥只有所有者能看能改；搜索和取图给空间里所有人（成员也能在团队频道里发）。图片经本服务转发。
 

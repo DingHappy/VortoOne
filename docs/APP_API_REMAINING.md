@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 447 个，剩 **184** 个：
-- **要做：113**（其中 14 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 472 个，剩 **159** 个：
+- **要做：88**（其中 7 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -114,7 +114,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` | 没有项目副本，409 `mission.no_worktree`。 |
 | ☑ | POST | `ORG/missions/{x}/{x}` | `missions.control` | 仅所有者，`start/pause/resume/stop`。绑定的 agent 在话题里一步接一步做，只用团队安全工具、按外部内容处理话题；失败、被打断、没列计划、一次累计 10 步时暂停并说明，计划做完等收尾。agent 要先加进频道。 |
 
-### org/agents（35 个，要做 20）
+### org/agents（35 个，要做 15）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -136,15 +136,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/agents/{x}/databases` | `databases.agent` |  |
 | ☐ | PUT | `ORG/agents/{x}/databases/{x}` | `databases.setAgent` |  |
 | ☐ | GET | `ORG/agents/{x}/desktop/picture` | `desktop.picture` |  |
-| ☐ | GET | `ORG/agents/{x}/for-you` | `agentForYou.get` | 界面代码里没调用 |
+| ☑ | GET | `ORG/agents/{x}/for-you` | `agentForYou.get` | agent 主动替人整理的东西还没有：空。 |
 | ☑ | PUT | `ORG/agents/{x}/group` | `agentGroups.move` | 分组就是部门，调整要经提议，回 409 |
-| ☐ | DELETE | `ORG/agents/{x}/holds/{x}` | `desktop.stopHold` |  |
+| ☑ | DELETE | `ORG/agents/{x}/holds/{x}` | `desktop.stopHold` | agent 在连接的电脑上开着的程序：这里没有，404（等连接电脑线）。 |
 | ☑ | GET | `ORG/agents/{x}/learned-skills` | `skills.learned` | agent 不自己写技能，是空的 |
 | ☐ | GET | `ORG/agents/{x}/mail` | `mail.agent` |  |
 | ☐ | PUT | `ORG/agents/{x}/mail/{x}` | `mail.setAgent` |  |
-| ☐ | GET | `ORG/agents/{x}/merge-repositories` | `repositories.merge` |  |
-| ☐ | PUT | `ORG/agents/{x}/merge-repositories` | `repositories.setMerge` |  |
-| ☐ | PUT | `ORG/agents/{x}/mission-command-approval` | `missions.setAgentDefault` |  |
+| ☑ | GET | `ORG/agents/{x}/merge-repositories` | `repositories.merge` | 不经审批就合并的仓库：没有（空）。合并一律要人确认。 |
+| ☑ | PUT | `ORG/agents/{x}/merge-repositories` | `repositories.setMerge` | 只接受空列表，否则 409 `repositories.merge_needs_approval`：不开免审批合并。 |
+| ☑ | PUT | `ORG/agents/{x}/mission-command-approval` | `missions.setAgentDefault` | 只接受 `always`，和 Mission 自己的设置一致；其它 409。 |
 | — | PUT | `ORG/agents/{x}/repositories` | `repositories.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | — | PUT | `ORG/agents/{x}/scopes` | `scopes.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页；界面代码里没调用 |
 | ☐ | GET | `ORG/agents/{x}/secrets` | `secrets.list` |  |
@@ -556,14 +556,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/notifications/{x}/read` | `notifications.read` | 仅所有者的后台通知 |
 | ☑ | POST | `ORG/notifications/{x}/snooze` | `notifications.snooze` | 仅所有者的后台通知 |
 
-### /api/app/feedback（4 个，要做 3）
+### /api/app/feedback（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `/api/app/feedback` | `system.sendFeedback` | 已认证成员或所有者提交本地文字反馈，另有仅所有者可读的本地收件箱 |
-| ☐ | POST | `/api/app/feedback/files` | `system.uploadFeedbackFile` |  |
-| ☐ | DELETE | `/api/app/feedback/files/{x}` | `system.dropFeedbackFile` |  |
-| ☐ | POST | `/api/app/feedback/offers/{x}` | `system.decideFeedbackOffer` |  |
+| ☑ | POST | `/api/app/feedback/files` | `system.uploadFeedbackFile` | 反馈暂时只收文字：409。 |
+| ☑ | DELETE | `/api/app/feedback/files/{x}` | `system.dropFeedbackFile` | 没有附件：404。 |
+| ☑ | POST | `/api/app/feedback/offers/{x}` | `system.decideFeedbackOffer` | agent 主动提出的反馈报告还没有：404。 |
 
 ### /api/app/jev（4 个，要做 0）
 
@@ -670,13 +670,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/deletion` | `orgs.deleteWorkspace` |  |
 | ☐ | POST | `ORG/deletion/code` | `orgs.deletionCode` |  |
 
-### org/team-week（3 个，要做 3）
+### org/team-week（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/team-week` | `orgs.teamWeek` |  |
-| ☐ | PUT | `ORG/team-week` | `orgs.setTeamWeek` |  |
-| ☐ | POST | `ORG/team-week/{x}` | `orgs.actOnTeamWeek` |  |
+| ☑ | GET | `ORG/team-week` | `orgs.teamWeek` | 照实：每日卡＝常驻助理的早报，每周卡＝周日晚报（带一周总结）；时间来自 `VORTOONE_ASSISTANT_REPORT_TIMES`，没有转发地址或 IM 时都不发。 |
+| ☑ | PUT | `ORG/team-week` | `orgs.setTeamWeek` | 时间和开关在服务环境里设：和现在一样照原样回，否则 409 `team_week.fixed`。 |
+| ☑ | POST | `ORG/team-week/{x}` | `orgs.actOnTeamWeek` | 早晚报里没有可以直接照做的条目：404。 |
 
 ### org/agent-groups（3 个，要做 0）
 
@@ -686,21 +686,21 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | DELETE | `ORG/agent-groups/{x}` | `agentGroups.remove` | 同上 |
 | ☑ | PATCH | `ORG/agent-groups/{x}` | `agentGroups.update` | 同上 |
 
-### org/imports（3 个，要做 3）
+### org/imports（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/imports` | `imports.sources` | 界面代码里没调用 |
-| ☐ | POST | `ORG/imports` | `imports.apply` |  |
-| ☐ | POST | `ORG/imports/files` | `imports.copyFile` |  |
+| ☑ | GET | `ORG/imports` | `imports.sources` | 整包导入还没有：空。 |
+| ☑ | POST | `ORG/imports` | `imports.apply` | 如实 409：Wiki、技能各有自己的导入。 |
+| ☑ | POST | `ORG/imports/files` | `imports.copyFile` | 如实 409。 |
 
-### org/blocks（3 个，要做 3）
+### org/blocks（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/blocks/{x}/draw` | `artifacts.drawBlock` |  |
-| ☐ | GET | `ORG/blocks/{x}/state` | `artifacts.blockState` |  |
-| ☐ | PUT | `ORG/blocks/{x}/state` | `artifacts.setBlockState` |  |
+| ☑ | POST | `ORG/blocks/{x}/draw` | `artifacts.drawBlock` | 多人一起改的互动块还没有：404。 |
+| ☑ | GET | `ORG/blocks/{x}/state` | `artifacts.blockState` | 同上，404。 |
+| ☑ | PUT | `ORG/blocks/{x}/state` | `artifacts.setBlockState` | 同上，404。 |
 
 ### org/proposals（3 个，要做 3）
 
@@ -710,27 +710,27 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/proposals/{x}/ask` | `proposals.ask` |  |
 | ☐ | POST | `ORG/proposals/{x}/refuse` | `proposals.refuse` |  |
 
-### org/actions（2 个，要做 2）
+### org/actions（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/actions/{x}/redo` | `actions.redo` | 界面代码里没调用 |
-| ☐ | POST | `ORG/actions/{x}/undo` | `actions.undo` | 界面代码里没调用 |
+| ☑ | POST | `ORG/actions/{x}/redo` | `actions.redo` | agent 的操作回执还没有：404。 |
+| ☑ | POST | `ORG/actions/{x}/undo` | `actions.undo` | 同上，404。 |
 
-### org/action-cards（2 个，要做 2）
+### org/action-cards（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/action-cards/{x}` | `actionCards.get` | 界面代码里没调用 |
-| ☐ | POST | `ORG/action-cards/{x}/{x}` | `actionCards.decide` | 界面代码里没调用 |
+| ☑ | GET | `ORG/action-cards/{x}` | `actionCards.get` | 操作卡还没有：404。 |
+| ☑ | POST | `ORG/action-cards/{x}/{x}` | `actionCards.decide` | 同上，404。 |
 
-### org/task-manager（2 个，要做 1）
+### org/task-manager（2 个，要做 0）
 
 既有 `GET ORG/task-manager` 向已认证所有者显示 `since` 窗口内主聊天明确记录的完成、失败和取消。旧记录缺少终态时不推断。
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/task-manager/continue` | `working.continueTasks` | 暂无跳过预算继续同一回合的能力。 |
+| ☑ | POST | `ORG/task-manager/continue` | `working.continueTasks` | 还不能跳过额度接着做：409。 |
 | ☑ | GET | `ORG/task-manager/{x}/steps` | `working.taskSteps` | 所有者的任务详情读取主聊天已记录的工具名称、调用开始与结果状态。专员无逐步记录时返回 404。 |
 
 ### /api/app/telemetry（2 个，要做 0）
@@ -754,12 +754,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | DELETE | `ORG/logo` | `orgs.removeLogo` | 所有者可删除，本机工作区恢复默认标识 |
 | ☑ | PUT | `ORG/logo` | `orgs.setLogo` | 所有者可上传 ≤768 KiB、最长边 ≤512 像素的 8 位 RGB/RGBA 非隔行 PNG |
 
-### org/team（2 个，要做 1）
+### org/team（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/team` | `agents.team` | 只读名册，活动沿用自己的会话。团队图的汇报关系只显示双方已可见的连线。 |
-| ☐ | POST | `ORG/team/channel-move` | `agents.proposeChannelMove` |  |
+| ☑ | POST | `ORG/team/channel-move` | `agents.proposeChannelMove` | agent 还不会提议搬移频道：409。 |
 
 ### org/team-templates（2 个，要做 0）
 
@@ -789,11 +789,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | GET | `ORG/github/access` | `githubApp.access` | 等待工作区绑定的 GitHub 用户授权和组织访问结果。 |
 | ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` | 等待向该工作区验证的 GitHub 用户授权或 App 安装所授予的仓库清单。 |
 
-### org/memories（2 个，要做 1）
+### org/memories（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/memories/{x}/revert` | `memory.revert` | 界面代码里没调用 |
+| ☑ | POST | `ORG/memories/{x}/revert` | `memory.revert` | 记忆没有留旧版本：409，请直接编辑或删掉。 |
 | ☑ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` | 只有所有者能把自己的记忆设成团队记忆、能改文字；成员有 `review_memory` 只能移除、恢复。进所有 agent 的系统提示（对外发布的岗位除外），标明是资料不是指令 |
 
 ### org/sandbox-settings（2 个，要做 0）
@@ -851,11 +851,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☐ | POST | `/api/app/email-undo` | `account.undoEmailChange` |  |
 
-### /api/app/organizations（1 个，要做 1）
+### /api/app/organizations（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/organizations` | `orgs.create` |  |
+| ☑ | POST | `/api/app/organizations` | `orgs.create` | 一台服务只有一个家：409 `organization.single_home`。 |
 
 ### org/onboarding（1 个，要做 1）
 
