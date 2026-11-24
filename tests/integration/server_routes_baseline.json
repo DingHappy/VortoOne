@@ -48,6 +48,24 @@
     ]
   },
   {
+    "path": "/api/app/feedback/files",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/feedback/files/{file_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/feedback/offers/{message_id}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/invitations/{token}/code",
     "methods": [
       "POST"
@@ -75,6 +93,66 @@
     "path": "/api/app/invitations/{token}/requests/claim",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/action-cards/{message_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/action-cards/{message_id}/{decision}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/actions/{action_id}/redo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/actions/{action_id}/undo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/for-you",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/holds/{hold_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/merge-repositories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/merge-repositories",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/mission-command-approval",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -109,6 +187,24 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/sharing",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/blocks/{block_id}/draw",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/blocks/{block_id}/state",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/blocks/{block_id}/state",
     "methods": [
       "PUT"
     ]
@@ -156,6 +252,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/imports",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/imports",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/imports/files",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/invite-links",
     "methods": [
       "GET"
@@ -181,6 +295,12 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/invite-links/{link_id}/renew",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/memories/{memory_id}/revert",
     "methods": [
       "POST"
     ]
@@ -306,6 +426,12 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/task-manager/continue",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/team-templates",
     "methods": [
       "GET"
@@ -313,6 +439,30 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/team-templates/{template_id}/use",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-week",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-week",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-week/{message_id}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team/channel-move",
     "methods": [
       "POST"
     ]
