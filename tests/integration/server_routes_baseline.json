@@ -48,6 +48,12 @@
     ]
   },
   {
+    "path": "/api/app/device-accounts/switch",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/feedback/files",
     "methods": [
       "POST"

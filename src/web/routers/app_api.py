@@ -501,6 +501,12 @@ class _DeviceAccountSignOut(BaseModel):
     userId: str | None = Field(default=None, min_length=1, max_length=200)
 
 
+@router.post("/api/app/device-accounts/switch")
+async def switch_device_account(request: Request):
+    """这里一个浏览器只登一个账号：没有别的账号可以切过去，要换人就退出再登录。"""
+    return _error(409, "account.single_session", "这个浏览器只登一个账号：要换账号，请先退出再登录")
+
+
 @router.post("/api/app/device-accounts/sign-out")
 async def device_sign_out(request: Request, response: Response, body: _DeviceAccountSignOut | None = None):
     """退出当前账号。明确提供账号时，先核对它就是当前会话，防止旧页面退出后来登录的人。"""

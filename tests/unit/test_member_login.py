@@ -791,3 +791,10 @@ def test_member_can_update_only_own_password_after_explicit_sign_in(home):
     assert claimed_by.post("/api/auth/sign-in/email", json={
         "email": "owner@example.test", "password": PASSWORD,
     }).status_code == 200
+
+
+def test_switching_device_accounts_is_refused_honestly(home):
+    member = _join(home)
+    answer = member.post("/api/app/device-accounts/switch", json={"userId": "someone"})
+    assert answer.status_code == 409 and answer.json()["error"]["code"] == "account.single_session"
+    assert member.get("/api/app/me").status_code == 200                       # 没有动当前的登录
