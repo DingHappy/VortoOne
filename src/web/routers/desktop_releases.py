@@ -61,8 +61,9 @@ async def _fetch_installer() -> dict[str, str | int] | None:
     # One fixed public source. User input, cookies and credentials never leave this service.
     headers = {"Accept": "application/vnd.github+json", "Accept-Encoding": "identity",
                "User-Agent": "VortoOne desktop downloads"}
-    # 走服务自己的代理配置（有的部署只能经代理出网）；地址固定，不跟随重定向，代理设置是服务端的，可信
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5), trust_env=True,
+    # 直连，不走服务环境里的代理：共用的代理出口早就把 GitHub 匿名额度用完了（2026-11-24 在 97 实测：
+    # 直连 200，经代理「API rate limit exceeded」）。地址固定，不跟随重定向。
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5), trust_env=False,
                                      auto_decompress=False) as client:
         async with client.get(_RELEASE_URL, headers=headers, allow_redirects=False) as response:
             if response.status == 404:
