@@ -335,8 +335,8 @@ class StaffService:
             from src.workflow.staff.recovery import seed_queue_proof
             def seed(current):
                 seed_queue_proof(current)
-                if via is not None or channel is not None:
-                    current.collaboration['tainted'] = True
+                if via is not None or channel is not None or (routine or {}).get('hook'):
+                    current.collaboration['tainted'] = True     # webhook 叫起来的：带着外面发来的内容
             task = self.collaboration(owner).update_staff_action(task.id, 1, seed)
             try:
                 self.schedule(task, member, role, after=after)

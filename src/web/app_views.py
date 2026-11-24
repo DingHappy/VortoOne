@@ -966,8 +966,15 @@ def set_memory_archived(root: str, memory_id: str, archived: bool) -> Optional[D
     return {**current, "archived": archived}
 
 
-def _trigger(expression: str, timezone_name: str) -> Dict[str, Any]:
-    """后端的排期写法：`once <时间>`、`at HH:MM`、`every …` 或 cron。说明文字就用原写法，不另编一句。"""
+def _trigger(expression: str, timezone_name: str, *, root: str = "", routine_id: str = "") -> Dict[str, Any]:
+    """后端的排期写法：`once <时间>`、`at HH:MM`、`every …`、cron 或 `webhook`。说明文字就用原写法，不另编一句。"""
+    if expression == "webhook":
+        from src.workflow.staff.routine_hooks import HookDamaged, RoutineHooks
+        try:
+            hook = RoutineHooks(root).summary(routine_id)
+        except (HookDamaged, OSError):
+            hook = {"url": None, "signed": False, "methods": ["POST"]}
+        return {"type": "webhook", **hook, "url": hook["url"] if owner_connection() else None}
     if expression.startswith("once "):
         return {"type": "once", "at": _iso(expression[5:].strip()), "timezone": timezone_name,
                 "description": expression}
@@ -1005,7 +1012,7 @@ def routines(root: str) -> List[Dict[str, Any]]:
         rows.append({
             "id": item["id"], "name": item["name"], "agentId": agent, "prompt": item["prompt"],
             "target": {"type": "conversation", "channelId": dm_channel_id(agent), "threadId": None},
-            "trigger": _trigger(str(item["schedule"]), str(item["timezone"])),
+            "trigger": _trigger(str(item["schedule"]), str(item["timezone"]), root=root, routine_id=item["id"]),
             "active": active, "nextRunAt": _iso(upcoming.timestamp()) if upcoming else None,
             "createdAt": _iso(item.get("created_at")), "access": "read",
             "report": "always" if item.get("delivery") == "notify" else "when_new",
@@ -1054,7 +1061,7 @@ def _pending_routines(root: str, known: Set[str]) -> List[Dict[str, Any]]:
         rows.append({
             "id": data["id"], "name": data["name"], "agentId": agent, "prompt": data["prompt"],
             "target": {"type": "conversation", "channelId": dm_channel_id(agent), "threadId": None},
-            "trigger": _trigger(str(data["schedule"]), str(data["timezone"])),
+            "trigger": _trigger(str(data["schedule"]), str(data["timezone"]), root=root, routine_id=data["id"]),
             "active": False, "nextRunAt": None, "createdAt": _iso(item.get("created_at")), "access": "read",
             "report": "always" if data.get("delivery") == "notify" else "when_new",
             "pausedReason": None, "failuresInRow": 0, "state": "waiting_person",
