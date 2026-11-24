@@ -96,6 +96,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/keep",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/reply",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/artifacts/{artifact_id}/sharing",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/events/{event_id}/rsvp",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/proposals/{proposal_id}/confirm",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/calendar/proposals/{proposal_id}/dismiss",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/consultations",
     "methods": [
       "GET"
@@ -180,6 +216,48 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/reminders",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/reminders",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/reminders/{reminder_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/runs/{run_id}/device-wait",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/runs/{run_id}/stop-reason",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/sandbox-settings",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/sandbox-settings",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}/reimport",
     "methods": [
       "POST"
@@ -223,6 +301,18 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}/update/undo",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-templates",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/team-templates/{template_id}/use",
     "methods": [
       "POST"
     ]

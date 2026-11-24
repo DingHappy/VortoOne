@@ -497,6 +497,22 @@ class TeamChannels:
                 raise ValueError("投票的选项无效")
             self.cards.set_votes(card_id, self._actor_key(actor), sorted(options))
 
+    def reply_card(self, actor, card_id, text, client):
+        """在 agent 发的卡片上回复：这句话作为这个人在卡片所在话题里的一条消息，返回 (卡片, 消息)；
+        调用方再把它交给发卡的 agent。要能在这个频道发言、能叫 agent 办事。"""
+        body = " ".join(str(text or "").split())
+        if not body or len(body) > 4000:
+            raise ValueError("回复要在 4000 字以内且不能为空")
+        with self.registry._locked_state() as state:
+            card, channel, _ = self._card(state, actor, card_id, permission="post")
+            if channel["archived"]:
+                raise Missing("没有这张卡片")
+            _, access = self._find(state, actor, card["channel"], joined=True)
+            if "talk_to_agents" not in access.permissions:
+                raise Refused("你在这个频道里没有叫 agent 办事的权限")
+            message = self.history.append(card["channel"], self._actor_key(actor), body, client, card["thread"], None, False)
+            return card, message
+
     def answer_choices(self, actor, card_id, picks, others, client):
         """先答的算。答案作为这个人的一条消息发在话题里，返回 (卡片, 消息)；调用方再把它交给 agent。"""
         with self.registry._locked_state() as state:
