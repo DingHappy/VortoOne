@@ -23,6 +23,14 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | `VORTOONE_OPS_TOKEN` | — | 运维报到端点的专用令牌。只在常驻助理（通用范围）开放，不设则端点不存在。 | `web/routers/ops_heartbeat.py` |
 | `VORTOONE_VOICE_MCP_TOKEN` | — | 语音 MCP 端点的专用令牌。只在常驻助理开放，不设则端点不存在。 | `web/routers/voice.py` |
 
+## 邀请链接与发信
+
+| 变量 | 默认 | 作用 | 读取位置 |
+|------|------|------|----------|
+| `VORTOONE_JOIN_EMAIL_CODES` | 关 | 设 `1` 打开凭邀请链接申请时的邮箱验证码（主人 2026-11-23 定：保留这个开关）。还要配好下面两项才算开着；开着时登录配置里的 `passwordReset` 为真，成员也能凭邮件自己找回密码。 | `workflow/members/join_codes.py` |
+| `VORTOONE_SMTP_URL` | 无 | 发信服务器：`smtp+starttls://用户名:密码@主机:端口`（也认 `smtps://`、`smtp://`）。只放在服务器的环境文件里，不进日志。 | `workflow/members/join_codes.py` |
+| `VORTOONE_MAIL_FROM` | 无 | 发件地址。 | `workflow/members/join_codes.py` |
+
 ## 手机账号与独立网关
 
 | 变量 | 默认 | 作用 | 读取位置 |

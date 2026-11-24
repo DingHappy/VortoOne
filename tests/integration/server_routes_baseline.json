@@ -48,6 +48,36 @@
     ]
   },
   {
+    "path": "/api/app/invitations/{token}/code",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/code/check",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/request-new",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/requests",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/invitations/{token}/requests/claim",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/consultations",
     "methods": [
       "GET"
@@ -69,6 +99,36 @@
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/follow-ups",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invite-links",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invite-links",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invite-links/{link_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invite-links/{link_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/invite-links/{link_id}/renew",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -193,6 +253,12 @@
   },
   {
     "path": "/api/auth/logout",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/request-password-reset",
     "methods": [
       "POST"
     ]

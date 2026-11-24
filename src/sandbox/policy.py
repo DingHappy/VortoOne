@@ -215,6 +215,7 @@ _STRIPPED_ENV_KEYS = frozenset({
     "VORTOONE_CODEX_REPORT_TOKEN",                      # 本机到常驻助理的控制凭证
     "VORTOONE_OPS_TOKEN", "VORTOONE_VOICE_MCP_TOKEN",  # 常驻端的独立操作入口
     "VORTOONE_DD_CLIENT_SECRET", "VORTOONE_TG_TOKEN",  # IM 桥接凭据
+    "VORTOONE_SMTP_URL",                                # 发信服务器地址里带着密码
 })
 _SECRET_ENV_LOCK = threading.RLock()
 _REGISTERED_SECRET_ENV_NAMES: set[str] = set()

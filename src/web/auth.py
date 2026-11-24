@@ -58,6 +58,8 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/auth/sign-in/email", "/api/auth/sign-out",
                  # 成员凭邀请注册、凭重置链接改密码：各自核对邀请令牌 / 重置令牌
                  "/api/auth/sign-up/email", "/api/auth/reset-password",
+                 # 自己找回密码：只在配好发信时发重置信，有没有这个账号都回同一句话（routers/app_api.py）
+                 "/api/auth/request-password-reset",
                  # 另一台设备凭一次性登录换登录：核对它自己的一次性凭据（members/one_time.py）
                  "/api/auth/sign-in/one-time-token",
                  # 装好时的一次性认领链接（members/owner_account.py）：核对它自己的认领令牌
