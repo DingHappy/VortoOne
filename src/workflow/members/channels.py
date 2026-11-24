@@ -577,6 +577,32 @@ class TeamChannels:
                     state["channel_agent_asks"] = {key: item for key, item in state["channel_agent_asks"].items()
                                                    if item["channel"] != channel_id}
 
+    def delete(self, actor, channel_id, name, *, busy=False, dry_run=False):
+        """所有者永久删掉一个频道和它的全部内容（消息、话题、话题上的 Mission、投票卡、已读和静音）。
+        name 要和频道名一字不差（界面上让人打一遍确认）；频道里还有 agent 在做事（busy）时拒绝。"""
+        with self.registry._change() as state:
+            owner, _ = MemberRegistry._actor(state, actor)
+            if not owner:
+                raise Refused("删除频道只有所有者能做")
+            channel = state["channels"].get(channel_id)
+            if channel is None:
+                raise Missing("没有这个频道")
+            if not isinstance(name, str) or name != channel["title"]:
+                raise ValueError("频道名不对，没有删除")
+            if busy:
+                raise ValueError("频道里还有 agent 在做事，先停下再删")
+            if dry_run:                             # 只核对，不删（调用方先写审计）
+                return
+            with self.history.database(write=True) as conn:
+                # 消息删掉时，置顶、表情、话题状态、话题已读与关注、话题上的 Mission 跟着删（外键级联）
+                conn.execute("DELETE FROM messages WHERE channel = ?", (channel_id,))
+                conn.execute("DELETE FROM read_markers WHERE channel = ?", (channel_id,))
+                conn.execute("DELETE FROM channel_mutes WHERE channel = ?", (channel_id,))
+            self.cards.forget_channel(channel_id)
+            del state["channels"][channel_id]
+            state["channel_agent_asks"] = {key: item for key, item in state["channel_agent_asks"].items()
+                                           if item["channel"] != channel_id}
+
     def join(self, actor, channel_id, joining):
         with self.registry._change() as state:
             channel, access = self._find(state, actor, channel_id, archived=False)

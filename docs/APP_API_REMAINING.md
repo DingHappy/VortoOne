@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 392 个，剩 **239** 个：
-- **要做：168**（其中 24 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 409 个，剩 **222** 个：
+- **要做：151**（其中 17 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -318,14 +318,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |
 | ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
 
-### org/channels（10 个，要做 4）
+### org/channels（10 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/channels/{x}/consultations` | `agents.consultations` |  |
-| ☐ | GET | `ORG/channels/{x}/consultations/{x}` | `agents.consultation` |  |
-| ☐ | POST | `ORG/channels/{x}/delete` | `chat.deleteChannel` |  |
-| ☐ | GET | `ORG/channels/{x}/follow-ups` | `chat.followUps` |  |
+| ☑ | GET | `ORG/channels/{x}/consultations` | `agents.consultations` | agent 之间互相咨询还没有：能读这个频道的人拿到空列表。 |
+| ☑ | GET | `ORG/channels/{x}/consultations/{x}` | `agents.consultation` | 同上，404。 |
+| ☑ | POST | `ORG/channels/{x}/delete` | `chat.deleteChannel` | 仅所有者，要打一遍频道名。频道和消息、话题、话题上的 Mission、投票卡、已读、静音一起永久删除；频道里有 agent 在做事时 409；删前写持久审计（被拒的不记）。管理员暂不能删。 |
+| ☑ | GET | `ORG/channels/{x}/follow-ups` | `chat.followUps` | agent 约好回来跟进还没有：能读这个频道的人拿到空列表。 |
 | ☑ | DELETE | `ORG/channels/{x}/members/agents/{x}` | `chat.removeMember` | 所有者把 agent 拿出频道（删掉的 agent 也能拿出来） |
 | ☑ | PATCH | `ORG/channels/{x}/members/agents/{x}` | `chat.setAutoReply` | 只认「被 @ 才回答」；开不 @ 也回答第一期如实回 409（主人 2026-11-22 定） |
 | ☑ | DELETE | `ORG/channels/{x}/mute` | `reads.mute` | 解除自己已加入的团队频道静音，保留未读进度。私聊和其他非团队频道不支持。 |
@@ -391,29 +391,29 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PATCH | `ORG/connectors/{x}` | `connectors.rename` | 改自定义连接器的名字 |
 | ☑ | POST | `ORG/connectors/{x}/oauth/start` | `connectors.startOAuth` | 不做 OAuth：回 409 |
 
-### org/skills（9 个，要做 8）
+### org/skills（9 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/skills/import` | `skills.import` | 所有者可导入只含单个 SKILL.md 的个人 ZIP，需审阅后启用；链接和附件待接 |
-| ☐ | POST | `ORG/skills/{x}/reimport` | `skills.reimport` |  |
-| ☐ | POST | `ORG/skills/{x}/restore` | `skills.restore` |  |
-| ☐ | POST | `ORG/skills/{x}/revert` | `skills.revert` |  |
-| ☐ | POST | `ORG/skills/{x}/update` | `skills.updateFromSource` | 界面代码里没调用 |
-| ☐ | POST | `ORG/skills/{x}/update/approve` | `skills.approveUpdate` | 界面代码里没调用 |
-| ☐ | POST | `ORG/skills/{x}/update/dismiss` | `skills.dismissUpdate` | 界面代码里没调用 |
-| ☐ | POST | `ORG/skills/{x}/update/reopen` | `skills.reopenUpdate` | 界面代码里没调用 |
-| ☐ | POST | `ORG/skills/{x}/update/undo` | `skills.undoUpdate` | 界面代码里没调用 |
+| ☑ | POST | `ORG/skills/{x}/reimport` | `skills.reimport` | 技能是手写或上传 ZIP 的，没有网址来源：如实 409 `skill.no_source`，不改技能，也不把这一版记成看过。 |
+| ☑ | POST | `ORG/skills/{x}/restore` | `skills.restore` | 没有因不用被归档的技能：409 `skill.not_archived`。 |
+| ☑ | POST | `ORG/skills/{x}/revert` | `skills.revert` | 「agent 自己改进技能」固定关着，没有 agent 的改动可撤回：409 `skill.nothing_to_revert`。 |
+| ☑ | POST | `ORG/skills/{x}/update` | `skills.updateFromSource` | 技能是手写或上传 ZIP 的，没有网址来源：如实 409 `skill.no_source`，不改技能，也不把这一版记成看过。 |
+| ☑ | POST | `ORG/skills/{x}/update/approve` | `skills.approveUpdate` | 技能是手写或上传 ZIP 的，没有网址来源：如实 409 `skill.no_source`，不改技能，也不把这一版记成看过。 |
+| ☑ | POST | `ORG/skills/{x}/update/dismiss` | `skills.dismissUpdate` | 技能是手写或上传 ZIP 的，没有网址来源：如实 409 `skill.no_source`，不改技能，也不把这一版记成看过。 |
+| ☑ | POST | `ORG/skills/{x}/update/reopen` | `skills.reopenUpdate` | 技能是手写或上传 ZIP 的，没有网址来源：如实 409 `skill.no_source`，不改技能，也不把这一版记成看过。 |
+| ☑ | POST | `ORG/skills/{x}/update/undo` | `skills.undoUpdate` | 技能是手写或上传 ZIP 的，没有网址来源：如实 409 `skill.no_source`，不改技能，也不把这一版记成看过。 |
 
-### org/messages（8 个，要做 5）
+### org/messages（8 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/messages/{x}/actions/undo` | `actions.undoMessage` | 界面代码里没调用 |
-| ☐ | POST | `ORG/messages/{x}/answer-now` | `chat.answerNow` |  |
-| ☐ | POST | `ORG/messages/{x}/cancel-follow-up` | `chat.cancelFollowUp` |  |
-| ☐ | POST | `ORG/messages/{x}/correction` | `chat.correct` |  |
-| ☐ | POST | `ORG/messages/{x}/github-answer` | `chat.answerGitHub` | 界面代码里没调用 |
+| ☑ | POST | `ORG/messages/{x}/actions/undo` | `actions.undoMessage` | agent 的回答下面没有操作回执：回空（没有要撤的）。 |
+| ☑ | POST | `ORG/messages/{x}/answer-now` | `chat.answerNow` | 没接模型时消息不会发出、不会存着等回答：409 `message.nothing_waiting`。 |
+| ☑ | POST | `ORG/messages/{x}/cancel-follow-up` | `chat.cancelFollowUp` | 没有跟进：409 `follow_up.not_pending`。 |
+| ☑ | POST | `ORG/messages/{x}/correction` | `chat.correct` | 纠正还不能存成 agent 的经验：409 `message.correction_unavailable`，不存。 |
+| ☑ | POST | `ORG/messages/{x}/github-answer` | `chat.answerGitHub` | 没接 GitHub 事件：409 `github_event.unavailable`。 |
 | ☑ | DELETE | `ORG/messages/{x}/reactions` | `chat.unreact` |  |
 | ☑ | GET | `ORG/messages/{x}/reactions` | `chat.reactions` |  |
 | ☑ | POST | `ORG/messages/{x}/reactions` | `chat.react` |  |
