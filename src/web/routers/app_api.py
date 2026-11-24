@@ -2327,6 +2327,8 @@ async def cancel_run(org_id: str, run_id: str, request: Request):
         if not app_staff.owner_proof(request):
             return _error(403, "owner_proof_required", _NEEDS_OWNER)
         try:
+            from src.web import app_missions
+            await asyncio.to_thread(app_missions.runs(root).request_step_stop, run_id)   # Mission 的一步：记下是人要停的
             stopped = app_staff.stop(root, run_id)
         except (ValueError, OSError) as error:
             return _error(409, "staff_unavailable", str(error))
@@ -3554,32 +3556,52 @@ class _CloseMissionDraft(BaseModel):
     deleteBranch: bool = False
 
 
-def _mission_progress():
-    return {"done": 0, "total": 0, "doing": 0, "waiting": 0}
+def _mission_progress(items=()):
+    statuses = [item["status"] for item in items]
+    return {"done": statuses.count("done") + statuses.count("dropped"), "total": len(statuses),
+            "doing": statuses.count("doing"), "waiting": statuses.count("waiting_you")}
 
 
-def _mission_view(drafts, row):
+def _mission_view(drafts, row, *, plan=None, running=0):
+    """plan：最新一版计划（{"version", "items"}，没有就 None）；running：正在做的步数。"""
     channels = drafts.channels
+    status = row["current_status"]
+    items = plan["items"] if plan else []
+    started = row["started_at"] is not None
     return {
         "id": row["id"], "threadId": row["thread_id"], "channelId": row["channel_id"],
         "agentId": views.member_agent_id(channels.registry.root, row["staff_id"]),
         "ownerId": channels.history.person_id(row["owner"]),
-        "title": row["title"], "goal": row["goal"], "status": row["current_status"],
+        "title": row["title"], "goal": row["goal"], "status": status,
         "executor": "agent", "findings": [], "openQuestion": None,
-        "repoDir": "", "resumeTasks": False, "commandApproval": "always",
-        "plan": {"version": 0, **_mission_progress(), "items": []},
+        "repoDir": "", "resumeTasks": bool(row["resume_tasks"]), "commandApproval": "always",
+        "plan": {"version": plan["version"] if plan else 0, **_mission_progress(items),
+                 "items": [{"id": item["id"], "title": item["title"], "status": item["status"]} for item in items]},
         "pending": {"decisions": 0, "provisional": 0, "reviews": 0, "suggestions": 0,
                     "joinRequests": 0, "commands": 0, "deliveries": 0},
-        "joinRequested": False, "runningTasks": 0, "machine": None, "needsComputer": False,
-        "role": "owner", "canAct": False, "canManage": False, "createdAt": row["created"],
-        "canCancelDraft": row["current_status"] == "proposed",
-        "startedAt": None, "pausedAt": None, "closedAt": row["closed_at"], "closeReason": row["note"],
+        "joinRequested": False, "runningTasks": running, "machine": None, "needsComputer": False,
+        # 第一期只有所有者能开始、暂停、收尾（成员加入见后续）
+        "role": "owner", "canAct": status not in ("done", "canceled"), "canManage": started,
+        "createdAt": row["created"],
+        "canCancelDraft": status == "proposed",
+        "startedAt": row["started_at"], "pausedAt": row["paused_at"] if status == "paused" else None,
+        "closedAt": row["closed_at"], "closeReason": row["note"],
         "wikiPageId": None,
     }
 
 
+def _mission_full(drafts, actor, mission_id):
+    """一个 Mission 的完整视图：带最新计划和正在做的步数。"""
+    from src.web import app_missions
+    from src.workflow.members.mission_runs import MissionRuns
+    row, plans, steps = MissionRuns(drafts).details(actor, mission_id)
+    return _mission_view(drafts, row, plan=plans[0] if plans else None,
+                         running=app_missions.running(drafts.channels.registry.root, mission_id, steps))
+
+
 async def _mission_request(org_id, request, action, *, status=200):
     from src.workflow.members.mission_drafts import AgentUnavailable, DraftClosed, DraftConflict, MissionDrafts
+    from src.workflow.members.mission_runs import WrongStatus
     from src.workflow.members.registry import Damaged, Missing, Refused
 
     root = _root(org_id)
@@ -3598,6 +3620,8 @@ async def _mission_request(org_id, request, action, *, status=200):
         return _error(409, "mission.closed", str(error))
     except AgentUnavailable as error:
         return _error(409, "mission.agent_unavailable", str(error))
+    except WrongStatus as error:
+        return _error(409, "mission.wrong_status", str(error))
     except ThreadArchived as error:
         return _error(409, "thread.archived", str(error))
     except (Damaged, OSError, ValueError):
@@ -3621,7 +3645,13 @@ async def list_mission_drafts(
         staff_id = None if agentId is None else _staff_of(drafts.channels.registry.root, agentId) or ""
         rows, counts = drafts.listing(actor, channel_id=channelId, staff_id=staff_id, query=q.strip(), limit=limit,
                                       status=status)
-        return {"missions": [_mission_view(drafts, row) for row in rows], "counts": counts}
+        from src.web import app_missions
+        from src.workflow.members.mission_runs import MissionRuns
+        extra = MissionRuns(drafts).latest([row["id"] for row in rows])
+        root = drafts.channels.registry.root
+        return {"missions": [_mission_view(drafts, row, plan=extra[row["id"]]["plan"],
+                                           running=app_missions.running(root, row["id"], extra[row["id"]]["steps"]))
+                             for row in rows], "counts": counts}
 
     return await _mission_request(org_id, request, read)
 
@@ -3651,35 +3681,358 @@ async def create_mission_draft(org_id: str, body: _NewMissionDraft, request: Req
     return await _mission_request(org_id, request, create, status=201)
 
 
+@router.get(_ORG + "/missions/eligible-agents")
+async def mission_eligible_agents(org_id: str, request: Request):
+    """新建 Mission 能选的 agent：原生、能在频道里办事、岗位不写代码（主人 2026-11-23 定）。
+    写代码或用本机 CLI 的标为要连电脑；暂停、停用的标为不能办事。"""
+    def read(drafts, actor):
+        from src.scheduling.staff_runner import get_staff_service
+        root = drafts.channels.registry.root
+        joinable = app_channels.channel_agents(root)            # 按专员 id（也就是 handle）
+        service = get_staff_service(root)
+        rows = []
+        for agent in views.agents(root):
+            staff_id = _staff_of(root, agent["id"])
+            if staff_id is None or agent["id"] == views.main_agent_id(root):
+                continue
+            reason = None
+            try:
+                member, role = service.assignment({"member": staff_id, "prompt": "x"})
+                if member["engine"] != "vortocode" or role.get("project_binding"):
+                    reason = "no_computer"
+                else:
+                    service.executable(role)
+                    if not joinable.get(staff_id, {}).get("joinable"):
+                        reason = "exec_off"
+            except ValueError:
+                reason = "exec_off"
+            rows.append({"agentId": agent["id"], "handle": agent["handle"], "name": agent["name"],
+                         "eligible": reason is None, "reason": reason, "canManage": False, "machine": None,
+                         "ready": reason is None, "executors": ["agent"] if reason is None else [],
+                         "defaultExecutor": "agent" if reason is None else None, "codexTooOld": False,
+                         "commandApproval": "always"})
+        return {"agents": rows}
+
+    return await _mission_request(org_id, request, read)
+
+
 @router.get(_ORG + "/missions/{mission_id}")
 async def get_mission_draft(org_id: str, mission_id: str, request: Request):
-    return await _mission_request(org_id, request, lambda drafts, actor:
-                                  _mission_view(drafts, drafts.get(actor, mission_id)))
+    return await _mission_request(org_id, request, lambda drafts, actor: _mission_full(drafts, actor, mission_id))
 
 
 @router.post(_ORG + "/missions/{mission_id}/close")
 async def close_mission_draft(org_id: str, mission_id: str, body: _CloseMissionDraft, request: Request):
-    def close(drafts, actor):
-        if body.outcome != "canceled" or body.saveToWiki or body.deleteBranch:
-            return _error(409, "mission.unsupported", "草案只能取消，且不生成 Wiki 总结或删除分支")
-        note = (body.note or "").strip() or None
-        return _mission_view(drafts, drafts.cancel(actor, mission_id, note))
+    """草案只能取消；开始以后可以标为完成或取消，正在做的那一步一起停下。不生成 Wiki 总结、不删分支。"""
+    stop: Dict[str, Any] = {}
 
-    return await _mission_request(org_id, request, close)
+    def close(drafts, actor):
+        from src.workflow.members.mission_runs import MissionRuns
+        if body.saveToWiki or body.deleteBranch:
+            return _error(409, "mission.unsupported", "收尾时暂不生成 Wiki 总结；Mission 没有自己的分支")
+        note = (body.note or "").strip() or None
+        if drafts.get(actor, mission_id)["started_at"] is None:
+            if body.outcome != "canceled":
+                return _error(409, "mission.unsupported", "还没开始的草案只能取消")
+            return _mission_view(drafts, drafts.cancel(actor, mission_id, note))
+        _, stop["task"] = MissionRuns(drafts).close(actor, mission_id, body.outcome, note)
+        return _mission_full(drafts, actor, mission_id)
+
+    response = await _mission_request(org_id, request, close)
+    if stop.get("task"):
+        await _stop_mission_step(_root(org_id), stop["task"])
+    return response
+
+
+async def _stop_mission_step(root: str, task_id: str) -> bool:
+    try:
+        return bool(app_staff.stop(root, task_id))
+    except (ValueError, OSError, LookupError):
+        logging.getLogger(__name__).warning("Mission 正在做的一步没能停下", exc_info=True)
+        return False
+
+
+async def _mission_chat_ready(root: str) -> None:
+    """派活用主要聊天的会话当发起身份；还没打开过就先登记。登记不上时由派活那一步如实暂停。"""
+    try:
+        await _dispatch_ready(root)
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).info("主要聊天没能登记", exc_info=True)
+
+
+async def _mission_dispatched(org_id, request, response, claimed):
+    """登记好的一步在事件循环线程里派出，再读一次给界面（派不出去时 Mission 已暂停）。"""
+    from src.web import app_missions
+    if not claimed.get("task") or response.status_code >= 300:
+        return response
+    root = _root(org_id)
+    await _mission_chat_ready(root)
+    await app_missions.dispatch(root, claimed["mission"], claimed["task"], claimed["trigger"])
+    return await _mission_request(org_id, request, lambda drafts, actor: _mission_full(drafts, actor, claimed["mission"]))
+
+
+@router.post(_ORG + "/missions/{mission_id}/start")
+async def start_mission(org_id: str, mission_id: str, request: Request):
+    """开始：绑定的 agent 在话题里一步接一步做（主人 2026-11-23 定）。"""
+    claimed: Dict[str, Any] = {}
+
+    def start(drafts, actor):
+        from src.web import app_missions
+        from src.workflow.members.mission_runs import MissionRuns
+        row = drafts.get(actor, mission_id)
+        try:
+            app_missions.check_startable(drafts.channels.registry.root, row)
+        except ValueError as error:
+            return _error(409, "mission.agent_unavailable", str(error))
+        _, task_id = MissionRuns(drafts).start(actor, mission_id)
+        claimed.update(mission=mission_id, task=task_id, trigger="start")
+        return _mission_full(drafts, actor, mission_id)
+
+    return await _mission_dispatched(org_id, request, await _mission_request(org_id, request, start), claimed)
+
+
+@router.post(_ORG + "/missions/{mission_id}/pause")
+async def pause_mission(org_id: str, mission_id: str, request: Request):
+    """暂停：不再派下一步；正在做的这一步做完为止（要立刻停下用「停止」）。"""
+    def pause(drafts, actor):
+        from src.workflow.members.mission_runs import MissionRuns
+        MissionRuns(drafts).pause(actor, mission_id)
+        return _mission_full(drafts, actor, mission_id)
+
+    return await _mission_request(org_id, request, pause)
+
+
+@router.post(_ORG + "/missions/{mission_id}/resume")
+async def resume_mission(org_id: str, mission_id: str, request: Request):
+    """继续：重新计步，接着做下一步。"""
+    claimed: Dict[str, Any] = {}
+
+    def resume(drafts, actor):
+        from src.web import app_missions
+        from src.workflow.members.mission_runs import MissionRuns
+        row = drafts.get(actor, mission_id)
+        try:
+            app_missions.check_startable(drafts.channels.registry.root, row)
+        except ValueError as error:
+            return _error(409, "mission.agent_unavailable", str(error))
+        _, task_id = MissionRuns(drafts).resume(actor, mission_id)
+        if task_id:
+            claimed.update(mission=mission_id, task=task_id, trigger="resume")
+        return _mission_full(drafts, actor, mission_id)
+
+    return await _mission_dispatched(org_id, request, await _mission_request(org_id, request, resume), claimed)
+
+
+@router.post(_ORG + "/missions/{mission_id}/stop")
+async def stop_mission(org_id: str, mission_id: str, request: Request):
+    """停止：暂停，并停下正在做的那一步。"""
+    stop: Dict[str, Any] = {}
+
+    def halt(drafts, actor):
+        from src.workflow.members.mission_runs import MissionRuns
+        _, stop["task"] = MissionRuns(drafts).stop(actor, mission_id)
+        return None
+
+    response = await _mission_request(org_id, request, halt)
+    if response.status_code >= 300:
+        return response
+    canceled = 1 if stop.get("task") and await _stop_mission_step(_root(org_id), stop["task"]) else 0
+    view = await _mission_request(org_id, request, lambda drafts, actor: _mission_full(drafts, actor, mission_id))
+    if view.status_code >= 300:
+        return view
+    return JSONResponse({**json.loads(view.body), "canceledTasks": canceled}, headers={"Cache-Control": "no-store"})
+
+
+class _MissionPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    resumeTasks: bool
+
+
+@router.patch(_ORG + "/missions/{mission_id}")
+async def patch_mission(org_id: str, mission_id: str, body: _MissionPatch, request: Request):
+    """「恢复后自动接着做」：服务重启打断了一步时，开着就重新做这一步，关着就暂停等所有者。"""
+    def patch(drafts, actor):
+        from src.workflow.members.mission_runs import MissionRuns
+        MissionRuns(drafts).set_resume_tasks(actor, mission_id, body.resumeTasks)
+        return _mission_full(drafts, actor, mission_id)
+
+    return await _mission_request(org_id, request, patch)
+
+
+class _MissionMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    text: str = Field(min_length=1, max_length=8000)
+
+
+@router.post(_ORG + "/missions/{mission_id}/messages")
+async def mission_message(org_id: str, mission_id: str, body: _MissionMessage, request: Request):
+    """所有者在 Mission 话题里说一句。进行中、没有正在做的一步时，agent 马上读到并接着做（delivered）；
+    否则下一步开始时读到。"""
+    claimed: Dict[str, Any] = {}
+    text = body.text.strip()
+    if not text:
+        return _error(400, "mission.invalid_text", "消息不能为空")
+
+    def send(drafts, actor):
+        from src.workflow.members.mission_runs import MissionRuns
+        row = drafts.get(actor, mission_id)
+        if row["current_status"] in ("done", "canceled"):
+            return _error(409, "mission.wrong_status", "这个任务已经收尾")
+        drafts.channels.post(actor, row["channel_id"], text, thread=row["thread_id"])
+        if row["current_status"] == "active":
+            task_id = MissionRuns(drafts).claim_next(mission_id, "message")
+            if task_id:
+                claimed.update(mission=mission_id, task=task_id, trigger="message")
+        return None
+
+    response = await _mission_request(org_id, request, send)
+    if response.status_code >= 300:
+        return response
+    if not claimed:
+        return JSONResponse({"delivered": False}, headers={"Cache-Control": "no-store"})
+    from src.web import app_missions
+    root = _root(org_id)
+    await _mission_chat_ready(root)
+    sent = await app_missions.dispatch(root, mission_id, claimed["task"], "message")
+    return JSONResponse({"delivered": sent, **({"taskId": claimed["task"]} if sent else {})},
+                        headers={"Cache-Control": "no-store"})
+
+
+# ── 写代码的 Mission 要用的设置：等连接电脑那条线（主人 2026-11-23 定），如实拒绝或回空 ──
+
+def _no_computer():
+    return _error(409, "mission.no_computer", "Mission 暂时只在这个家的服务上由原生 agent 做，不连电脑、不写代码")
+
+
+class _MissionMachine(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    machineId: str = Field(min_length=1, max_length=128)
+    repoDir: str | None = Field(None, max_length=1024)
+
+
+@router.put(_ORG + "/missions/{mission_id}/machine")
+async def set_mission_machine(org_id: str, mission_id: str, body: _MissionMachine, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: (drafts.get(actor, mission_id), _no_computer())[1])
+
+
+class _MissionExecutor(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    executor: Literal["claude", "codex", "agent"]
+
+
+@router.put(_ORG + "/missions/{mission_id}/executor")
+async def set_mission_executor(org_id: str, mission_id: str, body: _MissionExecutor, request: Request):
+    """只有原生 agent 自己做（executor 固定是 agent）；选 Claude 或 Codex 要连电脑。"""
+    def choose(drafts, actor):
+        view = _mission_full(drafts, actor, mission_id)
+        return view if body.executor == "agent" else _no_computer()
+
+    return await _mission_request(org_id, request, choose)
+
+
+@router.post(_ORG + "/missions/{mission_id}/worktree/retry")
+async def retry_mission_worktree(org_id: str, mission_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), _error(409, "mission.no_worktree", "Mission 没有项目副本，不需要重新准备"))[1])
+
+
+class _MissionCommandApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    commandApproval: Literal["always", "low_risk_auto", "never"]
+
+
+@router.put(_ORG + "/missions/{mission_id}/command-approval")
+async def set_mission_command_approval(org_id: str, mission_id: str, body: _MissionCommandApproval, request: Request):
+    """只有「每次都问」：Mission 里不新增免确认（确认门由内核决定）。"""
+    def choose(drafts, actor):
+        drafts.get(actor, mission_id)
+        if body.commandApproval != "always":
+            return _error(409, "mission.approval_fixed", "Mission 里需要确认的操作每次都问，不提供自动放行")
+        return {"commandApproval": "always"}
+
+    return await _mission_request(org_id, request, choose)
+
+
+@router.delete(_ORG + "/missions/{mission_id}/command-rules/{rule_id}")
+async def remove_mission_command_rule(org_id: str, mission_id: str, rule_id: str, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), _error(404, "mission.rule_not_found", "Mission 没有自动放行规则"))[1])
+
+
+@router.get(_ORG + "/missions/{mission_id}/commands")
+async def mission_commands(org_id: str, mission_id: str, request: Request):
+    """原生 agent 在 Mission 里只用团队安全工具，不跑命令：没有命令卡，也没有放行规则。"""
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), {"commands": [], "rules": []})[1])
+
+
+class _MissionCommandRetry(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+@router.post(_ORG + "/missions/{mission_id}/commands/retry")
+async def retry_mission_command(org_id: str, mission_id: str, body: _MissionCommandRetry, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), _error(409, "mission.no_commands", "Mission 里不跑命令，没有可以重试的"))[1])
+
+
+class _MissionCommandDecision(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+@router.post(_ORG + "/missions/{mission_id}/commands/{command_id}/decide")
+async def decide_mission_command(org_id: str, mission_id: str, command_id: str, body: _MissionCommandDecision,
+                                 request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), _error(404, "mission.command_not_found", "没有这张命令卡"))[1])
+
+
+@router.get(_ORG + "/missions/{mission_id}/reviews")
+async def mission_reviews(org_id: str, mission_id: str, request: Request):
+    """代码审查（PR）只来自写代码的 Mission：现在没有。"""
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), {"reviews": []})[1])
+
+
+class _MissionReviewDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.post(_ORG + "/missions/{mission_id}/reviews/{review_id}/{outcome}")
+async def decide_mission_review(org_id: str, mission_id: str, review_id: str, outcome: str,
+                                body: _MissionReviewDecision, request: Request):
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id), _error(404, "mission.review_not_found", "没有这项审查"))[1])
+
+
+class _MissionBrain(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+@router.put(_ORG + "/missions/{mission_id}/brain")
+async def set_mission_brain(org_id: str, mission_id: str, body: _MissionBrain, request: Request):
+    """Mission 用 agent 登记的模型；改模型去 agent 的设置（岗位改动要走核对）。"""
+    return await _mission_request(org_id, request, lambda drafts, actor: (
+        drafts.get(actor, mission_id),
+        _error(409, "mission.brain_fixed", "Mission 用 agent 自己登记的模型，要换请去 agent 的设置里改"))[1])
 
 
 @router.get(_ORG + "/threads/{thread_id}/mission")
 async def thread_mission_draft(org_id: str, thread_id: str, request: Request):
-    return await _mission_request(org_id, request, lambda drafts, actor:
-                                  _mission_view(drafts, drafts.get(actor, thread_id, by_thread=True)))
+    return await _mission_request(org_id, request, lambda drafts, actor: _mission_full(
+        drafts, actor, drafts.get(actor, thread_id, by_thread=True)["id"]))
 
 
 @router.get(_ORG + "/threads/{thread_id}/tasks")
 async def mission_draft_thread_tasks(org_id: str, thread_id: str, request: Request):
     def read(drafts, actor):
-        drafts.get(actor, thread_id, by_thread=True)
-        # 草案不会派活，也没有关联的运行会话。其它任务台账与这个话题无关。
-        return {"tasks": []}
+        from src.web import app_missions
+        from src.workflow.members.mission_runs import MissionRuns
+        mission_id = drafts.get(actor, thread_id, by_thread=True)["id"]
+        row, _, steps = MissionRuns(drafts).details(actor, mission_id)
+        # 这个 Mission 派过的每一步；话题里别的事（比如被 @ 的回答）不在这里
+        return {"tasks": app_missions.thread_tasks(drafts.channels.registry.root, row, steps)}
 
     return await _mission_request(org_id, request, read)
 
@@ -3696,16 +4049,28 @@ async def mission_draft_files(org_id: str, mission_id: str, request: Request):
 
 @router.get(_ORG + "/missions/{mission_id}/plan")
 async def mission_draft_plan(org_id: str, mission_id: str, request: Request):
-    return await _mission_request(org_id, request, lambda drafts, actor: {
-        "missionId": drafts.get(actor, mission_id)["id"], "current": None, "history": []})
+    def read(drafts, actor):
+        from src.workflow.members.mission_runs import MissionRuns
+        row, plans, _ = MissionRuns(drafts).details(actor, mission_id)
+        return {"missionId": row["id"], "current": plans[0] if plans else None, "history": plans[1:]}
+
+    return await _mission_request(org_id, request, read)
 
 
 @router.get(_ORG + "/missions/{mission_id}/summary")
 async def mission_draft_summary(org_id: str, mission_id: str, request: Request):
     def read(drafts, actor):
-        row = drafts.get(actor, mission_id)
-        return {"missionId": row["id"], "text": row["goal"], "plan": _mission_progress(),
-                "running": 0, "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
+        from src.web import app_missions
+        from src.workflow.members.mission_runs import MissionRuns
+        row, plans, steps = MissionRuns(drafts).details(actor, mission_id)
+        text = row["goal"]
+        note = app_missions.pending_note(row) if row["current_status"] in ("paused", "awaiting_close") else None
+        if row["current_status"] == "awaiting_close":
+            note = app_missions.pending_note({"pause_reason": "planned_done"})
+        return {"missionId": row["id"], "text": text + ("\n\n" + note if note else ""),
+                "plan": _mission_progress(plans[0]["items"] if plans else ()),
+                "running": app_missions.running(drafts.channels.registry.root, mission_id, steps),
+                "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
 
     return await _mission_request(org_id, request, read)
 

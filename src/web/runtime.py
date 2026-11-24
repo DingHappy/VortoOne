@@ -84,16 +84,21 @@ async def runtime_lifespan():
             team_runner = TeamRunner(root, get_runner(), on_update=lambda task: notify_transition(root, task))
             set_team_runner(team_runner)
             from src.scheduling.staff_runner import set_staff_service
-            from src.web import app_channel_agents
+            from src.web import app_channel_agents, app_missions
 
             def staff_update(task):
                 notify_transition(root, task)
                 app_channel_agents.on_update(root, task)       # 频道里的事结束了：在话题里交回
+                app_missions.on_update(root, task)             # Mission 的一步结束了：交回，再接着做或停下
             set_staff_service(root, get_runner(), on_update=staff_update)
             try:
                 await asyncio.to_thread(app_channel_agents.sweep, root)    # 重启前结束、还没交回的补上
             except Exception:  # noqa: BLE001 —— 补发失败不挡服务启动
                 logging.getLogger(__name__).warning("频道回答补发失败", exc_info=True)
+            try:
+                await app_missions.sweep(root)                 # Mission 重启前结束、还没处理的一步
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).warning("Mission 补收尾失败", exc_info=True)
             # 完整能力的 agent 用主助理那一套工具（装配在会话层，下层不反向导入）
             from src.agents.staff import set_full_toolset
             from src.web.agent_toolset import main_assistant_toolset

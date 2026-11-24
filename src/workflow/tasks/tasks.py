@@ -667,6 +667,11 @@ class TaskRunner:
         t = self._running.get(tid)
         return t is not None and not t.done()
 
+    @property
+    def closing(self) -> bool:
+        """服务正在关闭：此时被取消的任务不是谁要停它，是关闭打断的（重启后按打断处理）。"""
+        return self._closing
+
     @asynccontextmanager
     async def background_capacity(self):
         """Existing cron run-ledger work shares capacity without a second task type."""

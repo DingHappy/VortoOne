@@ -37,17 +37,31 @@ def _has_table(conn, name):
 
 
 def _draft_rows(conn):
-    # Keep the original draft check constraint and record cancelation separately.
-    if _has_table(conn, "mission_draft_closures"):
-        return (
-            "WITH drafts AS (SELECT draft.*, root.channel AS channel_id, closure.closed_at, closure.note,"
-            " CASE WHEN closure.mission_id IS NULL THEN draft.status ELSE 'canceled' END AS current_status"
-            + _ROWS + " LEFT JOIN mission_draft_closures AS closure ON closure.mission_id = draft.id) "
-        )
+    # Keep the original draft check constraint; cancelation and execution are recorded beside it.
+    closures = _has_table(conn, "mission_draft_closures")
+    runs = _has_table(conn, "mission_runs")
+    closed_at = ("closure.closed_at" if closures else "NULL")
+    note = ("closure.note" if closures else "NULL")
+    status = ("CASE WHEN closure.mission_id IS NULL THEN draft.status ELSE 'canceled' END" if closures
+              else "draft.status")
+    if runs:
+        closed_at = f"COALESCE(run.closed_at, {closed_at})"
+        note = f"COALESCE(run.close_note, {note})"
+        status = f"COALESCE(run.status, {status})"
+    joins = (" LEFT JOIN mission_draft_closures AS closure ON closure.mission_id = draft.id" if closures else "")
+    if runs:
+        joins += " LEFT JOIN mission_runs AS run ON run.mission_id = draft.id"
+    started = ("run.started_at, run.paused_at, run.pause_reason, COALESCE(run.resume_tasks, 0) AS resume_tasks,"
+               " COALESCE(run.steps, 0) AS run_steps" if runs else
+               "NULL AS started_at, NULL AS paused_at, NULL AS pause_reason, 0 AS resume_tasks, 0 AS run_steps")
     return (
-        "WITH drafts AS (SELECT draft.*, root.channel AS channel_id, NULL AS closed_at, NULL AS note,"
-        " draft.status AS current_status" + _ROWS + ") "
+        f"WITH drafts AS (SELECT draft.*, root.channel AS channel_id, {closed_at} AS closed_at, {note} AS note,"
+        f" {status} AS current_status, {started}" + _ROWS + joins + ") "
     )
+
+
+OPEN = ("proposed", "active", "paused", "awaiting_close")
+CLOSED = ("done", "canceled")
 
 
 class MissionDrafts:
@@ -133,6 +147,8 @@ class MissionDrafts:
         with self.channels.registry._locked_state() as state:
             with history.database() as conn:
                 draft = self._get_visible(conn, state, actor, identifier)
+                if draft["started_at"] is not None:
+                    raise DraftClosed("这个任务已经开始，不再是草案")
                 if draft["closed_at"] is not None:
                     if draft["note"] != note:
                         raise DraftClosed("这个任务草案已取消")
@@ -192,13 +208,14 @@ class MissionDrafts:
             by_status = dict(conn.execute(
                 projection + "SELECT current_status, count(*)" + matching + " GROUP BY current_status", arguments,
             ))
-            counts["active"] = by_status.get("proposed", 0)
-            counts["closed"] = by_status.get("canceled", 0)
-            target = {"open": "proposed", "closed": "canceled"}.get(status, status)
-            if target not in ("proposed", "canceled"):
-                return [], counts
+            counts["active"] = sum(by_status.get(name, 0) for name in OPEN)
+            counts["waitingYou"] = by_status.get("awaiting_close", 0)
+            counts["closed"] = sum(by_status.get(name, 0) for name in CLOSED)
+            wanted = {"open": OPEN, "closed": CLOSED, "waiting_you": ("awaiting_close",)}.get(status, (status,))
+            marks = ",".join("?" for _ in wanted)
             rows = conn.execute(
                 projection + "SELECT *" + matching
-                + " AND current_status = ? ORDER BY created DESC, id DESC LIMIT ?", [*arguments, target, limit]
+                + f" AND current_status IN ({marks}) ORDER BY created DESC, id DESC LIMIT ?",
+                [*arguments, *wanted, limit]
             )
             return [dict(row) for row in rows], counts

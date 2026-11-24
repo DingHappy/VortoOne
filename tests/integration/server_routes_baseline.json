@@ -2496,9 +2496,21 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/eligible-agents",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2508,9 +2520,51 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/brain",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/close",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/command-approval",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/command-rules/{rule_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/commands",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/commands/retry",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/commands/{command_id}/decide",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/executor",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -2520,9 +2574,27 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/machine",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/messages",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/pause",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -2532,15 +2604,51 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/resume",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/reviews",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/reviews/{review_id}/{outcome}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/settings",
     "methods": [
       "GET"
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/start",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/summary",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/worktree/retry",
+    "methods": [
+      "POST"
     ]
   },
   {

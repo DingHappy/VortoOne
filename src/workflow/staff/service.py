@@ -283,7 +283,7 @@ class StaffService:
                     condition.notify_all()
 
     def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
-               via=None, channel=None):
+               via=None, channel=None, mission=None):
         """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。
 
         via：这件事经哪个 AI 应用发来（``{"kind": "ai_app", "grant", "name"}``，只由 web 层的 /mcp 填）。
@@ -297,6 +297,10 @@ class StaffService:
             raise ValueError('频道来源标记无效')
         if channel is not None and routine:
             raise ValueError('例行工作不从频道发起')
+        # mission：频道话题里一个 Mission 的一步（web 层填 Mission id）。一定在频道里，沿用频道的收窄。
+        if mission is not None and (channel is None or not isinstance(mission, str)
+                                    or not mission.startswith('mission-') or len(mission) > 80):
+            raise ValueError('Mission 来源标记无效')
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)
@@ -321,6 +325,7 @@ class StaffService:
                           **({'initiator': started_by} if started_by is not None else {}),
                           **({'via': dict(via)} if via is not None else {}),
                           **({'channel': dict(channel)} if channel is not None else {}),
+                          **({'mission': mission} if mission is not None else {}),
                           'delivery': args.get('delivery', 'review'), 'max_steps': role['max_steps'],
                           'timeout_seconds': role['timeout_seconds'], **({'routine': routine} if routine else {})})
             from src.workflow.staff.recovery import seed_queue_proof
