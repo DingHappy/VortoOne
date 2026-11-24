@@ -205,6 +205,62 @@ def test_device_accounts_does_not_infer_a_session_or_workspace(home, monkeypatch
     assert TestClient(home["app"]).get(path).json() == {"accounts": []}
 
 
+def test_device_account_sign_out_checks_the_exact_current_account(home):
+    member = _join(home, email="current@example.test")
+    other = _join(home, email="earlier@example.test")
+    path = "/api/app/device-accounts/sign-out"
+    current_id = member.get("/api/app/me").json()["user"]["id"]
+    other_id = other.get("/api/app/me").json()["user"]["id"]
+
+    changed_account = member.post(path, json={"userId": other_id})
+    unknown_account = member.post(path, json={"userId": current_id + " "})
+    assert changed_account.status_code == unknown_account.status_code == 404
+    assert changed_account.json() == unknown_account.json()
+    assert "set-cookie" not in changed_account.headers
+    assert "set-cookie" not in unknown_account.headers
+    assert member.get("/api/app/me").json()["user"]["id"] == current_id
+
+    ended = member.post(path, json={"userId": current_id})
+    assert ended.status_code == 200 and ended.json() == {"signedIn": False}
+    assert member.get("/api/app/me").status_code == 401
+    assert other.get("/api/app/me").json()["user"]["id"] == other_id
+
+
+@pytest.mark.parametrize("target", [None, "", {"id": "not-a-string"}, 42])
+def test_device_account_sign_out_refuses_malformed_targets(home, target):
+    member = _join(home)
+    answer = member.post("/api/app/device-accounts/sign-out", json={"userId": target})
+    assert answer.status_code == 422
+    assert "set-cookie" not in answer.headers
+    assert member.get("/api/app/me").status_code == 200
+
+
+def test_device_account_sign_out_can_target_the_pending_member_account(home):
+    pending = TestClient(home["app"], headers=ORIGIN)
+    token = _invite(home)
+    assert pending.post("/api/auth/sign-up/email", headers={"x-invitation-token": token}, json={
+        "name": "Pending", "email": "ana@example.com", "password": PASSWORD,
+    }).status_code == 200
+    [account] = pending.get("/api/app/device-accounts").json()["accounts"]
+    assert not account["organizations"]
+    assert pending.post("/api/app/device-accounts/sign-out", json={"userId": account["user"]["id"]}).status_code == 200
+    assert pending.get("/api/app/me").status_code == 401
+
+
+def test_targeted_owner_sign_out_requires_origin_or_existing_bearer_proof(home):
+    owner = TestClient(home["app"])
+    assert owner.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    body = {"userId": owner.get("/api/app/me").json()["user"]["id"]}
+    path = "/api/app/device-accounts/sign-out"
+    assert home["owner"].post(path, json=body).status_code == 200
+    foreign = owner.post(path, headers={"Origin": "https://other.example.test"}, json=body)
+    assert foreign.status_code == 403 and "set-cookie" not in foreign.headers
+    assert owner.get("/api/app/me").status_code == 200
+    ended = owner.post(path, headers=ORIGIN, json=body)
+    assert ended.status_code == 200 and ended.json() == {"signedIn": False}
+    assert owner.get("/api/app/me").status_code == 401
+
+
 def test_a_stolen_cookie_dies_with_sign_out(home):
     browser = _join(home)
     stolen = TestClient(home["app"], headers=ORIGIN, cookies=dict(browser.cookies))
@@ -736,3 +792,10 @@ def test_member_can_update_only_own_password_after_explicit_sign_in(home):
     assert claimed_by.post("/api/auth/sign-in/email", json={
         "email": "owner@example.test", "password": PASSWORD,
     }).status_code == 200
+
+
+def test_switching_device_accounts_is_refused_honestly(home):
+    member = _join(home)
+    answer = member.post("/api/app/device-accounts/switch", json={"userId": "someone"})
+    assert answer.status_code == 409 and answer.json()["error"]["code"] == "account.single_session"
+    assert member.get("/api/app/me").status_code == 200                       # 没有动当前的登录
