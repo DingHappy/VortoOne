@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from src.web.auth import auth_middleware, get_api_token
+from src.web.auth import PUBLIC_DOWNLOAD_ROUTES, auth_middleware, get_api_token
 
 
 @asynccontextmanager
@@ -51,7 +51,11 @@ async def workspace_scope_middleware(request, call_next):
     """General 的 REST 面同样无目录；不能只缩 Agent 工具、却让侧栏 API 偷跑 Shell/Git。"""
     from src.gateway.workspace_scope import http_workspace_requirement
 
-    required = http_workspace_requirement(request.url.path)
+    path = request.url.path
+    # 公开发行元数据不读工作区，仅沿用鉴权闸已登记的精确读取方法。
+    if (request.method, path) in PUBLIC_DOWNLOAD_ROUTES:
+        return await call_next(request)
+    required = http_workspace_requirement(path)
     if required is not None:
         label = "已有 Git 项目" if required == "project" else "隔离 Scratch"
         return JSONResponse(
@@ -108,6 +112,7 @@ from src.web.routers.staff import router as staff_router
 from src.web.routers.app_api import router as app_api_router, install_error_handler as _install_app_errors
 from src.web.routers.ai_apps import router as ai_apps_router
 from src.web.routers.computers import router as computers_router
+from src.web.routers.desktop_releases import router as desktop_releases_router
 
 for _router in (
     pages_router, git_router, context_router,
@@ -117,7 +122,7 @@ for _router in (
     pipelines_router, trust_router, resident_router, assistant_router, personal_goals_router, voice_router, ops_heartbeat_router,
     codex_router, mobile_router, mobile_pages_router, account_access_router, mobile_browser_router, mobile_native_router, mobile_owner_router,
     phone_keys_router, app_relay_router, timeline_router, teams_router, staff_router, app_api_router,
-    ai_apps_router, computers_router,
+    ai_apps_router, computers_router, desktop_releases_router,
 ):
     app.include_router(_router)
 _install_app_errors(app)
