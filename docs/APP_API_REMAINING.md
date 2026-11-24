@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 481 个，剩 **150** 个：
-- **要做：79**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 482 个，剩 **149** 个：
+- **要做：78**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -740,12 +740,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `/api/app/telemetry` | `system.telemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 | — | PUT | `/api/app/telemetry` | `system.setTelemetry` | 不做：依赖原产品云端（使用报告发给他们）；404 时界面藏起入口 |
 
-### /api/app/device-accounts（2 个，要做 1）
+### /api/app/device-accounts（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `/api/app/device-accounts` | `account.deviceAccounts` | 只列当前账号、可见空间及未读汇总，沿用 `/me/unread` 的权限。未加入时无空间汇总，暂时读不到计数时仍可读取账号。 |
-| ☐ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` |  |
+| ☑ | POST | `/api/app/device-accounts/switch` | `account.switchDeviceAccount` | 一个浏览器只登一个账号：没有可切换的，409 `account.single_session`，不动当前登录。退出接口另可指定账号，先核对是当前会话（接 Codex #1080）。 |
+
+现有退出接口接收可选的账号编号。提供编号时仅接受当前会话对应的账号，旧页面指定其他账号时拒绝退出。
 
 ### org/logo（2 个，要做 0）
 

@@ -48,6 +48,12 @@
     ]
   },
   {
+    "path": "/api/app/device-accounts/switch",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/email-undo",
     "methods": [
       "POST"

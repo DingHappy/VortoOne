@@ -125,6 +125,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/mail/providers"),
     ("GET", r"/api/app/device-accounts"),                # 仅列本次会话的账号
     ("POST", r"/api/app/device-accounts/sign-out"),       # 只作废调用人自己的会话
+    ("POST", r"/api/app/device-accounts/switch"),         # 一个浏览器只登一个账号：只回「没有可切换的」
     ("POST", r"/api/app/phone-sign-in"),                  # 只给调用人自己开一次性登录
     ("GET", _ORG + r"/roles"),
     ("GET", _ORG + r"/vault(?:/items/[^/]+)?"),
