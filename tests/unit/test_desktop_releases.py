@@ -54,7 +54,7 @@ def upstream(monkeypatch, release, workspace_scope):
     @asynccontextmanager
     async def session(*, timeout, trust_env, auto_decompress):
         assert timeout.total == 5
-        assert trust_env and not auto_decompress         # 走服务自己的代理（有的部署只能经代理出网）
+        assert not trust_env and not auto_decompress     # 直连：共用代理出口的 GitHub 匿名额度早被用完
         yield Client()
 
     monkeypatch.setattr(desktop_releases.aiohttp, "ClientSession", session)
