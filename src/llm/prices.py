@@ -26,7 +26,8 @@ def price_table(root: str) -> Dict[str, Tuple[float, float, float]]:
             if not isinstance(prices, dict) or not isinstance(model.get("id"), str):
                 continue
             try:
-                row = (float(prices["input"]), float(prices["output"]), float(prices.get("cacheRead", prices["input"])))
+                cache_read = prices["cacheRead"] if "cacheRead" in prices else prices["input"]
+                row = (float(prices["input"]), float(prices["output"]), float(cache_read))
             except (KeyError, TypeError, ValueError):
                 continue
             table.setdefault(model["id"], row)

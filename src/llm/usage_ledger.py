@@ -84,7 +84,7 @@ def record(prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0, *
             bucket["cached"] = int(bucket.get("cached", 0)) + max(0, int(cached_tokens or 0))
             if model:                # 按模型再分一层：用量页按登记的价格折成美元（旧版本只看上面四个数，不受影响）
                 name = str(model)[:160]
-                models = bucket.setdefault("models", {})
+                models: Dict[str, Dict[str, int]] = bucket.setdefault("models", {})  # type: ignore[arg-type, assignment]
                 if name in models or len(models) < 20:
                     row = models.setdefault(name, {"calls": 0, "prompt": 0, "completion": 0, "cached": 0})
                     row["calls"] += 1
