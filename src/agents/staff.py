@@ -221,6 +221,9 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     if task.collaboration['dispatch'].get('source') == 'team' and role['id'] == 'developer':
         from src.agents.team_members import execute_team_developer
         return await execute_team_developer(root, task, work)
+    if task.collaboration['dispatch'].get('mission') and (role.get('project_binding') or member['engine'] != 'vortocode'):
+        # 写代码的 Mission 要在某台电脑的项目副本里做，等连接电脑那条线（主人 2026-11-23 定）
+        raise ValueError('这个 agent 的岗位要写代码，Mission 暂时只支持不写代码的原生 agent')
     if role.get('project_binding'):
         from functools import partial
         from src.agents.team_members import execute_development
@@ -282,6 +285,9 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     dispatch = task.collaboration['dispatch']
     if dispatch.get('source') == 'staff' and not dispatch.get('routine') and not dispatch.get('channel'):
         options['extra_tools'] = (build_question_tool(work, task),)
+    elif dispatch.get('mission'):
+        from src.agents.tools.mission import build_mission_tools
+        options['extra_tools'] = tuple(build_mission_tools(root, task))           # Mission 的一步：更新计划
     elif dispatch.get('channel'):
         from src.agents.tools.channel_cards import build_channel_card_tools
         options['extra_tools'] = tuple(build_channel_card_tools(root, task))      # 投票、选择卡：跟着回答发在话题里

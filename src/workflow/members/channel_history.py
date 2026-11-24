@@ -97,6 +97,36 @@ CREATE TABLE IF NOT EXISTS mission_draft_closures (
     closed_at TEXT NOT NULL,
     note TEXT
 );
+CREATE TABLE IF NOT EXISTS mission_runs (
+    mission_id TEXT PRIMARY KEY NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('active', 'paused', 'awaiting_close', 'done', 'canceled')),
+    started_at TEXT NOT NULL,
+    paused_at TEXT,
+    pause_reason TEXT,
+    closed_at TEXT,
+    close_note TEXT,
+    resume_tasks INTEGER NOT NULL DEFAULT 0 CHECK(resume_tasks IN (0, 1)),
+    steps INTEGER NOT NULL DEFAULT 0 CHECK(steps >= 0)
+);
+CREATE TABLE IF NOT EXISTS mission_steps (
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK(number > 0),
+    trigger TEXT NOT NULL,
+    task_id TEXT UNIQUE,
+    created TEXT NOT NULL,
+    finished TEXT,
+    outcome TEXT,
+    stop_requested INTEGER NOT NULL DEFAULT 0 CHECK(stop_requested IN (0, 1)),
+    PRIMARY KEY (mission_id, number)
+);
+CREATE TABLE IF NOT EXISTS mission_plans (
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL CHECK(version > 0),
+    items TEXT NOT NULL,
+    task_id TEXT,
+    created TEXT NOT NULL,
+    PRIMARY KEY (mission_id, version)
+);
 """
 
 REACTION_MAX_LENGTH = 32

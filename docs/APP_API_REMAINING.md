@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 360 个，剩 **271** 个：
-- **要做：200**（其中 27 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 376 个，剩 **255** 个：
+- **要做：184**（其中 25 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -69,22 +69,22 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 ## 清单
 
-### org/missions（40 个，要做 32）
+### org/missions（40 个，要做 16）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/missions` | `missions.create` | 仅所有者在已加入的团队频道话题新建草案。话题归档后新建返回 409，既有草案仍可读取并按原参数重试。 |
-| ☐ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` |  |
+| ☑ | GET | `ORG/missions/eligible-agents` | `missions.eligibleAgents` | 仅所有者。原生、能在频道里办事、岗位不写代码的可选；写代码或本机 CLI 的标 `no_computer`，暂停停用的标 `exec_off`。没有电脑可选。 |
 | ☑ | GET | `ORG/missions/{x}` | `missions.get` |  |
-| ☐ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` |  |
+| ☑ | PATCH | `ORG/missions/{x}` | `missions.setResumeTasks` | 仅所有者，开始以后才能设。开着时服务重启打断的一步自动重做；关着就暂停，在话题里说明。 |
 | ☑ | GET | `ORG/missions/{x}/brain` | `missions.brain` | 仅所有者读取草案绑定专员的模型。专员或岗位的登记版本变化、岗位停用时返回 409。只读，不探测模型或启动执行。 |
-| ☐ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` |  |
-| ☐ | POST | `ORG/missions/{x}/close` | `missions.close` | 所有者可从 Desktop 专项任务列表或原话题取消尚未执行的草案，保留原话题、消息和关闭时间。标为完成、生成 Wiki 总结或删除分支返回 409。 |
-| ☐ | PUT | `ORG/missions/{x}/command-approval` | `missions.setCommandApproval` |  |
-| ☐ | DELETE | `ORG/missions/{x}/command-rules/{x}` | `missions.removeCommandRule` |  |
-| ☐ | GET | `ORG/missions/{x}/commands` | `missions.commands` |  |
-| ☐ | POST | `ORG/missions/{x}/commands/retry` | `missions.retryCommand` |  |
-| ☐ | POST | `ORG/missions/{x}/commands/{x}/decide` | `missions.decideCommand` |  |
+| ☑ | PUT | `ORG/missions/{x}/brain` | `missions.setBrain` | 如实 409 `mission.brain_fixed`：用 agent 登记的模型，去 agent 设置里改。 |
+| ☑ | POST | `ORG/missions/{x}/close` | `missions.close` | 仅所有者。草案只能取消；开始以后可标为完成或取消，正在做的一步一起停下。生成 Wiki 总结、删分支返回 409。 |
+| ☑ | PUT | `ORG/missions/{x}/command-approval` | `missions.setCommandApproval` | 只接受 `always`；其它 409 `mission.approval_fixed`，Mission 里不新增免确认。 |
+| ☑ | DELETE | `ORG/missions/{x}/command-rules/{x}` | `missions.removeCommandRule` | 没有自动放行规则，404。 |
+| ☑ | GET | `ORG/missions/{x}/commands` | `missions.commands` | 原生 agent 只用团队安全工具、不跑命令，回空。写代码的 Mission 等连接电脑线。 |
+| ☑ | POST | `ORG/missions/{x}/commands/retry` | `missions.retryCommand` | 如实 409 `mission.no_commands`。 |
+| ☑ | POST | `ORG/missions/{x}/commands/{x}/decide` | `missions.decideCommand` | 没有命令卡，404。 |
 | ☐ | GET | `ORG/missions/{x}/decisions` | `missions.decisions` |  |
 | ☐ | POST | `ORG/missions/{x}/decisions/approve-provisional` | `missions.approveProvisional` |  |
 | ☐ | POST | `ORG/missions/{x}/decisions/{x}/choose` | `missions.choose` |  |
@@ -93,26 +93,26 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` |  |
 | ☐ | POST | `ORG/missions/{x}/deliveries/{x}/changes` | `missions.requestDeliveryChanges` |  |
 | ☐ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` |  |
-| ☐ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` |  |
+| ☑ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` | 只有 `agent`（原生 agent 自己做）；Claude、Codex 要连电脑，409 `mission.no_computer`。 |
 | ☑ | GET | `ORG/missions/{x}/files` | `missions.files` | 所有者可查看已有草案的空文件列表。草案尚无隔离目录或文件。 |
 | ☐ | GET | `ORG/missions/{x}/join-requests` | `missions.joinRequests` |  |
 | ☐ | POST | `ORG/missions/{x}/join-requests` | `missions.requestJoin` |  |
 | ☐ | POST | `ORG/missions/{x}/join-requests/{x}/{x}` | `missions.decideJoin` |  |
-| ☐ | PUT | `ORG/missions/{x}/machine` | `missions.setMachine` | 界面代码里没调用 |
-| ☐ | POST | `ORG/missions/{x}/messages` | `missions.message` | 界面代码里没调用 |
+| ☑ | PUT | `ORG/missions/{x}/machine` | `missions.setMachine` | 如实 409 `mission.no_computer`：Mission 在这个家的服务上跑。 |
+| ☑ | POST | `ORG/missions/{x}/messages` | `missions.message` | 仅所有者，在 Mission 话题里发一条。进行中且没有正在做的一步时马上派下一步（`delivered: true`），否则下一步读到。 |
 | ☑ | GET | `ORG/missions/{x}/participants` | `missions.participants` |  |
 | ☐ | POST | `ORG/missions/{x}/participants` | `missions.json` | 界面代码里没调用 |
 | ☐ | DELETE | `ORG/missions/{x}/participants/{x}` | `missions.removeParticipant` |  |
 | ☐ | PATCH | `ORG/missions/{x}/participants/{x}` | `missions.setParticipant` |  |
 | ☑ | GET | `ORG/missions/{x}/plan` | `missions.plan` |  |
-| ☐ | GET | `ORG/missions/{x}/reviews` | `missions.reviews` |  |
-| ☐ | POST | `ORG/missions/{x}/reviews/{x}/{x}` | `missions.review` |  |
+| ☑ | GET | `ORG/missions/{x}/reviews` | `missions.reviews` | 代码审查只来自写代码的 Mission，回空。 |
+| ☑ | POST | `ORG/missions/{x}/reviews/{x}/{x}` | `missions.review` | 没有审查，404。 |
 | ☑ | GET | `ORG/missions/{x}/settings` | `missions.settings` | 仅所有者读取已有草案；审批策略固定，草案没有规则或执行统计。 |
 | ☐ | POST | `ORG/missions/{x}/suggestions/{x}/{x}` | `missions.suggestion` |  |
 | ☑ | GET | `ORG/missions/{x}/summary` | `missions.summary` |  |
 | ☐ | POST | `ORG/missions/{x}/transfer` | `missions.transfer` |  |
-| ☐ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` |  |
-| ☐ | POST | `ORG/missions/{x}/{x}` | `missions.control` |  |
+| ☑ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` | 没有项目副本，409 `mission.no_worktree`。 |
+| ☑ | POST | `ORG/missions/{x}/{x}` | `missions.control` | 仅所有者，`start/pause/resume/stop`。绑定的 agent 在话题里一步接一步做，只用团队安全工具、按外部内容处理话题；失败、被打断、没列计划、一次累计 10 步时暂停并说明，计划做完等收尾。agent 要先加进频道。 |
 
 ### org/agents（35 个，要做 23）
 

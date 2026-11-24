@@ -54,7 +54,8 @@ def test_owner_creates_and_reads_real_draft_without_dispatch_or_channel_post(hom
     assert (draft["title"], draft["goal"], draft["role"], draft["status"]) == (
         "测试草案", "核对测试\n结果", "owner", "proposed")
     assert draft["commandApproval"] == "always" and draft["executor"] == "agent" and draft["machine"] is None
-    assert not (draft["canAct"] or draft["canManage"] or draft["resumeTasks"] or draft["runningTasks"])
+    assert draft["canAct"] is True                              # 所有者可以点「开始」
+    assert not (draft["canManage"] or draft["resumeTasks"] or draft["runningTasks"])
     assert draft["canCancelDraft"] is True
     assert draft["plan"] == {"version": 0, "done": 0, "total": 0, "doing": 0, "waiting": 0, "items": []}
     assert draft["startedAt"] is None and draft["closedAt"] is None
@@ -71,7 +72,8 @@ def test_owner_creates_and_reads_real_draft_without_dispatch_or_channel_post(hom
                        "pendingDecisions": 0, "provisionalDecisions": 0, "pendingReviews": 0}
     assert owner.get(route + "/participants").json() == {
         "owner": {"userId": me["id"], "name": me["name"]}, "participants": []}
-    assert owner.post(route + "/start", json={}).status_code == 404
+    refused = owner.post(route + "/start", json={})              # agent 不在这个频道里：不开始、不派活
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "mission.agent_unavailable"
     assert home["pool"].jobs == {} and ledger.list() == []
     assert owner.get(channel + "/messages", params={"threadId": thread_id}).json() == messages
 
@@ -113,7 +115,8 @@ def test_draft_brain_reads_the_attached_models_without_execution(home, monkeypat
                                "options": [{"kind": "model", "available": ready, "defaultModel": expected_model,
                                             "models": model_options}],
                                "canSetBrain": False, "canSetModel": False}
-    assert owner.put(path, json={"model": "changed"}).status_code == 405
+    changed = owner.put(path, json={"model": "changed"})                # 模型在 agent 设置里改
+    assert changed.status_code == 409 and changed.json()["error"]["code"] == "mission.brain_fixed"
     assert home["pool"].jobs == {} and TaskLedger(home["root"]).list() == []
     assert owner.get(f"{base}/missions/{draft['id']}").json() == draft
 
@@ -295,7 +298,7 @@ def test_cancel_migrates_old_draft_without_taking_down_original_thread(home, mon
     response = owner.post(route + "/close", json={"outcome": "canceled", "saveToWiki": False, "note": "  暂停这个想法  "})
     assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
     canceled = response.json()
-    assert canceled == {**mission, "status": "canceled", "canCancelDraft": False,
+    assert canceled == {**mission, "status": "canceled", "canCancelDraft": False, "canAct": False,
                         "closedAt": canceled["closedAt"], "closeReason": "暂停这个想法"}
     assert canceled["closedAt"] >= mission["createdAt"]
     assert owner.get(route).json() == canceled
@@ -480,7 +483,8 @@ def test_draft_inspection_has_no_executions_or_files_and_cannot_change_approval(
                  f"{base}/threads/{other_thread}/tasks"):
         result = owner.get(path)
         assert result.status_code == 404 and result.json()["error"]["code"] == "mission.not_found"
-    assert owner.put(mission_path + "/command-approval", json={"commandApproval": "never"}).status_code == 404
+    fixed = owner.put(mission_path + "/command-approval", json={"commandApproval": "never"})   # 不新增免确认
+    assert fixed.status_code == 409 and fixed.json()["error"]["code"] == "mission.approval_fixed"
     assert owner.get(mission_path).json() == draft
     assert not home["pool"].jobs
     assert TaskLedger(home["root"]).list() == []
