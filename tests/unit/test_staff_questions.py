@@ -160,7 +160,7 @@ async def test_real_staff_runs_get_the_question_tool_but_routines_do_not(home, m
                               json={"body": "查资料"}).status_code == 200
     task_id, = home["pool"].jobs
     await _finish(home["pool"], task_id)
-    assert seen == [["ask_person"]]
+    assert seen == [["ask_person", "propose_team_context"]]          # 例行工作两样都没有
 
     work = home["service"].collaboration("sid-owner")
     task = work.get(task_id)
