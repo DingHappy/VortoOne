@@ -170,7 +170,7 @@ def test_device_accounts_lists_only_the_current_signed_in_profile(home):
         assert account["user"] == {key: profile["user"][key] for key in ("id", "name", "email", "image")}
         assert account["organizations"] == profile["organizations"]
         assert [org["role"] for org in account["organizations"]] == [role]
-        assert account["unread"] == []
+        assert account["unread"] == [{"orgId": home["org"], "unread": 0, "waiting": 0}]
         seen.append(account["user"]["id"])
     assert len(set(seen)) == 3
 
@@ -195,6 +195,7 @@ def test_device_accounts_does_not_infer_a_session_or_workspace(home, monkeypatch
     assert account["current"] is True
     assert account["user"]["email"] == "ana@example.com"
     assert account["organizations"] == []
+    assert account["unread"] == []
     assert visitor.get(path, headers={"Origin": "https://other.example.test"}).status_code == 403
 
     owner_cookie = TestClient(home["app"], cookies={SESSION_COOKIE: TOKEN})

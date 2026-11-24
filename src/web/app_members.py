@@ -18,6 +18,7 @@ from src.agents.identity_groups import ADMIN, ADMINS, EVERYONE
 from src.agents.principal import Principal
 from src.web import app_prefs
 from src.web import app_views as views
+from src.workflow.members.profile_preferences import profile_preferences, save_profile
 from src.workflow.members.registry import JoinSuggestionConflict, MemberRegistry, Missing, Refused
 
 # 界面的权限键 → 内核的权限项
@@ -202,15 +203,15 @@ def reorder_roles(root: str, actor: Principal, ids: Any) -> None:
 
 
 def members(root: str) -> List[Dict[str, Any]]:
-    """所有者与在册成员，附界面使用的个人头像和时区。"""
+    """所有者与在册成员，附界面使用的个人头像、用户名和时区。"""
     from src.web import app_profile_avatar
 
     state = MemberRegistry(root).snapshot()
     owner = views.person(root)
     default_timezone = owner["timezone"]
     requires_auth = views.owner_connection()
-    timezones = app_prefs.personal_timezones(root) if requires_auth else {}
-    owner["timezone"] = timezones.get(owner["userId"], default_timezone)
+    profiles = profile_preferences(root) if requires_auth else {}
+    owner.update(profiles.get(owner["userId"], {}))
     org_id = views.home_id(root)
     rows = [owner]
     for member_id, member in sorted(state["members"].items(), key=lambda pair: str(pair[1].get("joined") or "")):
@@ -221,7 +222,7 @@ def members(root: str) -> List[Dict[str, Any]]:
                      "role": "member", "roleIds": [group for group in member.get("groups") or []
                                                    if group in state["groups"]],
                      "joinedAt": str(member.get("joined") or ""), "handle": member_id,
-                     "timezone": timezones.get(member_id, default_timezone)})
+                     "timezone": default_timezone, **profiles.get(member_id, {})})
     return rows
 
 
@@ -678,12 +679,14 @@ def people(root: str, viewer: Principal) -> List[Dict[str, Any]]:
 def set_person_status(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
     from src.web import app_prefs
 
-    row = views.person(root) if actor.is_owner else next(
-        (person for person in members(root) if person["userId"] == actor.id), None)
-    if row is None:
-        raise Refused("还不是这个空间的成员")
-    if actor.is_owner and views.owner_connection():
-        row["timezone"] = app_prefs.personal_timezones(root).get(actor.id, row["timezone"])
+    if actor.is_owner:
+        row = views.person(root)
+        if views.owner_connection():
+            row.update(profile_preferences(root).get(actor.id, {}))
+    else:
+        row = next((person for person in members(root) if person["userId"] == actor.id), None)
+        if row is None:
+            raise Refused("还不是这个空间的成员")
     saved = app_prefs.set_status(root, actor.id, body)
     return _person_status(row, saved, own=True, connected=True)
 
@@ -748,19 +751,13 @@ def team_directory(root: str, actor: Principal, *, activity: bool, main_running:
     }
 
 
-def update_person_timezone(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
-    if body.keys() - {"handle", "timezone"}:
-        raise ValueError("个人资料目前只能更改时区")
+def update_person_profile(root: str, actor: Principal, body: Dict[str, Any]) -> Dict[str, Any]:
     person = next((row for row in people(root, actor) if row["userId"] == actor.id), None)
     if person is None:
         raise Refused("还不是这个空间的成员")
-    # 界面保存时区时也会传回现在的 handle；提及用的标识暂不支持改写。
-    if "handle" in body and body["handle"] != person["handle"]:
-        raise ValueError("目前不支持修改用户名")
-    if "timezone" in body:
-        saved = app_prefs.set_personal_timezone(root, actor.id, body["timezone"])
-        person["timezone"] = saved if saved is not None else views.person(root)["timezone"]
-    return person
+    saved = save_profile(root, actor, body)
+    timezone = saved["timezone"] if "timezone" in saved else views.person(root)["timezone"]
+    return {**person, "handle": saved.get("handle", "owner" if actor.is_owner else actor.id), "timezone": timezone}
 
 
 def member_send(root: str, actor: Principal, staff_id: str, text: str, client_id: Optional[str]) -> Dict[str, Any]:
