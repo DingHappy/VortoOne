@@ -56,7 +56,7 @@ def hooked(home, monkeypatch):
 
 
 def _path(url):
-    return url[url.index("/api/hooks/"):]
+    return url[url.index("/api/routine-hooks/"):]
 
 
 def _tasks(root):
@@ -76,7 +76,7 @@ def _settled(root, count, timeout=5.0):
 def test_the_address_runs_it_with_the_body_as_outside_material(hooked):
     hook = hooked.hook
     assert hook["signed"] is False and hook["methods"] == ["GET", "POST"] and hook["calls"] == []
-    assert "/api/hooks/routines/" in hook["url"]
+    assert "/api/routine-hooks/" in hook["url"]
     listed = next(r for r in hooked.owner.get(f"{hooked.base}/routines").json()["routines"] if r["id"] == hooked.routine)
     assert listed["trigger"] == {"type": "webhook", "url": hook["url"], "signed": False, "methods": ["GET", "POST"]}
     assert listed["nextRunAt"] is None                                       # 不按时间跑
@@ -149,7 +149,7 @@ def test_only_the_owner_manages_it_and_only_webhook_routines_have_one(hooked):
         "name": "晨报", "agentId": hooked.agent["id"], "prompt": "整理", "trigger": {"type": "schedule",
                                                                                   "phrase": "每天早上9点"}})
     assert hooked.owner.get(f"{hooked.base}/routines/{timed.json()['id']}/hook").status_code == 404
-    assert hooked.anyone.post("/api/hooks/routines/" + "x" * 32, content=b"{}").status_code == 404
+    assert hooked.anyone.post("/api/routine-hooks/" + "x" * 32, content=b"{}").status_code == 404
     bad = hooked.owner.post(f"{hooked.base}/routines", json={
         "agentId": hooked.agent["id"], "prompt": "x", "trigger": {"type": "webhook", "methods": ["TRACE"]}})
     assert bad.status_code == 400
@@ -200,3 +200,14 @@ def test_a_paused_routine_does_not_answer_its_address_but_can_be_tested(hooked):
     assert _tasks(hooked.root) == []
     assert hooked.owner.post(f"{hooked.base}/routines/{hooked.routine}/hook/test", json={}).status_code == 200
     _settled(hooked.root, 1)
+
+
+def test_the_address_works_where_routines_live_on_the_general_assistant(hooked, monkeypatch):
+    # 真机 2026-11-24：例行工作跑在常驻助理（General）上，地址原来在 /api/hooks/ 下，被范围闸当成项目功能挡掉（409）
+    monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
+    assert hooked.hook["url"].split("/api/", 1)[1].startswith("routine-hooks/")
+    answer = hooked.anyone.post(_path(hooked.hook["url"]), content=b"{}")
+    assert answer.status_code == 202, answer.text
+    _settled(hooked.root, 1)
+    assert hooked.anyone.post("/api/routine-hooks/" + "x" * 32, content=b"{}").status_code == 404
+    assert hooked.owner.get("/api/hooks").json()["error"]["code"] == "workspace_required"   # 项目的钩子配置照旧挡着

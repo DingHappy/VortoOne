@@ -55,7 +55,7 @@ PUBLIC_DOWNLOAD_ROUTES = frozenset({("GET", "/api/desktop/latest")})
 _EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static", "/api/auth/handover/",
                     "/api/app/invitations/",
                     # 例行工作的 webhook 触发地址：凭地址里的随机串（和签名）进，不认登录（routine_hooks.py）
-                    "/api/hooks/routines/")
+                    "/api/routine-hooks/")
 _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",

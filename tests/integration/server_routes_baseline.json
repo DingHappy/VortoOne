@@ -1080,7 +1080,7 @@
     ]
   },
   {
-    "path": "/api/hooks/routines/{address}",
+    "path": "/api/routine-hooks/{address}",
     "methods": [
       "DELETE",
       "GET",

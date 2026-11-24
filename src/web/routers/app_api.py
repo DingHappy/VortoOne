@@ -7038,7 +7038,7 @@ def _hook_answer(status: int, code: str, message: str, **extra):
                         headers={"Cache-Control": "no-store", **({"Retry-After": "60"} if status == 429 else {})})
 
 
-@router.api_route("/api/hooks/routines/{address}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@router.api_route("/api/routine-hooks/{address}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def call_routine_hook(address: str, request: Request):
     """例行工作的触发地址：不登录，凭地址（和签名，设了密钥时）。对方发来的内容整段交给 agent 当资料。"""
     import uuid
