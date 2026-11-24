@@ -255,6 +255,37 @@ def remove_member(root: str, actor: Principal, member_id: str) -> None:
     AiApps(root).disconnect_person(member_id)        # 他连上来的 AI 应用和个人令牌一并作废
 
 
+def finish_due_deletions(root: str) -> int:
+    """注销到期的账号真正移出：和成员自己退出一样清掉登记，再删账号。返回移出了几个。"""
+    from src.agents.principal import MEMBER
+    from src.workflow.ai_apps.store import AiApps
+    from src.workflow.members.accounts import MemberAccounts
+
+    accounts, done = MemberAccounts(root), 0
+    for account_id, member_id in accounts.due_deletions():
+        if member_id:
+            try:
+                MemberRegistry(root).remove_member(Principal(MEMBER, member_id, root), member_id)
+            except Missing:
+                pass                                   # 已经被移出了
+            AiApps(root).disconnect_person(member_id)
+        accounts.drop_account(account_id)
+        done += 1
+    return done
+
+
+def deletion_plan(root: str, actor: Principal) -> Dict[str, Any]:
+    """注销自己的账号会怎样。这里只有一个家：成员是离开它；所有者是它唯一的所有者，不能注销。"""
+    home = {"id": views.home_id(root), "name": views.workspace_identity(root)[0]}
+    plan: Dict[str, Any] = {"closes": [], "leaves": [], "soleOwner": [], "computers": [], "staysBehind": [],
+                            "serverOwner": actor.is_owner}
+    if actor.is_owner:
+        plan["soleOwner"] = [home]
+    elif actor.id in MemberRegistry(root).snapshot()["members"]:
+        plan["leaves"] = [{**home, "role": "member"}]
+    return plan
+
+
 # ── 成员自己看到的「我」──────────────────────────────────────────────────────
 
 def member_auth_key(account: Mapping[str, Any]) -> str:
@@ -267,12 +298,14 @@ def me(root: str, actor: Principal, account: Mapping[str, Any]) -> Dict[str, Any
     from src.web import app_profile_avatar
 
     state = MemberRegistry(root).snapshot()
-    joined = actor.id in state["members"]
+    deleting = account.get("deletion")
+    joined = actor.id in state["members"] and not deleting        # 注销中：只给等待页，不给空间
     avatar = app_profile_avatar.current(root, views.home_id(root), actor.id) if joined else None
     workspace_name, mode = views.workspace_identity(root)
     return {
         "user": {"id": actor.id if joined else str(account["id"]), "name": str(account["name"]),
                  "email": str(account["email"]), "image": avatar, "hasPassword": True,
+                 **({"deletion": dict(deleting)} if deleting else {}),
                  **views.ui_account_preferences(root, member_auth_key(account))},
         "organizations": [{"id": views.home_id(root), "name": workspace_name, "role": "member",
                            **({"mode": mode} if mode else {}),

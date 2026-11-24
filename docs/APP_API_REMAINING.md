@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 485 个，剩 **146** 个：
-- **要做：75**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 492 个，剩 **139** 个：
+- **要做：68**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -506,14 +506,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | POST | `ORG/browser/handoffs/{x}/done` | `browser.done` | Codex 连接电脑线 |
 | — | POST | `ORG/browser/handoffs/{x}/failed` | `browser.failed` | Codex 连接电脑线 |
 
-### /api/app/account（5 个，要做 5）
+### /api/app/account（5 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | DELETE | `/api/app/account` | `account.delete` |  |
-| ☐ | DELETE | `/api/app/account/deletion` | `account.restore` |  |
-| ☐ | GET | `/api/app/account/deletion` | `account.deletionPlan` |  |
-| ☐ | POST | `/api/app/account/deletion/code` | `account.deletionCode` |  |
+| ☑ | DELETE | `/api/app/account` | `account.delete` | 成员注销自己的账号：发信开着要邮件验证码（`reauth.code*`），没开要自己的密码（`reauth.password`）。所有登录立刻结束，7 天后移出这个家、删掉账号（每小时检查一次到期的）。所有者是唯一的所有者：409 `sole_owner`。 |
+| ☑ | DELETE | `/api/app/account/deletion` | `account.restore` | 7 天内重新登录后可以恢复；到期了 409 `account.not_restorable`。注销中的会话只能看自己、看注销计划、恢复。 |
+| ☑ | GET | `/api/app/account/deletion` | `account.deletionPlan` | 成员：离开这个家（`leaves`），别的都为空；所有者：`soleOwner` 是这个家、`serverOwner: true`。 |
+| ☑ | POST | `/api/app/account/deletion/code` | `account.deletionCode` | 发信开着时把验证码发到自己的邮箱（和邀请验证码共用频率限制，`reauth.code_wait` 带 `retryIn`）；没开 409 `reauth.no_email`。 |
 | ☐ | POST | `/api/app/account/email` | `account.changeEmail` |  |
 
 ### org/agent-proposals（5 个，要做 0）
@@ -662,13 +662,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `/api/app/me/unread` | `account.unread` | 按当前账号汇总未静音频道的新消息和已关注话题。所有者另外计入自己的通知；等待数沿用通知收件箱口径。 |
 | ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
-### org/deletion（3 个，要做 3）
+### org/deletion（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | DELETE | `ORG/deletion` | `orgs.restore` |  |
-| ☐ | POST | `ORG/deletion` | `orgs.deleteWorkspace` |  |
-| ☐ | POST | `ORG/deletion/code` | `orgs.deletionCode` |  |
+| ☑ | DELETE | `ORG/deletion` | `orgs.restore` | 这个家从不进入删除：所有者调用直接 204，没有要恢复的。 |
+| ☑ | POST | `ORG/deletion` | `orgs.deleteWorkspace` | 删除整个家不做（主人 2026-11-24 定）：409 `org.delete_unsupported`，要删先在服务器上备份再手动删。 |
+| ☑ | POST | `ORG/deletion/code` | `orgs.deletionCode` | 同上，409 `org.delete_unsupported`，不发验证码。 |
 
 ### org/team-week（3 个，要做 0）
 
