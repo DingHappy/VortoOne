@@ -205,6 +205,50 @@ class MemberAccounts:
             activation = self._issue_session(state, account_id, moment) if activate else ""
             return account_id, activation
 
+    @staticmethod
+    def seal(password: str) -> Dict[str, str]:
+        """先把密码封成摘要（凭邀请链接申请时）：原文不落盘，批准时用 create_sealed 建账号。"""
+        return _sealed(_password(password))
+
+    def create_sealed(self, email: str, name: str, sealed: Dict[str, str]) -> str:
+        """用事先封好的密码摘要建账号（邀请链接的申请被批准时），返回账号 id。"""
+        address = login_name(email)
+        label = name.strip() if isinstance(name, str) else ""
+        if not 1 <= len(label) <= 64 or any(ord(ch) < 32 or ord(ch) == 127 for ch in label):
+            raise ValueError("名字不能为空，最长 64 个字")
+        if not isinstance(sealed, dict) or set(sealed) != {"salt", "hash"}:
+            raise ValueError("密码摘要无效")
+        with self._change() as state:
+            if self._by_email(state, address) is not None:
+                raise ValueError("这个邮箱已经有账号了")
+            if len(state["accounts"]) >= MAX_ACCOUNTS:
+                raise ValueError("账号数已到上限")
+            account_id = f"a_{uuid.uuid4().hex[:12]}"
+            state["accounts"][account_id] = {"email": address, "name": label, "password": dict(sealed),
+                                             "member": "", "created": _iso(_now())}
+            return account_id
+
+    def mint_for_claim(self, account_id: str) -> str:
+        """邀请链接的申请被批准后，申请页凭 key 换一次性登录（5 分钟，只能用一次）。"""
+        from src.workflow.members.one_time import PENDING
+
+        with _LOCK:
+            account = self._load()["accounts"].get(str(account_id))
+            if account is None:
+                raise LookupError("没有这个账号")
+            token, _seconds = PENDING.mint("account:" + str(account_id),
+                                           generation=self._password_generation(account))
+            return token
+
+    def account_with_email(self, email: str) -> Optional[str]:
+        """这个邮箱的账号 id（找回密码用；调用方不能把有没有告诉对方）。"""
+        try:
+            address = login_name(email)
+        except ValueError:
+            return None
+        with _LOCK:
+            return self._by_email(self._load(), address)
+
     def has_email(self, email: str) -> bool:
         """这个邮箱有没有成员账号（所有者认领时用：所有者的邮箱不能和成员的重）。"""
         try:

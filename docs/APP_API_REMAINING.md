@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 409 个，剩 **222** 个：
-- **要做：151**（其中 17 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 419 个，剩 **212** 个：
+- **要做：141**（其中 17 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -446,16 +446,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | POST | `ORG/browser-profiles/{x}/open` | `browserProfiles.open` | Codex 连接电脑线；界面代码里没调用 |
 | — | POST | `ORG/browser-profiles/{x}/takeover` | `browserProfiles.takeover` | Codex 连接电脑线；界面代码里没调用 |
 
-### /api/app/invitations（7 个，要做 5）
+### /api/app/invitations（7 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `/api/app/invitations/{x}/accept` | `orgs.acceptInvitation` | 已接密码账号接受指定邮箱的邀请。可选的 `mail` 查询参数不参与当前服务的认证或邮箱确认 |
-| ☐ | POST | `/api/app/invitations/{x}/code` | `invites.sendCode` |  |
-| ☐ | POST | `/api/app/invitations/{x}/code/check` | `invites.checkCode` |  |
-| ☐ | POST | `/api/app/invitations/{x}/request-new` | `invites.requestNew` |  |
-| ☐ | POST | `/api/app/invitations/{x}/requests` | `invites.ask` |  |
-| ☐ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` |  |
+| ☑ | POST | `/api/app/invitations/{x}/code` | `invites.sendCode` | 邮箱验证码是开关（主人 2026-11-23 定），默认关：`VORTOONE_JOIN_EMAIL_CODES=1` 且配好 `VORTOONE_SMTP_URL`、`VORTOONE_MAIL_FROM` 才发；关着如实 409 `join.codes_off`。60 秒一封、每小时 5 封、全服务 10 分钟 30 封。 |
+| ☑ | POST | `/api/app/invitations/{x}/code/check` | `invites.checkCode` | 6 位、10 分钟有效、输错 5 次作废；对了这个邮箱在这条链接上 30 分钟内算证实。 |
+| ☑ | POST | `/api/app/invitations/{x}/request-new` | `invites.requestNew` | 这里没法替访客转告邀请人：如实 409 `join.ask_inviter`。 |
+| ☑ | POST | `/api/app/invitations/{x}/requests` | `invites.ask` | 不登录就能申请（同源），进门要所有者批准。没证实邮箱的批准后生成写着他邮箱的邀请由所有者转交；开着验证码且证实了、设了密码的批准后直接建账号（只存密码摘要）。已经是成员的邮箱也照样回「等着」。 |
+| ☑ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` | 凭申请时拿到的 key 看结果；直接加入的换一次性登录。 |
 | ☑ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 保留尚未清理的过期邮箱邀请提示。原有效期内，仅接受该邀请且仍在册的登录成员显式请求 `receipt=1` 时可查看回执。旧客户端和其他人查询已消费的令牌返回 404。 |
 
 ### org/databases（6 个，要做 6）
@@ -526,15 +526,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/agent-proposals/{x}/deny` | `agents.denyProposal` | 拒绝 |
 | ☑ | POST | `ORG/agent-proposals/{x}/routine` | `agents.proposalRoutine` | 提议不附带例行工作，回 409 |
 
-### org/invite-links（5 个，要做 5）
+### org/invite-links（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/invite-links` | `invites.links` |  |
-| ☐ | POST | `ORG/invite-links` | `invites.createLink` |  |
-| ☐ | DELETE | `ORG/invite-links/{x}` | `invites.turnOff` |  |
-| ☐ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` |  |
-| ☐ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` |  |
+| ☑ | GET | `ORG/invite-links` | `invites.links` | 仅所有者。开着的链接，带地址、名额、已用、等着处理的申请数。 |
+| ☑ | POST | `ORG/invite-links` | `invites.createLink` | 仅所有者。不带选项是这个家自己的链接（续成 30 天）；带身份组、名额（1/5/10/25/50/100）、有效期另开一条。批准后直接进频道、配 agent 还不支持（400）。 |
+| ☑ | DELETE | `ORG/invite-links/{x}` | `invites.turnOff` | 关掉；经它来的、没处理的申请一起关。 |
+| ☑ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` | 改给的身份组、名额、有效期，地址不变。 |
+| ☑ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` | 再给 30 天。 |
 
 ### org/storage（5 个，要做 3）
 

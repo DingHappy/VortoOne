@@ -122,7 +122,7 @@ def _claim_waiting() -> bool:
 async def auth_config():
     local_feedback = views.owner_connection()
     return {"socialProviders": {"google": False, "github": False}, "signupOpen": False, "firstRun": False,
-            "ownerClaim": _claim_waiting(), "passwordReset": False,
+            "ownerClaim": _claim_waiting(), "passwordReset": _join_codes_on(),
             "feedback": local_feedback, "feedbackLocal": local_feedback}
 
 
@@ -301,6 +301,40 @@ async def owner_claim(body: _OwnerClaim, request: Request, response: Response):
         return JSONResponse({"code": "UNAVAILABLE", "message": "暂时认领不了"}, status_code=409)
     await login(LoginBody(token=get_api_token()), request, response)
     return {"redirect": False, "token": None, "user": views.me(root)["user"]}
+
+
+class _ResetRequest(BaseModel):
+    email: str = ""
+    redirectTo: str = ""        # noqa: N815 —— 界面的字段名；不用它拼链接（防跳到别处），只用本服务的地址
+
+
+@router.post("/api/auth/request-password-reset")
+async def request_password_reset(body: _ResetRequest, request: Request):
+    """自己找回密码：邮箱有成员账号就发一封重置链接。有没有这个账号都回同一句话。只在配好发信时可用。"""
+    from src.workflow.members import join_codes
+    from src.workflow.members.accounts import MemberAccounts
+    if not views.owner_connection() or not member_auth.same_origin(request):
+        return JSONResponse({"code": "FORBIDDEN", "message": "这里现在不能找回密码"}, status_code=403)
+    if not join_codes.enabled():
+        return JSONResponse({"code": "MAIL_OFF", "message": "这个家没有配好发信：请让所有者在成员资料里给你重置链接"},
+                            status_code=409)
+    origin = _invitation_origin(request)
+
+    def send():
+        accounts = MemberAccounts(os.getcwd())
+        account_id = accounts.account_with_email(body.email)
+        if account_id is None:
+            return
+        token, _expires = accounts.reset_link(account_id)
+        join_codes.CODES.mail(accounts.get(account_id)["email"], "重置你的密码",
+                              f"打开这个链接设一个新密码：\n{origin}/reset-password?token={token}\n"
+                              "不是你在找回密码的话，忽略这封邮件就好。")
+
+    try:
+        await asyncio.to_thread(send)
+    except (OSError, join_codes.CodeError):          # smtplib 的错误都是 OSError
+        logging.getLogger(__name__).warning("找回密码的邮件没有发出", exc_info=True)
+    return {"status": True}
 
 
 class _Reset(BaseModel):
@@ -1163,6 +1197,12 @@ def _origin(request: Request) -> str:
     return f"{scheme if scheme in ('http', 'https') else 'http'}://{host}"
 
 
+def _join_codes_on() -> bool:
+    """界面凭这一项判断这台服务能不能发信：开着邮箱验证码（且配好了发信）时才走验证码那一套。"""
+    from src.workflow.members.join_codes import enabled
+    return enabled()
+
+
 def _invitation_origin(request: Request) -> str:
     """邀请优先走配置的 HTTPS 源。和 Desktop 一样，只收主机和可选端口。"""
     configured = os.getenv("VORTOONE_PUBLIC_URL", "").strip()
@@ -1283,8 +1323,10 @@ async def _join_suggestion_call(org_id: str, request: Request, response: Respons
 
 @router.get(_JOIN_REQUESTS)
 async def list_join_suggestions(org_id: str, request: Request, response: Response):
-    return await _join_suggestion_call(org_id, request, response, owner=True,
-                                       action=lambda root, who: {"requests": app_members.join_suggestions(root, who)})
+    """所有者的加入申请：成员的推荐，加上凭邀请链接来的申请（主人 2026-11-23 定）。"""
+    from src.workflow.members.invite_links import links_for
+    return await _join_suggestion_call(org_id, request, response, owner=True, action=lambda root, who: {
+        "requests": app_members.join_suggestions(root, who) + links_for(root).inbox(who)})
 
 
 @router.get(_JOIN_REQUESTS + "/mine")
@@ -1311,6 +1353,14 @@ async def cancel_join_suggestion(org_id: str, suggestion_id: str, request: Reque
 @router.post(_JOIN_REQUESTS + "/{suggestion_id}/approve")
 async def approve_join_suggestion(org_id: str, suggestion_id: str, body: Dict[str, Any],
                                   request: Request, response: Response):
+    from src.workflow.members.invite_links import links_for
+    links = links_for(_root(org_id))
+    if links.is_request(suggestion_id):             # 凭邀请链接来的：按链接给的身份组批准
+        if body:
+            return _error(400, "invalid", "凭邀请链接的申请按链接给的身份组批准，这里不另选")
+        return await _join_suggestion_call(org_id, request, response, owner=True, write=True,
+                                           action=lambda root, who: links.approve(who, suggestion_id,
+                                                                                  _invitation_origin(request)))
     return await _join_suggestion_call(org_id, request, response, owner=True, write=True,
                                        action=lambda root, who: app_members.approve_join_suggestion(
                                            root, who, suggestion_id, body, _invitation_origin(request)))
@@ -1319,6 +1369,13 @@ async def approve_join_suggestion(org_id: str, suggestion_id: str, body: Dict[st
 @router.post(_JOIN_REQUESTS + "/{suggestion_id}/deny", status_code=204)
 async def deny_join_suggestion(org_id: str, suggestion_id: str, body: Dict[str, Any], request: Request,
                                response: Response):
+    from src.workflow.members.invite_links import links_for
+    links = links_for(_root(org_id))
+    if links.is_request(suggestion_id):
+        if set(body) - {"reason"} or (body.get("reason") or "").strip():
+            return _error(400, "invalid", "这里发不了文字理由给对方，请清空理由后拒绝")
+        return await _join_suggestion_call(org_id, request, response, owner=True, write=True, empty=True,
+                                           action=lambda root, who: links.deny(who, suggestion_id))
     return await _join_suggestion_call(org_id, request, response, owner=True, write=True, empty=True,
                                        action=lambda root, who: app_members.deny_join_suggestion(
                                            root, who, suggestion_id, body))
@@ -1347,9 +1404,187 @@ async def password_link(org_id: str, user_id: str, request: Request):
 
 @router.get("/api/app/invitations/{token}")
 async def invitation_preview(token: str):
+    from src.workflow.members.invite_links import links_for
     root = os.getcwd()
-    result = await _members_call(lambda: app_members.invitation_preview(root, token))
+
+    def read():
+        return app_members.invitation_preview(root, token) or links_for(root).preview(token, views.overview(root)["name"])
+
+    result = await _members_call(read)
     return result if result is not None else _error(404, "not_found", "邀请不存在或已失效")
+
+
+# ── 邀请链接（主人 2026-11-23 定）：所有者开链接；拿到的人只能申请，进门要所有者批准 ──
+
+def _link_error(error):
+    body = {"code": error.code, "message": str(error)}
+    return JSONResponse({"error": body}, status_code=error.status, headers={"Cache-Control": "no-store"})
+
+
+async def _invite_link_call(org_id: str, request: Request, action, *, status: int = 200):
+    from src.workflow.members.invite_links import LinkError, links_for
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_owner or not app_staff.owner_proof(request):
+        return _error(403, "forbidden", "邀请链接只有已认证的所有者能管")
+    try:
+        result = await _members_call(lambda: action(links_for(root), who, _invitation_origin(request)), write=True)
+    except LinkError as error:
+        return _link_error(error)
+    if isinstance(result, Response):
+        result.headers["Cache-Control"] = "no-store"
+        return result
+    return JSONResponse(result, status_code=status, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/invite-links")
+async def invite_links(org_id: str, request: Request):
+    return await _invite_link_call(org_id, request, lambda links, who, origin: {"links": links.listing(who, origin)})
+
+
+@router.post(_ORG + "/invite-links")
+async def create_invite_link(org_id: str, body: Dict[str, Any], request: Request):
+    return await _invite_link_call(org_id, request, lambda links, who, origin: links.create(who, body, origin))
+
+
+@router.patch(_ORG + "/invite-links/{link_id}")
+async def edit_invite_link(org_id: str, link_id: str, body: Dict[str, Any], request: Request):
+    return await _invite_link_call(org_id, request, lambda links, who, origin: links.edit(who, link_id, body, origin))
+
+
+@router.delete(_ORG + "/invite-links/{link_id}", status_code=204)
+async def turn_off_invite_link(org_id: str, link_id: str, request: Request):
+    return await _invite_link_call(org_id, request, lambda links, who, origin: (
+        links.turn_off(who, link_id), Response(status_code=204))[1])
+
+
+@router.post(_ORG + "/invite-links/{link_id}/renew")
+async def renew_invite_link(org_id: str, link_id: str, request: Request):
+    return await _invite_link_call(org_id, request, lambda links, who, origin: links.renew(who, link_id))
+
+
+async def _public_join_call(request: Request, action):
+    """凭链接的公开接口：不要求登录，但要同源（浏览器里本服务自己的页面）。"""
+    from src.workflow.members.invite_links import LinkError
+    from src.workflow.members.join_codes import CodeError
+    if not views.owner_connection() or not member_auth.same_origin(request):
+        return _error(403, "forbidden", "这里现在不能申请加入")
+    try:
+        result = await _members_call(action)
+    except LinkError as error:
+        return _link_error(error)
+    except CodeError as error:
+        body = {"code": error.code, "message": str(error), **({"retryIn": error.retry_in} if error.retry_in else {})}
+        return JSONResponse({"error": body}, status_code=error.status, headers={"Cache-Control": "no-store"})
+    if isinstance(result, Response):
+        result.headers["Cache-Control"] = "no-store"
+        return result
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+def _link_of(root: str, token: str):
+    """凭 token 找到开着的邀请链接（找不到、关了、过期都按没有）。返回 (链接 id, InviteLinks)。"""
+    from src.workflow.members.invite_links import LinkError, links_for
+    from src.workflow.members.registry import Missing
+    links = links_for(root)
+    shown = links.preview(token, "")
+    if shown is None:
+        raise Missing("没有这条邀请链接")
+    if shown.get("closed"):
+        raise LinkError("join.closed", "这条邀请链接已经关掉或过期了")
+    state = links.registry.snapshot()
+    link_id, _ = links._by_token(state, token)
+    return link_id, links
+
+
+def _join_email(body: Dict[str, Any]) -> str:
+    from src.workflow.members.invite_links import LinkError
+    from src.workflow.members.registry import login_name
+    try:
+        return login_name(body.get("email"))
+    except ValueError as error:
+        raise LinkError("join.invalid_email", "邮箱格式不对", 400) from error
+
+
+@router.post("/api/app/invitations/{token}/code")
+async def send_join_code(token: str, body: Dict[str, Any], request: Request):
+    """发邮箱验证码。开关关着（默认）或没配发信时如实 409，申请页直接提交就行。"""
+    from src.workflow.members.join_codes import CODES
+    root = os.getcwd()
+
+    def send():
+        link_id, _ = _link_of(root, token)
+        email = _join_email(body)
+        return {"email": email, "resendIn": CODES.send(link_id, email, views.overview(root)["name"])}
+
+    return await _public_join_call(request, send)
+
+
+@router.post("/api/app/invitations/{token}/code/check")
+async def check_join_code(token: str, body: Dict[str, Any], request: Request):
+    from src.workflow.members.join_codes import CODES, enabled
+    from src.workflow.members.join_codes import CodeError
+    root = os.getcwd()
+
+    def check():
+        if not enabled():
+            raise CodeError("join.codes_off", "这个家没有开邮箱验证码，直接提交申请就行")
+        link_id, _ = _link_of(root, token)
+        CODES.check(link_id, _join_email(body), str(body.get("code") or ""))
+        return {"verified": True}
+
+    return await _public_join_call(request, check)
+
+
+@router.post("/api/app/invitations/{token}/requests")
+async def ask_to_join(token: str, body: Dict[str, Any], request: Request):
+    """凭链接申请加入。已登录的成员、所有者不用申请。开关开着时要先证实邮箱。"""
+    from src.web.auth import is_authed
+    from src.workflow.members.invite_links import LinkError
+    from src.workflow.members.join_codes import CODES, enabled
+    root = os.getcwd()
+    if is_authed(request) or member_auth.account(request) is not None:
+        return _error(409, "join.already_in", "你已经登录了这个家，不用再申请")
+
+    def ask():
+        link_id, links = _link_of(root, token)
+        verified = False
+        if enabled():
+            verified = CODES.proven(link_id, _join_email(body), body.get("code"))
+            if not verified:
+                raise LinkError("join.code_required", "请先用邮箱验证码证实这个邮箱", 400)
+        return links.ask(token, body, verified=verified)
+
+    return await _public_join_call(request, ask)
+
+
+class _JoinClaimBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    key: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/api/app/invitations/{token}/requests/claim")
+async def claim_join_request(token: str, body: _JoinClaimBody, request: Request):
+    """申请页凭申请时拿到的 key 看结果；批准了就给一次性登录。key 对不上回 404。"""
+    from src.workflow.members.invite_links import links_for
+    from src.workflow.members.registry import Missing
+    root = os.getcwd()
+
+    def claim():
+        found = links_for(root).claim(token, body.key, views.home_id(root))
+        if found is None:
+            raise Missing("没有这份申请")
+        return found
+
+    return await _public_join_call(request, claim)
+
+
+@router.post("/api/app/invitations/{token}/request-new")
+async def request_new_invitation(token: str, request: Request):
+    """过期的邮件邀请想要一份新的：这里没法替你转告邀请人，如实说明。"""
+    if not member_auth.same_origin(request):
+        return _error(403, "forbidden", "这里现在不能申请")
+    return _error(409, "join.ask_inviter", "这里没法替你转告：请直接联系邀请你的人再发一份")
 
 
 @router.get("/api/app/invitations/{token}/state")
