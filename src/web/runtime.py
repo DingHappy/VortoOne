@@ -50,6 +50,21 @@ def get_services():
     return _SERVICES
 
 
+ACCOUNT_DELETION_SWEEP_SECONDS = 3600
+
+
+async def _finish_account_deletions(root: str, stop: asyncio.Event) -> None:
+    """注销到期的成员账号真正移出这个家。失败只记日志，下一轮再试。"""
+    from src.web import app_members
+    while not stop.is_set():
+        try:
+            await asyncio.to_thread(app_members.finish_due_deletions, root)
+        except Exception:  # noqa: BLE001 —— 读不出账号文件之类：不挡服务
+            logging.getLogger(__name__).warning("注销到期的账号没能移出", exc_info=True)
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=ACCOUNT_DELETION_SWEEP_SECONDS)
+
+
 @asynccontextmanager
 async def runtime_lifespan():
     from src.gateway.runtime import runtime_lifespan as host
@@ -75,6 +90,8 @@ async def runtime_lifespan():
         # Mac 上的本机引擎：Desktop 注入了常驻助理的地址和令牌，就看着 Codex、把进度报过去
         from src.scheduling.codex_observer import observe_loop, observer_enabled
         observer = asyncio.create_task(observe_loop(stop)) if observer_enabled() else None
+        # 成员注销自己的账号，7 天到期后真正移出：启动时一次，之后每小时一次
+        deletions = asyncio.create_task(_finish_account_deletions(os.getcwd(), stop))
         # 任务上下文（ADR-014）：常驻助理开的大任务，成员交回就叫醒协调人；启动时恢复被打断的回合
         team_runner = None
         if current_workspace_scope() == GENERAL:
@@ -119,7 +136,7 @@ async def runtime_lifespan():
                 set_full_toolset(None)
                 await team_runner.close()
             stop.set()
-            for task in (watch, observer):
+            for task in (watch, observer, deletions):
                 if task is not None:
                     task.cancel()
                     with contextlib.suppress(asyncio.CancelledError, Exception):

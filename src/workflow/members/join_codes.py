@@ -81,6 +81,14 @@ class JoinCodes:
         """发一封验证码，返回多少秒后才能再发。"""
         if not enabled():
             raise CodeError("join.codes_off", "这个家没有开邮箱验证码，直接提交申请就行")
+        return self.send_code(link, email, f"加入「{org_name}」的验证码",
+                              "你的验证码是 {code}，10 分钟内有效。\n不是你在申请的话，忽略这封邮件就好。")
+
+    def send_code(self, key: str, email: str, subject: str, text: str) -> int:
+        """按 ``key`` 发一封验证码（``text`` 里的 ``{code}`` 换成验证码），返回多少秒后才能再发。
+        频率限制和别的信共用；``check(key, email, code)`` 核对。"""
+        if not enabled():
+            raise CodeError("join.codes_off", "这个家没有配好发信")
         now = self._clock()
         with self._lock:
             sent = [moment for moment in self._sent.get(email, []) if moment > now - 3600]
@@ -90,10 +98,10 @@ class JoinCodes:
             if len(sent) >= HOURLY_PER_EMAIL or len(self._all) >= GLOBAL_MAX:
                 raise CodeError("join.code_wait", "发得太多了，请过一会儿再试", 429, RESEND_SECONDS)
             code = f"{secrets.randbelow(1_000_000):06d}"
-            self._codes[(link, email)] = (_digest(code), now + CODE_SECONDS, TRIES)
+            self._codes[(key, email)] = (_digest(code), now + CODE_SECONDS, TRIES)
             self._sent[email] = [*sent, now]
             self._all.append(now)
-        self._send(email, f"加入「{org_name}」的验证码", f"你的验证码是 {code}，10 分钟内有效。\n不是你在申请的话，忽略这封邮件就好。")
+        self._send(email, subject, text.replace("{code}", code))
         return RESEND_SECONDS
 
     def mail(self, email: str, subject: str, text: str) -> bool:

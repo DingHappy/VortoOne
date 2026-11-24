@@ -39,6 +39,10 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/artifacts/blk_[a-f0-9]{32}/reply"),     # 频道卡片上回复：按卡片所在频道核对
     ("GET", _ORG + r"/refs/[^/]+"),                      # 编号小标签：按看板、频道各自的可见性核对，制品只给所有者
     ("GET", r"/api/app/me"),
+    ("GET", r"/api/app/account/deletion"),               # 注销自己的账号：先看会怎样，再要验证码、注销、恢复
+    ("POST", r"/api/app/account/deletion/code"),
+    ("DELETE", r"/api/app/account"),
+    ("DELETE", r"/api/app/account/deletion"),
     ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
     ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读
     ("POST", _ORG + r"/admin-asks"),                       # 成员只提交申请，所有者另行决定
@@ -281,6 +285,14 @@ def same_origin(request) -> bool:
     return _same_origin(request)
 
 
+# 账号注销中（7 天内）：界面只显示「注销中」的等待页，会话只能做这几件事。
+DELETING_ROUTES = frozenset({
+    ("GET", "/api/app/me"),
+    ("GET", "/api/app/account/deletion"),
+    ("DELETE", "/api/app/account/deletion"),
+})
+
+
 def account(request) -> Optional[Dict[str, Any]]:
     """这个请求带的成员会话对应的账号；没有、过期、服务没配主人令牌都返回 None。"""
     from src.web.auth import get_api_token
@@ -313,6 +325,8 @@ def admit(request):
     if found is None:
         return 401
     path, method = request.url.path, request.method
+    if found.get("deletion") and (method, path) not in DELETING_ROUTES:
+        return 403                                     # 注销中：只能看自己、恢复或退出
     if not any(method == allowed and pattern.match(path) for allowed, pattern in MEMBER_ROUTES):
         empty = empty_answer(method, path)
         return empty if empty is not None else 403

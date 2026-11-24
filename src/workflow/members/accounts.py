@@ -19,7 +19,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from src.utils.state_dir import state_dir
 from src.workflow.members.registry import login_name
@@ -31,6 +31,7 @@ _SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 PASSWORD_MIN, PASSWORD_MAX = 8, 128
 SESSION_DAYS, RESET_HOURS = 30, 24
 PASSWORD_REAUTH = timedelta(minutes=10)
+DELETION_DAYS = 7          # 成员注销自己的账号：7 天后才真正移出，之前可以恢复
 MAX_ACCOUNTS, MAX_SESSIONS_EACH = 1000, 10
 LOCK_AFTER, LOCK_SECONDS = 5, 15 * 60
 
@@ -53,6 +54,10 @@ class WrongCredentials(PermissionError):
 
 class Locked(PermissionError):
     """输错太多次，暂时不能再试。"""
+
+
+class NotRestorable(RuntimeError):
+    """注销已经到期，回不来了。"""
 
 
 class ReauthenticationRequired(PermissionError):
@@ -331,7 +336,8 @@ class MemberAccounts:
         with self._change() as state:
             # A reset or replacement can finish while scrypt is running.
             current = state["accounts"].get(account_id)
-            if current is None or current.get("email") != address or current.get("password") != sealed:
+            if (current is None or current.get("email") != address or current.get("password") != sealed
+                    or self._past_due(current, now or _now())):
                 raise WrongCredentials("邮箱或密码不对")
             token = self._issue_session(state, account_id, now or _now(), password_verified=True)
         _FAILURES.pop(address, None)
@@ -339,8 +345,12 @@ class MemberAccounts:
 
     @staticmethod
     def _public_account(account_id: str, account: Dict[str, Any]) -> Dict[str, Any]:
-        return {"id": account_id, "email": account["email"], "name": account["name"],
-                "member": str(account.get("member") or "")}
+        found = {"id": account_id, "email": account["email"], "name": account["name"],
+                 "member": str(account.get("member") or "")}
+        deletion = account.get("deletion")
+        if isinstance(deletion, dict):
+            found["deletion"] = {"dueAt": str(deletion["due"]), "requestedAt": str(deletion["requested"])}
+        return found
 
     @classmethod
     def _issue_session(cls, state: Dict[str, Any], account_id: str, moment: datetime,
@@ -418,10 +428,16 @@ class MemberAccounts:
         return self._public_account(account_id, state["accounts"][account_id])
 
     @staticmethod
-    def _valid_session(state: Dict[str, Any], key: str, moment: datetime) -> Optional[Dict[str, Any]]:
+    def _past_due(account: Dict[str, Any], moment: datetime) -> bool:
+        deletion = account.get("deletion")
+        return isinstance(deletion, dict) and str(deletion.get("due") or "") <= _iso(moment)
+
+    @classmethod
+    def _valid_session(cls, state: Dict[str, Any], key: str, moment: datetime) -> Optional[Dict[str, Any]]:
         item = state["sessions"].get(key)
         if (item is None or str(item.get("expires") or "") <= _iso(moment)
-                or item.get("account") not in state["accounts"]):
+                or item.get("account") not in state["accounts"]
+                or cls._past_due(state["accounts"][item["account"]], moment)):    # 注销到期：等着被移出
             return None
         return item
 
@@ -438,6 +454,55 @@ class MemberAccounts:
     def sign_out(self, token: str) -> None:
         with self._change() as state:
             state["sessions"].pop(_digest(token), None)
+
+    # ── 注销自己的账号 ────────────────────────────────────────────────────────
+
+    def request_deletion(self, account_id: str, token: str, *, password: Optional[str] = None,
+                         now: Optional[datetime] = None) -> str:
+        """凭这次的会话（和密码，没有发信时）注销：DELETION_DAYS 天后移出，所有会话现在就结束。
+        已经在注销中的保持原来的日期。返回到期时刻。"""
+        with self._change() as state:
+            moment = now or _now()
+            session = self._valid_session(state, _digest(token), moment)
+            if session is None or session["account"] != account_id:
+                raise ReauthenticationRequired("请重新登录")
+            account = state["accounts"][account_id]
+            if password is not None and not _matches(account["password"], password if isinstance(password, str)
+                                                     and len(password) <= PASSWORD_MAX else ""):
+                raise WrongCredentials("密码不对")
+            deletion = account.get("deletion")
+            if not isinstance(deletion, dict):
+                deletion = {"requested": _iso(moment), "due": _iso(moment + timedelta(days=DELETION_DAYS))}
+                account["deletion"] = deletion
+            self._revoke_delegated_credentials(account_id, account)
+            account.pop("reset", None)
+            self._end_sessions(state, account_id)
+            return str(deletion["due"])
+
+    def restore(self, account_id: str, token: str, *, now: Optional[datetime] = None) -> None:
+        """到期之前撤回注销。到期了（会话也就不算数了）回不来。"""
+        with self._change() as state:
+            moment = now or _now()
+            account = state["accounts"].get(account_id)
+            if account is not None and self._past_due(account, moment):
+                raise NotRestorable("注销已经到期，账号回不来了")
+            session = self._valid_session(state, _digest(token), moment)
+            if session is None or session["account"] != account_id:
+                raise ReauthenticationRequired("请重新登录")
+            account.pop("deletion", None)
+
+    def due_deletions(self, *, now: Optional[datetime] = None) -> List[Tuple[str, str]]:
+        """注销已到期的账号：[(账号 id, 成员 id)]，成员 id 可能为空（还没加入就注销了）。"""
+        moment = now or _now()
+        with _LOCK:
+            accounts = self._load()["accounts"]
+        return [(key, str(item.get("member") or "")) for key, item in accounts.items() if self._past_due(item, moment)]
+
+    def drop_account(self, account_id: str) -> None:
+        with self._change() as state:
+            if str(account_id) in state["accounts"]:
+                self._end_sessions(state, str(account_id))
+                del state["accounts"][str(account_id)]
 
     # ── 更换和重置密码 ────────────────────────────────────────────────────────
 
