@@ -291,6 +291,10 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     elif dispatch.get('channel'):
         from src.agents.tools.channel_cards import build_channel_card_tools
         options['extra_tools'] = tuple(build_channel_card_tools(root, task))      # 投票、选择卡：跟着回答发在话题里
+    if dispatch.get('source') == 'staff':
+        # 提议改团队背景：只记提议，所有者采纳才生效（主人 2026-11-24 定）
+        from src.agents.tools.context_proposal import build_context_proposal_tool
+        options['extra_tools'] = (*options.get('extra_tools', ()), build_context_proposal_tool(root, task))
     if downgraded:
         options.pop('confirm_action', None)
         options['unattended'] = True

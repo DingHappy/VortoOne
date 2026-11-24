@@ -136,6 +136,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/vault/(?:import|items|keys)"),
     ("PATCH", _ORG + r"/vault/items/[^/]+"),
     ("DELETE", _ORG + r"/vault/items/[^/]+"),
+    ("GET", _ORG + r"/proposals"),                        # 自己让 agent 提的团队背景修改，可以请所有者看看
+    ("POST", _ORG + r"/proposals/[^/]+/ask"),
     ("GET", _ORG + r"/routines/proposals"),
     ("POST", _ORG + r"/routines/proposals"),
     ("GET", _ORG + r"/members"),

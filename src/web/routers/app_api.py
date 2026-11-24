@@ -3440,12 +3440,70 @@ async def unread_team_threads(org_id: str, request: Request):
 _EMPTY: Dict[str, Any] = {
     "/unread-tasks": {"tasks": []},
     "/machines/outages": {"outages": [], "targets": []},
-    "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
     "/mail/accounts": {"accounts": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
+
+
+# ── 提议：agent 提改团队背景，所有者采纳才生效（主人 2026-11-24 定）────────────────
+
+async def _proposal_call(org_id: str, request: Request, action, *, decide: bool = False):
+    from src.web import app_proposals
+    from src.workflow.members.context_proposals import ProposalError
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", "加入这个家以后才能看提议")
+    if decide and (not who.is_owner or not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "团队背景的提议只有所有者能决定")
+    try:
+        result = await asyncio.to_thread(action, root, who, app_proposals)
+    except ProposalError as error:
+        return _error(error.status, error.code, str(error))
+    except OSError:
+        return _error(503, "unavailable", "提议记录暂时读不出来")
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/proposals")
+async def list_proposals(org_id: str, request: Request, ids: str = Query(default="", max_length=4000)):
+    wanted = [item for item in ids.split(",") if item] if ids else None
+    return await _proposal_call(org_id, request, lambda root, who, views_: {
+        "proposals": views_.listing(root, who, wanted)})
+
+
+class _ProposalText(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    text: Optional[str] = Field(default=None, max_length=4000)
+
+
+@router.post(_ORG + "/proposals/{proposal_id}/accept")
+async def accept_proposal(org_id: str, proposal_id: str, request: Request, body: _ProposalText | None = None):
+    from src.workflow.members.context_proposals import ContextProposals
+    text = (body or _ProposalText()).text
+    return await _proposal_call(org_id, request, lambda root, who, views_: views_.one(
+        root, who, ContextProposals(root).accept(proposal_id, who.id, text)), decide=True)
+
+
+@router.post(_ORG + "/proposals/{proposal_id}/refuse")
+async def refuse_proposal(org_id: str, proposal_id: str, request: Request):
+    from src.workflow.members.context_proposals import ContextProposals
+    return await _proposal_call(org_id, request, lambda root, who, views_: views_.one(
+        root, who, ContextProposals(root).refuse(proposal_id, who.id)), decide=True)
+
+
+@router.post(_ORG + "/proposals/{proposal_id}/ask")
+async def ask_about_proposal(org_id: str, proposal_id: str, request: Request):
+    """发起的成员请所有者看看。所有者的提议列表本来就列着每一条待决定的，这里记下时间，界面据此显示「已请所有者看」。"""
+    from src.workflow.members.context_proposals import ContextProposals, ProposalError
+
+    def ask(root, who, views_):
+        if who.is_owner:
+            raise ProposalError("proposal.yours", "你就是决定的人，直接采纳或拒绝")
+        return views_.one(root, who, ContextProposals(root).ask(proposal_id, who.id))
+    return await _proposal_call(org_id, request, ask)
 
 
 def _register_empty(path: str, payload: Any) -> None:
