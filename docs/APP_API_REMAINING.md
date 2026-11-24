@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 481 个，剩 **150** 个：
-- **要做：79**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 484 个，剩 **147** 个：
+- **要做：76**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -303,7 +303,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的版本。私有文档、表格和文本版本显示已保存的备注，旧网页不推断逐版作者或备注。 |
 | ☑ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` | 经认证的所有者可给私有文档和表格添加版本及备注。对照原版本编号，过时返回 409。旧版本可查看、下载；资料不共享到频道。 |
 
-### org/threads（10 个，要做 1）
+### org/threads（10 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -316,7 +316,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/threads/{x}/mission` | `missions.ofThread` |  |
 | ☑ | POST | `ORG/threads/{x}/read` | `reads.markThreadRead` | Desktop 打开话题时调用。已接团队频道话题的个人已读位置及频道、工作区两处列表的未读状态。侧栏只计有权限、已关注且未归档的话题。 |
 | ☑ | GET | `ORG/threads/{x}/tasks` | `missions.threadTasks` | 所有者读取已绑定草案的空执行列表。草案不创建执行会话。 |
-| ☐ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 已接关闭、重新打开、归档和解除归档，移动及归还选段待接 |
+| ☑ | POST | `ORG/threads/{x}/{x}` | `threads.act` | 关闭、重新打开、归档、解除归档；选段话题可「拿出频道」（原消息改挂到话题下，频道主时间线里看不到）和「放回频道」（只放回那几条，后来的回复不动）。拿出期间不能调整选段或撤销，归档的先解除归档（接 Codex 半成品）。 |
 
 ### org/channels（10 个，要做 0）
 
@@ -654,11 +654,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/reminders` | `reminders.create` | 如实 409：请在日历里建日程或排例行工作。 |
 | ☑ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 404。 |
 
-### /api/app/me（3 个，要做 1）
+### /api/app/me（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/me/password` | `account.addPassword` | 成员可凭 10 分钟内的一次密码登录更换本人的密码并撤销其它会话。再次更换需用新密码登录。所有者仍由本机认领流程管理。 |
+| ☑ | POST | `/api/app/me/password` | `account.addPassword` | 成员可凭 10 分钟内的一次密码登录更换本人的密码并撤销其它会话。再次更换需用新密码登录。所有者仍由本机认领流程管理，如实拒绝（Codex 已做完）。 |
 | ☑ | GET | `/api/app/me/unread` | `account.unread` | 按当前账号汇总未静音频道的新消息和已关注话题。所有者另外计入自己的通知；等待数沿用通知收件箱口径。 |
 | ☑ | PUT | `/api/app/me/work-area` | `account.setWorkArea` | 引导答案随本人账号保存，只在本人的 /me 中读取，支持跳过 |
 
@@ -857,11 +857,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | POST | `/api/app/organizations` | `orgs.create` | 一台服务只有一个家：409 `organization.single_home`。 |
 
-### org/onboarding（1 个，要做 1）
+### org/onboarding（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PATCH | `ORG/onboarding` | `orgs.saveOnboarding` | 随包本机安装的引导使用独立的 `/api/app/desktop-setup`，创建其他工作区的流程仍待接入。 |
+| ☑ | PATCH | `ORG/onboarding` | `orgs.saveOnboarding` | 这个家只有一个、早已设好（本机安装走 `/api/app/desktop-setup`）：只有所有者能调，照实回「已经完成」并带上主助理和 /me，不另存不生效的进度。 |
 
 ### org/billing-link（1 个，要做 0）
 
