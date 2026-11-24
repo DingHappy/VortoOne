@@ -707,6 +707,153 @@ async def replace_member_password(body: Dict[str, Any], request: Request):
     return Response(status_code=204)
 
 
+# ── 注销自己的账号（主人 2026-11-24 定：成员可以注销自己的；整个家不删）──────────
+
+_DELETION_CODE_SUBJECT = "注销账号的验证码"
+_DELETION_CODE_TEXT = "你在注销这个家里的账号，验证码是 {code}，10 分钟内有效。\n不是你在操作的话，改一下密码。"
+
+
+def _deletion_code_key(account_id: str) -> str:
+    return "account-delete:" + account_id
+
+
+def _reauth_code_error(error):
+    """验证码的拒绝换成界面认的 reauth.code_*。"""
+    code = {"join.code_wait": "reauth.code_wait", "join.code_expired": "reauth.code_expired",
+            "join.code_wrong": "reauth.code_wrong", "join.codes_off": "reauth.no_email"}.get(error.code, error.code)
+    body = {"code": code, "message": str(error), **({"retryIn": error.retry_in} if error.retry_in else {})}
+    return JSONResponse({"error": body}, status_code=error.status, headers={"Cache-Control": "no-store"})
+
+
+def _owner_cannot_leave(request: Request):
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return _error(409, "sole_owner", "你是这个家唯一的所有者，所有者账号不能注销")
+
+
+@router.get("/api/app/account/deletion")
+async def account_deletion_plan(request: Request):
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    plan = await _members_call(lambda: app_members.deletion_plan(root, actor))
+    if isinstance(plan, JSONResponse):
+        return plan
+    return JSONResponse(plan, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/app/account/deletion/code")
+async def account_deletion_code(request: Request):
+    from src.workflow.members import join_codes
+
+    actor = member_auth.principal(request, os.getcwd())
+    if actor.is_owner:
+        return _owner_cannot_leave(request)
+    if not join_codes.enabled():
+        return _error(409, "reauth.no_email", "这个家不发邮件：用你的密码确认")
+    email = str(request.state.member_account["email"])
+    try:
+        wait = await asyncio.to_thread(join_codes.CODES.send_code, _deletion_code_key(request.state.member_account["id"]),
+                                       email, _DELETION_CODE_SUBJECT, _DELETION_CODE_TEXT)
+    except join_codes.CodeError as error:
+        return _reauth_code_error(error)
+    except OSError:
+        return _error(503, "mail_unavailable", "验证码没有发出去，请稍后再试")
+    return JSONResponse({"email": email, "resendIn": wait}, headers={"Cache-Control": "no-store"})
+
+
+class _DeletionProof(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    code: str | None = Field(default=None, max_length=16)
+    password: str | None = Field(default=None, max_length=256)
+
+
+@router.delete("/api/app/account", status_code=204)
+async def delete_my_account(request: Request, body: _DeletionProof | None = None):
+    """成员注销自己的账号：发信开着要邮件验证码，没开要自己的密码。7 天后移出这个家，所有登录现在就结束。"""
+    from src.workflow.members import join_codes
+    from src.workflow.members.accounts import Damaged, MemberAccounts, ReauthenticationRequired, WrongCredentials
+
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        return _owner_cannot_leave(request)
+    account = request.state.member_account
+    proof = body or _DeletionProof()
+    password = None
+    if join_codes.enabled():
+        if not proof.code:
+            return _error(403, "reauth.code", "先发一封验证码到你的邮箱")
+        try:
+            join_codes.CODES.check(_deletion_code_key(account["id"]), str(account["email"]), proof.code)
+        except join_codes.CodeError as error:
+            return _reauth_code_error(error)
+    else:
+        if not proof.password:
+            return _error(403, "reauth.password", "用你的密码确认")
+        password = proof.password
+    try:
+        await asyncio.to_thread(MemberAccounts(root).request_deletion, account["id"],
+                                request.cookies.get(member_auth.MEMBER_COOKIE, ""), password=password)
+    except WrongCredentials:
+        return _error(403, "reauth.password", "密码不对")
+    except ReauthenticationRequired:
+        return _error(401, "unauthorized", "请重新登录")
+    except (Damaged, OSError):
+        return _error(503, "unavailable", "暂时注销不了")
+    response = Response(status_code=204)
+    member_auth.clear_cookie(response)
+    return response
+
+
+@router.delete("/api/app/account/deletion", status_code=204)
+async def restore_my_account(request: Request):
+    from src.workflow.members.accounts import Damaged, MemberAccounts, NotRestorable, ReauthenticationRequired
+
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        return Response(status_code=204)               # 所有者账号不会注销：没有要恢复的
+    try:
+        await asyncio.to_thread(MemberAccounts(root).restore, request.state.member_account["id"],
+                                request.cookies.get(member_auth.MEMBER_COOKIE, ""))
+    except NotRestorable:
+        return _error(409, "account.not_restorable", "注销已经到期，账号回不来了")
+    except ReauthenticationRequired:
+        return _error(401, "unauthorized", "请重新登录")
+    except (Damaged, OSError):
+        return _error(503, "unavailable", "暂时恢复不了")
+    return Response(status_code=204)
+
+
+@router.post(_ORG + "/deletion/code")
+@router.post(_ORG + "/deletion")
+async def delete_workspace(org_id: str, request: Request):
+    """删除整个家（频道、成员、agent、Wiki、文件、记录）不在这里做（主人 2026-11-24 定）：不可恢复的整家删除
+    如实拒绝，要删请在服务器上先备份再手动删。不发验证码，免得像是能删。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_owner:
+        return _error(403, "forbidden", "只有所有者能处理这个家")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return _error(409, "org.delete_unsupported", "这个家不能在这里删除：要删，请先在服务器上备份，再手动删")
+
+
+@router.delete(_ORG + "/deletion", status_code=204)
+async def restore_workspace(org_id: str, request: Request):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None or not who.is_owner:
+        return _error(403, "forbidden", "只有所有者能处理这个家")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return Response(status_code=204)                   # 这个家从不进入删除：没有要恢复的
+
+
 @router.put("/api/app/me/work-area", status_code=204)
 async def set_work_area(body: Dict[str, Any], request: Request):
     root = os.getcwd()
