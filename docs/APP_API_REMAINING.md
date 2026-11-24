@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 473 个，剩 **158** 个：
-- **要做：87**（其中 7 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 481 个，剩 **150** 个：
+- **要做：79**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -234,7 +234,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `ORG/machines/{x}/queue` | `machines.queue` | Codex 连接电脑线 |
 | — | POST | `ORG/machines/{x}/{x}` | `machines.setPause` | Codex 连接电脑线 |
 
-### org/vault（12 个，要做 5）
+### org/vault（12 个，要做 4）
 
 首批只支持个人登录和 API Key 条目。每个当前成员只访问自己的条目，所有者按同一条规则。删除后当前条目失效，
 成员离开后无法访问原个人库。API 只回条目元数据，角色和 Agent 暂不能使用个人库。
@@ -265,16 +265,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | DELETE | `ORG/vault/items/{x}` | `vault.remove` | 只允许条目本人删除 |
 | ☑ | GET | `ORG/vault/items/{x}` | `vault.item` | 仅本人元数据，无原值 |
 | ☑ | PATCH | `ORG/vault/items/{x}` | `vault.update` | 只允许本人更新或换值，禁止共享 |
-| ☐ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 界面代码里没调用 |
+| ☑ | POST | `ORG/vault/items/{x}/move` | `vault.move` | 保险库没有文件夹：409。 |
 | ☑ | POST | `ORG/vault/keys` | `vault.importKeys` | 「导入 .env」仅本人批量新增或显式替换，返回统计 |
 
-### org/me（12 个，要做 1）
+### org/me（12 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | PATCH | `ORG/me` | `orgs.updateMe` | 本人修改空间内用户名和个人时区。时区清空后跟随空间默认；用户名按大小写无关的提及规则去重，成员与智能体共用命名空间，历史用户名仍留给本人。每人最多登记 16 个不同的自选用户名。 |
 | ☑ | PUT | `ORG/me/activity` | `orgs.setShowActivity` |  |
-| ☐ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` | 现有运行时未实现按个人改变智能体回复风格，Desktop 未显示入口。 |
+| ☑ | PUT | `ORG/me/agent-style` | `orgs.setAgentStyle` | 还不能按个人改 agent 说话的方式：409，口吻在 agent 自己的设置里。 |
 | ☑ | GET | `ORG/me/approval-cover` | `approvals.covers` | 所有者托付一个成员替自己批主要聊天里的确认：一直或外出时，可设到期；默认只代批低风险的。读过外部内容的、网页登录、文件传输、设备钥匙、专员提议永远留给所有者；每次代批进审计 |
 | ☑ | PUT | `ORG/me/approval-cover` | `approvals.setCover` | 只有所有者能设；成员回 409 |
 | ☑ | DELETE | `ORG/me/avatar` | `orgs.removeAvatar` | 仅移除本人头像。 |
@@ -348,11 +348,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/usage/plans` | `orgs.planUsage` | 仅所有者。这里没有订阅套餐账号（accounts 空），只有 API 用量。 |
 | ☑ | GET | `ORG/usage/report` | `orgs.usageReport` | 仅所有者。从 since 起按 agent、按种类（agent/summary）。按所有者给模型填的价格折成美元（没填价格的只记 token，不算钱，`partialCalls` 标出）。agent 没有美元预算（额度按 token 记），预算填 0。 |
 
-### org/routines（10 个，要做 6）
+### org/routines（10 个，要做 5）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/routines/{x}/continue` | `routines.continueUsage` |  |
+| ☑ | POST | `ORG/routines/{x}/continue` | `routines.continueUsage` | 不跳过额度接着做：409，调高额度后它会自己接着做。 |
 | ☑ | POST | `ORG/routines/{x}/duplicate` | `routines.duplicate` | 所有者可复制现有本人例行定义；先按摘要审核，副本默认暂停 |
 | ☐ | GET | `ORG/routines/{x}/hook` | `routines.hook` |  |
 | ☐ | POST | `ORG/routines/{x}/hook/address` | `routines.newHookAddress` |  |
@@ -574,14 +574,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | PUT | `/api/app/jev` | `system.saveJev` | 不做：第三方 TypeSafe 服务，接口不公开；404 时界面藏起入口 |
 | — | POST | `/api/app/jev/check` | `system.checkJev` | 不做：第三方 TypeSafe 服务，接口不公开；404 时界面藏起入口 |
 
-### /api/app/push（4 个，要做 4）
+### /api/app/push（4 个，要做 3）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☐ | POST | `/api/app/push/devices` | `push.register` |  |
 | ☐ | POST | `/api/app/push/devices/forget` | `push.unregister` |  |
 | ☐ | POST | `/api/app/push/stale` | `push.stale` |  |
-| ☐ | GET | `/api/app/push/web` | `push.webKey` |  |
+| ☑ | GET | `/api/app/push/web` | `push.webKey` | 没有网页推送：按客户端约定回 404，界面据此隐藏入口（不另加路由）。 |
 
 ### org/team-proposals（4 个，要做 0）
 
@@ -847,11 +847,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/questions/{x}/answer` | `questions.answer` | 私聊里交代的事，专员用 `ask_person` 问交代的人；只有被问的人能答，答完按返工路径接着做（最多 3 轮），回答按资料交给专员 |
 | ☑ | POST | `ORG/questions/{x}/dismiss` | `questions.dismiss` | 跳过后专员按自己的判断接着做 |
 
-### /api/app/email-undo（1 个，要做 1）
+### /api/app/email-undo（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/email-undo` | `account.undoEmailChange` |  |
+| ☑ | POST | `/api/app/email-undo` | `account.undoEmailChange` | 这里还不能改登录邮箱，没有要撤回的：404 `email.undo_gone`（不登录也能调，只回这一句）。 |
 
 ### /api/app/organizations（1 个，要做 0）
 
@@ -913,11 +913,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | PUT | `ORG/agent-lines` | `agents.setLines` | 所有者可批量保存团队图中最多三层的汇报关系并撤销，包括名册里的主助理。改动只用于界面展示。 |
 
-### org/autonomy-proposals（1 个，要做 1）
+### org/autonomy-proposals（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/autonomy-proposals/{x}` | `agents.decideCostly` |  |
+| ☑ | POST | `ORG/autonomy-proposals/{x}` | `agents.decideCostly` | agent 主动提出的高花费工作还没有：404。 |
 
 ### org/agent-imports（1 个，要做 1）
 
@@ -931,17 +931,17 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | — | GET | `ORG/brain-machines` | `agents.brainMachines` | Codex 连接电脑线 |
 
-### org/refs（1 个，要做 1）
+### org/refs（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/refs/{x}` | `chat.idRef` |  |
+| ☑ | GET | `ORG/refs/{x}` | `chat.idRef` | 文字里的编号显示成小标签：看板任务、频道消息、制品（制品只给所有者），各按原有可见性核对；看不到和不存在一律 404。 |
 
-### org/approvals（1 个，要做 1）
+### org/approvals（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/approvals/{x}/cancel` | `approvals.cancel` |  |
+| ☑ | POST | `ORG/approvals/{x}/cancel` | `approvals.cancel` | 这里没有提前批准（每一项当场问）：409 `approval.not_ahead`。 |
 
 ### org/approval-covers（1 个，要做 0）
 
