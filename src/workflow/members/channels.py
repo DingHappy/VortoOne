@@ -875,6 +875,8 @@ class TeamChannels:
                 if action == "title":
                     channel_threads.rename(conn, channel["id"], thread_id, _thread_title(title),
                                            change="context" if self.history.is_range(row) else "title")
+                elif action in ("move", "return"):         # 选段话题：拿出频道 / 放回频道
+                    row = (self.history.move_range if action == "move" else self.history.return_range)(conn, row)
                 else:
                     channel_threads.apply(conn, channel["id"], thread_id, self._actor_key(actor), action,
                                           _stamp(datetime.now(timezone.utc)))
