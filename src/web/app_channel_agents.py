@@ -50,8 +50,9 @@ def _busy(root: str, channel_id: str, staff: str) -> bool:
                for task in _channel_tasks(root))
 
 
-def context_lines(root: str, service, actor, channel_id: str, thread: str | None) -> List[str]:
-    """频道（或其中一个话题）最近几条，一行一条「谁：说了什么」。超长先丢最早的，最后一条总在。"""
+def context_lines(root: str, service, actor, channel_id: str, thread: str | None, *, skip=()) -> List[str]:
+    """频道（或其中一个话题）最近几条，一行一条「谁：说了什么」。超长先丢最早的，最后一条总在。
+    skip：不交给 agent 的消息 id（比如 Mission 里还没被采纳的建议）。"""
     agents = app_channels.channel_agents(root)
     names = {row["id"]: row["name"] for row in service.roster(actor, channel_id, agents=agents)}
     if thread:
@@ -59,7 +60,7 @@ def context_lines(root: str, service, actor, channel_id: str, thread: str | None
     else:
         rows = service.messages(actor, channel_id, limit=CONTEXT_MESSAGES)
     lines = [f"{_clean(names.get(row['author']['id'], '某人'), 40)}：{_clean(row['body'], EACH_CHARS)}"
-             for row in rows if row.get("body")]
+             for row in rows if row.get("body") and row["id"] not in skip]
     while lines and sum(len(line) for line in lines) > CONTEXT_CHARS:
         lines.pop(0)
     return lines

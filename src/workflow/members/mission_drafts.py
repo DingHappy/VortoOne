@@ -136,7 +136,7 @@ class MissionDrafts:
         return draft
 
     def get(self, actor, identifier, *, by_thread=False):
-        self._owner(actor)
+        """能读这个频道的人都能看到（成员能做什么由 Mission 里的身份决定，见 mission_runs）。"""
         with self.channels.registry._locked_state() as state, self.channels.history.database() as conn:
             return dict(self._get_visible(conn, state, actor, identifier, by_thread=by_thread))
 
@@ -184,7 +184,7 @@ class MissionDrafts:
             return model
 
     def listing(self, actor, *, channel_id=None, staff_id=None, query="", limit=50, status="open"):
-        self._owner(actor)
+        """所有者看全部；成员看他能读的频道里的（主人 2026-11-23 定：Mission 内容本来就在话题里）。"""
         counts = {"active": 0, "waitingYou": 0, "closed": 0}
         with self.channels.registry._locked_state() as state, self.channels.history.database() as conn:
             if not _has_table(conn, "mission_drafts"):

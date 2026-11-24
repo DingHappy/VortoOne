@@ -166,11 +166,14 @@ def test_missions_require_owner_proof_even_for_a_channel_admin(home, monkeypatch
     thread_id, _ = _thread(owner, channel)
     draft = _draft(home, thread_id)
     route = f"{base}/missions/{draft['id']}"
+    # 能读这个频道的成员看得到 Mission（内容本来就在话题里，主人 2026-11-23 定）；模型配置、新建仍只给所有者
     reads = [base + "/missions", route, route + "/plan", route + "/summary", route + "/participants",
-             route + "/brain", f"{base}/threads/{thread_id}/mission"]
+             f"{base}/threads/{thread_id}/mission"]
     assert member.get(f"{base}/threads/{thread_id}").status_code == 200
     for path in reads:
-        assert member.get(path).status_code == 403
+        assert member.get(path).status_code == 200, path
+    assert member.get(route).json()["role"] == "none" and member.get(route).json()["canAct"] is False
+    assert member.get(route + "/brain").status_code == 403
     assert member.post(base + "/missions", json=_input(home, thread_id)).status_code == 403
     assert TestClient(home["app"]).get(route).status_code == 401
     assert owner.get(f"/api/app/organizations/another-home/missions/{draft['id']}").status_code == 404
@@ -474,7 +477,8 @@ def test_draft_inspection_has_no_executions_or_files_and_cannot_change_approval(
         assert result.status_code == 200 and result.json() == data
         assert result.headers["cache-control"] == "no-store"
         assert outsider.get(path).status_code == 401
-        assert member.get(path).status_code == 403
+        # 话题里的任务列表频道成员也看得到；文件和设置仍只给所有者
+        assert member.get(path).status_code == (200 if path.endswith("/tasks") else 403)
         assert browser.get(path).json() == data
         assert browser.get(path, headers={"Origin": "https://elsewhere.example"}).status_code == 403
         assert owner.get(path.replace(base, "/api/app/organizations/another-home")).status_code == 404

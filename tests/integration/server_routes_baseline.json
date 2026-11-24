@@ -2622,6 +2622,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/join-requests",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/join-requests",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/join-requests/{user_id}/{outcome}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/machine",
     "methods": [
       "PUT"
@@ -2637,6 +2655,24 @@
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants/{user_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/participants/{user_id}",
+    "methods": [
+      "PATCH"
     ]
   },
   {
@@ -2688,9 +2724,21 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/suggestions/{message_id}/{outcome}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/missions/{mission_id}/summary",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/missions/{mission_id}/transfer",
+    "methods": [
+      "POST"
     ]
   },
   {

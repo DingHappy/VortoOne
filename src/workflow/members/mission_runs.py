@@ -14,9 +14,11 @@ from datetime import datetime, timezone
 
 from src.workflow.members.channel_history import _stamp
 from src.workflow.members.mission_drafts import MissionDrafts, _has_table
-from src.workflow.members.registry import Missing
+from src.workflow.members.registry import Missing, Refused
 
 MAX_STEPS = 10
+ACT = ("owner", "decide")
+TAKE_PART = ("owner", "decide", "comment")
 MAX_PLAN_ITEMS = 40
 PLAN_STATUSES = ("todo", "doing", "waiting_you", "done", "dropped")
 FINISHED_ITEMS = ("done", "dropped")
@@ -135,14 +137,32 @@ class MissionRuns:
                 "SELECT DISTINCT step.mission_id FROM mission_steps AS step"
                 " WHERE step.finished IS NULL")]
 
+    # ── 谁能做什么（主人 2026-11-23 定）──
+    # owner：所有者，什么都能做。decide：被批准的「决定」成员，能开始、暂停、停止、拍板、验收。
+    # comment：只能表态、勾检查项。none：能看到这个频道的人，只能看和申请加入。
+    def role_of(self, conn, actor, row):
+        if actor.is_owner:
+            return "owner" if actor.id == self.channels.owner_id else "none"
+        if not _has_table(conn, "mission_participants"):
+            return "none"
+        found = conn.execute("SELECT role FROM mission_participants WHERE mission_id = ? AND person = ?",
+                             (row["id"], actor.id)).fetchone()
+        return found["role"] if found else "none"
+
+    def _need(self, conn, actor, row, roles):
+        if self.role_of(conn, actor, row) not in roles:
+            raise Refused("你在这个 Mission 里没有这样做的权限")
+
     # ── 写：都在登记锁内核对再改 ──
-    def _row(self, conn, state, actor, mission_id):
+    def _row(self, conn, state, actor, mission_id, roles=("owner",)):
         if actor is None:
             row = self.drafts._load(conn, mission_id)
             if row is None:
                 raise Missing("没有这个任务")
             return row
-        return self.drafts._get_visible(conn, state, actor, mission_id)
+        row = self.drafts._get_visible(conn, state, actor, mission_id)
+        self._need(conn, actor, row, roles)
+        return row
 
     def _open_step(self, conn, mission_id):
         return conn.execute("SELECT * FROM mission_steps WHERE mission_id = ? AND finished IS NULL",
@@ -180,10 +200,9 @@ class MissionRuns:
 
     def start(self, actor, mission_id):
         """草案 → 进行中，并登记第一步。返回 (草案行, 第一步的任务 id)。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state:
             with self.history.database(write=True) as conn:
-                row = self._row(conn, state, actor, mission_id)
+                row = self._row(conn, state, actor, mission_id, ACT)
                 if row["current_status"] != "proposed":
                     raise WrongStatus("只有还没开始的草案能开始")
                 conn.execute("INSERT INTO mission_runs (mission_id, status, started_at) VALUES (?, 'active', ?)",
@@ -292,9 +311,8 @@ class MissionRuns:
 
     def pause(self, actor, mission_id):
         """不再派下一步；正在做的这一步做完为止。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            row = self._row(conn, state, actor, mission_id)
+            row = self._row(conn, state, actor, mission_id, ACT)
             if row["current_status"] == "paused":
                 return dict(row)
             if row["current_status"] != "active":
@@ -304,9 +322,8 @@ class MissionRuns:
 
     def resume(self, actor, mission_id):
         """暂停 → 进行中，重新计步；没有正在做的一步就登记下一步。返回 (草案行, 新一步的任务 id 或 None)。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            row = self._row(conn, state, actor, mission_id)
+            row = self._row(conn, state, actor, mission_id, ACT)
             if row["current_status"] not in ("paused", "awaiting_close"):
                 raise WrongStatus("只有暂停或等收尾的任务能继续")
             conn.execute("UPDATE mission_runs SET status = 'active', paused_at = NULL, pause_reason = NULL, steps = 0"
@@ -320,9 +337,8 @@ class MissionRuns:
 
     def stop(self, actor, mission_id):
         """暂停，并返回正在做的那一步的任务 id（调用方去停它）。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            row = self._row(conn, state, actor, mission_id)
+            row = self._row(conn, state, actor, mission_id, ACT)
             if row["current_status"] not in ("active", "paused"):
                 raise WrongStatus("只有进行中或暂停的任务能停止")
             self._pause(conn, mission_id, "stopped")
@@ -331,7 +347,6 @@ class MissionRuns:
 
     def close(self, actor, mission_id, outcome, note):
         """已开始的任务收尾：标为完成或取消。返回 (草案行, 正在做的那一步的任务 id)。同样的请求重复发不报错。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
             row = self._row(conn, state, actor, mission_id)
             if row["started_at"] is None:
@@ -346,7 +361,6 @@ class MissionRuns:
             return dict(self.drafts._load(conn, mission_id)), (step["task_id"] if step else None)
 
     def set_resume_tasks(self, actor, mission_id, on):
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
             row = self._row(conn, state, actor, mission_id)
             if row["started_at"] is None:
@@ -550,8 +564,9 @@ class MissionCards:
             return list(reversed(taken)), (dict(change) if change else None)
 
     # ── 人拍板 ──
-    def _decision(self, conn, state, actor, mission_id, decision_id):
+    def _decision(self, conn, state, actor, mission_id, decision_id, roles):
         row = self.drafts._get_visible(conn, state, actor, mission_id)
+        self.runs._need(conn, actor, row, roles)
         decision = conn.execute("SELECT * FROM mission_decisions WHERE id = ? AND mission_id = ? AND message_id IS NOT NULL",
                                 (decision_id, mission_id)).fetchone() if _has_table(conn, "mission_decisions") else None
         if decision is None:
@@ -560,9 +575,8 @@ class MissionCards:
 
     def choose(self, actor, mission_id, decision_id, option):
         """拍板。返回 (决定视图, 要不要接着派下一步)。同一选项重复点不报错。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            row, decision = self._decision(conn, state, actor, mission_id, decision_id)
+            row, decision = self._decision(conn, state, actor, mission_id, decision_id, ACT)
             if option not in json.loads(decision["options"]):
                 raise BadOption("不是这个决定的选项")
             if decision["status"] == "taken":
@@ -582,7 +596,7 @@ class MissionCards:
     def opinion(self, actor, mission_id, decision_id, option):
         """表态：只记下谁倾向哪个，不拍板。再表一次是替换。"""
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            row, decision = self._decision(conn, state, actor, mission_id, decision_id)
+            row, decision = self._decision(conn, state, actor, mission_id, decision_id, TAKE_PART)
             if option not in json.loads(decision["options"]):
                 raise BadOption("不是这个决定的选项")
             if decision["status"] == "taken" or row["current_status"] in ("done", "canceled"):
@@ -594,9 +608,9 @@ class MissionCards:
 
     def approve_provisional(self, actor, mission_id):
         """agent 按建议先做了的决定：一次全部确认。返回确认了的。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
             row = self.drafts._get_visible(conn, state, actor, mission_id)
+            self.runs._need(conn, actor, row, ACT)
             if row["current_status"] in ("done", "canceled"):
                 raise WrongStatus("这个任务已经收尾")
             if not _has_table(conn, "mission_decisions"):
@@ -610,8 +624,9 @@ class MissionCards:
             return [self._decision_view(conn, r) for r in conn.execute(
                 f"SELECT * FROM mission_decisions WHERE id IN ({','.join('?' for _ in ids)}) ORDER BY created", ids)] if ids else []
 
-    def _delivery(self, conn, state, actor, mission_id, delivery_id):
+    def _delivery(self, conn, state, actor, mission_id, delivery_id, roles):
         row = self.drafts._get_visible(conn, state, actor, mission_id)
+        self.runs._need(conn, actor, row, roles)
         delivery = conn.execute("SELECT * FROM mission_deliveries WHERE id = ? AND mission_id = ? AND message_id IS NOT NULL",
                                 (delivery_id, mission_id)).fetchone() if _has_table(conn, "mission_deliveries") else None
         if delivery is None:
@@ -621,7 +636,7 @@ class MissionCards:
     def check(self, actor, mission_id, delivery_id, item_id, checked):
         """勾掉（或取消）一条检查项：每个人各勾各的。"""
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            _, delivery = self._delivery(conn, state, actor, mission_id, delivery_id)
+            _, delivery = self._delivery(conn, state, actor, mission_id, delivery_id, TAKE_PART)
             if item_id not in {item["id"] for item in json.loads(delivery["checklist"])}:
                 raise Missing("没有这条检查项")
             if delivery["status"] != "pending":
@@ -638,9 +653,8 @@ class MissionCards:
     def conclude(self, actor, mission_id, delivery_id, outcome, note):
         """验收：accepted（Mission 完成）或 changes_requested（Mission 回到进行中，接着做）。
         返回 (交付视图, 要不要接着派下一步, 要停下的那一步的任务 id)。同样的结论重复发不报错。"""
-        self.drafts._owner(actor)
         with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
-            row, delivery = self._delivery(conn, state, actor, mission_id, delivery_id)
+            row, delivery = self._delivery(conn, state, actor, mission_id, delivery_id, ACT)
             if delivery["status"] != "pending":
                 if (delivery["status"], delivery["note"]) != (outcome, note):
                     raise WrongStatus("这份交付已经有结论了")
@@ -668,3 +682,210 @@ class MissionCards:
 
 def cards_for(root):
     return MissionCards(runs_for(root))
+
+
+# ── 参与者、加入申请、建议（主人 2026-11-23 定）──────────────────────────────────────
+# 能看到这个频道的人可以申请加入；所有者批准时给「决定」或「评论」身份，也可以直接加人、改身份、移出。
+# 在 Mission 话题里，没有拍板权的人（不是所有者也不是「决定」成员）说的话记成建议：
+# 有拍板权的人采纳之前，它不进 agent 的提示；采纳后交给 agent，谢绝的永远不进。
+
+class MissionPeople:
+    def __init__(self, runs: MissionRuns):
+        self.runs = runs
+        self.drafts = runs.drafts
+        self.channels = runs.channels
+        self.history = runs.history
+
+    def _name(self, state, person):
+        from src.workflow.members.registry import MemberRegistry
+        if person == "owner":
+            return self.channels.owner_name
+        try:
+            return MemberRegistry._member(state, person)["name"]
+        except (Missing, KeyError, ValueError):
+            return "已离开的成员"
+
+    def _in_channel(self, state, row, person):
+        channel = state["channels"].get(row["channel_id"]) or {}
+        return person in (channel.get("joined") or {})
+
+    def visible(self, actor, mission_id):
+        """看得到这个 Mission 的人（所有者，或能读这个频道的成员）：返回 (草案行, 身份, 自己有没有待处理的加入申请)。"""
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            row = dict(self.drafts._get_visible(conn, state, actor, mission_id))
+            role = self.runs.role_of(conn, actor, row)
+            asked = bool(not actor.is_owner and _has_table(conn, "mission_join_requests") and conn.execute(
+                "SELECT 1 FROM mission_join_requests WHERE mission_id = ? AND person = ? AND status = 'pending'",
+                (mission_id, actor.id)).fetchone())
+            return row, role, asked
+
+    def participants(self, actor, mission_id):
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            row = self.drafts._get_visible(conn, state, actor, mission_id)
+            rows = conn.execute("SELECT * FROM mission_participants WHERE mission_id = ? ORDER BY created",
+                                (mission_id,)) if _has_table(conn, "mission_participants") else []
+            return {"owner": {"userId": self.history.person_id(row["owner"]), "name": self.channels.owner_name},
+                    "participants": [{"userId": self.history.person_id(p["person"]), "name": self._name(state, p["person"]),
+                                      "role": p["role"],
+                                      "addedBy": self.history.person_id(p["added_by"]) if p["added_by"] else None,
+                                      "createdAt": p["created"]} for p in rows]}
+
+    def set_participant(self, actor, mission_id, person, role, *, create):
+        """所有者加人或改身份。person 是成员 id；他要在这个频道里。create：只加新的（已在就报错）。"""
+        if role not in ("decide", "comment"):
+            raise BadOption("身份只能是 decide 或 comment")
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row = self.runs._row(conn, state, actor, mission_id)
+            if row["current_status"] in ("done", "canceled"):
+                raise WrongStatus("这个任务已经收尾")
+            if person == "owner" or not self._in_channel(state, row, person):
+                raise Missing("这个人不在 Mission 所在的频道里")
+            existing = conn.execute("SELECT 1 FROM mission_participants WHERE mission_id = ? AND person = ?",
+                                    (mission_id, person)).fetchone()
+            if create and existing:
+                raise WrongStatus("这个人已经在这个 Mission 里了")
+            if not create and not existing:
+                raise Missing("这个人不在这个 Mission 里")
+            conn.execute("INSERT INTO mission_participants (mission_id, person, role, added_by, created) VALUES (?, ?, ?, ?, ?)"
+                         " ON CONFLICT(mission_id, person) DO UPDATE SET role = excluded.role",
+                         (mission_id, person, role, self.channels._actor_key(actor), _now()))
+            conn.execute("UPDATE mission_join_requests SET status = 'accepted', role = ?, decided_by = ?, decided_at = ?"
+                         " WHERE mission_id = ? AND person = ? AND status = 'pending'",
+                         (role, self.channels._actor_key(actor), _now(), mission_id, person))
+        return self.participants(actor, mission_id)
+
+    def remove_participant(self, actor, mission_id, person):
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            self.runs._row(conn, state, actor, mission_id)
+            gone = conn.execute("DELETE FROM mission_participants WHERE mission_id = ? AND person = ?",
+                                (mission_id, person)).rowcount if _has_table(conn, "mission_participants") else 0
+            if not gone:
+                raise Missing("这个人不在这个 Mission 里")
+
+    # ── 加入申请 ──
+    def _request_view(self, state, row):
+        return {"id": f"{row['mission_id']}:{row['person']}", "missionId": row["mission_id"],
+                "userId": self.history.person_id(row["person"]), "name": self._name(state, row["person"]),
+                "status": row["status"], "role": row["role"],
+                "decidedBy": self.history.person_id(row["decided_by"]) if row["decided_by"] else None,
+                "decidedAt": row["decided_at"], "createdAt": row["created"]}
+
+    def join_requests(self, actor, mission_id):
+        """所有者看到全部待处理的；成员只看到自己的。"""
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            self.drafts._get_visible(conn, state, actor, mission_id)
+            if not _has_table(conn, "mission_join_requests"):
+                return []
+            if self.runs.role_of(conn, actor, {"id": mission_id}) == "owner":
+                rows = conn.execute("SELECT * FROM mission_join_requests WHERE mission_id = ? AND status = 'pending'"
+                                    " ORDER BY created", (mission_id,))
+            else:
+                rows = conn.execute("SELECT * FROM mission_join_requests WHERE mission_id = ? AND person = ?",
+                                    (mission_id, actor.id))
+            return [self._request_view(state, r) for r in rows]
+
+    def request_join(self, actor, mission_id):
+        """能看到这个频道、还不在这个 Mission 里的成员申请加入。再申请一次不报错；被谢绝后可以再申请。"""
+        if actor.is_owner:
+            raise WrongStatus("所有者不用申请")
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row = self.drafts._get_visible(conn, state, actor, mission_id)
+            if row["current_status"] in ("done", "canceled"):
+                raise WrongStatus("这个任务已经收尾")
+            if self.runs.role_of(conn, actor, row) != "none":
+                raise WrongStatus("你已经在这个 Mission 里了")
+            conn.execute("INSERT INTO mission_join_requests (mission_id, person, status, created) VALUES (?, ?, 'pending', ?)"
+                         " ON CONFLICT(mission_id, person) DO UPDATE SET status = 'pending', role = NULL,"
+                         " decided_by = NULL, decided_at = NULL, created = excluded.created"
+                         " WHERE mission_join_requests.status != 'pending'", (mission_id, actor.id, _now()))
+            found = conn.execute("SELECT * FROM mission_join_requests WHERE mission_id = ? AND person = ?",
+                                 (mission_id, actor.id)).fetchone()
+            return self._request_view(state, found)
+
+    def decide_join(self, actor, mission_id, person, outcome, role):
+        """所有者答复加入申请：accept 时给身份（默认评论），decline 谢绝。"""
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            self.runs._row(conn, state, actor, mission_id)
+            found = conn.execute("SELECT * FROM mission_join_requests WHERE mission_id = ? AND person = ?",
+                                 (mission_id, person)).fetchone() if _has_table(conn, "mission_join_requests") else None
+            if found is None:
+                raise Missing("没有这份加入申请")
+        if outcome == "accept":
+            if found["status"] == "declined":
+                raise WrongStatus("这份申请已经谢绝了")
+            self.set_participant(actor, mission_id, person, role or "comment",
+                                 create=not self._is_participant(mission_id, person))
+        else:
+            with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+                self.runs._row(conn, state, actor, mission_id)
+                current = conn.execute("SELECT status FROM mission_join_requests WHERE mission_id = ? AND person = ?",
+                                       (mission_id, person)).fetchone()
+                if current["status"] == "accepted":
+                    raise WrongStatus("这份申请已经同意了")
+                conn.execute("UPDATE mission_join_requests SET status = 'declined', decided_by = ?, decided_at = ?"
+                             " WHERE mission_id = ? AND person = ? AND status = 'pending'",
+                             (self.channels._actor_key(actor), _now(), mission_id, person))
+        with self.channels.registry._locked_state() as state, self.history.database() as conn:
+            found = conn.execute("SELECT * FROM mission_join_requests WHERE mission_id = ? AND person = ?",
+                                 (mission_id, person)).fetchone()
+            return self._request_view(state, found)
+
+    def _is_participant(self, mission_id, person):
+        with self.history.database() as conn:
+            return bool(_has_table(conn, "mission_participants") and conn.execute(
+                "SELECT 1 FROM mission_participants WHERE mission_id = ? AND person = ?", (mission_id, person)).fetchone())
+
+    # ── 建议 ──
+    def note_message(self, actor, mission_id, message_id):
+        """有人在 Mission 话题里说了一句：没有拍板权的记成待采纳的建议。返回 True 表示记成了建议。"""
+        with self.channels.registry._locked_state(), self.history.database(write=True) as conn:
+            row = self.drafts._load(conn, mission_id)
+            if row is None or row["current_status"] in ("done", "canceled"):
+                return False
+            if self.runs.role_of(conn, actor, row) in ACT:
+                return False
+            conn.execute("INSERT OR IGNORE INTO mission_suggestions (message_id, mission_id, status, created)"
+                         " VALUES (?, ?, 'pending', ?)", (message_id, mission_id, _now()))
+            return True
+
+    def decide_suggestion(self, actor, mission_id, message_id, outcome):
+        """有拍板权的人采纳或谢绝。返回 (结果, 要不要接着派下一步)。同样的答复重复发不报错。"""
+        status = {"accept": "accepted", "decline": "declined"}[outcome]
+        with self.channels.registry._locked_state() as state, self.history.database(write=True) as conn:
+            row = self.runs._row(conn, state, actor, mission_id, ACT)
+            found = conn.execute("SELECT * FROM mission_suggestions WHERE message_id = ? AND mission_id = ?",
+                                 (message_id, mission_id)).fetchone() if _has_table(conn, "mission_suggestions") else None
+            if found is None:
+                raise Missing("没有这条建议")
+            if found["status"] != "pending":
+                if found["status"] != status:
+                    raise WrongStatus("这条建议已经答复过了")
+                return {"messageId": message_id, "status": status}, False
+            conn.execute("UPDATE mission_suggestions SET status = ?, decided_by = ?, decided_at = ? WHERE message_id = ?",
+                         (status, self.channels._actor_key(actor), _now(), message_id))
+            proceed = (status == "accepted" and row["current_status"] == "active"
+                       and self.runs._open_step(conn, mission_id) is None and not any(_open_cards(conn, mission_id)))
+            return {"messageId": message_id, "status": status}, proceed
+
+    def hidden_messages(self, mission_id):
+        """还没被采纳的建议（不进 agent 的提示）。"""
+        with self.history.database() as conn:
+            if not _has_table(conn, "mission_suggestions"):
+                return set()
+            return {r[0] for r in conn.execute("SELECT message_id FROM mission_suggestions WHERE mission_id = ?"
+                                               " AND status != 'accepted'", (mission_id,))}
+
+    def counts(self, actor, mission_id):
+        """给界面的：待采纳的建议、待处理的加入申请（所有者才看得到后者）。"""
+        with self.history.database() as conn:
+            if not _has_table(conn, "mission_suggestions"):
+                return {"suggestions": 0, "joinRequests": 0}
+            suggestions = conn.execute("SELECT count(*) FROM mission_suggestions WHERE mission_id = ? AND status = 'pending'",
+                                       (mission_id,)).fetchone()[0]
+            joins = conn.execute("SELECT count(*) FROM mission_join_requests WHERE mission_id = ? AND status = 'pending'",
+                                 (mission_id,)).fetchone()[0] if actor.is_owner else 0
+            return {"suggestions": suggestions, "joinRequests": joins}
+
+
+def people_for(root):
+    return MissionPeople(runs_for(root))

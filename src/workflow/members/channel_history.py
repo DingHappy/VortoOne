@@ -167,6 +167,32 @@ CREATE TABLE IF NOT EXISTS mission_deliveries (
     created TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mission_deliveries_of ON mission_deliveries(mission_id, created);
+CREATE TABLE IF NOT EXISTS mission_participants (
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    person TEXT NOT NULL CHECK(person != 'owner'),
+    role TEXT NOT NULL CHECK(role IN ('decide', 'comment')),
+    added_by TEXT,
+    created TEXT NOT NULL,
+    PRIMARY KEY (mission_id, person)
+);
+CREATE TABLE IF NOT EXISTS mission_join_requests (
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    person TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'declined')),
+    role TEXT CHECK(role IS NULL OR role IN ('decide', 'comment')),
+    decided_by TEXT,
+    decided_at TEXT,
+    created TEXT NOT NULL,
+    PRIMARY KEY (mission_id, person)
+);
+CREATE TABLE IF NOT EXISTS mission_suggestions (
+    message_id TEXT PRIMARY KEY NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    mission_id TEXT NOT NULL REFERENCES mission_drafts(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'declined')),
+    decided_by TEXT,
+    decided_at TEXT,
+    created TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS mission_delivery_checks (
     delivery_id TEXT NOT NULL REFERENCES mission_deliveries(id) ON DELETE CASCADE,
     item_id TEXT NOT NULL,
@@ -281,6 +307,18 @@ class ChannelHistory:
         self.owner_id = owner_id
         self.cards = None           # TeamChannels 接上：agent 发的投票、选择卡跟着消息显示
 
+    def _suggestion(self, conn, message_id):
+        if conn is None or not conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mission_suggestions'").fetchone():
+            return None
+        found = conn.execute("SELECT * FROM mission_suggestions WHERE message_id = ?", (message_id,)).fetchone()
+        if found is None:
+            return None
+        if found["status"] == "pending":
+            return {"status": "pending", "missionId": found["mission_id"]}
+        return {"status": found["status"], "missionId": found["mission_id"], "by": self.person_id(found["decided_by"]),
+                "at": found["decided_at"]}
+
     def person_id(self, key: str) -> str:
         return self.owner_id if key == OWNER_KEY else key
 
@@ -313,6 +351,8 @@ class ChannelHistory:
         if card:                                    # Mission 的决定卡、交付卡：界面按 id 去取内容
             kind, mission_id, card_id = card.split(":", 2)
             meta["missionDecision" if kind == "decision" else "missionDelivery"] = {"missionId": mission_id, "id": card_id}
+        if row["thread"] and (suggestion := self._suggestion(conn, row["id"])) is not None:
+            meta["missionSuggestion"] = suggestion  # 没有拍板权的人在 Mission 话题里说的话：等人采纳
         if self.cards is not None and row["author"].startswith(AGENT_AUTHOR):
             cards = self.cards.by_message([row["id"]]).get(row["id"])
             if cards:
