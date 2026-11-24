@@ -1845,6 +1845,71 @@ async def archive_team_channel(org_id: str, channel_id: str, request: Request):
         _team_receipt(lambda: service.archive(actor, channel_id, request.method == "DELETE")), channel_id=channel_id))
 
 
+class _ChannelDelete(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.post(_ORG + "/channels/{channel_id}/delete", status_code=204)
+async def delete_team_channel(org_id: str, channel_id: str, body: _ChannelDelete, request: Request):
+    """所有者永久删掉一个频道：消息、话题、话题上的 Mission、投票卡一起删，找不回来。要打一遍频道名确认；
+    频道里还有 agent 在做事时拒绝。删之前先写一条持久审计。"""
+    from src.gateway.audit import append_audit
+    root = _root(org_id)
+
+    def delete(service, actor):
+        if not actor.is_owner:
+            return _error(403, "forbidden", "删除频道只有所有者能做")
+        busy = bool(app_channel_agents.runs(root, channel_id))
+        try:
+            service.delete(actor, channel_id, body.name, busy=busy, dry_run=True)
+        except ValueError as error:
+            return _error(409, "channel.delete_refused", str(error))
+        if not append_audit(root, {"category": "decision", "decision": "allowed", "decision_source": "user",
+                                   "operation": "永久删除团队频道", "operation_kind": "irreversible",
+                                   "channel": channel_id}, durable=True):
+            return _error(503, "audit_unavailable", "审计未能保存，没有删除")
+        try:
+            service.delete(actor, channel_id, body.name, busy=busy)
+        except ValueError as error:
+            return _error(409, "channel.delete_refused", str(error))
+        return Response(status_code=204)
+
+    return _team_response(await _team_call(request, org_id, delete, channel_id=channel_id))
+
+
+@router.get(_ORG + "/channels/{channel_id}/consultations")
+async def channel_consultations(org_id: str, channel_id: str, request: Request):
+    """agent 之间互相咨询还没有：能读这个频道的人看到空列表。"""
+    def read(service, actor):
+        if not service.can_read(actor, channel_id):
+            raise LookupError("没有这个频道")
+        return {"consultations": []}
+
+    return _team_response(await _team_call(request, org_id, read, channel_id=channel_id))
+
+
+@router.get(_ORG + "/channels/{channel_id}/consultations/{consultation_id}")
+async def channel_consultation(org_id: str, channel_id: str, consultation_id: str, request: Request):
+    def read(service, actor):
+        if not service.can_read(actor, channel_id):
+            raise LookupError("没有这个频道")
+        raise LookupError("没有这次咨询")
+
+    return _team_response(await _team_call(request, org_id, read, channel_id=channel_id))
+
+
+@router.get(_ORG + "/channels/{channel_id}/follow-ups")
+async def channel_follow_ups(org_id: str, channel_id: str, request: Request):
+    """agent 约好之后回来跟进（回传）还没有：空列表。"""
+    def read(service, actor):
+        if not service.can_read(actor, channel_id):
+            raise LookupError("没有这个频道")
+        return {"followUps": []}
+
+    return _team_response(await _team_call(request, org_id, read, channel_id=channel_id))
+
+
 @router.post(_ORG + "/channels/{channel_id}/join", status_code=204)
 @router.post(_ORG + "/channels/{channel_id}/leave", status_code=204)
 async def join_team_channel(org_id: str, channel_id: str, request: Request):
@@ -6243,6 +6308,98 @@ async def delete_skill(org_id: str, skill_id: str, request: Request):
     if isinstance(result, JSONResponse):
         return result
     return Response(status_code=204) if result else _error(404, "not_found", "没有这条技能")
+
+
+# ── 技能的来源更新、撤回、还原（如实回答）──────────────────────────────────────────
+# 这里的技能是主人手写或上传 ZIP 的：没有可以重新读取的网址来源；「agent 自己改进技能」固定关着，
+# 也就没有 agent 改过、因不用被归档的技能可以撤回或还原。
+
+async def _skill_without_source(request: Request, org_id: str, skill_id: str, code: str, message: str):
+    root = _root(org_id)
+    refused = await _owner_write(request, root, "技能")
+    if refused:
+        return refused
+    # 只看在不在列表里：不读正文，也就不会把这一版记成「主人看过」（启用只认看过的版本）
+    known = {row["id"] for row in await asyncio.to_thread(views.skills, root)}
+    if skill_id not in known:
+        return _error(404, "not_found", "没有这条技能")
+    return _error(409, code, message)
+
+
+_NO_SOURCE = "这条技能是手写或上传的，没有可以重新读取的网址来源"
+
+
+@router.post(_ORG + "/skills/{skill_id}/reimport")
+async def reimport_skill(org_id: str, skill_id: str, request: Request):
+    return await _skill_without_source(request, org_id, skill_id, "skill.no_source", _NO_SOURCE + "；要更新请重新上传")
+
+
+@router.post(_ORG + "/skills/{skill_id}/update")
+@router.post(_ORG + "/skills/{skill_id}/update/approve")
+@router.post(_ORG + "/skills/{skill_id}/update/dismiss")
+@router.post(_ORG + "/skills/{skill_id}/update/reopen")
+@router.post(_ORG + "/skills/{skill_id}/update/undo")
+async def skill_source_update(org_id: str, skill_id: str, request: Request):
+    return await _skill_without_source(request, org_id, skill_id, "skill.no_source", _NO_SOURCE + "，也就没有待处理的更新")
+
+
+@router.post(_ORG + "/skills/{skill_id}/revert")
+async def revert_skill(org_id: str, skill_id: str, request: Request):
+    return await _skill_without_source(request, org_id, skill_id, "skill.nothing_to_revert",
+                                       "agent 不会自己改技能，这条技能没有 agent 的改动可以撤回")
+
+
+@router.post(_ORG + "/skills/{skill_id}/restore")
+async def restore_skill(org_id: str, skill_id: str, request: Request):
+    return await _skill_without_source(request, org_id, skill_id, "skill.not_archived",
+                                       "这条技能没有被归档，不需要还原")
+
+
+# ── 消息上的几个动作（如实回答）─────────────────────────────────────────────────
+
+async def _message_unavailable(request: Request, org_id: str, code: str, message: str, *, status: int = 409):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return _error(status, code, message)
+
+
+@router.post(_ORG + "/messages/{message_id}/answer-now")
+async def answer_message_now(org_id: str, message_id: str, request: Request):
+    """没接模型时消息不会发出、也不会存下等着回答：没有可以「立即回答」的。"""
+    return await _message_unavailable(request, org_id, "message.nothing_waiting",
+                                      "没接模型时消息不会发出，没有等待回答的消息；接上模型后请重新发送")
+
+
+@router.post(_ORG + "/messages/{message_id}/cancel-follow-up")
+async def cancel_message_follow_up(org_id: str, message_id: str, request: Request):
+    return await _message_unavailable(request, org_id, "follow_up.not_pending", "没有等着回来的跟进")
+
+
+class _MessageCorrection(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    body: str = Field(min_length=1, max_length=8000)
+
+
+@router.post(_ORG + "/messages/{message_id}/correction")
+async def correct_agent_message(org_id: str, message_id: str, body: _MessageCorrection, request: Request):
+    """把纠正存成 agent 的经验还没有：如实拒绝，不存一份不生效的数据。"""
+    return await _message_unavailable(request, org_id, "message.correction_unavailable",
+                                      "纠正还不能存成 agent 的经验；可以直接在对话里告诉它")
+
+
+@router.post(_ORG + "/messages/{message_id}/github-answer")
+async def answer_github_message(org_id: str, message_id: str, request: Request):
+    return await _message_unavailable(request, org_id, "github_event.unavailable", "这里没有接 GitHub 事件")
+
+
+@router.post(_ORG + "/messages/{message_id}/actions/undo")
+async def undo_message_actions(org_id: str, message_id: str, request: Request):
+    """agent 的回答下面没有可撤销的操作回执：什么都不用撤。"""
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return JSONResponse({"actions": [], "failed": []}, headers={"Cache-Control": "no-store"})
 
 
 @router.put(_ORG + "/skill-settings")

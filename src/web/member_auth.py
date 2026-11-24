@@ -177,6 +177,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("DELETE", _TEAM_CHANNEL + r"/mute"),
     ("DELETE", _TEAM_CHANNEL + r"/members/people/[^/]+"),
     ("GET", _TEAM_CHANNEL + r"/(?:card|roster|permissions)"),
+    ("GET", _TEAM_CHANNEL + r"/(?:follow-ups|consultations|consultations/[^/]+)"),   # 读得了这个频道才回空列表
     ("PUT", _TEAM_CHANNEL + r"/permissions"),
     ("POST", _TEAM_CHANNEL + r"/pins/[^/]+"),
     ("DELETE", _TEAM_CHANNEL + r"/pins/[^/]+"),

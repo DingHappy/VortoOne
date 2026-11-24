@@ -160,6 +160,13 @@ class ChannelCards:
         with self.database(write=True) as conn:
             conn.execute("UPDATE cards SET message = ? WHERE task = ? AND message IS NULL", (message, task))
 
+    def forget_channel(self, channel: str) -> None:
+        """频道删掉了：它的投票卡、选择卡和票一起删（票和答案外键级联）。从没发过卡就什么都不建。"""
+        if not self.path.exists():
+            return
+        with self.database(write=True) as conn:
+            conn.execute("DELETE FROM cards WHERE channel = ?", (channel,))
+
     def by_message(self, messages: List[str]) -> Dict[str, List[Dict[str, Any]]]:
         found: Dict[str, List[Dict[str, Any]]] = {}
         if not messages:
