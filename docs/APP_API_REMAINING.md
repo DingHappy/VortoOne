@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 432 个，剩 **199** 个：
-- **要做：128**（其中 17 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 447 个，剩 **184** 个：
+- **要做：113**（其中 14 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -287,7 +287,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 工作区最多保留 8,016 条自选用户名登记，包含已离开的成员。已登记的本人用户名和默认用户名仍可选用。保存个人资料与登记智能体共用进程内事务锁，同一个工作区由持有运行租约的一个后端进程提供服务。
 
-### org/artifacts（11 个，要做 4）
+### org/artifacts（11 个，要做 1）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -296,10 +296,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者可下载 HTML、已有历史版本和私有文件原件。 |
 | ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者可读取 HTML、历史版本和私有文件原件。私有文件核对存储的 SHA-256。 |
 | ☑ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` | 所有者可为私有 TXT、Markdown、CSV、JSON 追加同格式文件及可选备注。原版本可单独预览或下载，回收和还原保留历史。其它制品或格式返回 415。 |
-| ☐ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` |  |
-| ☐ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` |  |
+| ☑ | POST | `ORG/artifacts/{x}/keep` | `artifacts.keep` | 频道卡片跟着话题保存，不另存进 Drive：如实 409。 |
+| ☑ | POST | `ORG/artifacts/{x}/reply` | `artifacts.reply` | 频道里 agent 发的投票、选择卡上回复：作为这个人在话题里的一条消息交给发卡的 agent 接着做（要能发言、能叫 agent）。别的制品 404。 |
 | ☑ | POST | `ORG/artifacts/{x}/restore` | `artifacts.restore` | 所有者可还原 Drive 删除的助理页面、已存历史版本和私有上传；到期回 `409 artifact.purged`，提前永久清除回 `410`。 |
-| ☐ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` |  |
+| ☑ | PUT | `ORG/artifacts/{x}/sharing` | `artifacts.setSharing` | 制品还不能另外共享（卡片跟着话题的人，Drive 里的只给所有者）：如实 409。 |
 | ☑ | GET | `ORG/artifacts/{x}/versions` | `artifacts.versions` | 仅已认证所有者。倒序列出可打开的版本。私有文档、表格和文本版本显示已保存的备注，旧网页不推断逐版作者或备注。 |
 | ☑ | POST | `ORG/artifacts/{x}/versions` | `artifacts.update` | 经认证的所有者可给私有文档和表格添加版本及备注。对照原版本编号，过时返回 409。旧版本可查看、下载；资料不共享到频道。 |
 
@@ -480,7 +480,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/join-requests/{x}/approve` | `joinRequests.approve` | 仅所有者批准，创建默认成员的一次性邮箱邀请。链接由人发送。 |
 | ☑ | POST | `ORG/join-requests/{x}/deny` | `joinRequests.deny` | 仅所有者拒绝。当前无法转告拒绝理由，因此非空理由返回 4xx。 |
 
-### org/calendar（6 个，要做 3）
+### org/calendar（6 个，要做 0）
 
 日历查询包含所有者已批准且可用的例行工作的未来排期。时区、夏令时和一次性排期沿用调度器的规则。
 仍有执行在途、结果待核对或接手后待恢复的例行工作，等当前状态允许调度才显示未来排期。
@@ -492,9 +492,9 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/calendar/events` | `calendar.create` | 仅本人可见的本地单次日程及每日、每周重复，按本地时区保留时刻，支持按日期结束。高级规则、按次数结束、共享或外部邀请暂不可用。 |
 | ☑ | DELETE | `ORG/calendar/events/{x}` | `calendar.remove` | 按界面的「仅本次」「此后」「整组」移除自己的日程。后两种范围包含各自被单独编辑的例外。 |
 | ☑ | PATCH | `ORG/calendar/events/{x}` | `calendar.update` | 可编辑自己的日程和重复范围。单次例外保留各自的编辑。有例外时，批量更改时间或规则明确拒绝；修改整组时间或规则从首次日程操作。 |
-| ☐ | POST | `ORG/calendar/events/{x}/rsvp` | `calendar.respond` |  |
-| ☐ | POST | `ORG/calendar/proposals/{x}/confirm` | `calendar.confirmProposal` |  |
-| ☐ | POST | `ORG/calendar/proposals/{x}/dismiss` | `calendar.dismissProposal` |  |
+| ☑ | POST | `ORG/calendar/events/{x}/rsvp` | `calendar.respond` | 日历只有自己的日程，没有邀请：404。 |
+| ☑ | POST | `ORG/calendar/proposals/{x}/confirm` | `calendar.confirmProposal` | agent 还不会提日程提议：404。 |
+| ☑ | POST | `ORG/calendar/proposals/{x}/dismiss` | `calendar.dismissProposal` | 同上，404。 |
 
 ### org/browser（5 个，要做 0）
 
@@ -592,14 +592,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/team-proposals/{x}/deny` | `agents.denyTeam` | 拒绝 |
 | ☑ | POST | `ORG/team-proposals/{x}/undo` | `agents.undoTeam` | 登记了不能一键撤回，回 409 |
 
-### org/runs（4 个，要做 2）
+### org/runs（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/runs/{x}` | `agents.run` | 与列表同一行；没有逐步记录，`steps` 为空（进度尾部在主人可看的任务输出里） |
 | — | POST | `ORG/runs/{x}/continue` | `agents.continueRun` | 不做（2026-11-22 主人定）：停下的事重新交代 |
-| ☐ | POST | `ORG/runs/{x}/device-wait` | `devices.deviceWait` |  |
-| ☐ | POST | `ORG/runs/{x}/stop-reason` | `agents.stopReason` |  |
+| ☑ | POST | `ORG/runs/{x}/device-wait` | `devices.deviceWait` | 这里没有在等设备的事：404。 |
+| ☑ | POST | `ORG/runs/{x}/stop-reason` | `agents.stopReason` | 所有者停下 agent 手上的事后说一句为什么（只能一次）：记在任务上，这个人下次再找这个 agent 时它在「之前的对话」里读得到。 |
 
 ### org/channel-categories（4 个，要做 0）
 
@@ -646,13 +646,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/secret-requests/{x}/deliver` | `secrets.deliver` |  |
 | ☐ | POST | `ORG/secret-requests/{x}/vault` | `secrets.saveToVault` |  |
 
-### org/reminders（3 个，要做 3）
+### org/reminders（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/reminders` | `reminders.list` | 界面代码里没调用 |
-| ☐ | POST | `ORG/reminders` | `reminders.create` | 界面代码里没调用 |
-| ☐ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 界面代码里没调用 |
+| ☑ | GET | `ORG/reminders` | `reminders.list` | 单独的提醒还没有存储：空列表。 |
+| ☑ | POST | `ORG/reminders` | `reminders.create` | 如实 409：请在日历里建日程或排例行工作。 |
+| ☑ | DELETE | `ORG/reminders/{x}` | `reminders.cancel` | 404。 |
 
 ### /api/app/me（3 个，要做 1）
 
@@ -761,12 +761,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/team` | `agents.team` | 只读名册，活动沿用自己的会话。团队图的汇报关系只显示双方已可见的连线。 |
 | ☐ | POST | `ORG/team/channel-move` | `agents.proposeChannelMove` |  |
 
-### org/team-templates（2 个，要做 2）
+### org/team-templates（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/team-templates` | `agents.teamTemplates` |  |
-| ☐ | POST | `ORG/team-templates/{x}/use` | `agents.applyTeamTemplate` |  |
+| ☑ | GET | `ORG/team-templates` | `agents.teamTemplates` | 还没有现成的团队模板：空列表。 |
+| ☑ | POST | `ORG/team-templates/{x}/use` | `agents.applyTeamTemplate` | 404。 |
 
 ### org/agent-setup（2 个，要做 0）
 
@@ -796,12 +796,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☐ | POST | `ORG/memories/{x}/revert` | `memory.revert` | 界面代码里没调用 |
 | ☑ | POST | `ORG/memories/{x}/team` | `memory.makeTeam` | 只有所有者能把自己的记忆设成团队记忆、能改文字；成员有 `review_memory` 只能移除、恢复。进所有 agent 的系统提示（对外发布的岗位除外），标明是资料不是指令 |
 
-### org/sandbox-settings（2 个，要做 2）
+### org/sandbox-settings（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/sandbox-settings` | `sandbox.settings` |  |
-| ☐ | PUT | `ORG/sandbox-settings` | `sandbox.saveSettings` |  |
+| ☑ | GET | `ORG/sandbox-settings` | `sandbox.settings` | 仅所有者，照实：命令执行开关只在服务环境里（`VORTOONE_ENABLE_SHELL`），超时 300 秒，跑命令前每次都确认。 |
+| ☑ | PUT | `ORG/sandbox-settings` | `sandbox.saveSettings` | 这里改不了（开关在服务环境里，确认门由内核决定）：和现在一样照原样回，否则 409 `sandbox.settings_fixed`。 |
 
 ### machines（2 个，要做 0）
 

@@ -212,6 +212,24 @@ class StaffConversations:
                 'verdict': 'stop', 'note': '主人停止频道里交给 agent 的事', **self._view(task)['confirmation']})
             return decision['stop_requested'] is True
 
+    def record_stop_reason(self, task_id: str, reason: str) -> None:
+        """所有者停下一件事之后说一句为什么（只能说一次）：记在任务上，这个人下次再找这个 agent 时它读得到。"""
+        require_owner_route(self.root)
+        text = " ".join(str(reason or "").split())
+        if not text or len(text) > 500:
+            raise ValueError('原因要在 500 字以内且不能为空')
+        with TASK_STATE_LOCK:
+            task = self.ledger.load(task_id)
+            dispatch = (task.collaboration or {}).get('dispatch', {}) if task is not None else {}
+            if task is None or dispatch.get('source') != 'staff':
+                raise LookupError('没有这件事')
+            if task.status != 'cancelled':
+                raise ValueError('只有停下的事能说原因')
+            if task.collaboration.get('stop_reason'):
+                raise ValueError('已经说过原因了')
+            self._runtime().collaboration(task.owner_session).update_staff_action(
+                task.id, task.collaboration['round'], lambda current: current.collaboration.update(stop_reason=text))
+
     def stop_routine(self, routine_id: str) -> bool:
         """Request a stop for the occurrence held by the routine's current claim."""
         from src.workflow.staff.routines import Routines

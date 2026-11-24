@@ -2626,6 +2626,39 @@ async def waiting_on_me(org_id: str, request: Request, channelId: str = ""):  # 
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
 
 
+class _StopReason(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+@router.post(_ORG + "/runs/{run_id}/stop-reason", status_code=204)
+async def stop_reason(org_id: str, run_id: str, body: _StopReason, request: Request):
+    """停下一件事之后说一句为什么（只能一次）：这个人下次再找这个 agent 时，它在「之前的对话」里读得到。"""
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    try:
+        await asyncio.to_thread(app_staff.record_stop_reason, root, run_id, body.reason)
+    except LookupError:
+        return _error(404, "run.not_found", "没有这件事")
+    except (ValueError, OSError) as error:
+        return _error(409, "run.stop_reason_refused", str(error))
+    return Response(status_code=204)
+
+
+class _DeviceWait(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    action: Literal["retry", "stop"]
+
+
+@router.post(_ORG + "/runs/{run_id}/device-wait", status_code=204)
+async def device_wait(org_id: str, run_id: str, body: _DeviceWait, request: Request):
+    """等某台设备（连接的电脑、手机）回来的事：这里没有，如实说明。"""
+    if not member_auth.principal(request, _root(org_id)).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return _error(404, "run.not_waiting", "这件事没有在等设备")
+
+
 @router.post(_ORG + "/runs/{run_id}/cancel", status_code=204)
 async def cancel_run(org_id: str, run_id: str, request: Request):
     """「停止」：主要聊天的回合走现有 Desktop 的停止路径；专员手上的事走主人的停止决定。"""
@@ -4769,6 +4802,95 @@ async def mission_draft_settings(org_id: str, mission_id: str, request: Request)
         }
 
     return await _mission_request(org_id, request, read)
+
+
+# ── 日历的邀请与 agent 的日程提议、提醒、团队模板、沙箱设置（如实回答或照实读取）──────────
+
+def _owner_only(request: Request, org_id: str):
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return None
+
+
+class _Rsvp(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    status: Literal["accepted", "declined", "tentative", "yes", "no", "maybe"]
+
+
+@router.post(_ORG + "/calendar/events/{event_id}/rsvp")
+async def calendar_rsvp(org_id: str, event_id: str, body: _Rsvp, request: Request):
+    """日历只有自己的日程，没有发给别人的邀请：没有可回复的邀请。"""
+    return _owner_only(request, org_id) or _error(404, "calendar.invitation_not_found", "这里的日程都是自己的，没有要回复的邀请")
+
+
+@router.post(_ORG + "/calendar/proposals/{proposal_id}/confirm")
+@router.post(_ORG + "/calendar/proposals/{proposal_id}/dismiss")
+async def calendar_proposal(org_id: str, proposal_id: str, request: Request):
+    """agent 还不会提日程提议：没有这条提议。"""
+    return _owner_only(request, org_id) or _error(404, "calendar.proposal_not_found", "没有这条日程提议")
+
+
+@router.get(_ORG + "/reminders")
+async def reminders(org_id: str, request: Request):
+    """提醒还没有单独的存储：空列表（日程和例行工作在日历里）。"""
+    return _owner_only(request, org_id) or JSONResponse({"reminders": []}, headers={"Cache-Control": "no-store"})
+
+
+@router.post(_ORG + "/reminders")
+async def create_reminder(org_id: str, body: Dict[str, Any], request: Request):
+    return _owner_only(request, org_id) or _error(409, "reminder.unavailable",
+                                                  "单独的提醒还没有：可以在日历里建日程，或让助理排一条例行工作")
+
+
+@router.delete(_ORG + "/reminders/{reminder_id}")
+async def delete_reminder(org_id: str, reminder_id: str, request: Request):
+    return _owner_only(request, org_id) or _error(404, "reminder.not_found", "没有这条提醒")
+
+
+@router.get(_ORG + "/team-templates")
+async def team_templates(org_id: str, request: Request, locale: str = Query("", max_length=16)):
+    """还没有现成的团队模板：空列表（agent 在新建页一个个建）。"""
+    return _owner_only(request, org_id) or JSONResponse({"templates": []}, headers={"Cache-Control": "no-store"})
+
+
+@router.post(_ORG + "/team-templates/{template_id}/use")
+async def use_team_template(org_id: str, template_id: str, request: Request):
+    return _owner_only(request, org_id) or _error(404, "team_template.not_found", "没有这个团队模板")
+
+
+def _sandbox_settings() -> Dict[str, Any]:
+    """照实：命令执行开关只在服务的环境里（VORTOONE_ENABLE_SHELL，全仓唯一一处）；跑命令前确认门每次都问人。"""
+    from src.sandbox.policy import shell_enabled
+    # 超时取命令工具的默认值（agents/shell.py:run_command 的 300 秒），这里没有另外的上限
+    return {"enabled": shell_enabled(), "execTimeoutSeconds": 300, "maxTimeoutSeconds": 300, "requireApproval": True}
+
+
+@router.get(_ORG + "/sandbox-settings")
+async def sandbox_settings(org_id: str, request: Request):
+    refused = _owner_only(request, org_id)
+    if refused or _who(request, _root(org_id)).is_member:
+        return refused or _error(403, "forbidden", "沙箱设置只有所有者能看")
+    return JSONResponse(_sandbox_settings(), headers={"Cache-Control": "no-store"})
+
+
+@router.put(_ORG + "/sandbox-settings")
+async def save_sandbox_settings(org_id: str, body: Dict[str, Any], request: Request):
+    """这里改不了：开关只在服务的环境里设，确认门由内核决定（不在界面上另开一个免确认的口子）。
+    提交的和现在一样就照原样回。"""
+    refused = _owner_only(request, org_id)
+    if refused or _who(request, _root(org_id)).is_member:
+        return refused or _error(403, "forbidden", "沙箱设置只有所有者能改")
+    current = _sandbox_settings()
+    if set(body) - {"enabled", "execTimeoutSeconds", "requireApproval"}:
+        return _error(400, "invalid", "只接受 enabled、execTimeoutSeconds、requireApproval")
+    if any(body[key] != current[key] for key in body):
+        return _error(409, "sandbox.settings_fixed",
+                      "命令执行的开关在服务的环境里设（VORTOONE_ENABLE_SHELL），跑命令前每次都要人确认，这里不能改")
+    return JSONResponse(current, headers={"Cache-Control": "no-store"})
 
 
 # ── GIF（GIPHY）──────────────────────────────────────────────────────────────
@@ -6996,6 +7118,52 @@ async def answer_channel_choices(org_id: str, choices_id: str, body: _ChoicesAns
         except Exception:  # noqa: BLE001 —— 答案已存好；交给 agent 失败时它会在话题里说明，或在下一次 @ 时接上
             logging.getLogger(__name__).warning("选择卡的答案没能交给 agent", exc_info=True)
     return result
+
+
+class _CardReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    text: str = Field(min_length=1, max_length=4000)
+    clientId: str = Field(min_length=1, max_length=120)
+
+
+@router.post(_ORG + "/artifacts/{artifact_id}/reply")
+async def reply_to_card(org_id: str, artifact_id: str, body: _CardReply, request: Request):
+    """在 agent 发的投票、选择卡上回复：这句话作为这个人在话题里的一条消息，交给发卡的 agent 接着做。
+    别的制品不是谁发的卡片，没有「回复给 agent」这回事。"""
+    if not _CARD.fullmatch(artifact_id):
+        return _error(404, "not_found", "只有频道里 agent 发的卡片能回复")
+    replied = {}
+
+    def reply(service, actor):
+        card, message = service.reply_card(actor, artifact_id, body.text, body.clientId)
+        replied.update(card=card, message=message, actor=actor, service=service)
+        return {"id": message["id"]}
+
+    result = await _card_call(request, org_id, artifact_id, reply)
+    if replied:
+        root = _root(org_id)
+        try:
+            await _dispatch_ready(root)
+            app_channel_agents.answered(root, replied["service"], replied["actor"], replied["card"], replied["message"])
+        except Exception:  # noqa: BLE001 —— 回复已经发出；交给 agent 失败时它会在话题里说明
+            logging.getLogger(__name__).warning("卡片上的回复没能交给 agent", exc_info=True)
+    return result
+
+
+@router.post(_ORG + "/artifacts/{artifact_id}/keep")
+async def keep_artifact(org_id: str, artifact_id: str, request: Request):
+    """频道里的卡片跟着话题走，不进 Drive；Drive 里的制品本来就在。如实说明。"""
+    if not member_auth.principal(request, _root(org_id)).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return _error(409, "artifact.keep_unavailable", "频道里的卡片跟着话题保存，不另存进 Drive")
+
+
+@router.put(_ORG + "/artifacts/{artifact_id}/sharing")
+async def set_artifact_sharing(org_id: str, artifact_id: str, body: Dict[str, Any], request: Request):
+    """这里的制品是所有者私有的（频道卡片跟着话题的人），还不能另外共享给别人。"""
+    if not member_auth.principal(request, _root(org_id)).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "artifact.sharing_forbidden", "只有所有者能改共享范围")
+    return _error(409, "artifact.sharing_unavailable", "制品还不能另外共享：频道里的卡片跟着话题的人，Drive 里的只给所有者")
 
 
 @router.get(_ORG + "/artifacts/{artifact_id}")

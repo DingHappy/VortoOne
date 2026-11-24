@@ -92,6 +92,13 @@ def stop(root: str, task_id: str) -> bool:
     return True
 
 
+def record_stop_reason(root: str, task_id: str, reason: str) -> None:
+    """停下一件事之后，所有者说的原因记在任务上（调用方已核对所有者证明）。"""
+    from src.workflow.staff.owner_confirmation import owner_route
+    with owner_route(root):
+        _conversations(root).record_stop_reason(task_id, reason)
+
+
 def stop_routine(root: str, routine_id: str) -> bool:
     """调用方已核对所有者证明，停止动作交给原专员执行池。"""
     from src.workflow.staff.owner_confirmation import owner_route
