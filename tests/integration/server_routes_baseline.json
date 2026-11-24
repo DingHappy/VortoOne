@@ -78,6 +78,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage-queue",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage-queue/cancel",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/channels/{channel_id}/consultations",
     "methods": [
       "GET"
@@ -207,6 +225,66 @@
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}/update/undo",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/composio",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/limits",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/limits",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/limits/request",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/people",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/people/{user_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/people/{user_id}/raise",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/people/{user_id}/refuse",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/plans",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/usage/report",
+    "methods": [
+      "GET"
     ]
   },
   {

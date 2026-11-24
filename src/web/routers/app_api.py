@@ -5893,6 +5893,172 @@ async def set_agent_channels(org_id: str, agent_id: str, request: Request):
     return await _team_call(request, org_id, replace)
 
 
+# ── 用量页（主人 2026-11-23 定：按价格折成美元、可给成员设上限）──────────────────────
+
+async def _usage_call(org_id: str, request: Request, action, *, members: bool = False):
+    """所有者（要所有者证明）看全部；members 为真时成员也能进，处理函数只给他自己的。"""
+    from src.workflow.members.registry import Damaged, Missing, Refused
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_owner and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "看用量需要已认证的所有者")
+    if who.is_member and not members:
+        return _error(403, "forbidden", "这一页只有所有者能看")
+    try:
+        result = await asyncio.to_thread(action, root, who)
+    except Refused as error:
+        return _error(403, "forbidden", str(error))
+    except (Missing, LookupError) as error:
+        return _error(404, "not_found", str(error))
+    except (Damaged, OSError):
+        return _error(409, "unavailable", "用量或成员登记读不出来")
+    except ValueError as error:
+        return _error(400, "invalid", str(error))
+    if isinstance(result, Response):
+        result.headers["Cache-Control"] = "no-store"
+        return result
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/usage/report")
+async def usage_report(org_id: str, request: Request, since: str = Query("", max_length=40)):
+    from src.web import app_usage
+    return await _usage_call(org_id, request, lambda root, who: app_usage.report(root, since))
+
+
+@router.get(_ORG + "/usage/plans")
+async def usage_plans(org_id: str, request: Request):
+    from src.web import app_usage
+    return await _usage_call(org_id, request, lambda root, who: app_usage.plans(root))
+
+
+@router.get(_ORG + "/usage/people")
+async def usage_people(org_id: str, request: Request, month: str = Query("", max_length=10)):
+    from src.web import app_usage
+    return await _usage_call(org_id, request, lambda root, who: app_usage.people(root, month))
+
+
+@router.get(_ORG + "/usage/people/{user_id}")
+async def usage_person(org_id: str, user_id: str, request: Request, month: str = Query("", max_length=10)):
+    """所有者看任何人（带金额）；成员只看自己（占上限的百分比）。"""
+    from src.web import app_usage
+
+    def read(root, who):
+        if who.is_member and who.id != user_id:
+            return _error(403, "forbidden", "只能看自己的用量")
+        found = app_usage.person(root, user_id, money=who.is_owner, month=month)
+        return found if found is not None else _error(404, "not_found", "没有这个人")
+
+    return await _usage_call(org_id, request, read, members=True)
+
+
+@router.get(_ORG + "/usage/limits")
+async def usage_limits(org_id: str, request: Request):
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow import usage_month
+
+    def read(root, who):
+        current = usage_month.limits(MemberRegistry(root))
+        return {"defaultUsd": current.get("defaultUsd"), "roles": dict(current.get("roles") or {}),
+                "people": dict(current.get("people") or {}), "onLimit": current.get("onLimit", "block"),
+                "warn": bool(current.get("warn", True))}
+
+    return await _usage_call(org_id, request, read)
+
+
+@router.put(_ORG + "/usage/limits")
+async def set_usage_limits(org_id: str, body: Dict[str, Any], request: Request):
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow import usage_month
+
+    def write(root, who):
+        current = usage_month.set_limits(MemberRegistry(root), who, body)
+        return {"defaultUsd": current.get("defaultUsd"), "roles": dict(current.get("roles") or {}),
+                "people": dict(current.get("people") or {}), "onLimit": current.get("onLimit", "block"),
+                "warn": bool(current.get("warn", True))}
+
+    return await _usage_call(org_id, request, write)
+
+
+@router.post(_ORG + "/usage/limits/request")
+async def request_more_usage(org_id: str, request: Request):
+    """成员申请这个月加额度（所有者在用量页看到并答复）。"""
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow import usage_month
+
+    def ask(root, who):
+        if who.is_owner:
+            return _error(409, "usage.owner", "所有者不用申请")
+        return {"requestedAt": usage_month.ask_more(MemberRegistry(root), who)}
+
+    return await _usage_call(org_id, request, ask, members=True)
+
+
+class _RaiseLimit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limitUsd: float = Field(ge=0, le=100000)
+
+
+@router.post(_ORG + "/usage/people/{user_id}/raise", status_code=204)
+async def raise_person_limit(org_id: str, user_id: str, body: _RaiseLimit, request: Request):
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow import usage_month
+    return await _usage_call(org_id, request, lambda root, who: (
+        usage_month.answer(MemberRegistry(root), who, user_id, raise_to=body.limitUsd), Response(status_code=204))[1])
+
+
+@router.post(_ORG + "/usage/people/{user_id}/refuse", status_code=204)
+async def refuse_more_usage(org_id: str, user_id: str, request: Request):
+    from src.workflow.members.registry import MemberRegistry
+    from src.workflow import usage_month
+    return await _usage_call(org_id, request, lambda root, who: (
+        usage_month.answer(MemberRegistry(root), who, user_id, raise_to=None), Response(status_code=204))[1])
+
+
+@router.get(_ORG + "/usage/composio")
+async def composio_usage(org_id: str, request: Request):
+    """这里没接 Composio：这个月 0 次、不限。"""
+    from src.workflow.usage_month import month_start
+    return await _usage_call(org_id, request, lambda root, who: {
+        "calls": 0, "limit": None, "month": month_start().strftime("%Y-%m")})
+
+
+@router.get(_ORG + "/agents/{agent_id}/usage")
+async def agent_plan_usage(org_id: str, agent_id: str, request: Request):
+    from src.web import app_usage
+    return await _usage_call(org_id, request, lambda root, who: app_usage.agent_usage(root, agent_id)
+                             or _error(404, "not_found", "没有这个 agent"))
+
+
+@router.get(_ORG + "/agents/{agent_id}/usage-queue")
+async def agent_usage_queue(org_id: str, agent_id: str, request: Request):
+    from src.web import app_usage
+    return await _usage_call(org_id, request, lambda root, who: app_usage.usage_queue(root, agent_id)
+                             or _error(404, "not_found", "没有这个 agent"))
+
+
+@router.post(_ORG + "/agents/{agent_id}/usage-queue/cancel")
+async def cancel_agent_usage_queue(org_id: str, agent_id: str, request: Request):
+    """「都别做了」：在等额度的事全部停下（走主人的停止决定，有审计）。"""
+    from src.web import app_usage
+    root = _root(org_id)
+    found = await _usage_call(org_id, request, lambda root, who: app_usage.usage_queue(root, agent_id)
+                              or _error(404, "not_found", "没有这个 agent"))
+    if found.status_code != 200:
+        return found
+    canceled = skipped = 0
+    for row in json.loads(found.body)["rows"]:
+        try:
+            stopped = app_staff.stop(root, row["runId"])
+        except (ValueError, OSError, LookupError):
+            stopped = False
+        canceled += bool(stopped)
+        skipped += not stopped
+    return JSONResponse({"canceled": canceled, "skipped": skipped}, headers={"Cache-Control": "no-store"})
+
+
 @router.get(_ORG + "/usage")
 async def usage(org_id: str):
     root = _root(org_id)
