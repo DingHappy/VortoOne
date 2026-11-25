@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 505 个，剩 **126** 个：
-- **要做：55**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 506 个，剩 **125** 个：
+- **要做：54**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -285,12 +285,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 工作区最多保留 8,016 条自选用户名登记，包含已离开的成员。已登记的本人用户名和默认用户名仍可选用。保存个人资料与登记智能体共用进程内事务锁，同一个工作区由持有运行租约的一个后端进程提供服务。
 
-### org/artifacts（11 个，要做 1）
+### org/artifacts（11 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/artifacts` | `artifacts.create` | 所有者可通过 JSON 创建私有文档、表格和 HTML，与 Drive 上传使用同一私有存储。其它种类回 415，附到频道回 422。 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG。小文本以纯文本预览，图片最长边 12000 像素且总像素最多 4000 万。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
+| ☑ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传。UTF-8 的 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG 照旧可预览（文本可追加版本）；别的格式（PDF、Office 文档、压缩包……）原样保存，只能按附件下载，不预览、不改，记下的类型不会是文本、图片或网页（接 Codex 半成品）。挂到频道或话题如实 422。 |
 | ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者可下载 HTML、已有历史版本和私有文件原件。 |
 | ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者可读取 HTML、历史版本和私有文件原件。私有文件核对存储的 SHA-256。 |
 | ☑ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` | 所有者可为私有 TXT、Markdown、CSV、JSON 追加同格式文件及可选备注。原版本可单独预览或下载，回收和还原保留历史。其它制品或格式返回 415。 |
