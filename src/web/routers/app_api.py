@@ -3505,6 +3505,253 @@ async def ask_about_proposal(org_id: str, proposal_id: str, request: Request):
     return await _proposal_call(org_id, request, ask)
 
 
+# ── 等别的能力的几组：如实回答（2026-11-24，主人「剩下的你也继续推进」）──────────────
+# 没有的就说没有，回真实的空；做不了的 409 说清楚；不存在的记录 404。不收下用不了的东西、不存不生效的设置。
+
+def _honest_gate(request: Request, org_id: str, *, members_too: bool = False, write: bool = False):
+    """读：所有者或（members_too 时）在册成员；改：所有者，且带所有者证明。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_member and not members_too:
+        return _error(403, "forbidden", "这里只有所有者能用")
+    if who.is_owner and write and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return None
+
+
+def _agent_gate(request: Request, org_id: str, agent_id: str, **kwargs):
+    refused = _honest_gate(request, org_id, **kwargs)
+    if refused is not None:
+        return refused
+    if not _known_agent(org_id, agent_id):
+        return _error(404, "not_found", "没有这个 agent")
+    return None
+
+
+# 密钥申请：合同里密钥只能交到 agent 那台电脑上（环境变量、文件、浏览器登录框），这里的 agent 没有电脑，
+# 也就从不发起密钥申请。没有申请可看、可交、可拒。
+_NO_SECRET_REQUEST = "这里的 agent 还没有电脑可用，从不要密钥：没有这条申请"
+
+
+@router.get(_ORG + "/secret-requests/{request_id}")
+@router.post(_ORG + "/secret-requests/{request_id}/decline")
+@router.post(_ORG + "/secret-requests/{request_id}/deliver")
+@router.post(_ORG + "/secret-requests/{request_id}/vault")
+async def secret_request(org_id: str, request_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _error(404, "secret.not_found", _NO_SECRET_REQUEST)
+
+
+@router.get(_ORG + "/agents/{agent_id}/secrets")
+async def agent_secrets(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id)
+    return refused or _no_store({"secrets": []})            # 没有电脑，也就没有交到电脑上的密钥
+
+
+@router.delete(_ORG + "/agents/{agent_id}/secrets/{name}")
+async def remove_agent_secret(org_id: str, agent_id: str, name: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, write=True)
+    return refused or _error(404, "secret.not_found", "这个 agent 的电脑上没有这项密钥")
+
+
+# 保险库连接（1Password、Bitwarden 之类的外部密码库同步）：这里没有
+@router.post(_ORG + "/vault/connections")
+async def connect_vault(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or _error(409, "vault.connections_unavailable", "这里还不能连外部的密码库：用「导入密码」或「导入 .env」")
+
+
+@router.patch(_ORG + "/vault/connections/{connection_id}")
+@router.delete(_ORG + "/vault/connections/{connection_id}")
+@router.post(_ORG + "/vault/connections/{connection_id}/sync")
+async def vault_connection(org_id: str, connection_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or _error(404, "not_found", "没有这个密码库连接")
+
+
+# 每个 agent 一个浏览器、它的电脑和桌面：要等连接电脑那条线
+_NO_MACHINE = "这个 agent 没有接电脑，没有浏览器和桌面可用"
+
+
+@router.put(_ORG + "/agents/{agent_id}/browser")
+@router.post(_ORG + "/agents/{agent_id}/browser/open")
+@router.post(_ORG + "/agents/{agent_id}/browser/stop")
+@router.post(_ORG + "/agents/{agent_id}/browser/restart")
+@router.post(_ORG + "/agents/{agent_id}/browser-profile/request")
+@router.put(_ORG + "/agents/{agent_id}/computer/target")
+async def agent_machine_action(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, members_too=True, write=True)
+    return refused or _error(409, "computer.unavailable", _NO_MACHINE)
+
+
+@router.put(_ORG + "/agents/{agent_id}/browser-profile")
+async def set_agent_browser_profile(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, write=True)
+    return refused or _error(404, "not_found", "没有浏览器档案可选")
+
+
+@router.get(_ORG + "/agents/{agent_id}/{screen}/control")
+async def agent_screen_control(org_id: str, agent_id: str, screen: Literal["browser", "desktop"], request: Request):
+    refused = _agent_gate(request, org_id, agent_id, members_too=True)
+    return refused or _no_store({"canControl": False})
+
+
+@router.get(_ORG + "/agents/{agent_id}/desktop/picture")
+async def agent_desktop_picture(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, members_too=True)
+    return refused or _error(404, "desktop.no_machine", _NO_MACHINE)
+
+
+# 数据库：服务器没装 Postgres 驱动（依赖里没有），连不了；列表如实是空的
+_NO_DATABASES = "这台服务器还不能连数据库（没装 Postgres 驱动）"
+
+
+@router.get(_ORG + "/databases")
+async def databases(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id)
+    return refused or _no_store({"connections": []})
+
+
+@router.post(_ORG + "/databases")
+async def connect_database(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "databases.unavailable", _NO_DATABASES)
+
+
+@router.patch(_ORG + "/databases/{connection_id}")
+@router.delete(_ORG + "/databases/{connection_id}")
+@router.get(_ORG + "/databases/{connection_id}/tables")
+@router.get(_ORG + "/databases/{connection_id}/databases")
+async def database_connection(org_id: str, connection_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=request.method != "GET")
+    return refused or _error(404, "not_found", "没有这个数据库连接")
+
+
+@router.get(_ORG + "/agents/{agent_id}/databases")
+async def agent_databases(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id)
+    return refused or _no_store({"databases": []})
+
+
+@router.put(_ORG + "/agents/{agent_id}/databases/{connection_id}")
+async def set_agent_database(org_id: str, agent_id: str, connection_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, write=True)
+    return refused or _error(404, "not_found", "没有这个数据库连接")
+
+
+# GitHub App：这台服务器没有注册 GitHub App（状态接口已如实回「装不了」）
+_NO_GITHUB = "这台服务器还没有 GitHub App，连不了 GitHub"
+
+
+@router.post(_ORG + "/github-app/install")
+@router.post(_ORG + "/github-app/complete")
+@router.post(_ORG + "/agent-imports/github")
+async def github_app_action(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "github.unavailable", _NO_GITHUB)
+
+
+@router.delete(_ORG + "/github-app/installations/{installation_id}")
+async def remove_github_installation(org_id: str, installation_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(404, "not_found", "没有这个 GitHub 安装")
+
+
+@router.get(_ORG + "/github/repositories")
+async def github_repositories(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _no_store({"connected": False, "accounts": [], "truncated": False})
+
+
+@router.get(_ORG + "/github/access")
+async def github_access(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id)
+    return refused or _no_store({"orgs": None, "manageUrl": None})
+
+
+def _server_owner(request: Request):
+    """服务器级的 GitHub App 设置：只有所有者（带所有者证明）。"""
+    root = os.getcwd()
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "这里只有所有者能用")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return None
+
+
+@router.post("/api/app/github-app/manifest")
+async def github_app_manifest(request: Request):
+    return _server_owner(request) or _error(409, "github.unavailable", "这台服务器还不能注册 GitHub App")
+
+
+@router.delete("/api/app/github-app/settings")
+async def remove_github_app_settings(request: Request):
+    # 本来就没有 App：如实回「关着」的设置
+    return _server_owner(request) or _no_store({"source": None, "slug": None, "htmlUrl": None, "state": "off",
+                                                "canCreate": False})
+
+
+# GitHub / Sentry 的服务级 webhook（事件触发的例行工作）：这里没有事件触发
+def _webhook_off(provider: str) -> dict:
+    return {"provider": provider, "id": None, "url": None, "secret": None, "receivedAt": None, "refusedAt": None,
+            "secretSet": False, "canManage": False, "oneClick": False}
+
+
+@router.get(_ORG + "/webhooks/{provider}")
+async def webhook_setup(org_id: str, provider: Literal["github", "sentry"], request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _no_store(_webhook_off(provider))
+
+
+@router.put(_ORG + "/webhooks/{provider}")
+@router.put(_ORG + "/webhooks/{provider}/secret")
+async def ensure_webhook(org_id: str, provider: Literal["github", "sentry"], request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "webhooks.unavailable",
+                             "这里还没有按 GitHub / Sentry 事件触发的例行工作：用例行工作自己的 webhook 地址")
+
+
+@router.post(_ORG + "/webhooks/github/repository")
+async def add_github_webhook(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "github.unavailable", _NO_GITHUB)
+
+
+# 网页推送（Web Push）这里关着：登记浏览器订阅如实拒绝；取消登记只管自己的，没有就什么都不做
+@router.post("/api/app/push/devices")
+async def register_push_device(request: Request):
+    return _error(404, "web_push_off", "这台服务器没有开网页推送：手机通知用 iPhone App")
+
+
+class _PushForget(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    token: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/api/app/push/devices/forget", status_code=204)
+async def forget_push_device(body: _PushForget, request: Request):
+    return Response(status_code=204)                         # 网页推送没登记过任何订阅：没有要停的
+
+
+class _PushStale(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    ids: List[str] = Field(max_length=100)
+
+
+@router.post("/api/app/push/stale")
+async def stale_notices(body: _PushStale, request: Request):
+    """这些通知里已经读过、完成、推迟或没有了的：浏览器据此关掉还挂着的通知。"""
+    root = os.getcwd()
+    owner = member_auth.principal(request, root).is_owner
+    try:
+        stale = await asyncio.to_thread(app_notice_inbox.stale, root, body.ids, owner=owner)
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "通知记录暂时读不出来")
+    return _no_store({"stale": stale})
+
+
 def _register_empty(path: str, payload: Any) -> None:
     async def read(org_id: str):
         _root(org_id)
@@ -6218,12 +6465,21 @@ class _ChannelAgentAsk(BaseModel):
     agentId: str = Field(min_length=1, max_length=128)
 
 
+class _WebhookAsk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    what: Literal["webhook"]
+    provider: Literal["github", "sentry"]
+
+
 @router.post(_ORG + "/admin-asks")
-async def ask_owner(org_id: str, body: _AgentCreationAsk | _ChannelAgentAsk, request: Request):
+async def ask_owner(org_id: str, body: _AgentCreationAsk | _ChannelAgentAsk | _WebhookAsk, request: Request):
     root = _root(org_id)
     who = _who(request, root)
     if who is None or not who.is_member or not views.owner_connection():
         return _error(403, "forbidden", "只有当前在册成员能向所有者发送申请")
+    if isinstance(body, _WebhookAsk):
+        # 服务级 webhook 这里没有，所有者也接不了：不发一条做不到的申请
+        return _error(409, "webhooks.unavailable", "这里还没有按 GitHub / Sentry 事件触发的例行工作，所有者也接不了")
 
     def submit():
         if isinstance(body, _AgentCreationAsk):

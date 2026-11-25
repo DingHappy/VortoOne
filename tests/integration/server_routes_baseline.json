@@ -102,6 +102,18 @@
     ]
   },
   {
+    "path": "/api/app/github-app/manifest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/github-app/settings",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/invitations/{token}/code",
     "methods": [
       "POST"
@@ -162,6 +174,72 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-imports/github",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser-profile",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser-profile/request",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/open",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/restart",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/computer/target",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/databases",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/databases/{connection_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/desktop/picture",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/for-you",
     "methods": [
       "GET"
@@ -204,6 +282,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/secrets",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/secrets/{name}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage",
     "methods": [
       "GET"
@@ -219,6 +309,12 @@
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage-queue/cancel",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/{screen}/control",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -312,6 +408,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/databases",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}/databases",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}/tables",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/deletion",
     "methods": [
       "DELETE"
@@ -327,6 +459,36 @@
     "path": "/api/app/organizations/{org_id}/deletion/code",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github-app/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github-app/install",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github-app/installations/{installation_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github/access",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github/repositories",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -564,6 +726,30 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}/decline",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}/deliver",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}/vault",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/skills/{skill_id}/reimport",
     "methods": [
       "POST"
@@ -726,7 +912,73 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/vault/connections",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/connections/{connection_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/connections/{connection_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/connections/{connection_id}/sync",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/vault/items/{item_id}/move",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/github/repository",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/{provider}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/{provider}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/{provider}/secret",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/push/devices",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/push/devices/forget",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/push/stale",
     "methods": [
       "POST"
     ]
