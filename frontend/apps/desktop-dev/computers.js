@@ -6,6 +6,8 @@ let busy = false;
 let reading = false;
 let folderTarget = null;
 let pairedTaskTarget = null;
+// 新界面「连接电脑」打开的配对链接带来的码：核对完家的身份再填进去，不替人点确认
+let linkedCode = "";
 const taskControl = element("paired-task-allow-control");
 const taskLogin = element("paired-task-allow-login");
 function resetTaskConsent() {
@@ -87,8 +89,19 @@ taskBrowserToggle.addEventListener("click", async () => {
 });
 void readTaskBrowser();
 
+async function takePairLink() {
+  let link = null;
+  try { link = await invoke("pair_link_take"); } catch { return; }
+  if (!link || typeof link.server !== "string" || typeof link.code !== "string") return;
+  reset();
+  element("origin").value = link.server;
+  linkedCode = link.code;
+  status.textContent = "已从「连接电脑」的链接填好家的地址。填上电脑名称，核对家的身份；配对码会在核对后填好，确认仍要你来点。";
+}
+
 async function refresh() {
   if (reading || busy) return;
+  await takePairLink();
   reading = true;
   try {
     const answer = await invoke("computers_get");
@@ -276,6 +289,11 @@ element("preview-form").addEventListener("submit", async (event) => {
     element("pair-form").hidden = false;
     element("code").focus();
     status.textContent = "核对以上家的地址和身份，再输入在这个家生成的电脑配对码。";
+    if (linkedCode) {
+      element("code").value = linkedCode;
+      linkedCode = "";
+      status.textContent = "核对以上家的地址和身份；配对码已从链接填好，确认无误再点「确认配对」。";
+    }
   } catch (error) { message(error); }
   finally { busy = false; element("preview").disabled = false; }
 });
