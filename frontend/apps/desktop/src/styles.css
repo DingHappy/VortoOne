@@ -706,7 +706,8 @@ body[data-window="popover"] {
   outline-offset: 2px;
 }
 /* "Onde fica o seu workspace?": the team's sky on the left, the choice on the right, the window's whole height. */
-.dk-fr[data-screen="choose"] .dk-fr__body {
+.dk-fr[data-screen="choose"] .dk-fr__body,
+.dk-fr[data-screen="language"] .dk-fr__body {
   padding: 0;
 }
 .dk-choose {
@@ -806,6 +807,27 @@ body[data-window="popover"] {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+}
+/* The first run's language list: two columns of names, each in its own script. */
+.dk-lang {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+.dk-lang__option {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+}
+.dk-lang__option strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dk-lang,
+.dk-lang ~ .dk-choose__go {
+  flex-shrink: 0;
 }
 .dk-choose__go {
   width: 100%;

@@ -143,7 +143,9 @@
     "addLead": "今あるワークスペースはそれぞれのログインのまま残ります。",
     "addCloud": "VortoOneでワークスペースを作成",
     "addNew": "新しいワークスペースが必要ですか？",
-    "addNewLink": "作成する"
+    "addNewLink": "作成する",
+    "language": "言語を選んでください",
+    "languageLead": "あとから環境設定でいつでも変更できます。"
   },
   "place": {
     "cloudAccount": "クラウドアカウント",

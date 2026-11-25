@@ -164,6 +164,43 @@ export function stepStates(steps: readonly SetupStep[], changes: readonly StepCh
 }
 
 /**
+ * Setting VortoOne up here takes well under a second, so its steps would flash past: each change shows for at least
+ * STEP_SHOW_MS, and the finished list stays SETUP_DONE_MS before the window closes. Only the drawing waits; the work
+ * runs at its own speed.
+ */
+export const STEP_SHOW_MS = 500;
+export const SETUP_DONE_MS = 900;
+export const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Shows the setup's changes in the order they came, at most one per `gap`. `settled()` resolves once every change
+ * that came is on screen; after `stop()` (cancelled, or a new run) nothing more shows.
+ */
+export function stepPacer(
+  show: (change: StepChange) => void,
+  { now = () => Date.now(), wait = pause, gap = STEP_SHOW_MS } = {},
+) {
+  let chain = Promise.resolve();
+  let shownAt = Number.NEGATIVE_INFINITY;
+  let stopped = false;
+  return {
+    push(change: StepChange) {
+      chain = chain.then(async () => {
+        const left = shownAt + gap - now();
+        if (left > 0) await wait(left);
+        if (stopped) return;
+        shownAt = now();
+        show(change);
+      });
+    },
+    settled: () => chain,
+    stop() {
+      stopped = true;
+    },
+  };
+}
+
+/**
  * A setup normally ends in under 30 s, so a step under way shows its time from 10 s, and from 30 s it is "taking a
  * little longer than expected". The server here updating says "This can take a minute": it is slow only after two.
  */

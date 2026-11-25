@@ -150,6 +150,8 @@ export const desktopPtBR = {
   },
   /** First run (FirstRun.tsx), adding a workspace: its title and the Cloud's ways (the choice itself is `hosting`). */
   first: {
+    language: "Escolha seu idioma",
+    languageLead: "Você pode mudar quando quiser nas Preferências.",
     addTitle: "Adicionar um workspace",
     addLead: "Os que você já tem continuam aqui, cada um com o seu login.",
     addCloud: "Criar um workspace no VortoOne",

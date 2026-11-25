@@ -146,7 +146,9 @@
     "addLead": "Zaten sahip olduklarınız, her biri kendi girişiyle burada kalır.",
     "addCloud": "VortoOne'te çalışma alanı oluştur",
     "addNew": "Yeni bir workspace mi istiyorsun?",
-    "addNewLink": "Bir tane oluştur"
+    "addNewLink": "Bir tane oluştur",
+    "language": "Dilinizi seçin",
+    "languageLead": "İstediğiniz zaman Tercihler'den değiştirebilirsiniz."
   },
   "place": {
     "cloudAccount": "Bulut hesabı",

@@ -149,7 +149,9 @@
     "addLead": "Los que ya tienes siguen aquí, cada uno con su propio inicio de sesión.",
     "addCloud": "Crear un espacio de trabajo en VortoOne",
     "addNew": "¿Quieres un workspace nuevo?",
-    "addNewLink": "Crear uno"
+    "addNewLink": "Crear uno",
+    "language": "Elige tu idioma",
+    "languageLead": "Puedes cambiarlo cuando quieras en Preferencias."
   },
   "place": {
     "cloudAccount": "Cuenta en la nube",

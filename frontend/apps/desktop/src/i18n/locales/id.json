@@ -143,7 +143,9 @@
     "addLead": "Yang sudah kamu punya tetap di sini, masing-masing dengan login sendiri.",
     "addCloud": "Buat ruang kerja di VortoOne",
     "addNew": "Mau workspace baru?",
-    "addNewLink": "Buat satu"
+    "addNewLink": "Buat satu",
+    "language": "Pilih bahasamu",
+    "languageLead": "Kamu bisa mengubahnya kapan saja di Preferensi."
   },
   "place": {
     "cloudAccount": "Akun cloud",

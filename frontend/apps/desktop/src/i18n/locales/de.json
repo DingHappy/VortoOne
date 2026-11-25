@@ -146,7 +146,9 @@
     "addLead": "Die du schon hast, bleiben hier, jeder mit seiner eigenen Anmeldung.",
     "addCloud": "Workspace bei VortoOne erstellen",
     "addNew": "Möchtest du einen neuen Workspace?",
-    "addNewLink": "Einen erstellen"
+    "addNewLink": "Einen erstellen",
+    "language": "Wähle deine Sprache",
+    "languageLead": "Du kannst sie jederzeit in den Einstellungen ändern."
   },
   "place": {
     "cloudAccount": "Cloud-Konto",
