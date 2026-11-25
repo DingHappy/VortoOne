@@ -1,9 +1,9 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 560 个，剩 **71** 个：
+客户端合同里一共 631 个不重复接口，后端已接 618 个，剩 **13** 个：
 - **要做：0**
-- **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
+- **连接电脑线：0**（2026-11-25 接过来：连接链接真做，其余如实回答；真正在那台电脑上执行的等 C5）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
 
@@ -186,51 +186,51 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/devices` | `devices.list` | 只列当前调用者配对的有效电脑，在线时说明仅支持配对能力。 |
-| — | POST | `ORG/devices/access-requests/{x}/decide` | `devices.decideAccess` | Codex 连接电脑线 |
+| ☑ | POST | `ORG/devices/access-requests/{x}/decide` | `devices.decideAccess` | 电脑用配对码配对、在那台电脑上确认，没有要在这里批准的申请：404。 |
 | ☑ | DELETE | `ORG/devices/computers/{x}` | `devices.removeComputer` | 由配对人撤销凭据并断开对应连接。 |
-| — | PATCH | `ORG/devices/computers/{x}` | `devices.updateComputer` | Codex 连接电脑线。配对人可改名，共享、工作区归属、任务数和溢出设置返回 400。 |
-| — | POST | `ORG/devices/computers/{x}/phone-looks` | `devices.lookForPhones` | Codex 连接电脑线 |
-| — | GET | `ORG/devices/computers/{x}/wifi-iphones` | `devices.wifiIphones` | Codex 连接电脑线 |
-| — | PUT | `ORG/devices/computers/{x}/wifi-iphones/{x}` | `devices.pickIphoneOverWifi` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/computers/{x}/wifi-pairings` | `devices.startWifiPairing` | Codex 连接电脑线 |
-| — | DELETE | `ORG/devices/computers/{x}/wifi-pairings/{x}` | `devices.cancelWifiPairing` | Codex 连接电脑线 |
-| — | GET | `ORG/devices/computers/{x}/wifi-pairings/{x}` | `devices.wifiPairing` | Codex 连接电脑线 |
-| — | DELETE | `ORG/devices/computers/{x}/xcode-fix` | `devices.cancelXcodeFix` | Codex 连接电脑线 |
-| — | GET | `ORG/devices/computers/{x}/xcode-fix` | `devices.xcodeFix` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/computers/{x}/xcode-fix` | `devices.startXcodeFix` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/computers/{x}/xcode-open` | `devices.openXcode` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/connect-links` | `devices.createLink` | Codex 连接电脑线 |
-| — | GET | `ORG/devices/connect-links/{x}` | `devices.link` | Codex 连接电脑线 |
-| — | DELETE | `ORG/devices/phones/{x}` | `devices.forgetPhone` | Codex 连接电脑线 |
-| — | PATCH | `ORG/devices/phones/{x}` | `devices.updatePhone` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/phones/{x}/stop` | `devices.stopPhone` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/requests/{x}/approve` | `devices.approveRequest` | Codex 连接电脑线 |
-| — | POST | `ORG/devices/requests/{x}/deny` | `devices.denyRequest` | Codex 连接电脑线 |
+| ☑ | PATCH | `ORG/devices/computers/{x}` | `devices.updateComputer` | 配对人可改名；共享、工作区归属、任务数和溢出设置如实 400（连接的电脑不给 agent 派活）。 |
+| ☑ | POST | `ORG/devices/computers/{x}/phone-looks` | `devices.lookForPhones` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | GET | `ORG/devices/computers/{x}/wifi-iphones` | `devices.wifiIphones` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | PUT | `ORG/devices/computers/{x}/wifi-iphones/{x}` | `devices.pickIphoneOverWifi` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/devices/computers/{x}/wifi-pairings` | `devices.startWifiPairing` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | DELETE | `ORG/devices/computers/{x}/wifi-pairings/{x}` | `devices.cancelWifiPairing` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | GET | `ORG/devices/computers/{x}/wifi-pairings/{x}` | `devices.wifiPairing` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | DELETE | `ORG/devices/computers/{x}/xcode-fix` | `devices.cancelXcodeFix` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | GET | `ORG/devices/computers/{x}/xcode-fix` | `devices.xcodeFix` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | POST | `ORG/devices/computers/{x}/xcode-fix` | `devices.startXcodeFix` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/devices/computers/{x}/xcode-open` | `devices.openXcode` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/devices/connect-links` | `devices.createLink` | 真做：链接就是现有的配对码（`POST` 返回编号、12 位码、到期时间；没有命令行安装器，「终端命令」只是一行注释说明）。`GET` 状态：等待中 / 已连上（给出电脑）/ 过期；用掉的码配上了哪台只记在进程里，重启后显示过期，不猜。桌面 App 打开 `vortoone://pair` 填好配对窗口的那半在 desktop-dev。 |
+| ☑ | GET | `ORG/devices/connect-links/{x}` | `devices.link` | 真做：链接就是现有的配对码（`POST` 返回编号、12 位码、到期时间；没有命令行安装器，「终端命令」只是一行注释说明）。`GET` 状态：等待中 / 已连上（给出电脑）/ 过期；用掉的码配上了哪台只记在进程里，重启后显示过期，不猜。桌面 App 打开 `vortoone://pair` 填好配对窗口的那半在 desktop-dev。 |
+| ☑ | DELETE | `ORG/devices/phones/{x}` | `devices.forgetPhone` | 没有连上的 iPhone：404。 |
+| ☑ | PATCH | `ORG/devices/phones/{x}` | `devices.updatePhone` | 没有连上的 iPhone：404。 |
+| ☑ | POST | `ORG/devices/phones/{x}/stop` | `devices.stopPhone` | 没有连上的 iPhone：404。 |
+| ☑ | POST | `ORG/devices/requests/{x}/approve` | `devices.approveRequest` | 电脑用配对码配对、在那台电脑上确认，没有要在这里批准的申请：404。 |
+| ☑ | POST | `ORG/devices/requests/{x}/deny` | `devices.denyRequest` | 电脑用配对码配对、在那台电脑上确认，没有要在这里批准的申请：404。 |
 
 ### org/machines（20 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | POST | `ORG/machines/device/{x}/confirm` | `machines.confirmDevice` | Codex 连接电脑线 |
-| — | GET | `ORG/machines/host` | `machines.host` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/host` | `machines.hostOn` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/access/allow` | `machines.allowTool` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/access/ask` | `machines.askTool` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/access/reduce` | `machines.reduceAccess` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/account-logins` | `machines.beginAccountLogin` | Codex 连接电脑线 |
-| — | DELETE | `ORG/machines/{x}/account-logins/{x}` | `machines.cancelAccountLogin` | Codex 连接电脑线 |
-| — | GET | `ORG/machines/{x}/account-logins/{x}` | `machines.accountLogin` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/account-logins/{x}/code` | `machines.sendAccountCode` | Codex 连接电脑线 |
-| — | DELETE | `ORG/machines/{x}/accounts/{x}` | `machines.removeAccount` | Codex 连接电脑线 |
-| — | PATCH | `ORG/machines/{x}/accounts/{x}` | `machines.renameAccount` | Codex 连接电脑线 |
-| — | DELETE | `ORG/machines/{x}/cli-install` | `machines.cliInstall` | Codex 连接电脑线 |
-| — | GET | `ORG/machines/{x}/cli-install` | `machines.cliInstall` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/cli-install` | `machines.cliInstall` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/cli-install/ask` | `machines.askCliInstall` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/clis/check` | `machines.checkClis` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/move-agents` | `machines.moveAgents` | Codex 连接电脑线 |
-| — | GET | `ORG/machines/{x}/queue` | `machines.queue` | Codex 连接电脑线 |
-| — | POST | `ORG/machines/{x}/{x}` | `machines.setPause` | Codex 连接电脑线 |
+| ☑ | POST | `ORG/machines/device/{x}/confirm` | `machines.confirmDevice` | 没有设备码这种配对方式（用配对码）：404。 |
+| ☑ | GET | `ORG/machines/host` | `machines.host` | 不把服务器自己当 agent 的电脑：`GET` 404（界面当没有），`POST` 409 `computer.host_unavailable`（命令会读到家里所有数据；agent 在服务器上只有浏览器，ADR-031）。 |
+| ☑ | POST | `ORG/machines/host` | `machines.hostOn` | 不把服务器自己当 agent 的电脑：`GET` 404（界面当没有），`POST` 409 `computer.host_unavailable`（命令会读到家里所有数据；agent 在服务器上只有浏览器，ADR-031）。 |
+| ☑ | POST | `ORG/machines/{x}/access/allow` | `machines.allowTool` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/access/ask` | `machines.askTool` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/access/reduce` | `machines.reduceAccess` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/account-logins` | `machines.beginAccountLogin` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | DELETE | `ORG/machines/{x}/account-logins/{x}` | `machines.cancelAccountLogin` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | GET | `ORG/machines/{x}/account-logins/{x}` | `machines.accountLogin` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | POST | `ORG/machines/{x}/account-logins/{x}/code` | `machines.sendAccountCode` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | DELETE | `ORG/machines/{x}/accounts/{x}` | `machines.removeAccount` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | PATCH | `ORG/machines/{x}/accounts/{x}` | `machines.renameAccount` | 连接的电脑上从来不会有这条记录：404。 |
+| ☑ | DELETE | `ORG/machines/{x}/cli-install` | `machines.cliInstall` | 没有在装的：如实 `install: null`。 |
+| ☑ | GET | `ORG/machines/{x}/cli-install` | `machines.cliInstall` | 没有在装的：如实 `install: null`。 |
+| ☑ | POST | `ORG/machines/{x}/cli-install` | `machines.cliInstall` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/cli-install/ask` | `machines.askCliInstall` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/clis/check` | `machines.checkClis` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/move-agents` | `machines.moveAgents` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
+| ☑ | GET | `ORG/machines/{x}/queue` | `machines.queue` | agent 不在连接的电脑上跑：如实回空队列；不是自己配的电脑 404。 |
+| ☑ | POST | `ORG/machines/{x}/{x}` | `machines.setPause` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
 
 ### org/vault（12 个，要做 0）
 
@@ -436,13 +436,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/browser-profiles` | `browserProfiles.list` | Codex 连接电脑线；界面代码里没调用 |
-| — | POST | `ORG/browser-profiles` | `browserProfiles.create` | Codex 连接电脑线；界面代码里没调用 |
-| — | DELETE | `ORG/browser-profiles/{x}` | `browserProfiles.remove` | Codex 连接电脑线；界面代码里没调用 |
-| — | PATCH | `ORG/browser-profiles/{x}` | `browserProfiles.update` | Codex 连接电脑线；界面代码里没调用 |
-| — | POST | `ORG/browser-profiles/{x}/handback` | `browserProfiles.handback` | Codex 连接电脑线；界面代码里没调用 |
-| — | POST | `ORG/browser-profiles/{x}/open` | `browserProfiles.open` | Codex 连接电脑线；界面代码里没调用 |
-| — | POST | `ORG/browser-profiles/{x}/takeover` | `browserProfiles.takeover` | Codex 连接电脑线；界面代码里没调用 |
+| ☑ | GET | `ORG/browser-profiles` | `browserProfiles.list` | 没有共享的浏览器档案：如实空列表。 |
+| ☑ | POST | `ORG/browser-profiles` | `browserProfiles.create` | 共享浏览器档案要在连接的电脑上，现在没有：409 `computer.unavailable`。 |
+| ☑ | DELETE | `ORG/browser-profiles/{x}` | `browserProfiles.remove` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | PATCH | `ORG/browser-profiles/{x}` | `browserProfiles.update` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser-profiles/{x}/handback` | `browserProfiles.handback` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser-profiles/{x}/open` | `browserProfiles.open` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser-profiles/{x}/takeover` | `browserProfiles.takeover` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
 
 ### /api/app/invitations（7 个，要做 0）
 
@@ -498,11 +498,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/browser/handoffs/{x}` | `browser.handoff` | Codex 连接电脑线 |
-| — | POST | `ORG/browser/handoffs/{x}/cancel` | `browser.cancel` | Codex 连接电脑线 |
-| — | POST | `ORG/browser/handoffs/{x}/control` | `browser.takeControl` | Codex 连接电脑线 |
-| — | POST | `ORG/browser/handoffs/{x}/done` | `browser.done` | Codex 连接电脑线 |
-| — | POST | `ORG/browser/handoffs/{x}/failed` | `browser.failed` | Codex 连接电脑线 |
+| ☑ | GET | `ORG/browser/handoffs/{x}` | `browser.handoff` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser/handoffs/{x}/cancel` | `browser.cancel` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser/handoffs/{x}/control` | `browser.takeControl` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser/handoffs/{x}/done` | `browser.done` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
+| ☑ | POST | `ORG/browser/handoffs/{x}/failed` | `browser.failed` | 没有这个浏览器档案或接手请求：404（服务器上的浏览器没有屏幕，没人能接手）。 |
 
 ### /api/app/account（5 个，要做 0）
 
@@ -621,10 +621,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/ai-accounts` | `machines.aiAccounts` | Codex 连接电脑线 |
-| — | POST | `ORG/ai-accounts/refresh` | `machines.refreshAccountUsage` | Codex 连接电脑线 |
-| — | PUT | `ORG/ai-accounts/{x}/serves` | `machines.setAccountServes` | Codex 连接电脑线 |
-| — | POST | `ORG/ai-accounts/{x}/take-back` | `machines.takeBackPlan` | Codex 连接电脑线 |
+| ☑ | GET | `ORG/ai-accounts` | `machines.aiAccounts` | AI 订阅要在连接的电脑上登录，现在没有：如实空。 |
+| ☑ | POST | `ORG/ai-accounts/refresh` | `machines.refreshAccountUsage` | 没有订阅账号，没有要刷新的：204。 |
+| ☑ | PUT | `ORG/ai-accounts/{x}/serves` | `machines.setAccountServes` | 没有这个 AI 订阅账号：404。 |
+| ☑ | POST | `ORG/ai-accounts/{x}/take-back` | `machines.takeBackPlan` | 没有这个 AI 订阅账号：404。 |
 
 ### org/webhooks（4 个，要做 0）
 
@@ -807,8 +807,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `/api/app/machines/device/{x}` | `machines.device` | Codex 连接电脑线 |
-| — | POST | `/api/app/machines/device/{x}/deny` | `machines.denyDevice` | Codex 连接电脑线 |
+| ☑ | GET | `/api/app/machines/device/{x}` | `machines.device` | 没有设备码这种配对方式（用配对码）：404。 |
+| ☑ | POST | `/api/app/machines/device/{x}/deny` | `machines.denyDevice` | 没有设备码这种配对方式（用配对码）：404。 |
 
 ### org/polls（2 个，要做 0）
 
@@ -927,7 +927,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| — | GET | `ORG/brain-machines` | `agents.brainMachines` | Codex 连接电脑线 |
+| ☑ | GET | `ORG/brain-machines` | `agents.brainMachines` | 如实 409 `computer.unsupported`：这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输（C1–C4），装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑要等 C5；不是自己配的电脑 404。 |
 
 ### org/refs（1 个，要做 0）
 

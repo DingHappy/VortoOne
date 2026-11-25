@@ -352,6 +352,165 @@ async def remove(org_id: str, machine_id: str, request: Request):
     return Response(status_code=204, headers=_PRIVATE)
 
 
+# ── 新界面的「连接电脑」（2026-11-25，主人选「接通新界面的连接对话框」）──────────────────
+# 链接就是一个配对码：在桌面 App 里打开（vortoone://pair）或在目标电脑的 VortoOne 菜单「连接的电脑…」里填。
+# 这里没有命令行安装器，界面要的「终端命令」只放一行注释说明怎么做，粘贴进去也什么都不会执行。
+
+class ConnectLinkBody(_Body):
+    kind: str = Field(pattern=r'^(server|computer)$')
+
+
+_LINK = re.compile(r'([0-9a-f]{32})\.([0-9]{1,12})')
+
+
+def _iso(seconds: int) -> str:
+    return datetime.fromtimestamp(seconds, timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+@router.post(_ORG + '/devices/connect-links', status_code=201)
+async def create_connect_link(org_id: str, request: Request, response: Response):
+    response.headers.update(_PRIVATE)
+    _, store, member_id, _ = _pairer(request, org_id)
+    await _body(request, ConnectLinkBody)
+    made = await _call(store.create_pairing, member_id=member_id)
+    home = str(request.base_url).rstrip('/')
+    hint = (f'在要连接的电脑上打开 VortoOne，菜单「连接的电脑…」：地址填 {home}，配对码填 {made["code"]}'
+            f'（{_iso(made["expires_at"])} 前有效，只能用一次）')
+    return {'id': f'{made["pairing_id"]}.{made["expires_at"]}', 'code': made['code'],
+            'expiresAt': _iso(made['expires_at']),
+            'commands': {'unix': f'# {hint}', 'windows': f'REM {hint}'}}
+
+
+@router.get(_ORG + '/devices/connect-links/{link_id}')
+async def connect_link_state(org_id: str, link_id: str, request: Request, response: Response):
+    response.headers.update(_PRIVATE)
+    _, store, member_id, _ = _pairer(request, org_id)
+    found = _LINK.fullmatch(link_id)
+    if not found:
+        raise _error(404, 'not_found')
+    status, machine = await _call(store.link_state, found.group(1), int(found.group(2)), member_id=member_id)
+    return {'status': status, **({'machineId': machine} if machine else {})}
+
+
+# ── 连接电脑线里还做不到的（2026-11-25）：如实回答 ─────────────────────────────────
+# 连接的电脑现在只有 C1–C4：配对、本机文件夹、小文件读写和文件传输（docs/CONNECTED_COMPUTERS.md）。
+# 装 CLI、连 iPhone、修 Xcode、登录 AI 订阅、按工具放权、把 agent 挪过去跑这些要等 C5。
+# 不认识的电脑 404；认识的电脑上做不到的 409；本来就空的回真实的空。
+
+_NOT_YET = ('这台电脑的 VortoOne 现在只做配对、本机文件夹和文件传输；'
+            '装 CLI、连 iPhone、登录 AI 订阅、按工具放权、让 agent 在上面跑，要等连接电脑的下一期')
+
+
+def _unsupported() -> JSONResponse:
+    return JSONResponse({'error': {'code': 'computer.unsupported', 'message': _NOT_YET}}, status_code=409,
+                        headers=_PRIVATE)
+
+
+def _gone(code: str = 'not_found', message: str = '没有这一项') -> JSONResponse:
+    return JSONResponse({'error': {'code': code, 'message': message}}, status_code=404, headers=_PRIVATE)
+
+
+async def _own_machine(request: Request, org_id: str, machine_id: str):
+    """这个人配对的、还有效的电脑；没有就是 None。"""
+    _, store, member_id, _ = _pairer(request, org_id)
+    if not _ID.fullmatch(machine_id):
+        return None
+    rows = await _call(store.list, member_id=member_id)
+    return next((row for row in rows if row['connector_id'] == machine_id and row['active']), None)
+
+
+@router.post(_ORG + '/devices/computers/{machine_id}/phone-looks')
+@router.get(_ORG + '/devices/computers/{machine_id}/wifi-iphones')
+@router.put(_ORG + '/devices/computers/{machine_id}/wifi-iphones/{serial}')
+@router.post(_ORG + '/devices/computers/{machine_id}/wifi-pairings')
+@router.get(_ORG + '/devices/computers/{machine_id}/xcode-fix')
+@router.post(_ORG + '/devices/computers/{machine_id}/xcode-fix')
+@router.post(_ORG + '/devices/computers/{machine_id}/xcode-open')
+@router.post(_ORG + '/machines/{machine_id}/access/allow')
+@router.post(_ORG + '/machines/{machine_id}/access/ask')
+@router.post(_ORG + '/machines/{machine_id}/access/reduce')
+@router.post(_ORG + '/machines/{machine_id}/account-logins')
+@router.post(_ORG + '/machines/{machine_id}/cli-install/ask')
+@router.post(_ORG + '/machines/{machine_id}/clis/check')
+@router.post(_ORG + '/machines/{machine_id}/move-agents')
+@router.post(_ORG + '/machines/{machine_id}/pause')
+@router.post(_ORG + '/machines/{machine_id}/resume')
+async def machine_not_yet(org_id: str, machine_id: str, request: Request):
+    if await _own_machine(request, org_id, machine_id) is None:
+        return _gone()
+    return _unsupported()
+
+
+@router.get(_ORG + '/machines/{machine_id}/cli-install')
+@router.post(_ORG + '/machines/{machine_id}/cli-install')
+@router.delete(_ORG + '/machines/{machine_id}/cli-install')
+async def machine_cli_install(org_id: str, machine_id: str, request: Request):
+    if await _own_machine(request, org_id, machine_id) is None:
+        return _gone()
+    if request.method == 'POST':
+        return _unsupported()
+    return JSONResponse({'install': None}, headers=_PRIVATE)       # 没有在装的，也就没有要取消的
+
+
+@router.get(_ORG + '/machines/{machine_id}/queue')
+async def machine_queue(org_id: str, machine_id: str, request: Request):
+    row = await _own_machine(request, org_id, machine_id)
+    if row is None:
+        return _gone()
+    # agent 现在不在连接的电脑上跑：没有正在做的，也没有排着的
+    return JSONResponse({'machineId': machine_id, 'name': row['name'], 'working': [], 'waiting': []}, headers=_PRIVATE)
+
+
+@router.delete(_ORG + '/devices/computers/{machine_id}/xcode-fix')
+@router.get(_ORG + '/devices/computers/{machine_id}/wifi-pairings/{pairing_id}')
+@router.delete(_ORG + '/devices/computers/{machine_id}/wifi-pairings/{pairing_id}')
+@router.get(_ORG + '/machines/{machine_id}/account-logins/{login_id}')
+@router.delete(_ORG + '/machines/{machine_id}/account-logins/{login_id}')
+@router.post(_ORG + '/machines/{machine_id}/account-logins/{login_id}/code')
+@router.patch(_ORG + '/machines/{machine_id}/accounts/{account_id}')
+@router.delete(_ORG + '/machines/{machine_id}/accounts/{account_id}')
+async def machine_record_missing(org_id: str, machine_id: str, request: Request):
+    _pairer(request, org_id)
+    return _gone()                                     # 这些记录在连接的电脑上从来不会有
+
+
+@router.patch(_ORG + '/devices/phones/{phone_id}')
+@router.delete(_ORG + '/devices/phones/{phone_id}')
+@router.post(_ORG + '/devices/phones/{phone_id}/stop')
+async def phone_missing(org_id: str, phone_id: str, request: Request):
+    _pairer(request, org_id)
+    return _gone('not_found', '没有连上的 iPhone')
+
+
+@router.post(_ORG + '/devices/requests/{request_id}/approve')
+@router.post(_ORG + '/devices/requests/{request_id}/deny')
+@router.post(_ORG + '/devices/access-requests/{request_id}/decide')
+async def device_request_missing(org_id: str, request_id: str, request: Request):
+    _pairer(request, org_id)
+    # 电脑用配对码配对，在那台电脑上当场确认：没有要在这里批准的加入申请
+    return _gone('not_found', '没有这条申请：电脑用配对码配对，在那台电脑上确认')
+
+
+@router.get(_ORG + '/machines/host')
+async def machine_host(org_id: str, request: Request):
+    _pairer(request, org_id)
+    return _gone('not_found', '服务器自己的电脑不给 agent 当电脑用（agent 在服务器上只有浏览器，见 ADR-031）')
+
+
+@router.post(_ORG + '/machines/host')
+async def machine_host_on(org_id: str, request: Request):
+    _pairer(request, org_id)
+    return JSONResponse({'error': {'code': 'computer.host_unavailable',
+                                   'message': '不把服务器自己当 agent 的电脑用：命令会读到家里所有数据'}},
+                        status_code=409, headers=_PRIVATE)
+
+
+@router.post(_ORG + '/machines/device/{user_code}/confirm')
+async def confirm_machine_device(org_id: str, user_code: str, request: Request):
+    _pairer(request, org_id)
+    return _gone('not_found', '没有这个设备码：电脑用配对码配对')
+
+
 @router.post(_ORG + '/computer-pairings', status_code=201)
 async def create_pairing(org_id: str, request: Request, response: Response):
     response.headers.update(_PRIVATE)
