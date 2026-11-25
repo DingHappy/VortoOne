@@ -239,3 +239,15 @@ def clear(root: str, filter_name: NoticeFilter, *, done: bool):
             changed.append(item["id"])
         return {"ids": changed}
     return _change(root, apply)
+
+
+def stale(root: str, ids, *, owner: bool) -> list:
+    """这些通知里已经不是「开着、未读」的（读过、完成、推迟或没有了）：浏览器据此关掉还挂着的通知。
+    成员这里没有通知，给的都算。"""
+    wanted = [str(item) for item in ids]
+    if not owner:
+        return wanted
+    _, items, _, _ = _snapshot(root)
+    now = _format_date(datetime.now(timezone.utc))
+    return [notice_id for notice_id in wanted
+            if notice_id not in items or items[notice_id]["readAt"] is not None or not _visible(items[notice_id], now)]
