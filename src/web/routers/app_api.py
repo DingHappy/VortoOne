@@ -3832,13 +3832,16 @@ async def mail_providers(org_id: str, request: Request):
     return {"composio": False, "imap": who.is_owner, "presets": PRESETS if who.is_owner else []}
 
 
-async def _mail_call(org_id: str, request: Request, action, *, status: int = 200):
-    """团队邮箱：只给已认证的所有者。连接失败回 422，code 是界面认的 MailConnectError。"""
+async def _mail_call(org_id: str, request: Request, action, *, status: int = 200, read: bool = False):
+    """团队邮箱：只给所有者；改要带所有者证明（读和 AI 密钥一样不要求，列表里没有授权码）。
+    连接失败回 422，code 是界面认的 MailConnectError。"""
     from src.plugins.mail import MailError
     from src.workflow.members.mailboxes import MailboxError
     root = _root(org_id)
-    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
-        return _error(403, "owner_proof_required", "团队邮箱只有已认证的所有者能管")
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "团队邮箱只有所有者能管")
+    if not read and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "团队邮箱只有已认证的所有者能改")
     try:
         result = await asyncio.to_thread(action, root)
     except MailError as error:
@@ -3855,7 +3858,7 @@ async def _mail_call(org_id: str, request: Request, action, *, status: int = 200
 @router.get(_ORG + "/mail/accounts")
 async def mail_accounts(org_id: str, request: Request):
     from src.web import app_mail
-    return await _mail_call(org_id, request, lambda root: {"accounts": app_mail.accounts(root)})
+    return await _mail_call(org_id, request, lambda root: {"accounts": app_mail.accounts(root)}, read=True)
 
 
 @router.post(_ORG + "/mail/accounts/imap")
@@ -3887,14 +3890,15 @@ async def disconnect_mail_account(org_id: str, account_id: str, request: Request
 @router.get(_ORG + "/mail/accounts/{account_id}/folders")
 async def mail_folders(org_id: str, account_id: str, request: Request):
     from src.web import app_mail
-    return await _mail_call(org_id, request, lambda root: {"folders": app_mail.folders(root, account_id)})
+    return await _mail_call(org_id, request, lambda root: {"folders": app_mail.folders(root, account_id)},
+                            read=True)
 
 
 @router.get(_ORG + "/mail/accounts/{account_id}/suggested-addresses")
 async def mail_suggested_addresses(org_id: str, account_id: str, request: Request):
     from src.web import app_mail
     return await _mail_call(org_id, request, lambda root: {
-        "addresses": app_mail.suggested_addresses(root, account_id)})
+        "addresses": app_mail.suggested_addresses(root, account_id)}, read=True)
 
 
 def _mailbox_staff(root: str, agent_id: str) -> str:
@@ -3909,7 +3913,7 @@ def _mailbox_staff(root: str, agent_id: str) -> str:
 async def agent_mail(org_id: str, agent_id: str, request: Request):
     from src.web import app_mail
     return await _mail_call(org_id, request, lambda root: {
-        "mailboxes": app_mail.agent_mailboxes(root, _mailbox_staff(root, agent_id))})
+        "mailboxes": app_mail.agent_mailboxes(root, _mailbox_staff(root, agent_id))}, read=True)
 
 
 @router.put(_ORG + "/agents/{agent_id}/mail/{account_id}")

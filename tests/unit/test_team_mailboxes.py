@@ -209,3 +209,17 @@ def test_a_staff_run_the_owner_started_gets_the_mail_tools(home, imap, monkeypat
     asyncio.run(go())
     assert "team_mail_search" in seen[0] and "team_mail_draft" not in seen[0]
     assert json.dumps(seen)                                                                # 只是名字
+
+
+def test_reading_needs_the_owner_and_changing_also_needs_their_proof(home, imap):
+    from fastapi.testclient import TestClient
+    from tests.unit.test_member_agents import TOKEN
+    base = home["base"]
+    _connect(home)
+    browser = TestClient(home["app"])                                                     # 只有登录 Cookie，没有令牌头
+    assert browser.post("/api/auth/login", json={"token": TOKEN}).status_code == 200
+    elsewhere = {"Origin": "https://evil.example"}
+    assert browser.get(f"{base}/mail/accounts", headers=elsewhere).status_code == 200       # 读：所有者就行
+    refused = browser.post(f"{base}/mail/accounts/imap", headers=elsewhere,
+                           json={"preset": "qq", "address": "a@qq.com", "password": SECRET})
+    assert refused.status_code == 403                                                     # 改：要所有者证明（同源）
