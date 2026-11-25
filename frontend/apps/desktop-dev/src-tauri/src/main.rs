@@ -27,6 +27,11 @@ fn desktop_menu_name(config: &tauri::utils::config::Config) -> &'static str {
     if is_stable_channel(config) { "工作区" } else { "开发版" }
 }
 
+/// 关窗口时只藏起来的窗口：macOS 上的主窗口和欢迎窗口（App 照常留在 Dock 里）。其它系统照旧关掉。
+fn hides_on_close(label: &str) -> bool {
+    cfg!(target_os = "macos") && (label == LIVE || label == "welcome")
+}
+
 fn desktop_window<'a>(
     app: &'a tauri::AppHandle,
     label: &str,
@@ -396,6 +401,15 @@ fn main() {
             shell::local_server_sync, shell::open_system_settings, shell::privacy_open, shell::setup_state_set,
             shell::autostart_set, shell::network_ask, shell::runner_add, shell::pair_link_info, shell::site_fetch,
         ])
+        // macOS：关掉主窗口或欢迎窗口只是藏起来，App 和本机服务照常在 Dock 里；点 Dock 图标再打开，⌘Q 才退出
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if hides_on_close(window.label()) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let stable = is_stable_channel(app.config());
             let menu = Menu::default(app.handle())?;
@@ -550,6 +564,15 @@ fn main() {
                 app.state::<connector::ConnectorManager>().stop();
                 app.state::<backend::Backend>().stop();
             }
+            // 点 Dock 图标而没有窗口在显示：把藏起来的主窗口（还没有就欢迎窗口）拿回来
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { has_visible_windows: false, .. } => {
+                if let Some(window) = [LIVE, "welcome"].into_iter().find_map(|label| app.get_webview_window(label)) {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
             // 点了 vortoone:// 链接（Info.plist 登记了这个协议；冷启动时也走这里）
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Opened { urls } => {
@@ -564,6 +587,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closing_the_main_or_welcome_window_hides_it_on_macos_only() {
+        for label in [LIVE, "welcome"] {
+            assert_eq!(hides_on_close(label), cfg!(target_os = "macos"));
+        }
+        for label in ["prefs", "models", "computers", "versions"] {
+            assert!(!hides_on_close(label));
+        }
+    }
 
     #[test]
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
