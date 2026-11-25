@@ -3913,6 +3913,18 @@ class _WikiAppend(BaseModel):
     source: _WikiMessageSource
 
 
+def _wiki_for(root: str, actor):
+    """这个人眼里的 Wiki（能不能写、能不能管、看得到哪些公开频道的来源）。"""
+    state = MemberRegistry(root).snapshot()
+    if actor.is_member and actor.id not in state["members"]:
+        raise WikiError(403, "forbidden", _NOT_MEMBER)
+    keys = app_members.permission_keys(root, actor)
+    owner_id = views.owner_id(root)
+    people = frozenset({owner_id, *state["members"]})
+    return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
+                                 TeamChannels.readable_public_names(state, actor)))
+
+
 async def _wiki_call(request, org_id, action, *, listing=False, source=None, read_body=None):
     from src.workflow.members.registry import Damaged, Missing, Refused
 
@@ -3926,14 +3938,7 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None, rea
         return _error(403, "owner_proof_required", "Wiki 需要已认证的同源会话")
 
     def wiki_for_reader():
-        state = MemberRegistry(root).snapshot()
-        if actor.is_member and actor.id not in state["members"]:
-            raise WikiError(403, "forbidden", _NOT_MEMBER)
-        keys = app_members.permission_keys(root, actor)
-        owner_id = views.owner_id(root)
-        people = frozenset({owner_id, *state["members"]})
-        return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
-                                     TeamChannels.readable_public_names(state, actor)))
+        return _wiki_for(root, actor)
 
     def execute():
         if source is None:
@@ -4095,7 +4100,14 @@ async def wiki_version(org_id: str, slug: str, version: int, request: Request):
 
 @router.put(_WIKI + "/bulk/agents")
 async def set_wiki_page_agents(org_id: str, body: Dict[str, Any], request: Request):
-    return await _wiki_call(request, org_id, lambda wiki: wiki.set_agents(body))
+    root = _root(org_id)
+
+    def known_agents():
+        try:
+            return frozenset(row["id"] for row in app_channels.channel_agents(root).values())   # 派活的 agent 才读得到
+        except (OSError, ValueError):
+            return frozenset()
+    return await _wiki_call(request, org_id, lambda wiki: wiki.set_agents(body, known_agents=known_agents()))
 
 
 @router.post(_WIKI + "/bulk/delete")
@@ -4177,7 +4189,7 @@ def _mission_progress(items=()):
             "doing": statuses.count("doing"), "waiting": statuses.count("waiting_you")}
 
 
-def _mission_view(drafts, row, *, plan=None, running=0, pending=None, role="owner", asked=False):
+def _mission_view(drafts, row, *, plan=None, running=0, pending=None, role="owner", asked=False, wiki_page=None):
     """plan：最新一版计划（{"version", "items"}，没有就 None）；running：正在做的步数；
     pending：还在等人的决定和交付（{decisions, provisional, deliveries}）。"""
     pending = pending or {}
@@ -4206,7 +4218,7 @@ def _mission_view(drafts, row, *, plan=None, running=0, pending=None, role="owne
         "canCancelDraft": role == "owner" and status == "proposed",
         "startedAt": row["started_at"], "pausedAt": row["paused_at"] if status == "paused" else None,
         "closedAt": row["closed_at"], "closeReason": row["note"],
-        "wikiPageId": None,
+        "wikiPageId": wiki_page,
     }
 
 
@@ -4222,7 +4234,7 @@ def _mission_full(drafts, actor, mission_id):
     return _mission_view(drafts, row, plan=plans[0] if plans else None,
                          running=app_missions.running(drafts.channels.registry.root, mission_id, steps),
                          pending={**MissionCards(runs).counts(mission_id), **people.counts(actor, mission_id)},
-                         role=role, asked=asked)
+                         role=role, asked=asked, wiki_page=MissionCards(runs).wiki_page_of(mission_id))
 
 
 async def _mission_request(org_id, request, action, *, status=200, members=False):
@@ -4634,6 +4646,27 @@ async def check_mission_delivery(org_id: str, mission_id: str, delivery_id: str,
                                   _mission_cards(drafts).check(actor, mission_id, delivery_id, item_id, body.checked))
 
 
+def _mission_wiki_page(drafts, actor, mission_id, delivery, note, reader):
+    """交付写成的 Wiki 页面：目标、交付说明、核对清单、验收意见。私有频道的只给频道里的人看。"""
+    row = drafts.get(actor, mission_id)
+    lines = [f"# {row['title']}", "", f"**目标**：{row['goal']}" if row.get("goal") else "", "", "## 交付", "",
+             delivery["summary"], ""]
+    if delivery["checklist"]:
+        lines += ["## 核对清单", ""] + [f"- [{'x' if item['checkedBy'] else ' '}] {item['text']}"
+                                       for item in delivery["checklist"]] + [""]
+    if note:
+        lines += [f"**验收意见**：{note}", ""]
+    state = drafts.channels.registry.snapshot()
+    channel = state["channels"].get(row["channel_id"]) or {}
+    audience = None
+    if channel.get("kind") != "public":
+        people = [person for person in [reader.owner_id, *(channel.get("joined") or {})]
+                  if person in reader.known_people]
+        audience = {"mode": "people", "userIds": list(dict.fromkeys(people)) or [reader.owner_id]}
+    return {"title": f"Mission：{row['title']}"[:120], "folder": "Mission", "tags": ["mission"],
+            "body": "\n".join(lines).strip() + "\n", "audience": audience}
+
+
 class _MissionAccept(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     saveToWiki: bool = False
@@ -4643,15 +4676,27 @@ class _MissionAccept(BaseModel):
 @router.post(_ORG + "/missions/{mission_id}/deliveries/{delivery_id}/accept")
 async def accept_mission_delivery(org_id: str, mission_id: str, delivery_id: str, body: _MissionAccept,
                                   request: Request):
-    """验收通过：Mission 完成。存到 Wiki 还没接（Wiki 内容进 agent 上下文的可信度没定），如实拒绝。"""
+    """验收通过：Mission 完成。勾了「存到 Wiki」就把交付写成一页 Wiki（主人 2026-11-24 定：成员和 agent
+    写的内容按资料处理，Wiki 可以开放）。私有频道里的 Mission，这页只给频道里的人看。"""
+    from src.workflow.wiki import WikiError
     stop: Dict[str, Any] = {}
 
     def accept(drafts, actor):
-        if body.saveToWiki:
-            return _error(409, "mission.wiki_unavailable", "存到 Wiki 还没接上：取消「存到 Wiki」再完成")
         cards = _mission_cards(drafts)
-        _, _, stop["task"] = cards.conclude(actor, mission_id, delivery_id, "accepted",
-                                            (body.note or "").strip() or None)
+        root = drafts.channels.registry.root
+        wiki = None
+        if body.saveToWiki:
+            wiki = _wiki_for(root, actor)
+            if not wiki.reader.can_write:
+                return _error(403, "forbidden", "你没有编辑 Wiki 的权限：取消「存到 Wiki」再完成")
+        note = (body.note or "").strip() or None
+        delivery, _, stop["task"] = cards.conclude(actor, mission_id, delivery_id, "accepted", note)
+        if wiki is not None and not cards.wiki_page_of(mission_id):
+            try:
+                page = wiki.create(_mission_wiki_page(drafts, actor, mission_id, delivery, note, wiki.reader))
+                cards.mark_saved(delivery_id, page["id"])
+            except (WikiError, OSError, ValueError) as error:
+                return _error(409, "mission.wiki_failed", f"Mission 已经完成，但没能存到 Wiki：{error}")
         return _mission_full(drafts, actor, mission_id)
 
     response = await _mission_request(org_id, request, members=True, action=accept)

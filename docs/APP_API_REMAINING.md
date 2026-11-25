@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 500 个，剩 **131** 个：
-- **要做：60**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 501 个，剩 **130** 个：
+- **要做：59**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -63,7 +63,6 @@
 wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 邀请链接 → 制品、技能、例行的剩余部分 → 个人与账号 → vault / 凭据 / 连接器 / 数据库 / 存储 → 邮件、日历、提醒 → 其它零散的
 
 几处需要主人定的：
-- wiki 页面进 agent 上下文时，成员写的内容算不算可信
 - vault 里的密钥归谁、怎么撤销
 - 存储要不要接 S3（D06、D07 当时都没定）
 
@@ -90,7 +89,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/missions/{x}/decisions/{x}/choose` | `missions.choose` | 仅所有者。阻塞的问题都有答案、没有在做的一步时，agent 接着做，结果写进下一步提示（数据边界内）。已拍板的不能改选。 |
 | ☑ | POST | `ORG/missions/{x}/decisions/{x}/opinion` | `missions.opinion` | 仅所有者（参与者在后续 PR），只记倾向、不拍板。 |
 | ☑ | GET | `ORG/missions/{x}/deliveries` | `missions.deliveries` | 仅所有者。agent 用 `mission_deliver` 交付，这一步后 Mission 等验收（消息带 `meta.missionDelivery`）。 |
-| ☑ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` | 仅所有者，Mission 完成。`saveToWiki: true` 如实 409 `mission.wiki_unavailable`（Wiki 内容进 agent 上下文的可信度还没定）。 |
+| ☑ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` | 所有者和「决定」成员，Mission 完成。`saveToWiki: true` 把目标、交付、核对清单和验收意见写成「Mission」文件夹里的一页（要有编辑 Wiki 的权限，不然 403、不收尾）；私有频道里的只给频道里的人看。 |
 | ☑ | POST | `ORG/missions/{x}/deliveries/{x}/changes` | `missions.requestDeliveryChanges` | 仅所有者，要写意见。Mission 回到进行中，agent 带着意见接着做、重新交付。 |
 | ☑ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` | 仅所有者，每人各勾各的；有结论后不能再勾。 |
 | ☑ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` | 只有 `agent`（原生 agent 自己做）；Claude、Codex 要连电脑，409 `mission.no_computer`。 |
@@ -154,11 +153,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` | 仅所有者。排着的全部停下，走主人的停止决定。 |
 | ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
 
-### org/wiki（24 个，要做 1）
+### org/wiki（24 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` | Wiki 的智能体读取尚未开放，已登录且有编辑权限的调用返回明确的 409，页面和智能体授权均无变更。 |
+| ☑ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` | 有编辑权的人选哪些 agent 能读这几页（null 每个 agent，[] 都不能，默认 []）。只有对全体成员公开的页面能开放（`wiki.agents_need_everyone`）；之后收窄可见范围，agent 就读不到了。看不到的页面和不存在的答得一样。派活的 agent 用 `wiki_search` / `wiki_read` 读，结果按外部内容（主人 2026-11-24 定）。主助理读不到 Wiki。 |
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
 | ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
 | ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |

@@ -281,6 +281,9 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE messages ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
     if "mission_card" not in columns:
         conn.execute("ALTER TABLE messages ADD COLUMN mission_card TEXT")
+    deliveries = {row[1] for row in conn.execute("PRAGMA table_info(mission_deliveries)")}
+    if deliveries and "wiki_page" not in deliveries:
+        conn.execute("ALTER TABLE mission_deliveries ADD COLUMN wiki_page TEXT")      # 验收时存成的那页 Wiki
     conn.execute("CREATE INDEX IF NOT EXISTS live_thread_ranges ON messages(channel, sequence) "
                  "WHERE thread_range IS NOT NULL AND removed = 0")
 
