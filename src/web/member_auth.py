@@ -42,6 +42,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", r"/api/app/account/deletion"),               # 注销自己的账号：先看会怎样，再要验证码、注销、恢复
     ("POST", r"/api/app/account/deletion/code"),
     ("DELETE", r"/api/app/account"),
+    ("POST", r"/api/app/account/email"),                  # 改自己的登录邮箱
     ("DELETE", r"/api/app/account/deletion"),
     ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
     ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读

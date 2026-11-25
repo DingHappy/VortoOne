@@ -72,6 +72,18 @@
     ]
   },
   {
+    "path": "/api/app/account/email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/account/email/confirm",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/device-accounts/switch",
     "methods": [
       "POST"

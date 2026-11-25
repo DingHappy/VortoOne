@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 559 个，剩 **72** 个：
-- **要做：1**
+客户端合同里一共 631 个不重复接口，后端已接 560 个，剩 **71** 个：
+- **要做：0**
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -504,7 +504,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | POST | `ORG/browser/handoffs/{x}/done` | `browser.done` | Codex 连接电脑线 |
 | — | POST | `ORG/browser/handoffs/{x}/failed` | `browser.failed` | Codex 连接电脑线 |
 
-### /api/app/account（5 个，要做 1）
+### /api/app/account（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -512,7 +512,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | DELETE | `/api/app/account/deletion` | `account.restore` | 7 天内重新登录后可以恢复；到期了 409 `account.not_restorable`。注销中的会话只能看自己、看注销计划、恢复。 |
 | ☑ | GET | `/api/app/account/deletion` | `account.deletionPlan` | 成员：离开这个家（`leaves`），别的都为空；所有者：`soleOwner` 是这个家、`serverOwner: true`。 |
 | ☑ | POST | `/api/app/account/deletion/code` | `account.deletionCode` | 发信开着时把验证码发到自己的邮箱（和邀请验证码共用频率限制，`reauth.code_wait` 带 `retryIn`）；没开 409 `reauth.no_email`。 |
-| ☐ | POST | `/api/app/account/email` | `account.changeEmail` |  |
+| ☑ | POST | `/api/app/account/email` | `account.changeEmail` | 成员改自己的登录邮箱。没发信：10 分钟内凭密码登录过就马上换，否则 403 `reauth.sign_in`。发信开着：先给现在的邮箱发验证码（或 10 分钟内登录过），再给新邮箱发确认链接 `/api/app/account/email/confirm`，打开了才换；换好以后旧邮箱收到「不是我改的」。`email.same` 400、`email.held` 409；所有者 409 `account.owner_email`。 |
 
 ### org/agent-proposals（5 个，要做 0）
 
@@ -849,7 +849,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | POST | `/api/app/email-undo` | `account.undoEmailChange` | 这里还不能改登录邮箱，没有要撤回的：404 `email.undo_gone`（不登录也能调，只回这一句）。 |
+| ☑ | POST | `/api/app/email-undo` | `account.undoEmailChange` | 「不是我改的」（7 天内）：换回旧邮箱，所有登录结束、委托出去的凭据作废。过期或用过的 404 `email.undo_gone`。从旧邮箱的通知点进来，可能没登录，要求同源。 |
 
 ### /api/app/organizations（1 个，要做 0）
 

@@ -104,15 +104,18 @@ class JoinCodes:
         self._send(email, subject, text.replace("{code}", code))
         return RESEND_SECONDS
 
-    def mail(self, email: str, subject: str, text: str) -> bool:
-        """发一封别的信（找回密码），和验证码共用频率限制。超了就不发、返回 False（调用方照样回「已发」）。"""
+    def mail(self, email: str, subject: str, text: str, *, notice: bool = False) -> bool:
+        """发一封别的信（找回密码），和验证码共用频率限制。超了就不发、返回 False（调用方照样回「已发」）。
+        notice：安全通知（「你的登录邮箱换了」），不受这个地址的频率限制——它不能因为刚发过验证码就丢掉；
+        只有整个服务的总上限挡得住它。"""
         if not enabled():
             raise CodeError("join.codes_off", "这个家没有配好发信")
         now = self._clock()
         with self._lock:
             sent = [moment for moment in self._sent.get(email, []) if moment > now - 3600]
             self._all = [moment for moment in self._all if moment > now - GLOBAL_WINDOW]
-            if (sent and sent[-1] > now - RESEND_SECONDS) or len(sent) >= HOURLY_PER_EMAIL or len(self._all) >= GLOBAL_MAX:
+            per_address = (sent and sent[-1] > now - RESEND_SECONDS) or len(sent) >= HOURLY_PER_EMAIL
+            if (per_address and not notice) or len(self._all) >= GLOBAL_MAX:
                 return False
             self._sent[email] = [*sent, now]
             self._all.append(now)
