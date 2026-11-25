@@ -4,7 +4,6 @@
 """
 import asyncio
 
-from src.agents.staff import set_wiki_tools
 from src.web.wiki_agent_tools import build_wiki_tools
 from src.workflow import wiki
 from src.workflow.staff.service import StaffService
@@ -82,8 +81,7 @@ def test_a_staff_agent_reads_open_pages_as_outside_material(home, monkeypatch):
         seen["tools"] = list(options.get("extra_tools", ()))
         return _Agent()
     monkeypatch.setattr(staff_module, "build_staff_member", build)
-    set_wiki_tools(build_wiki_tools)
-    monkeypatch.setattr(staff_module, "_WIKI_TOOLS", build_wiki_tools)
+    monkeypatch.setattr(staff_module, "_WIKI_TOOLS", build_wiki_tools)   # 结束时还原成没登记
 
     async def execute(task, work, role, member, check):
         return await staff_module.execute_staff(home["root"], task, work, role, member, check)
@@ -95,11 +93,18 @@ def test_a_staff_agent_reads_open_pages_as_outside_material(home, monkeypatch):
             if TaskLedger(home["root"]).load(task.id).status not in {"queued", "running"}:
                 return TaskLedger(home["root"]).load(task.id)
             await asyncio.sleep(0.02)
-    try:
-        done = asyncio.run(go())
-    finally:
-        set_wiki_tools(None)
+    done = asyncio.run(go())
     assert done.status == "done", done.error
     assert "报价规则" in seen["search"] and seen["search"].untrusted is True
     assert "大单打九折" in seen["read"] and seen["read"].untrusted is True
     assert "没有开放给你" in seen["closed"] and "不给 agent" not in seen["closed"]
+
+
+def test_the_wiki_tools_are_only_there_once_registered(monkeypatch):
+    import src.agents.staff as staff_module
+    assert staff_module._WIKI_TOOLS is None                                 # 没登记（不在常驻助理里）就没有这两样
+    staff_module.set_wiki_tools(build_wiki_tools)
+    try:
+        assert staff_module._WIKI_TOOLS is build_wiki_tools
+    finally:
+        staff_module.set_wiki_tools(None)
