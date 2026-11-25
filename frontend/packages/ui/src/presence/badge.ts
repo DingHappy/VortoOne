@@ -2,8 +2,8 @@
  * The presence badge in pixels (ADR 0084): a 9×9 shape in the agents' body (the cut corner bottom left), two tones
  * of dither like their bodies, a white mark (busy: a bar; away: a clock; out of office: an arrow out the door, §12;
  * an agent at work: three dots; one waiting on you: a hollow square, the addendum of 2026-11-13), an empty outline
- * for offline and a dotted one for hidden, and a one-cell ring in the surface's color around it. Pure data: the web
- * draws it as SVG (`PresenceBadge`), the phone with react-native-svg.
+ * for offline and a dotted one for hidden, and a one-cell ring in the surface's color around it. Pure data for the
+ * phone (react-native-svg); the web draws a round badge with the same marks (`PresenceBadge`).
  */
 
 export type BadgePresence = "online" | "away" | "busy" | "out" | "offline" | "hidden" | "working" | "waiting";

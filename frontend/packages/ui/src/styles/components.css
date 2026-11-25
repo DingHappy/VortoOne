@@ -1103,7 +1103,6 @@ textarea.ac-input:not(:hover, :focus-visible) {
   --presence: var(--faint);
   display: block;
   flex: none;
-  shape-rendering: crispEdges;
 }
 .ac-presence[data-presence="online"] {
   --presence: var(--ok);
@@ -1129,14 +1128,21 @@ textarea.ac-input:not(:hover, :focus-visible) {
 .ac-presence__base {
   fill: var(--presence);
 }
-.ac-presence__light {
-  fill: color-mix(in srgb, var(--presence) 60%, #ffffff);
-}
-.ac-presence__deep {
-  fill: color-mix(in srgb, var(--presence) 75%, #000000);
+/* Offline and hidden: the outline alone (hidden dotted). */
+.ac-presence__outline {
+  fill: none;
+  stroke: var(--presence);
+  stroke-width: 1.2;
 }
 .ac-presence__mark {
   fill: #ffffff;
+}
+.ac-presence__markline {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .ac-presence__ring {
   fill: var(--presence-ring, var(--raised));
