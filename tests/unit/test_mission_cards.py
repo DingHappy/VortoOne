@@ -82,12 +82,24 @@ async def test_delivery_accept_finishes_and_changes_send_the_agent_back(mission)
         assert "数字要按周汇总" in mission.seen.prompts[1] and "修改意见" in mission.seen.prompts[1]
         rows = (await owner.get(mission.route + "/deliveries")).json()
         assert [row["status"] for row in rows] == ["changes_requested", "pending"]
-        wiki = await owner.post(f"{mission.route}/deliveries/{rows[1]['id']}/accept", json={"saveToWiki": True})
-        assert wiki.status_code == 409 and wiki.json()["error"]["code"] == "mission.wiki_unavailable"
-        accepted = await owner.post(f"{mission.route}/deliveries/{rows[1]['id']}/accept", json={"saveToWiki": False})
-        assert accepted.status_code == 200 and accepted.json()["status"] == "done"
+        # 2026-11-24 起「存到 Wiki」接上了（主人定）：私有频道里的 Mission，这页只给频道里的人看
+        private = await owner.patch(mission.channel, json={"visibility": "private"})
+        assert private.status_code == 200, private.text
+        accepted = await owner.post(f"{mission.route}/deliveries/{rows[1]['id']}/accept",
+                                    json={"saveToWiki": True, "note": "很好"})
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["status"] == "done" and accepted.json()["wikiPageId"]
     rows = mission.owner.get(mission.route + "/deliveries").json()
     assert rows[1]["status"] == "accepted" and rows[1]["decidedBy"] == _get(mission)["ownerId"]
+    assert rows[1]["saveToWiki"] is True and rows[0]["saveToWiki"] is False
+    base = mission.route.split("/missions/")[0]
+    [page] = [row for row in mission.owner.get(base + "/wiki/pages").json()["pages"]
+              if row["id"] == accepted.json()["wikiPageId"]]
+    detail = mission.owner.get(f"{base}/wiki/pages/{page['slug']}").json()
+    assert detail["folder"] == "Mission" and detail["title"].startswith("Mission：")
+    assert "反馈整理好了，放在话题里" in detail["body"] and "- [ ] 看一下分类" in detail["body"]
+    assert "**验收意见**：很好" in detail["body"]
+    assert detail["audience"] is not None and _get(mission)["ownerId"] in detail["audience"]["userIds"]
     late = mission.owner.post(f"{mission.route}/deliveries/{rows[0]['id']}/accept", json={})
     assert late.status_code == 409
 

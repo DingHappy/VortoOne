@@ -517,7 +517,8 @@ class MissionCards:
         return {"id": row["id"], "missionId": row["mission_id"], "taskId": row["task_id"], "messageId": row["message_id"],
                 "auto": False, "summary": row["summary"], "artifactIds": [], "paths": [],
                 "checklist": [{**item, "checkedBy": checks.get(item["id"], [])} for item in json.loads(row["checklist"])],
-                "status": row["status"], "note": row["note"], "saveToWiki": False,
+                "status": row["status"], "note": row["note"],
+                "saveToWiki": bool(row["wiki_page"]) if "wiki_page" in row.keys() else False,
                 "decidedBy": self.history.person_id(row["decided_by"]) if row["decided_by"] else None,
                 "decidedAt": row["decided_at"], "createdAt": row["created"]}
 
@@ -678,6 +679,23 @@ class MissionCards:
                 stop = None
             fresh = conn.execute("SELECT * FROM mission_deliveries WHERE id = ?", (delivery_id,)).fetchone()
             return self._delivery_view(conn, fresh), proceed, stop
+
+
+    def mark_saved(self, delivery_id, page_id):
+        """验收时存成了一页 Wiki。"""
+        with self.channels.registry._locked_state(), self.history.database(write=True) as conn:
+            conn.execute("UPDATE mission_deliveries SET wiki_page = ? WHERE id = ? AND wiki_page IS NULL",
+                         (page_id, delivery_id))
+
+    def wiki_page_of(self, mission_id):
+        with self.history.database() as conn:
+            if conn is None or not _has_table(conn, "mission_deliveries"):
+                return None
+            if "wiki_page" not in {row[1] for row in conn.execute("PRAGMA table_info(mission_deliveries)")}:
+                return None
+            found = conn.execute("SELECT wiki_page FROM mission_deliveries WHERE mission_id = ? AND wiki_page IS NOT NULL"
+                                 " ORDER BY created DESC LIMIT 1", (mission_id,)).fetchone()
+            return found[0] if found else None
 
 
 def cards_for(root):

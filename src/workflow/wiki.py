@@ -267,6 +267,39 @@ def _import_note(note: Any, folder: str) -> dict | str:
             "aliases": list(aliases.values()), "attachments": attachments}
 
 
+def page_agents(page: dict) -> list[str] | None:
+    """这页开放给哪些 agent：None 是每个 agent，[] 是都不开放（默认）。"""
+    agents = page.get("agents", [])
+    return None if agents is None else list(agents)
+
+
+def agent_pages(root: str, agent_id: str, *, query: str = "", limit: int = 20) -> list[dict]:
+    """agent 读得到的页面（摘要）：没删、对全体成员公开、开放给了它。按标题和正文找，新改的在前。"""
+    needle = " ".join(str(query or "").split()).casefold()
+    return [{"slug": page["slug"], "title": page["title"], "folder": page["folder"],
+             "excerpt": " ".join(page["body"].split())[:200], "updatedAt": page.get("updatedAt")}
+            for page in _agent_visible(root, agent_id)
+            if not needle or needle in page["title"].casefold() or needle in page["body"].casefold()][:limit]
+
+
+def agent_page(root: str, agent_id: str, slug: str) -> dict | None:
+    found = next((page for page in _agent_visible(root, agent_id) if page["slug"] == slug), None)
+    return None if found is None else {"slug": found["slug"], "title": found["title"], "folder": found["folder"],
+                                       "body": found["body"], "updatedAt": found.get("updatedAt")}
+
+
+def _agent_visible(root: str, agent_id: str) -> list[dict]:
+    wiki = Wiki(root, None)  # type: ignore[arg-type] —— 只读库，不按人判断
+    if not wiki.path.exists():
+        return []
+    with wiki._database() as conn:
+        rules = Wiki._folder_rules(conn)
+        pages = [page for page in Wiki._all(conn)
+                 if not page.get("deletedAt") and _page_people(page, rules) is None
+                 and (page_agents(page) is None or agent_id in page_agents(page))]
+    return sorted(pages, key=lambda page: str(page.get("updatedAt") or ""), reverse=True)
+
+
 class Wiki:
     def __init__(self, root: str, reader: WikiReader):
         self.root = root
@@ -401,7 +434,8 @@ class Wiki:
     def _summary(page: dict) -> dict:
         hidden = {"body", "createdBy", "createdAt", "attachments"}
         return {**{key: item for key, item in page.items() if key not in hidden},
-                "excerpt": " ".join(page["body"].split())[:200], "agentContext": False, "agentIds": []}
+                "excerpt": " ".join(page["body"].split())[:200], "agentContext": False,
+                "agentIds": page_agents(page)}
 
     @staticmethod
     def _with_folder_path(page: dict, rules: dict[str, frozenset[str]]) -> dict:
@@ -766,16 +800,37 @@ class Wiki:
             page["deletedAt"] = _now()
             self._save(conn, page)
 
-    def set_agents(self, data: dict) -> None:
+    def set_agents(self, data: dict, *, known_agents: frozenset[str] = frozenset()) -> dict:
+        """哪些 agent 能读这几页（null：每个 agent；[]：都不能）。只有对全体成员公开的页面能开放给 agent：
+        只给部分人看的内容，经 agent 一转就到了别人眼前。"""
         self._require_writer()
         if set(data) != {"ids", "agentIds"}:
             _fail("invalid", "必须提供 Wiki 页面和智能体范围")
-        _ids(data["ids"])
+        selected = _ids(data["ids"])
         agent_ids = data["agentIds"]
-        if agent_ids is not None and (not isinstance(agent_ids, list)
+        if agent_ids is not None and (not isinstance(agent_ids, list) or len(agent_ids) > 200
                                       or any(not isinstance(agent_id, str) or not agent_id for agent_id in agent_ids)):
             _fail("invalid", "智能体范围无效")
-        _fail("wiki_context_unavailable", "当前 Wiki 页面不会进入智能体上下文", status=409)
+        if agent_ids is not None and set(agent_ids) - known_agents:
+            _fail("invalid", "有不认识的 agent，或者它不读 Wiki（主助理读不到 Wiki）")
+        chosen = None if agent_ids is None else sorted(set(agent_ids))
+        with self._database(write=True) as conn:
+            rules = self._folder_rules(conn)
+            changed, failed = 0, []
+            for page in self._all(conn):
+                if page["id"] not in selected or page.get("deletedAt") or not self.reader.sees(page, rules):
+                    continue
+                if not self.reader.edits(page):
+                    failed.append({"id": page["id"], "title": page["title"], "code": "forbidden"})
+                    continue
+                if chosen != [] and _page_people(page, rules) is not None:
+                    failed.append({"id": page["id"], "title": page["title"], "code": "wiki.agents_need_everyone"})
+                    continue
+                if page_agents(page) != chosen:
+                    page["agents"] = chosen
+                    self._save(conn, page)
+                    changed += 1
+            return {"changed": changed, "failed": failed}
 
     def remove_many(self, data: dict) -> dict:
         self._require_writer()

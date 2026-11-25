@@ -420,23 +420,25 @@ def test_agent_reads_excludes_human_views_and_requires_workspace_membership(home
     assert member.get(path).status_code == 403
 
 
-def test_bulk_agent_access_refuses_without_saving_or_revealing_page_ids(home):
+def test_bulk_agent_access_keeps_private_pages_closed_without_revealing_them(home):
+    # 2026-11-24 起 Wiki 能开放给 agent 读（主人定）；只给部分人看的页面不能开放，也不向看不到它的人透露它在
     owner, member, base = home["owner"], _join(home), home["base"]
     owner_id = owner.get("/api/app/me").json()["user"]["id"]
     page = _page(owner, base, title="所有者的页面", audience={"mode": "people", "userIds": [owner_id]})
     path = f"{base}/wiki/bulk/agents"
     detail = f"{base}/wiki/pages/{page['slug']}"
-    payload = {"ids": [page["id"]], "agentIds": [home["main"]["id"]]}
+    payload = {"ids": [page["id"]], "agentIds": [home["agent"]["id"]]}
     assert member.get(detail).status_code == 404
-    for reader in (owner, member):
-        for selection in (None, [], payload["agentIds"]):
-            unavailable = reader.put(path, json=payload | {"agentIds": selection})
-            assert unavailable.status_code == 409
-            assert unavailable.json()["error"]["code"] == "wiki_context_unavailable"
-            missing = reader.put(path, json=payload | {"ids": ["unknown-page-id"], "agentIds": selection})
-            assert missing.status_code == 409 and missing.json() == unavailable.json()
+    hidden = member.put(path, json=payload)
+    missing = member.put(path, json=payload | {"ids": ["unknown-page-id"]})
+    assert hidden.status_code == 200 and hidden.json() == missing.json() == {"changed": 0, "failed": []}
+    refused = owner.put(path, json=payload)
+    assert refused.json() == {"changed": 0, "failed": [{"id": page["id"], "title": "所有者的页面",
+                                                        "code": "wiki.agents_need_everyone"}]}
+    assert owner.put(path, json=payload | {"agentIds": []}).json() == {"changed": 0, "failed": []}
 
     assert owner.put(path, json=payload | {"agentIds": [123]}).status_code == 400
+    assert owner.put(path, json=payload | {"agentIds": [home["main"]["id"]]}).status_code == 400   # 主助理读不到 Wiki
     assert member.put(path, json=payload, headers={"Origin": "https://elsewhere.test"}).status_code == 403
     assert TestClient(home["app"]).put(path, json=payload).status_code == 401
     MemberRegistry(home["root"]).change_group(OWNER_P, "everyone", items=[])
