@@ -93,3 +93,6 @@ Dev7 成品来自提交 [`28d5e294`](https://github.com/DingHappy/VortoOne/commi
 - Windows x64 和 Ubuntu 24.04 amd64 通过「VortoOne stable installer checks」生成 NSIS 与 DEB。两者都从固定的目标平台 CPython 归档构建，在对应平台安装并验证独立后端。
 - Apple Silicon Mac 从已合入 main 的干净提交运行 `node frontend/scripts/bundle-desktop-stable-macos.mjs <发布说明文件>`，生成 Developer ID 签名、公证的 DMG 和签名更新包。
 - 正式发布包使用 `com.vorto.vortoone`，并保留 Mac 更新公钥。验收通过后核对三平台来源提交一致，再上传安装包、校验和、Mac 更新包及更新清单。GitHub 发布可读取后，再切换 OSS 的更新清单。
+- 发版顺序：版本号 PR 合入 main 后，在 main 上手动触发「VortoOne stable installer checks」，同一个提交上在 Mac 运行上面的打包脚本。把 CI 的 `VortoOne-Stable-windows-x64`、`VortoOne-Stable-ubuntu-amd64` 两个产物解压到 `apps/desktop-dev/src-tauri/target/release/channel/stable/` 下同名平台目录（`windows-x64/`、`ubuntu-amd64/`）。
+- `node desktop/scripts/oss-release.mjs --stable --stage <空目录>` 核对三平台是同一版、同一提交、字节与构建证据一致，把 GitHub 发布要传的七个附件（含三平台总的 `SHA256SUMS`）放进那个目录；用它们创建 GitHub 发布。
+- 发布成为最新版本后运行 `node desktop/scripts/oss-release.mjs --stable`：先把 Mac 更新包、DMG、Windows 与 Ubuntu 安装包和 `SHA256SUMS` 传到 OSS 的 `vortoone/desktop/v<版本>/` 并逐个取回核对，最后才换 `latest.json`。0.3.0 的 Windows、Ubuntu 安装包只在 GitHub 上。
