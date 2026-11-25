@@ -304,6 +304,11 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     elif dispatch.get('channel'):
         from src.agents.tools.channel_cards import build_channel_card_tools
         options['extra_tools'] = tuple(build_channel_card_tools(root, task))      # 投票、选择卡：跟着回答发在话题里
+    if dispatch.get('source') == 'staff' and not dispatch.get('routine'):
+        # 提议改团队背景：只记提议，所有者采纳才生效（主人 2026-11-24 定）。例行工作无人值守、可能由 webhook
+        # 带着外部内容叫起来，不给它
+        from src.agents.tools.context_proposal import build_context_proposal_tool
+        options['extra_tools'] = (*options.get('extra_tools', ()), build_context_proposal_tool(root, task))
     if _WIKI_TOOLS is not None and dispatch.get('source') == 'staff':
         # 读开放给它的 Wiki 页面：内容出自成员，按资料读（主人 2026-11-24 定）
         options['extra_tools'] = (*options.get('extra_tools', ()), *_WIKI_TOOLS(root, task, member['id']))

@@ -414,6 +414,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/proposals/{proposal_id}/accept",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/proposals/{proposal_id}/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/proposals/{proposal_id}/refuse",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/refs/{ref_id}",
     "methods": [
       "GET"
