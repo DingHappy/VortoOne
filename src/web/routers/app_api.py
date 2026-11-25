@@ -3576,6 +3576,17 @@ _NO_MACHINE = "这个 agent 没有接电脑，没有浏览器和桌面可用"
 
 
 @router.put(_ORG + "/agents/{agent_id}/browser")
+async def set_agent_browser_sites(org_id: str, agent_id: str, request: Request):
+    from src.agents.tools.server_browser import server_browser_enabled
+    refused = _agent_gate(request, org_id, agent_id, members_too=True, write=True)
+    if refused is not None:
+        return refused
+    if await asyncio.to_thread(server_browser_enabled):
+        return _error(409, "browser.sites_unavailable",
+                      "还不能按 agent 限定网站：服务器上的浏览器开放除受限站点外的所有公开网站，点击和输入每步都要确认")
+    return _error(409, "computer.unavailable", _NO_MACHINE)
+
+
 @router.post(_ORG + "/agents/{agent_id}/browser/open")
 @router.post(_ORG + "/agents/{agent_id}/browser/stop")
 @router.post(_ORG + "/agents/{agent_id}/browser/restart")
@@ -9006,8 +9017,13 @@ async def watch_paired_role_desktop(socket: WebSocket, org_id: str, agent_id: st
 
 @router.get(_ORG + "/agents/{agent_id}/browser")
 async def agent_browser(org_id: str, agent_id: str, request: Request):
+    from src.agents.tools.server_browser import server_browser_enabled
+    on = agent_id != views.main_agent_id(_root(org_id)) and await asyncio.to_thread(server_browser_enabled)
+    # 开着时：在服务器本机用浏览器，只在所有者发起的事里、点击输入每步确认；任何公开网站（受限站点除外）
     return await _screen_status(org_id, agent_id, request, "browser", {
-        "allowedDomains": None, "available": False, "reason": "no_machine", "detail": None, "machine": None,
+        "allowedDomains": None, "available": on, "reason": None if on else "no_machine",
+        "detail": "在服务器上用无头浏览器：只在所有者发起的事里，点击和输入每步都要确认" if on else None,
+        "machine": None,
     })
 
 

@@ -122,7 +122,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` | agent 不接邮箱，回空列表 |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |
-| ☑ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 如实 409 `computer.unavailable`：这个 agent 没有接电脑，没有浏览器（等连接电脑线）。 |
+| ☑ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 按 agent 限定网站还没有：开了服务器浏览器时 409 `browser.sites_unavailable`（开放除受限站点外的公开网站，点击输入每步确认），没开时 409 `computer.unavailable`。 |
 | ☑ | PUT | `ORG/agents/{x}/browser-profile` | `browserProfiles.setDefault` | 没有浏览器档案：404。 |
 | ☑ | POST | `ORG/agents/{x}/browser-profile/request` | `browserProfiles.request` | 如实 409 `computer.unavailable`。 |
 | ☑ | POST | `ORG/agents/{x}/browser/open` | `browser.open` | 如实 409 `computer.unavailable`。 |

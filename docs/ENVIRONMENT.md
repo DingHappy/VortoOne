@@ -108,6 +108,8 @@ VortoOne 读取的全部 `VORTOONE_*` 环境变量。常用项的示例与注释
 | 变量 | 默认 | 作用 | 读取位置 |
 | --- | --- | --- | --- |
 | `VORTOONE_ENABLE_BROWSER_CONTROL` | 关 | 网站连接、人工登录接管与桌面/手机网页工具。只在 Desktop 托管的 Web 会话生效，IM、CLI 和无人值守一律不给；非原生手机 App。详见 [网站连接](WEBSITE_CONNECTIONS.md)。 | `agents/tools/browser.py` |
+| `VORTOONE_AGENT_BROWSER` | 关 | 设为 `1` 时，派给 agent 的事可以在**服务器本机**用一个独立的无头浏览器（没有 `DISPLAY` 时无头运行，要找得到 Chromium，`VORTOONE_BROWSER_PATH` 可指定）。只给所有者发起的事（私聊、所有者派的活），成员发起的、频道里的、例行工作都不给。看网页、普通链接和展开的点击、滚动不用确认；输入、表单里的、提交购买删除这类按钮每次确认。邮箱网页版和云控制台只读，银行支付、账号与密码管理一律拒绝。临时配置目录用完就删，不登录、不登记网站。 | `agents/tools/server_browser.py` |
+| `VORTOONE_AGENT_BROWSER_INTRANET` | 空 | 服务器上的 agent 浏览器可以访问的内网主机，逗号分隔（主机名或 IP，端口不限）。其它内网地址照旧拒绝；名单放不开银行支付、账号与密码管理。 | `agents/tools/server_browser.py` |
 | `VORTOONE_BROWSER_PATH` | 自动查找 | 本机 Chromium 系浏览器的路径。 | `browser/cdp.py` |
 | `VORTOONE_BROWSER_BLOCKED_DOMAINS` | — | 追加禁止操作的域名（逗号分隔）。只能追加，不能删减内置名单。 | `agents/tools/browser.py` |
 | `VORTOONE_ENABLE_ANDROID_CONTROL` | 关 | 实验 Android 插件，只在有人确认的 Desktop local Project 会话装配；读取原生界面和确认点按，不创建会话或安装应用。见 [Android 插件](ANDROID_SESSION_PLUGIN.md)。 | `agents/tools/android.py` |
