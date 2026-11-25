@@ -247,6 +247,7 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (r"/api/app/models", {"models": [], "defaultModel": ""}),
     (r"/api/app/connectors/catalog", {"connectors": [], "builtinScopes": []}),
     (_ORG + r"/memories", {"memories": []}),
+    (_ORG + r"/mail/accounts", {"accounts": []}),            # 团队邮箱只有所有者能看（主人 2026-11-24 定）
     (_ORG + r"/agents/[^/]+/memories", {"memories": []}),
     (_ORG + r"/agents/[^/]+/skills", {"skills": []}),
     (_ORG + r"/skills", {"skills": []}),
