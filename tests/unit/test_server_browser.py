@@ -135,6 +135,7 @@ def test_headless_launch_keeps_the_browsers_own_sandbox(tmp_path, monkeypatch, h
         asyncio.run(CdpBrowser("/usr/bin/google-chrome", tmp_path / "profile", headless=headless).start())
     [args] = launched
     assert ("--headless=new" in args) is headless
+    assert ("--password-store=basic" in args) is headless                                 # 没桌面时不等系统钥匙串
     assert "--no-sandbox" not in args                                                     # 97 上实测浏览器自带的沙箱可用
 
 
