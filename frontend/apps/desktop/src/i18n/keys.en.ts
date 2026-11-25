@@ -145,6 +145,9 @@ export const desktopEn = {
     quitConfirm: "Quit",
   },
   first: {
+    /** The first run's first screen: the app's language, before anything else. */
+    language: "Choose your language",
+    languageLead: "You can change it any time in Preferences.",
     /** The welcome window opened by the site's "Add workspace" (ADR 0154). */
     addTitle: "Add a workspace",
     addLead: "The ones you have stay here, each with its own sign-in.",

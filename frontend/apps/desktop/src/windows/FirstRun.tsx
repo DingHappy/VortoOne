@@ -53,17 +53,21 @@ import {
   hereView,
   type LocalServerStatus,
   ownerless,
+  pause,
   type ReachStage,
+  SETUP_DONE_MS,
   type SetupStep,
   type StepChange,
   setupSteps,
   stepClock,
+  stepPacer,
   stepStates,
   tailscaleFrom,
 } from "../control/local-server";
 import { parsePairLink } from "../control/pair";
 import { serverKind, serverName } from "../control/server";
-import { useOnShown, useTailnet, writePref } from "../hooks";
+import { readPref, useOnShown, useTailnet, writePref } from "../hooks";
+import { type AppLocale, detectedLocale, LOCALE_PREF, locales, switchDesktopLocale } from "../i18n";
 import { BrandFace, CommandCopy } from "../ui/bits";
 import { CopyDetails, ReachProblem, ReachProgress, ReachRow, ServerTile } from "../ui/here";
 import { hintFor, PrefRow } from "../ui/settings";
@@ -74,7 +78,12 @@ const PROBLEM_HOSTLESS: ReadonlySet<ConnectProblem> = new Set(["invalid"]);
 
 export function FirstRun() {
   const host = useHost();
-  const [screen, setScreen] = useState<FirstScreen>("choose");
+  // The very first run starts with the language; once one was picked (here or in Preferences) it isn't asked again.
+  const [screen, setScreen] = useState<FirstScreen>(() =>
+    readPref<string | null>(LOCALE_PREF, null) === null ? "language" : "choose",
+  );
+  // Where the language screen leads: the place choice, or Run here's form when the app's server has no owner left.
+  const afterLanguage = useRef<"choose" | "here">("choose");
   // Opened by the site's "Add a workspace" (ADR 0154): its first screen says so.
   const [adding, setAdding] = useState(false);
   const [trail, setTrail] = useState<FirstScreen[]>([]);
@@ -179,6 +188,12 @@ export function FirstRun() {
         // No account left on the server the app runs, or it was just erased: straight to Run here's form, which
         // makes the new owner.
         const at = screenRef.current;
+        // Adding a workspace isn't a first run: no language screen.
+        if (at === "language" && mode === "add") return setScreen("choose");
+        if (at === "language") {
+          afterLanguage.current = mode === "owner" ? "here" : "choose";
+          return;
+        }
         if (mode !== "owner" || at === "link" || at === "pair" || settingUp.current) return;
         setTrail(["choose"]);
         setScreen("here");
@@ -212,7 +227,8 @@ export function FirstRun() {
   useOnShown("welcome", () => {
     takeMode();
     // A link or pair screen whose sheet is gone has nothing to draw: it starts over too.
-    if ((screen === "link" && link) || (screen === "pair" && pair) || settingUp.current) return;
+    // The language screen is the first run's start: showing the window again keeps it.
+    if (screen === "language" || (screen === "link" && link) || (screen === "pair" && pair) || settingUp.current) return;
     setTrail([]);
     setScreen("choose");
     setAddress("");
@@ -235,6 +251,16 @@ export function FirstRun() {
   return (
     <div className="dk-fr" data-screen={screen}>
       <div className="dk-fr__body" key={screen}>
+        {screen === "language" && (
+          <ChooseLanguage
+            onContinue={() => {
+              if (afterLanguage.current === "here") {
+                setTrail(["language", "choose"]);
+                setScreen("here");
+              } else go("choose");
+            }}
+          />
+        )}
         {screen === "choose" && (
           <ChooseServerLocation adding={adding} canRunHere={local?.bundled === true} onContinue={go} />
         )}
@@ -288,6 +314,65 @@ export function FirstRun() {
             }}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The first screen of the first run: the app's language, each by its own name. A pick shows at once in this window;
+ * Continue keeps it as Preferences' language (every window follows it).
+ */
+function ChooseLanguage({ onContinue }: { onContinue: () => void }) {
+  const { t, i18n } = useTranslation();
+  const { platform } = useHost();
+  const [pick, setPick] = useState<AppLocale>(() =>
+    locales.some((l) => l.code === i18n.language) ? (i18n.language as AppLocale) : detectedLocale(),
+  );
+  const choose = (code: AppLocale) => {
+    setPick(code);
+    switchDesktopLocale(i18n, code, platform);
+  };
+  return (
+    <div className="dk-choose">
+      <div className="dk-choose__sky">
+        <PlaceScene place="here" computer={platform} shape="tall" />
+        <span className="dk-choose__brand" aria-hidden="true">
+          <BrandFace size="sm" />
+          VortoOne
+        </span>
+      </div>
+      <div className="dk-choose__main">
+        <h1 id="choose-language">{t("desktop.first.language")}</h1>
+        <p className="dk-lead">{t("desktop.first.languageLead")}</p>
+        <div className="dk-lang" role="radiogroup" aria-labelledby="choose-language">
+          {locales.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              role="radio"
+              lang={l.code}
+              className="dk-choose__destination dk-lang__option"
+              aria-checked={pick === l.code}
+              aria-pressed={pick === l.code}
+              onClick={() => choose(l.code)}
+            >
+              <strong>{l.label}</strong>
+              {pick === l.code && <Icon name="check" size={16} />}
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="primary"
+          className="dk-btn-lg dk-choose__go"
+          onClick={() => {
+            writePref(LOCALE_PREF, pick);
+            onContinue();
+          }}
+        >
+          {t("desktop.common.continue")}
+          <Icon name="arrowRight" size={16} />
+        </Button>
       </div>
     </div>
   );
@@ -751,16 +836,17 @@ function RunHere({
     return () => onBusy(false);
   }, [busy, onBusy]);
 
+  // This run's steps go on screen one by one (the setup itself is over in a blink).
+  const pacer = useRef<ReturnType<typeof stepPacer> | null>(null);
   useEffect(
     () =>
       host.onSetupStep((c) => {
         if (c.state === "warn") warned.current = true;
-        setSetup((s) =>
-          s ? { ...s, changes: [...s.changes, c], activeAt: c.state === "active" ? Date.now() : s.activeAt } : s,
-        );
+        pacer.current?.push(c);
       }),
     [host],
   );
+  useEffect(() => () => pacer.current?.stop(), []);
 
   if (!status || answering === undefined) {
     return (
@@ -837,6 +923,8 @@ function RunHere({
   // The computer is as it was before Start: the form comes back, with what was typed and chosen (the undone setup
   // reads as reach off, and usage on when it stopped before writing it).
   const backToForm = () => {
+    pacer.current?.stop();
+    pacer.current = null;
     setSetup(null);
     void host
       .localServer()
@@ -847,13 +935,26 @@ function RunHere({
     const choice = view.ask ? { name: name.trim(), email: email.trim(), reach, usage } : { reach, usage };
     setSetup({ steps: setupSteps(reach), changes: [], activeAt: Date.now(), end: "running" });
     warned.current = false;
+    pacer.current?.stop();
+    const run = stepPacer((c) =>
+      setSetup((s) =>
+        s ? { ...s, changes: [...s.changes, c], activeAt: c.state === "active" ? Date.now() : s.activeAt } : s,
+      ),
+    );
+    pacer.current = run;
     try {
       await host.installLocalServer(choice);
+      await run.settled();
+      if (pacer.current !== run) return;
       setSetup((s) => s && { ...s, end: "done" });
-      if (!warned.current) await host.hideWindow("welcome").catch(() => {});
+      if (warned.current) return;
+      // The finished list stays a moment, so the last steps are seen done.
+      await pause(SETUP_DONE_MS);
+      if (pacer.current === run) await host.hideWindow("welcome").catch(() => {});
     } catch (e) {
-      if (e === "cancelled") backToForm();
-      else setSetup((s) => s && { ...s, end: "failed" });
+      if (e === "cancelled") return backToForm();
+      await run.settled();
+      if (pacer.current === run) setSetup((s) => s && { ...s, end: "failed" });
     }
   };
   const cancel = () => {

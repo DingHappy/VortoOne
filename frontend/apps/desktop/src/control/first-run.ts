@@ -14,7 +14,7 @@ import {
 import type { Place } from "@vortoone/ui";
 import { appServer, serverName } from "./server";
 
-export type FirstScreen = "choose" | "install" | "connect" | "here" | "link" | "pair";
+export type FirstScreen = "language" | "choose" | "install" | "connect" | "here" | "link" | "pair";
 
 const LOCATION_SCREEN = { here: "here", box: "connect", cloud: null } as const;
 

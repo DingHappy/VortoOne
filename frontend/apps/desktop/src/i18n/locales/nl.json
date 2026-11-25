@@ -146,7 +146,9 @@
     "addLead": "Die je al hebt blijven hier, elk met een eigen aanmelding.",
     "addCloud": "Een werkruimte maken bij VortoOne",
     "addNew": "Wil je een nieuwe workspace?",
-    "addNewLink": "Maak er een"
+    "addNewLink": "Maak er een",
+    "language": "Kies je taal",
+    "languageLead": "Je kunt dit altijd wijzigen in Voorkeuren."
   },
   "place": {
     "cloudAccount": "Cloudaccount",

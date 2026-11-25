@@ -143,7 +143,9 @@
     "addLead": "你已有的工作区都保留在这里，各自保持登录。",
     "addCloud": "在 VortoOne 创建工作区",
     "addNew": "想要一个新的工作区？",
-    "addNewLink": "创建一个"
+    "addNewLink": "创建一个",
+    "language": "选择语言",
+    "languageLead": "之后随时可以在偏好设置里修改。"
   },
   "place": {
     "cloudAccount": "云端账号",
