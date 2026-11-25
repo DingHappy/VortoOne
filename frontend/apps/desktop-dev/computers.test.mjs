@@ -262,3 +262,29 @@ test("a task code and local consent are sent to the selected registration and cl
   await ui.element("paired-task-form").fire("submit");
   assert.deepEqual(consents, [[undefined, undefined], [true, undefined], [true, true]]);
 });
+
+test("a connect link only fills in the home and the code; pairing still waits for the person", async () => {
+  let link = { server: "https://home.example", code: "ABCDEFGH2345" };
+  const ui = await page(async (name, args) => {
+    if (name === "pair_link_take") { const taken = link; link = null; return taken; }
+    if (name === "computers_get") return { computers: [] };
+    if (name === "computer_pair_preview") {
+      assert.equal(args.origin, "https://home.example");
+      return { previewId: "linked-preview", origin: "https://home.example", homeInstanceId: HOME };
+    }
+    if (name === "computer_pair_confirm") {
+      assert.equal(args.code, "ABCDEFGH2345");
+      return;
+    }
+    throw new Error(`unexpected host command ${name}`);
+  });
+  assert.equal(ui.element("origin").value, "https://home.example");
+  assert.match(ui.element("status").textContent, /配对码会在核对后填好/);
+  assert.equal(ui.calls.filter((call) => call.name === "computer_pair_preview").length, 0);   // 不替人核对
+  ui.element("name").value = "My Mac";
+  await ui.element("preview-form").fire("submit");
+  assert.equal(ui.element("code").value, "ABCDEFGH2345");
+  assert.equal(ui.calls.filter((call) => call.name === "computer_pair_confirm").length, 0);   // 不替人确认
+  await ui.element("pair-form").fire("submit");
+  assert.equal(ui.calls.filter((call) => call.name === "computer_pair_confirm").length, 1);
+});
