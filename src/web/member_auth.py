@@ -157,6 +157,19 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/team"),
     ("GET", _ORG + r"/agents/[^/]+"),
     ("GET", _ORG + r"/agents/[^/]+/(?:browser(?:/handoff)?|desktop)"),
+    # 等连接电脑线的几样：成员读到的也是如实的「没有」（这台没有电脑、没有 GitHub、没有密钥申请）
+    ("GET", _ORG + r"/agents/[^/]+/[^/]+/control"),          # 路由只认 browser、desktop
+    ("GET", _ORG + r"/agents/[^/]+/desktop/picture"),
+    ("POST", _ORG + r"/agents/[^/]+/(?:browser/(?:open|stop|restart)|browser-profile/request)"),
+    ("PUT", _ORG + r"/agents/[^/]+/(?:browser|computer/target)"),
+    ("GET", _ORG + r"/github/repositories"),
+    ("GET", _ORG + r"/webhooks/[^/]+"),                      # 路由只认 github、sentry
+    ("GET", _ORG + r"/secret-requests/[^/]+"),
+    ("POST", _ORG + r"/secret-requests/[^/]+/(?:decline|deliver|vault)"),
+    ("POST", _ORG + r"/vault/connections(?:/[^/]+/sync)?"),
+    ("PATCH", _ORG + r"/vault/connections/[^/]+"),
+    ("DELETE", _ORG + r"/vault/connections/[^/]+"),
+    ("POST", r"/api/app/push/(?:devices(?:/forget)?|stale)"),
     ("GET", _ORG + r"/agents/[^/]+/member-action-levels"),
     ("PUT", _ORG + r"/agents/[^/]+/member-action-levels/[^/]+"),
     ("GET", _ORG + r"/agents/[^/]+/member-policy"),
