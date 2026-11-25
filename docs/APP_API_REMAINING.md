@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 500 个，剩 **131** 个：
-- **要做：60**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 504 个，剩 **127** 个：
+- **要做：56**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -65,7 +65,6 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 几处需要主人定的：
 - wiki 页面进 agent 上下文时，成员写的内容算不算可信
 - vault 里的密钥归谁、怎么撤销
-- 存储要不要接 S3（D06、D07 当时都没定）
 
 ## 清单
 
@@ -536,15 +535,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` | 改给的身份组、名额、有效期，地址不变。 |
 | ☑ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` | 再给 30 天。 |
 
-### org/storage（5 个，要做 3）
+### org/storage（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/storage` | `storage.get` | 显示当前服务器磁盘状态，仅所有者可读 |
-| ☐ | PUT | `ORG/storage` | `storage.save` | 当前仅用服务器磁盘，接口明确拒绝 |
-| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | PUT | `ORG/storage` | `storage.save` | 存储不接 S3（主人 2026-11-24 定）：文件存在服务器磁盘，如实 409 `storage.s3_unavailable`。 |
+| ☑ | POST | `ORG/storage/migrate` | `storage.migrate` | 同上，409 `storage.s3_unavailable`。 |
 | ☑ | GET | `ORG/storage/migration` | `storage.migration` | 本地磁盘无迁移任务时返回 null，仅所有者可读 |
-| ☐ | POST | `ORG/storage/test` | `storage.test` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | POST | `ORG/storage/test` | `storage.test` | 同上，409 `storage.s3_unavailable`。 |
 
 ### org/notifications（5 个，要做 0）
 
@@ -833,12 +832,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts-trash` | `artifacts.trash` | 列出所有者从 Drive 删除的助理页面，成员返回空。30 天到期即无法还原，打开回收站时清理到期文件。工作区维护占锁时回 `423 unavailable`。旧工具与旧 API 删除仍直接清除。 |
 | ☑ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` | 只有实际所有者可以清除回收站中的文件和所有历史版本。 |
 
-### org/notification-prefs（2 个，要做 1）
+### org/notification-prefs（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/notification-prefs` | `notifications.prefs` | 所有者可查看已配置的 APNs 手机目标和待审批、回复开关。设备按实际投递登记去重。 |
-| ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` | APNs 的待审批开关覆盖 iPhone 回合和既有后台专员待审批提醒，回复开关用于 iPhone 回合。台账、IM 和审批状态继续照常。其余类别返回 422，浏览器、桌面横幅及其它来源的分类投递待接。 |
+| ☑ | PUT | `ORG/notification-prefs` | `notifications.setPref` | 手机推送按类别开关：待审批、回复、任务（专员任务的完成、失败、提问）、例行工作。台账、IM 和审批状态照常。提到、话题、表情、电脑这里不推，开关不会生效，如实 422。 |
 
 ### org/questions（2 个，要做 0）
 

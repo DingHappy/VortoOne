@@ -35,7 +35,8 @@ _KEY = re.compile(r"[A-Za-z0-9+/]{86}[A-Za-z0-9+/=]{2}")   # 65 字节的 base64
 _NONCE_KEEP = 900                                           # 秒；大于签名时间窗的两倍
 PUSH_STALE = 30 * 86400                                     # App 每次启动都会重新登记；30 天没登记就不再推
 MAX_TRUSTED = 16
-PushCategory = Literal["waiting", "replies"]
+# 手机推送能开关的类别：这台服务器真会推的才在这里（主人 2026-11-24：tasks、routines 接上；提到、话题、表情、电脑这里不推）
+PushCategory = Literal["waiting", "replies", "tasks", "routines"]
 PUSH_CATEGORIES: tuple[PushCategory, ...] = get_args(PushCategory)
 
 
