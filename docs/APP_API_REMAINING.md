@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 497 个，剩 **134** 个：
-- **要做：63**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 500 个，剩 **131** 个：
+- **要做：60**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -702,13 +702,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/blocks/{x}/state` | `artifacts.blockState` | 同上，404。 |
 | ☑ | PUT | `ORG/blocks/{x}/state` | `artifacts.setBlockState` | 同上，404。 |
 
-### org/proposals（3 个，要做 3）
+### org/proposals（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/proposals/{x}/accept` | `proposals.accept` |  |
-| ☐ | POST | `ORG/proposals/{x}/ask` | `proposals.ask` |  |
-| ☐ | POST | `ORG/proposals/{x}/refuse` | `proposals.refuse` |  |
+| ☑ | POST | `ORG/proposals/{x}/accept` | `proposals.accept` | 团队背景的提议：agent 用 `propose_team_context` 交一份完整的新版本，所有者看前后对比，可以改几个字（`text`）再采纳。背景在提议之后改过的 409 `proposal.stale`。只有已认证的所有者能决定。 |
+| ☑ | POST | `ORG/proposals/{x}/ask` | `proposals.ask` | 让 agent 提这条的成员可以请所有者看看（记下 `askedAt`，所有者的列表本来就列着每条待决定的）。成员只看得到自己发起的。 |
+| ☑ | POST | `ORG/proposals/{x}/refuse` | `proposals.refuse` | 所有者拒绝，团队背景不变。读过外部内容的那一轮提的，`evidence` 里注明。 |
 
 ### org/actions（2 个，要做 0）
 
