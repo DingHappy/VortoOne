@@ -135,6 +135,9 @@ class CdpBrowser:
             args.append("--disable-sync")
         if self._headless:
             args.append("--headless=new")      # 浏览器自己的沙箱照开（97 上实测可用），不加 --no-sandbox
+            # 没有桌面的服务器上，Chrome 一联网就去等系统钥匙串（D-Bus），页面永远打不开（97 上实测）。
+            # 这里只用一次性的临时配置、从不存密码，改用本地存储不丢什么。
+            args.append("--password-store=basic")
         args.append("about:blank")
         try:
             self._proc = await asyncio.create_subprocess_exec(
