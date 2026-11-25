@@ -12,20 +12,20 @@
 
 VortoOne 原名 VortoCode（2026-11-08 改名，见 ADR-018）。日常入口是 Desktop 与手机；旧命令只在服务和作业迁移期间保留兼容。
 
-官网：[vortoone.com](https://vortoone.com)（筹备中）。
+官网：[vortoone.com](https://vortoone.com)（[English](https://vortoone.com/en/) · [下载](https://vortoone.com/download/) · [Docs](https://vortoone.com/docs/) · [更新日志](https://vortoone.com/changelog/)）。
 
 它记得你在忙什么，你离开电脑后它还在跟进。遇到大任务，它会组一个小组，分派给不同的 Agent 去做。
 你只和它一个说话。看它们干活。关键的事，你来拍板。
 
-[![Release](https://img.shields.io/github/v/release/DingHappy/VortoOne?label=release&color=1084fe)](https://github.com/DingHappy/VortoOne/releases/latest) ![macOS](https://img.shields.io/badge/macOS-Apple%20silicon-111111?logo=apple&logoColor=white) ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white) [![License](https://img.shields.io/badge/license-Apache%202.0-38d591)](LICENSE) ![PRs](https://img.shields.io/badge/PRs-welcome-38d591)
+[![Release](https://img.shields.io/github/v/release/DingHappy/VortoOne?label=release&color=1084fe)](https://github.com/DingHappy/VortoOne/releases/latest) ![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Ubuntu-desktop-111111) ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white) [![License](https://img.shields.io/badge/license-Apache%202.0-38d591)](LICENSE) ![PRs](https://img.shields.io/badge/PRs-welcome-38d591)
 
 <br>
 
-<a href="https://github.com/DingHappy/VortoOne/releases/latest">
-  <img src="https://img.shields.io/github/v/release/DingHappy/VortoOne?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20%E4%B8%8B%E8%BD%BD%20Mac%20%E7%89%88%EF%BC%88Apple%20%E8%8A%AF%E7%89%87%EF%BC%89&labelColor=070707&color=1084fe" alt="下载 VortoOne 公开稳定版（Apple 芯片）" height="40">
+<a href="https://vortoone.com/download/">
+  <img src="https://img.shields.io/github/v/release/DingHappy/VortoOne?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20%E4%B8%8B%E8%BD%BD%20VortoOne%20%E6%A1%8C%E9%9D%A2%E7%89%88&labelColor=070707&color=1084fe" alt="下载 VortoOne 公开稳定版（macOS / Windows / Ubuntu）" height="40">
 </a>
 
-<sub>公开稳定版 · 签名并经 Apple 公证的 .dmg · 支持应用内更新 · [全部版本](https://github.com/DingHappy/VortoOne/releases) · [上手指南](docs/GETTING_STARTED_DESKTOP.md)</sub>
+<sub>公开稳定版 v0.3.0 · 支持 Apple 芯片 Mac（已签名公证 DMG）、Windows x64（EXE）与 Ubuntu 24.04（DEB）· [官网下载](https://vortoone.com/download/) · [全部版本](https://github.com/DingHappy/VortoOne/releases) · [上手指南](docs/GETTING_STARTED_DESKTOP.md)</sub>
 
 </div>
 
@@ -166,19 +166,22 @@ flowchart LR
 
 ### 选择桌面版本
 
-截至 2026-11-17，两条桌面通道如下：
+截至 2026-11-23，两条桌面通道如下：
 
 | 通道 | 当前交付 | 安装与更新 |
 | --- | --- | --- |
-| 公开稳定版 | **VortoOne 0.2.64**，源码入口 `desktop/` | 从 [最新正式发布](https://github.com/DingHappy/VortoOne/releases/latest) 下载，支持应用内更新 |
-| 开发版 | **VortoOne Dev 0.3.0-dev.7**，新桌面与史莱姆界面 | 独立 DMG 手动覆盖安装；发布记录目前保留为草稿，普通访客看不到该安装包 |
+| 公开稳定版 | **VortoOne 0.3.0**（Apple 芯片 Mac / Windows x64 / Ubuntu 24.04 amd64，内置 Python 后端） | 从 [官网下载页](https://vortoone.com/download/) 或 [GitHub 最新发布](https://github.com/DingHappy/VortoOne/releases/latest) 下载；macOS 版提供国内阿里云 OSS 镜像 |
+| 开发版 | **VortoOne Dev**，独立开发通道 | 独立安装包手动覆盖安装；账号、聊天与运行数据按应用标识与稳定版隔离 |
 
-两个 App 可以并排安装，账号、聊天、模型配置和运行数据按应用标识分开。Dev 安装包内置后端，无需本机源码、Python、Node 或 Rust。Dev7 已完成签名、公证、独立启动和本机覆盖安装验收；公开稳定版没有切换到新界面。详情见 [桌面版本管理](frontend/DESKTOP_CHANNELS.md)。
+两个 App 可以并排安装，账号、聊天、模型配置和运行数据按应用标识分开。安装包内置后端，无需本机源码、Python、Node 或 Rust。详情见 [桌面版本管理](frontend/DESKTOP_CHANNELS.md)。
 
 ### 安装公开稳定版
 
-1. [下载](https://github.com/DingHappy/VortoOne/releases/latest) `VortoOne_<版本>_aarch64.dmg`，把 VortoOne 拖进「应用程序」。
-2. 打开后连接一个模型服务：OpenAI、DeepSeek、Kimi 等云端服务，或者 Ollama 这样的本机模型。
+1. 前往 [vortoone.com/download](https://vortoone.com/download/) 或 [GitHub Releases](https://github.com/DingHappy/VortoOne/releases/latest) 下载对应安装包：
+   - **macOS（Apple 芯片，macOS 13+）**：打开 `VortoOne_0.3.0_aarch64.dmg`，拖入「应用程序」。
+   - **Windows（x64）**：运行 `VortoOne_0.3.0_windows-x64.exe`（当前未签名，可先核对 `SHA256SUMS`）。
+   - **Ubuntu（24.04，amd64）**：运行 `sudo apt install ./VortoOne_0.3.0_ubuntu-amd64.deb`。
+2. 打开后按引导创建本机工作区（或连接独立服务），再连接一个模型服务：OpenAI、DeepSeek、Kimi 等云端服务，或者 Ollama / oMLX 本机模型。
 3. 开始聊天。想让它在你离开时也继续工作，再参照 [运维指南](docs/OPS.md) 配一台常驻主机。
 
 完整步骤见 [只用 Desktop 上手](docs/GETTING_STARTED_DESKTOP.md)。
