@@ -3441,7 +3441,6 @@ _EMPTY: Dict[str, Any] = {
     "/unread-tasks": {"tasks": []},
     "/machines/outages": {"outages": [], "targets": []},
     "/connectors": {"connections": []},
-    "/mail/accounts": {"accounts": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
@@ -3824,11 +3823,100 @@ async def vault_remove(org_id: str, item_id: str, request: Request):
 
 @router.get(_ORG + "/mail/providers")
 async def mail_providers(org_id: str, request: Request):
+    from src.workflow.members.mailboxes import PRESETS
     root = _root(org_id)
-    if _who(request, root) is None:
+    who = _who(request, root)
+    if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    # 组织的连接目录只公布能从这里添加的服务。旧 IMAP 插件的凭据属于服务的操作系统用户。
-    return {"composio": False, "imap": False, "presets": []}
+    # 团队邮箱只有所有者能接（主人 2026-11-24 定）；Gmail / Outlook（Composio）这里没有
+    return {"composio": False, "imap": who.is_owner, "presets": PRESETS if who.is_owner else []}
+
+
+async def _mail_call(org_id: str, request: Request, action, *, status: int = 200):
+    """团队邮箱：只给已认证的所有者。连接失败回 422，code 是界面认的 MailConnectError。"""
+    from src.plugins.mail import MailError
+    from src.workflow.members.mailboxes import MailboxError
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "团队邮箱只有已认证的所有者能管")
+    try:
+        result = await asyncio.to_thread(action, root)
+    except MailError as error:
+        return _error(422, error.code, str(error))
+    except MailboxError as error:
+        return _error(error.status, error.code, str(error))
+    except OSError:
+        return _error(503, "unavailable", "邮箱登记暂时读不出来")
+    if result is None:
+        return Response(status_code=204)
+    return JSONResponse(result, status_code=status, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/mail/accounts")
+async def mail_accounts(org_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"accounts": app_mail.accounts(root)})
+
+
+@router.post(_ORG + "/mail/accounts/imap")
+async def connect_mail_imap(org_id: str, body: Dict[str, Any], request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"account": app_mail.connect(root, body)})
+
+
+@router.post(_ORG + "/mail/accounts/composio")
+async def connect_mail_composio(org_id: str, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "团队邮箱只有已认证的所有者能管")
+    return _error(409, "mail.composio_unavailable", "这里没有 Gmail / Outlook 的一键连接：用 IMAP 和客户端专用密码接")
+
+
+@router.patch(_ORG + "/mail/accounts/{account_id}")
+async def update_mail_account(org_id: str, account_id: str, body: Dict[str, Any], request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"account": app_mail.update(root, account_id, body)})
+
+
+@router.delete(_ORG + "/mail/accounts/{account_id}", status_code=204)
+async def disconnect_mail_account(org_id: str, account_id: str, request: Request):
+    from src.workflow.members.mailboxes import Mailboxes
+    return await _mail_call(org_id, request, lambda root: Mailboxes(root).remove(account_id))
+
+
+@router.get(_ORG + "/mail/accounts/{account_id}/folders")
+async def mail_folders(org_id: str, account_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"folders": app_mail.folders(root, account_id)})
+
+
+@router.get(_ORG + "/mail/accounts/{account_id}/suggested-addresses")
+async def mail_suggested_addresses(org_id: str, account_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {
+        "addresses": app_mail.suggested_addresses(root, account_id)})
+
+
+def _mailbox_staff(root: str, agent_id: str) -> str:
+    from src.workflow.members.mailboxes import MailboxError
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        raise MailboxError(404, "not_found", "没有这个 agent（主助理用的是自己的邮件插件）")
+    return staff_id
+
+
+@router.get(_ORG + "/agents/{agent_id}/mail")
+async def agent_mail(org_id: str, agent_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {
+        "mailboxes": app_mail.agent_mailboxes(root, _mailbox_staff(root, agent_id))})
+
+
+@router.put(_ORG + "/agents/{agent_id}/mail/{account_id}")
+async def set_agent_mail(org_id: str, agent_id: str, account_id: str, body: Dict[str, Any], request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: app_mail.set_agent(
+        root, _mailbox_staff(root, agent_id), account_id, body))
 
 
 # ── 私人日历 ──────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 501 个，剩 **130** 个：
-- **要做：59**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 510 个，剩 **121** 个：
+- **要做：50**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -113,7 +113,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` | 没有项目副本，409 `mission.no_worktree`。 |
 | ☑ | POST | `ORG/missions/{x}/{x}` | `missions.control` | 仅所有者，`start/pause/resume/stop`。绑定的 agent 在话题里一步接一步做，只用团队安全工具、按外部内容处理话题；失败、被打断、没列计划、一次累计 10 步时暂停并说明，计划做完等收尾。agent 要先加进频道。 |
 
-### org/agents（35 个，要做 15）
+### org/agents（35 个，要做 13）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -139,8 +139,8 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PUT | `ORG/agents/{x}/group` | `agentGroups.move` | 分组就是部门，调整要经提议，回 409 |
 | ☑ | DELETE | `ORG/agents/{x}/holds/{x}` | `desktop.stopHold` | agent 在连接的电脑上开着的程序：这里没有，404（等连接电脑线）。 |
 | ☑ | GET | `ORG/agents/{x}/learned-skills` | `skills.learned` | agent 不自己写技能，是空的 |
-| ☐ | GET | `ORG/agents/{x}/mail` | `mail.agent` |  |
-| ☐ | PUT | `ORG/agents/{x}/mail/{x}` | `mail.setAgent` |  |
+| ☑ | GET | `ORG/agents/{x}/mail` | `mail.agent` | 这个 agent 在每个团队邮箱上的级别和规则（没授权是 none）。只给已认证的所有者；主助理用自己的邮件插件，404。 |
+| ☑ | PUT | `ORG/agents/{x}/mail/{x}` | `mail.setAgent` | read：搜索、读信、看文件夹；read_write 另外能放草稿（每次都要人确认）。规则里的文件夹、发件人、最近几天在工具里执行。发信的规则（收件人、不问就发）422 `mail.send_unavailable`，删信 422 `mail.delete_unavailable`。只在所有者自己发起的事里给 agent 这些工具（主人 2026-11-24 定）。 |
 | ☑ | GET | `ORG/agents/{x}/merge-repositories` | `repositories.merge` | 不经审批就合并的仓库：没有（空）。合并一律要人确认。 |
 | ☑ | PUT | `ORG/agents/{x}/merge-repositories` | `repositories.setMerge` | 只接受空列表，否则 409 `repositories.merge_needs_approval`：不开免审批合并。 |
 | ☑ | PUT | `ORG/agents/{x}/mission-command-approval` | `missions.setAgentDefault` | 只接受 `always`，和 Mission 自己的设置一致；其它 409。 |
@@ -417,7 +417,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/messages/{x}/reactions` | `chat.reactions` |  |
 | ☑ | POST | `ORG/messages/{x}/reactions` | `chat.react` |  |
 
-### org/mail（7 个，要做 7）
+### org/mail（7 个，要做 0）
 
 已定：邮件只读，保存草稿须用户确认，由用户在自己的邮件客户端发送。
 现有本机 IMAP 插件已支持这条流程。它使用操作系统用户的凭据，组织内的邮箱账户和授权仍待接入。
@@ -425,13 +425,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/mail/accounts/composio` | `mail.connectComposio` |  |
-| ☐ | POST | `ORG/mail/accounts/imap` | `mail.connectImap` |  |
-| ☐ | DELETE | `ORG/mail/accounts/{x}` | `mail.disconnect` |  |
-| ☐ | PATCH | `ORG/mail/accounts/{x}` | `mail.update` |  |
-| ☐ | GET | `ORG/mail/accounts/{x}/folders` | `mail.folders` |  |
-| ☐ | GET | `ORG/mail/accounts/{x}/suggested-addresses` | `mail.suggestedAddresses` |  |
-| ☐ | GET | `ORG/mail/providers` | `mail.providers` | 已接能力查询，两种连接方式暂不可用；组织 IMAP 接通后再开放 |
+| ☑ | POST | `ORG/mail/accounts/composio` | `mail.connectComposio` | 这里没有 Gmail / Outlook 的一键连接：409 `mail.composio_unavailable`。 |
+| ☑ | POST | `ORG/mail/accounts/imap` | `mail.connectImap` | 所有者接团队 IMAP 邮箱（预设 iCloud、QQ、163、126、阿里、Yahoo，或自填服务器）：先真登录一次、打开收件箱，连不上 422 带 `auth` / `imap_unreachable` / `tls` / `blocked_host`，不留记录。授权码只存在服务器上，从不回给界面。 |
+| ☑ | DELETE | `ORG/mail/accounts/{x}` | `mail.disconnect` | 断开邮箱，授权码和给 agent 的授权一起删掉。 |
+| ☑ | PATCH | `ORG/mail/accounts/{x}` | `mail.update` | 名字、动作开关、别名、默认发件地址；换授权码先测，通过了才换（恢复「要重新连接」）。 |
+| ☑ | GET | `ORG/mail/accounts/{x}/folders` | `mail.folders` | IMAP 的文件夹（名字按 UTF-7 解开，角色按服务器标记）。登录失败就把邮箱标成要重新连接。 |
+| ☑ | GET | `ORG/mail/accounts/{x}/suggested-addresses` | `mail.suggestedAddresses` | 已发送文件夹最近 200 封用过的发件地址（不含主地址和已有别名），只读打开。 |
+| ☑ | GET | `ORG/mail/providers` | `mail.providers` | 所有者：IMAP 可用、给预设；Composio 没有。成员：都不可用。 |
 
 ### org/browser-profiles（7 个，要做 0）
 

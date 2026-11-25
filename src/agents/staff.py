@@ -309,6 +309,10 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
         # 带着外部内容叫起来，不给它
         from src.agents.tools.context_proposal import build_context_proposal_tool
         options['extra_tools'] = (*options.get('extra_tools', ()), build_context_proposal_tool(root, task))
+    if dispatch.get('source') == 'staff':
+        # 团队邮箱：只读 + 草稿，只在所有者自己发起的事里给（主人 2026-11-24 定）；没授权就没有
+        from src.agents.tools.team_mail import build_team_mail_tools
+        options['extra_tools'] = (*options.get('extra_tools', ()), *build_team_mail_tools(root, task, member['id']))
     if _WIKI_TOOLS is not None and dispatch.get('source') == 'staff':
         # 读开放给它的 Wiki 页面：内容出自成员，按资料读（主人 2026-11-24 定）
         options['extra_tools'] = (*options.get('extra_tools', ()), *_WIKI_TOOLS(root, task, member['id']))

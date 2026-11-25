@@ -360,3 +360,44 @@ async def test_session_draft_tool_fails_closed_without_a_human(home, monkeypatch
 
 def mail_plugin():
     return next(p for p in plugins.available_plugins() if p.name == "mail")
+
+
+# —— 团队邮箱用到的（2026-11-24）：按传入的邮箱登录、列文件夹、已发送里用过的地址、连接失败的类别 ——
+
+def test_team_mailbox_helpers_log_in_with_the_given_account(monkeypatch):
+    fake = FakeIMAP({"1": (message("Sales <sales@corp.example>", "报价", NOW), True),
+                     "2": (message("me@qq.com", "自己", NOW), True)})
+    fake.folders = [b'(\\HasNoChildren) "/" "INBOX"', b'(\\HasNoChildren \\Drafts) "/" "&g0l6P3ux-"',
+                    b'(\\HasNoChildren \\Sent) "/" "Sent Messages"', b'(\\Noselect) "/" "[Gmail]"']
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", lambda host, port, **kw: fake)
+    monkeypatch.setattr("src.agents.web_fetch._host_is_safe", lambda host: True)
+    account = mail.Account("me@qq.com", CODE, "imap.qq.com")
+    mail.verify(account)
+    assert ("LOGIN", "me@qq.com") in fake.commands and fake.commands[-1] == ("LOGOUT",)
+    assert mail.list_folders(account) == [{"id": "INBOX", "name": "收件箱", "role": "inbox"},
+                                          {"id": "&g0l6P3ux-", "name": "草稿箱", "role": "drafts"},
+                                          {"id": "Sent Messages", "name": "Sent Messages", "role": "sent"}]
+    assert mail.sent_addresses(account) == ["sales@corp.example"]                 # 不含登录名本身
+    assert ("SELECT", '"Sent Messages"', True) in fake.commands                   # 只读打开
+    mail.list_messages(account=account, folder="Reports", now=NOW)
+    assert ("SELECT", '"Reports"', True) in fake.commands
+
+
+def test_connection_failures_carry_a_kind(monkeypatch):
+    account = mail.Account("me@qq.com", "wrong", "imap.qq.com")
+    monkeypatch.setattr("src.agents.web_fetch._host_is_safe", lambda host: True)
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", lambda *a, **kw: FakeIMAP({}))
+    with pytest.raises(mail.MailError) as failed:
+        mail.verify(account)
+    assert failed.value.code == "auth" and "wrong" not in str(failed.value)
+
+    def unreachable(*a, **kw):
+        raise OSError("no route")
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", unreachable)
+    with pytest.raises(mail.MailError) as failed:
+        mail.verify(account)
+    assert failed.value.code == "imap_unreachable"
+    monkeypatch.setattr("src.agents.web_fetch._host_is_safe", lambda host: False)
+    with pytest.raises(mail.MailError) as failed:
+        mail.verify(mail.Account("me@qq.com", CODE, "10.0.0.5"))
+    assert failed.value.code == "blocked_host"

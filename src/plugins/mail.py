@@ -54,7 +54,11 @@ _HOSTS = {
 
 
 class MailError(Exception):
-    """说明里不带授权码。"""
+    """说明里不带授权码。code：连接失败的类别（auth、imap_unreachable、tls、blocked_host、unknown），界面据此说人话。"""
+
+    def __init__(self, message: str = "", code: str = "unknown"):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -114,20 +118,22 @@ def _account() -> Account:
     return parse_credential(secret)
 
 
-def _connect(account: Account) -> imaplib.IMAP4:
+def _connect(account: Account, folder: str = "INBOX") -> imaplib.IMAP4:
     from src.agents.web_fetch import host_is_public
     if not host_is_public(account.host):
-        raise MailError("邮箱服务器不是公网地址")
+        raise MailError("邮箱服务器不是公网地址", "blocked_host")
     try:
         client = imaplib.IMAP4_SSL(account.host, account.port, ssl_context=ssl.create_default_context(),
                                    timeout=_TIMEOUT)
+    except ssl.SSLError as error:
+        raise MailError(f"和邮箱服务器的加密连接没建起来（{type(error).__name__}）", "tls") from None
     except Exception as error:  # noqa: BLE001 —— 只留类型名
-        raise MailError(f"连不上邮箱服务器（{type(error).__name__}）") from None
+        raise MailError(f"连不上邮箱服务器（{type(error).__name__}）", "imap_unreachable") from None
     try:
         client.login(account.user, account.password)
     except imaplib.IMAP4.error:
         _close(client)
-        raise MailError("登录失败：检查邮箱地址和授权码，并确认邮箱设置里开了 IMAP") from None
+        raise MailError("登录失败：检查邮箱地址和授权码，并确认邮箱设置里开了 IMAP", "auth") from None
     except Exception as error:  # noqa: BLE001
         _close(client)
         raise MailError(f"登录时出错（{type(error).__name__}）") from None
@@ -139,12 +145,12 @@ def _connect(account: Account) -> imaplib.IMAP4:
         except Exception:  # noqa: BLE001
             pass
     try:
-        status, _ = client.select("INBOX", readonly=True)        # EXAMINE：只读
+        status, _ = client.select(folder if folder == "INBOX" else _quoted(folder), readonly=True)   # EXAMINE：只读
     except Exception:  # noqa: BLE001
         status = "NO"
     if status != "OK":
         _close(client)
-        raise MailError("打不开收件箱")
+        raise MailError("打不开收件箱" if folder == "INBOX" else "打不开这个文件夹")
     return client
 
 
@@ -234,9 +240,10 @@ def _headers(client: Any, since: datetime, unseen: bool = False) -> List[Dict[st
 
 
 def list_messages(query: str = "", days: int = 7, unread_only: bool = False, limit: int = 15,
-                  now: Optional[datetime] = None) -> Dict[str, Any]:
+                  now: Optional[datetime] = None, *, account: Optional[Account] = None,
+                  folder: str = "INBOX") -> Dict[str, Any]:
     now = now or datetime.now().astimezone()
-    client = _connect(_account())
+    client = _connect(account or _account(), folder)
     try:
         items = _headers(client, now - timedelta(days=days))
     finally:
@@ -269,10 +276,10 @@ def _text_of(message: email.message.Message) -> str:
     return re.sub(r"\n{3,}", "\n\n", plain.replace("\r\n", "\n")).strip()
 
 
-def read_message(uid: str) -> Dict[str, Any]:
+def read_message(uid: str, *, account: Optional[Account] = None, folder: str = "INBOX") -> Dict[str, Any]:
     if not re.fullmatch(r"\d{1,12}", str(uid or "")):
         raise MailError("uid 要用 mail_list 给的数字")
-    client = _connect(_account())
+    client = _connect(account or _account(), folder)
     try:
         status, data = client.uid("FETCH", uid, "(RFC822.SIZE)")
         size = re.search(rb"RFC822\.SIZE (\d+)", data[0] if data and isinstance(data[0], bytes) else b"")
@@ -290,7 +297,8 @@ def read_message(uid: str) -> Dict[str, Any]:
     attachments = [_header(part.get_filename())[:80] for part in message.walk() if part.get_filename()]
     text = _text_of(message)
     date = _date(str(message.get("Date", "")))
-    return {"from": _header(str(message.get("From", ""))), "to": _header(str(message.get("To", "")))[:200],
+    return {"from": _header(str(message.get("From", ""))), "fromAddress": parseaddr(_header(str(message.get("From", ""))))[1],
+            "sent": date.isoformat() if date else "", "to": _header(str(message.get("To", "")))[:200],
             "subject": _header(str(message.get("Subject", ""))), "date": f"{date:%Y-%m-%d %H:%M}" if date else "",
             "attachments": attachments[:10],
             "body": text[:_MAX_TEXT] + ("\n…(正文已截断)" if len(text) > _MAX_TEXT else "")}
@@ -360,7 +368,100 @@ def _drafts_folder(client: Any) -> str:
     raise MailError("找不到草稿箱")
 
 
-def prepare_draft(to: str, subject: str, body: str, reply_uid: str = "") -> Dict[str, Any]:
+_ROLES = {"\\sent": "sent", "\\drafts": "drafts", "\\trash": "trash", "\\archive": "archive",
+          "\\junk": "junk", "\\all": "all", "\\flagged": "flagged"}
+
+
+def _utf7(name: str) -> str:
+    """IMAP 的文件夹名是「改过的 UTF-7」（RFC 3501）：&...- 之间是 base64 的 UTF-16。读不出来原样给。"""
+    import base64
+    out, index = [], 0
+    while index < len(name):
+        if name[index] != "&":
+            out.append(name[index])
+            index += 1
+            continue
+        end = name.find("-", index)
+        if end < 0:
+            return name
+        chunk = name[index + 1:end]
+        if not chunk:
+            out.append("&")
+        else:
+            try:
+                padded = chunk.replace(",", "/") + "=" * (-len(chunk) % 4)
+                out.append(base64.b64decode(padded).decode("utf-16-be"))
+            except (ValueError, UnicodeError):
+                return name
+        index = end + 1
+    return "".join(out)
+
+
+def _folder_lines(client: Any) -> List[Tuple[str, str]]:
+    status, data = client.list()
+    if status != "OK":
+        raise MailError("列不出邮箱文件夹")
+    found = []
+    for line in data or []:
+        match = _LIST_LINE.match(line) if isinstance(line, bytes) else None
+        if not match:
+            continue
+        name = match.group(2).strip().decode("utf-8", "replace")
+        if name.startswith('"') and name.endswith('"'):
+            name = re.sub(r'\\(.)', r"\1", name[1:-1])
+        found.append((name, match.group(1).decode("ascii", "replace").lower()))
+    return found
+
+
+def list_folders(account: Account) -> List[Dict[str, str]]:
+    """文件夹：id 是服务器上的原名（读信时原样给回来），name 是读得懂的名字，role 来自服务器标记（RFC 6154）。"""
+    client = _connect(account)
+    try:
+        lines = _folder_lines(client)
+    finally:
+        _close(client)
+    out = []
+    for name, flags in lines:
+        if "\\noselect" in flags or "\\nonexistent" in flags:
+            continue
+        role = "inbox" if name.upper() == "INBOX" else next((r for flag, r in _ROLES.items() if flag in flags), None)
+        out.append({"id": name, "name": "收件箱" if role == "inbox" else _utf7(name), **({"role": role} if role else {})})
+    return out[:200]
+
+
+def verify(account: Account) -> None:
+    """登录一次、打开收件箱再退出：连得上才保存。"""
+    _close(_connect(account))
+
+
+def sent_addresses(account: Account, limit: int = 200) -> List[str]:
+    """已发送文件夹里最近这些信用过的发件地址（不含登录名本身）。"""
+    client = _connect(account)
+    try:
+        sent = next((name for name, flags in _folder_lines(client) if "\\sent" in flags), None)
+        if sent is None:
+            return []
+        status, _ = client.select(_quoted(sent), readonly=True)
+        if status != "OK":
+            return []
+        status, data = client.uid("SEARCH", None, "ALL")
+        uids = (data[0] or b"").split()[-limit:] if status == "OK" and data else []
+        if not uids:
+            return []
+        status, data = client.uid("FETCH", b",".join(uids), "(BODY.PEEK[HEADER.FIELDS (FROM)])")
+    finally:
+        _close(client)
+    seen: Dict[str, None] = {}
+    for part in data or []:
+        if isinstance(part, tuple) and len(part) > 1:
+            address = parseaddr(_header(email.message_from_bytes(part[1]).get("From", "")))[1].lower()
+            if _ADDRESS.fullmatch(address) and address != account.user.lower():
+                seen[address] = None
+    return list(seen)[:20]
+
+
+def prepare_draft(to: str, subject: str, body: str, reply_uid: str = "", *, account: Optional[Account] = None,
+                  folder: str = "INBOX") -> Dict[str, Any]:
     """整理一封草稿（还不存）：回复时从原信补收件人、主题和会话头。"""
     body = str(body or "").strip()
     if not body:
@@ -372,7 +473,7 @@ def prepare_draft(to: str, subject: str, body: str, reply_uid: str = "") -> Dict
     if reply_uid:
         if not re.fullmatch(r"\d{1,12}", str(reply_uid)):
             raise MailError("reply_uid 要用 mail_list 给的数字")
-        client = _connect(_account())
+        client = _connect(account or _account(), folder)
         try:
             status, data = client.uid("FETCH", str(reply_uid),
                                       "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID REFERENCES SUBJECT FROM REPLY-TO)])")
@@ -403,11 +504,11 @@ def draft_preview(draft: Dict[str, Any]) -> str:
             f"收件人：{', '.join(draft['to'])}\n主题：{draft['subject']}\n正文：\n{body}")
 
 
-def save_draft(draft: Dict[str, Any]) -> str:
-    """把确认过的草稿放进草稿箱，返回草稿箱名字。"""
-    account = _account()
+def save_draft(draft: Dict[str, Any], *, account: Optional[Account] = None, sender: str = "") -> str:
+    """把确认过的草稿放进草稿箱，返回草稿箱名字。sender：发件地址（团队邮箱的别名），默认登录名。"""
+    account = account or _account()
     message = EmailMessage()
-    message["From"] = account.user
+    message["From"] = sender or account.user
     message["To"] = ", ".join(draft["to"])
     message["Subject"] = draft["subject"]
     message["Date"] = formatdate(localtime=True)
