@@ -284,7 +284,6 @@ def test_an_upload_needs_an_owner_with_bearer_or_same_origin_cookie(home):
     [
         (_files("image.svg", "<svg/>", "image/svg+xml"), {}, 415),
         (_files("notes.txt", "<p>text</p>", "text/html"), {}, 415),
-        (_files("payload.pdf", "test", "application/pdf"), {}, 415),
         (_files("notes.txt", b"\xff", "text/plain"), {}, 415),
         (_files("notes.txt", b"hello\x00", "text/plain"), {}, 400),
         (_files("../notes.txt", b"plain", "text/plain"), {}, 400),
@@ -351,3 +350,38 @@ def test_busy_workspace_refuses_upload_and_delete_without_changing_artifacts(hom
     assert owner.post(f"{path}/files", files=_files("next.html")).status_code == 201
     assert owner.delete(saved_path).status_code == 204
     assert owner.get(saved_path).status_code == 404
+
+
+@pytest.mark.parametrize(("name", "mime", "stored"), [
+    ("报价.pdf", "application/pdf", "application/pdf"),
+    ("table.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ("bundle.zip", "text/html", "application/octet-stream"),           # 冒充成网页的：记成只能下载
+    ("notes.bin", "text/plain", "application/octet-stream"),           # 冒充成文本的：不当成可预览、可改的
+    ("photo.webp", "image/webp", "application/octet-stream"),
+    ("letter.rtf", "text/rtf", "application/octet-stream"),
+    ("data.xml", "application/xml", "application/octet-stream"),
+])
+def test_other_formats_are_kept_as_files_you_can_only_download(home, name, mime, stored):
+    # 2026-11-24：通用文件上传接上（接 Codex 半成品）。原样保存，只给附件下载，不预览、不改
+    owner, path = home["owner"], f"{home['base']}/artifacts"
+    data = b"%PDF-1.7\n\x00\xff binary"
+    made = owner.post(f"{path}/files", files=_files(name, data, mime))
+    assert made.status_code == 201, made.text
+    detail = made.json()
+    assert detail["content"]["contentType"] == stored and detail["content"]["size"] == len(data)
+    assert "text" not in detail["content"] and detail["versioned"] is False and detail["canEdit"] is False
+    raw = owner.get(f"{path}/{detail['id']}/file")
+    assert raw.content == data and raw.headers["content-type"] == "application/octet-stream"
+    assert raw.headers["content-disposition"].startswith("attachment;")
+    assert raw.headers["content-security-policy"] == "sandbox; default-src 'none'"
+    assert raw.headers["x-content-type-options"] == "nosniff"
+    again = owner.post(f"{path}/{detail['id']}/files", files=_files(name, data, mime))
+    assert again.status_code == 415                                     # 不能追加版本
+
+
+def test_an_empty_or_misplaced_file_is_still_refused(home):
+    owner, path = home["owner"], f"{home['base']}/artifacts/files"
+    assert owner.post(path, files=_files("empty.pdf", b"", "application/pdf")).status_code == 400
+    assert owner.post(path, files=_files("doc.pdf", b"x", "application/pdf"), data={"channelId": "c"}).status_code == 422
+    assert owner.get(f"{home['base']}/artifacts").json()["artifacts"] == []

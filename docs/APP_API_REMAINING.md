@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 510 个，剩 **121** 个：
-- **要做：50**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 515 个，剩 **116** 个：
+- **要做：45**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -64,7 +64,6 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 几处需要主人定的：
 - vault 里的密钥归谁、怎么撤销
-- 存储要不要接 S3（D06、D07 当时都没定）
 
 ## 清单
 
@@ -286,12 +285,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 工作区最多保留 8,016 条自选用户名登记，包含已离开的成员。已登记的本人用户名和默认用户名仍可选用。保存个人资料与登记智能体共用进程内事务锁，同一个工作区由持有运行租约的一个后端进程提供服务。
 
-### org/artifacts（11 个，要做 1）
+### org/artifacts（11 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/artifacts` | `artifacts.create` | 所有者可通过 JSON 创建私有文档、表格和 HTML，与 Drive 上传使用同一私有存储。其它种类回 415，附到频道回 422。 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG。小文本以纯文本预览，图片最长边 12000 像素且总像素最多 4000 万。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
+| ☑ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传。UTF-8 的 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG 照旧可预览（文本可追加版本）；别的格式（PDF、Office 文档、压缩包……）原样保存，只能按附件下载，不预览、不改，记下的类型不会是文本、图片或网页（接 Codex 半成品）。挂到频道或话题如实 422。 |
 | ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者可下载 HTML、已有历史版本和私有文件原件。 |
 | ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者可读取 HTML、历史版本和私有文件原件。私有文件核对存储的 SHA-256。 |
 | ☑ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` | 所有者可为私有 TXT、Markdown、CSV、JSON 追加同格式文件及可选备注。原版本可单独预览或下载，回收和还原保留历史。其它制品或格式返回 415。 |
@@ -535,15 +534,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` | 改给的身份组、名额、有效期，地址不变。 |
 | ☑ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` | 再给 30 天。 |
 
-### org/storage（5 个，要做 3）
+### org/storage（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/storage` | `storage.get` | 显示当前服务器磁盘状态，仅所有者可读 |
-| ☐ | PUT | `ORG/storage` | `storage.save` | 当前仅用服务器磁盘，接口明确拒绝 |
-| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | PUT | `ORG/storage` | `storage.save` | 存储不接 S3（主人 2026-11-24 定）：文件存在服务器磁盘，如实 409 `storage.s3_unavailable`。 |
+| ☑ | POST | `ORG/storage/migrate` | `storage.migrate` | 同上，409 `storage.s3_unavailable`。 |
 | ☑ | GET | `ORG/storage/migration` | `storage.migration` | 本地磁盘无迁移任务时返回 null，仅所有者可读 |
-| ☐ | POST | `ORG/storage/test` | `storage.test` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | POST | `ORG/storage/test` | `storage.test` | 同上，409 `storage.s3_unavailable`。 |
 
 ### org/notifications（5 个，要做 0）
 
@@ -832,12 +831,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts-trash` | `artifacts.trash` | 列出所有者从 Drive 删除的助理页面，成员返回空。30 天到期即无法还原，打开回收站时清理到期文件。工作区维护占锁时回 `423 unavailable`。旧工具与旧 API 删除仍直接清除。 |
 | ☑ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` | 只有实际所有者可以清除回收站中的文件和所有历史版本。 |
 
-### org/notification-prefs（2 个，要做 1）
+### org/notification-prefs（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/notification-prefs` | `notifications.prefs` | 所有者可查看已配置的 APNs 手机目标和待审批、回复开关。设备按实际投递登记去重。 |
-| ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` | APNs 的待审批开关覆盖 iPhone 回合和既有后台专员待审批提醒，回复开关用于 iPhone 回合。台账、IM 和审批状态继续照常。其余类别返回 422，浏览器、桌面横幅及其它来源的分类投递待接。 |
+| ☑ | PUT | `ORG/notification-prefs` | `notifications.setPref` | 手机推送按类别开关：待审批、回复、任务（专员任务的完成、失败、提问）、例行工作。台账、IM 和审批状态照常。提到、话题、表情、电脑这里不推，开关不会生效，如实 422。 |
 
 ### org/questions（2 个，要做 0）
 

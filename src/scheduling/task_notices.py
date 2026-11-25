@@ -209,8 +209,10 @@ def notify_transition(root: str, task: Any, *, notify: Optional[Notify] = None) 
         approval = task.collaboration.get('approval') or {}
         # The approval record identifies an actual pending action. Generic failures and quota holds stay unclassified.
         approval_wait = task.status == 'blocked' and approval.get('status') == 'pending'
+        # 手机推送按类别开关：等批准的归「待审批」，例行工作的归「例行工作」，其余的归「任务」
+        routine = bool(task.collaboration.get('dispatch', {}).get('routine'))
         notify = make_notifier(root, source='cron:' + legacy['name'] if legacy else 'assistant',
-                               mobile_category='waiting' if approval_wait else None)
+                               mobile_category='waiting' if approval_wait else 'routines' if routine else 'tasks')
 
     async def deliver() -> None:
         try:
