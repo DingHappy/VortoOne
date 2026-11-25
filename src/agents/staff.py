@@ -33,6 +33,15 @@ def set_full_toolset(builder):
     _FULL_TOOLSET = builder
 
 
+# 读 Wiki 的工具由 web 层装配（页面开放给哪些 agent 用的是界面上的 agent id）。没登记就没有这两样。
+_WIKI_TOOLS = None
+
+
+def set_wiki_tools(builder):
+    global _WIKI_TOOLS
+    _WIKI_TOOLS = builder
+
+
 # 完整能力里不给的几样：agent 再派活或开小组会绕成派活链，主助理批自己提议的规矩也跟着乱；
 # 切换工作区要人在 Desktop 上点，后台任务里没人点。
 _FULL_EXCLUDED_PREFIXES = ('staff_', 'team_', 'routine_')
@@ -300,6 +309,9 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
         # 带着外部内容叫起来，不给它
         from src.agents.tools.context_proposal import build_context_proposal_tool
         options['extra_tools'] = (*options.get('extra_tools', ()), build_context_proposal_tool(root, task))
+    if _WIKI_TOOLS is not None and dispatch.get('source') == 'staff':
+        # 读开放给它的 Wiki 页面：内容出自成员，按资料读（主人 2026-11-24 定）
+        options['extra_tools'] = (*options.get('extra_tools', ()), *_WIKI_TOOLS(root, task, member['id']))
     if downgraded:
         options.pop('confirm_action', None)
         options['unattended'] = True
