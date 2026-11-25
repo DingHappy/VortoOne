@@ -14,7 +14,9 @@ from tests.unit.test_mobile_push import _key_pair
 from tests.unit.test_task_notices import _settle, _task
 
 
-_DEFAULT_CATEGORIES = [{"id": "waiting", "on": True}, {"id": "replies", "on": True}]
+_DEFAULT_CATEGORIES = [{"id": "waiting", "on": True}, {"id": "replies", "on": True},
+                       {"id": "tasks", "on": True}, {"id": "routines", "on": True}]
+_ALL_ON = {"waiting": True, "replies": True, "tasks": True, "routines": True}
 
 
 def _register(store, name, token):
@@ -41,7 +43,7 @@ def test_only_owner_sees_configured_active_push_destinations(home, monkeypatch):
     monkeypatch.setattr(mobile_push, "configured", lambda: False)
     assert owner.get(path).json() == {"categories": [], "phones": 0}
     assert owner.put(path, json={"category": "replies", "on": False}).status_code == 409
-    assert store.push_preferences() == {"waiting": True, "replies": True}
+    assert store.push_preferences() == _ALL_ON
     monkeypatch.setattr(mobile_push, "configured", lambda: True)
     configured = owner.get(path)
     assert configured.status_code == 200
@@ -50,7 +52,7 @@ def test_only_owner_sees_configured_active_push_destinations(home, monkeypatch):
     assert member.get(path).json() == {"categories": [], "phones": 0}
 
     assert member.put(path, json={"category": "replies", "on": False}).status_code == 403
-    assert store.push_preferences() == {"waiting": True, "replies": True}
+    assert store.push_preferences() == _ALL_ON
     store.revoke(second)
     assert owner.get(path).json() == {"categories": _DEFAULT_CATEGORIES, "phones": 1}
 
@@ -98,7 +100,7 @@ def test_corrupt_push_store_does_not_report_an_owner_phone_count(home, monkeypat
 
 @pytest.mark.parametrize("body", [
     {"category": "mentions", "on": False},
-    {"category": "tasks", "on": False},
+    {"category": "computers", "on": False},               # 这里不推「电脑」，开关不会生效：如实拒绝
     {"category": "replies", "on": "false"},
     {"category": "waiting", "on": False, "accountId": "another-account"},
 ])
@@ -125,7 +127,7 @@ async def test_saved_preferences_control_only_their_mobile_pushes(home, monkeypa
     changed = owner.put(path, json={"category": "waiting", "on": False})
     assert changed.status_code == 200
     assert changed.headers["cache-control"] == "no-store"
-    assert changed.json() == {"categories": [{"id": "waiting", "on": False}, _DEFAULT_CATEGORIES[1]], "phones": 1}
+    assert changed.json() == {"categories": [{"id": "waiting", "on": False}, *_DEFAULT_CATEGORIES[1:]], "phones": 1}
     assert owner.get(path).json() == changed.json()
     assert not await mobile_push.push_owner(root, "waiting disabled", category="waiting")
     assert await mobile_push.push_owner(root, "reply", category="replies")
@@ -134,7 +136,7 @@ async def test_saved_preferences_control_only_their_mobile_pushes(home, monkeypa
     assert owner.put(path, json={"category": "replies", "on": False}).status_code == 200
     restored = owner.put(path, json={"category": "waiting", "on": True})
     assert restored.status_code == 200
-    assert MobileDevices(root).push_preferences() == {"waiting": True, "replies": False}
+    assert MobileDevices(root).push_preferences() == {**_ALL_ON, "replies": False}
     assert not await mobile_push.push_owner(root, "replies disabled", category="replies")
     assert await mobile_push.push_owner(root, "approval", category="waiting")
     assert sent == [("ab" * 32, text) for text in ("reply", "existing scheduled notice", "approval")]
@@ -187,3 +189,45 @@ async def test_background_staff_approval_obeys_waiting_preference_without_suppre
     assert task_notices.notify_transition(root, allowed)
     await _settle()
     assert phones == [ordinary_text, task_notices.message(allowed)]
+
+
+async def test_task_and_routine_pushes_follow_their_own_switches(home, monkeypatch):
+    # 2026-11-24：任务和例行工作的状态推送按各自的开关；IM 和通知台账照常
+    monkeypatch.setattr(mobile_push, "configured", lambda: True)
+    monkeypatch.setattr(assistant_watch, "watch_enabled", lambda: True)
+    monkeypatch.setattr(notices, "in_quiet_hours", lambda now=None: False)
+    monkeypatch.setattr(notices, "_dedup_window_seconds", lambda: 0)
+    phones, im = [], []
+
+    async def send(registration, text):
+        phones.append(text)
+        return "ok"
+
+    async def notify_owner(text, **_kwargs):
+        im.append(text)
+        return True
+    monkeypatch.setattr(mobile_push, "send", send)
+    monkeypatch.setattr(im_runtime, "notify_owner", notify_owner)
+    root, owner, path = home["root"], home["owner"], home["base"] + "/notification-prefs"
+    _register(MobileDevices(root), "Phone", "ab" * 32)
+
+    assert owner.put(path, json={"category": "tasks", "on": False}).status_code == 200
+    task = _task("done", round=1)
+    routine = _task("done", round=1, dispatch={"source": "staff", "routine": {"id": "routine-a", "revision": 1}})
+    routine.id = "task-2"
+    for item in (task, routine):
+        assert task_notices.notify_transition(root, item)
+        await _settle()
+    assert phones == [task_notices.message(routine)]                     # 任务的不推，例行工作的照推
+    assert len(im) == 2 and len(notices.load_notices(root)) == 2           # IM 和台账照常
+
+    assert owner.put(path, json={"category": "tasks", "on": True}).status_code == 200
+    assert owner.put(path, json={"category": "routines", "on": False}).status_code == 200
+    later = _task("failed", round=1)
+    later.id = "task-3"
+    later_routine = _task("failed", round=1, dispatch={"source": "staff", "routine": {"id": "routine-b", "revision": 1}})
+    later_routine.id = "task-4"
+    for item in (later, later_routine):
+        assert task_notices.notify_transition(root, item)
+        await _settle()
+    assert phones == [task_notices.message(routine), task_notices.message(later)]
