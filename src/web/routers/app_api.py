@@ -3615,6 +3615,60 @@ async def agent_desktop_picture(org_id: str, agent_id: str, request: Request):
     return refused or _error(404, "desktop.no_machine", _NO_MACHINE)
 
 
+# 浏览器档案、人工接手、AI 订阅账号：都在连接的电脑上，现在没有
+@router.get(_ORG + "/browser-profiles")
+async def browser_profiles(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _no_store({"profiles": []})
+
+
+@router.post(_ORG + "/browser-profiles")
+async def create_browser_profile(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or _error(409, "computer.unavailable", "共享的浏览器档案要在连接的电脑上，现在还没有")
+
+
+@router.patch(_ORG + "/browser-profiles/{profile_id}")
+@router.delete(_ORG + "/browser-profiles/{profile_id}")
+@router.post(_ORG + "/browser-profiles/{profile_id}/takeover")
+@router.post(_ORG + "/browser-profiles/{profile_id}/handback")
+@router.post(_ORG + "/browser-profiles/{profile_id}/open")
+@router.get(_ORG + "/browser/handoffs/{handoff_id}")
+@router.post(_ORG + "/browser/handoffs/{handoff_id}/cancel")
+@router.post(_ORG + "/browser/handoffs/{handoff_id}/control")
+@router.post(_ORG + "/browser/handoffs/{handoff_id}/done")
+@router.post(_ORG + "/browser/handoffs/{handoff_id}/failed")
+async def browser_record_missing(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    # 服务器上的浏览器没有屏幕，没人能接手；连接的电脑上的浏览器还没有
+    return refused or _error(404, "not_found", "没有这个浏览器档案或接手请求")
+
+
+@router.get(_ORG + "/ai-accounts")
+async def ai_accounts(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _no_store({"accounts": [], "computers": []})
+
+
+@router.post(_ORG + "/ai-accounts/refresh", status_code=204)
+async def refresh_ai_accounts(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or Response(status_code=204)            # 没有订阅账号，没有要刷新的
+
+
+@router.put(_ORG + "/ai-accounts/{account_id}/serves")
+@router.post(_ORG + "/ai-accounts/{account_id}/take-back")
+async def ai_account_missing(org_id: str, account_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or _error(404, "not_found", "没有这个 AI 订阅账号：订阅要在连接的电脑上登录，现在还没有")
+
+
+@router.get("/api/app/machines/device/{user_code}")
+@router.post("/api/app/machines/device/{user_code}/deny")
+async def machine_device_missing(user_code: str, request: Request):
+    return _error(404, "not_found", "没有这个设备码：电脑用配对码配对")
+
+
 # 数据库：服务器没装 Postgres 驱动（依赖里没有），连不了；列表如实是空的
 _NO_DATABASES = "这台服务器还不能连数据库（没装 Postgres 驱动）"
 

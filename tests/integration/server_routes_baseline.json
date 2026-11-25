@@ -156,6 +156,18 @@
     ]
   },
   {
+    "path": "/api/app/machines/device/{user_code}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/machines/device/{user_code}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations",
     "methods": [
       "POST"
@@ -330,6 +342,30 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/ai-accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/ai-accounts/refresh",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/ai-accounts/{account_id}/serves",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/ai-accounts/{account_id}/take-back",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/approvals/{approval_id}/cancel",
     "methods": [
       "POST"
@@ -375,6 +411,78 @@
     "path": "/api/app/organizations/{org_id}/blocks/{block_id}/state",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles/{profile_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles/{profile_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles/{profile_id}/handback",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles/{profile_id}/open",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser-profiles/{profile_id}/takeover",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser/handoffs/{handoff_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser/handoffs/{handoff_id}/cancel",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser/handoffs/{handoff_id}/control",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser/handoffs/{handoff_id}/done",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/browser/handoffs/{handoff_id}/failed",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -474,6 +582,114 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/devices/access-requests/{request_id}/decide",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/phone-looks",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/wifi-iphones",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/wifi-iphones/{serial}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/wifi-pairings",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/wifi-pairings/{pairing_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/wifi-pairings/{pairing_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/xcode-fix",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/xcode-fix",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/xcode-fix",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/computers/{machine_id}/xcode-open",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/connect-links",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/connect-links/{link_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/phones/{phone_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/phones/{phone_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/phones/{phone_id}/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/requests/{request_id}/approve",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/devices/requests/{request_id}/deny",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/github-app/complete",
     "methods": [
       "POST"
@@ -547,6 +763,132 @@
   },
   {
     "path": "/api/app/organizations/{org_id}/invite-links/{link_id}/renew",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/device/{user_code}/confirm",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/host",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/host",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/access/allow",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/access/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/access/reduce",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/account-logins",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/account-logins/{login_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/account-logins/{login_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/account-logins/{login_id}/code",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/accounts/{account_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/accounts/{account_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/cli-install",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/cli-install",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/cli-install",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/cli-install/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/clis/check",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/move-agents",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/pause",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/queue",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/machines/{machine_id}/resume",
     "methods": [
       "POST"
     ]
