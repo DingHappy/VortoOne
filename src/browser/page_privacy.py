@@ -93,5 +93,6 @@ el.scrollIntoView({block:'center',inline:'center'});
 const r=el.getBoundingClientRect();
 return { x:r.left+r.width/2, y:r.top+r.height/2, tag:el.tagName.toLowerCase(),
   type:(el.getAttribute('type')||'').toLowerCase(), label:label(el),
-  editable:el.isContentEditable || ['input','textarea'].includes(el.tagName.toLowerCase()) };
+  editable:el.isContentEditable || ['input','textarea'].includes(el.tagName.toLowerCase()),
+  inForm:!!el.closest('form') };
 })(%s)"""

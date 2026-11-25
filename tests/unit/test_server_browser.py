@@ -145,3 +145,83 @@ def test_limiting_sites_per_agent_is_refused_honestly_either_way(home, chrome, m
     monkeypatch.setenv(server_browser.AGENT_BROWSER_ENV, "0")
     off = home["owner"].put(path, json={"allowedDomains": ["example.com"]}, headers=ORIGIN)
     assert off.json()["error"]["code"] == "computer.unavailable"
+
+
+# —— 主人 2026-11-24 定的三条放宽：普通点击免确认、邮箱和云控制台只读、指定的内网地址 ——
+
+def test_which_sites_can_be_read_or_acted_on(chrome, monkeypatch):
+    monkeypatch.setenv("VORTOONE_BROWSER_BLOCKED_DOMAINS", "secret.example")
+    policy = server_browser.ServerSitePolicy({"10.0.0.5"})
+    for url in ("https://www.paypal.com/", "https://accounts.google.com/", "https://1password.com/",
+                "https://mybank.example/", "https://secret.example/"):
+        assert policy.reason(url, "read") and policy.reason(url, "act"), url              # 钱和登录：一律不碰
+    for url in ("https://mail.qq.com/", "https://console.aliyun.com/home"):
+        assert policy.reason(url, "read") == "" and "只能读" in policy.reason(url, "act"), url
+    assert policy.reason("https://10.0.0.5:8443/status", "act") == ""                     # 主人列出的内网主机
+    assert "内网" in policy.reason("https://10.0.0.6/", "read")
+    assert policy.reason("https://example.com/", "act") == ""
+    assert policy.reason("ftp://example.com/", "read") and policy.reason("https://u:p@example.com/", "read")
+
+
+@pytest.mark.parametrize(("item", "free"), [
+    ({"tag": "a", "type": "", "label": "下一页", "editable": False, "inForm": False}, True),
+    ({"tag": "button", "type": "", "label": "展开全文", "editable": False, "inForm": False}, True),
+    ({"tag": "summary", "type": "", "label": "更多", "editable": False, "inForm": False}, True),
+    ({"tag": "button", "type": "", "label": "展开", "editable": False, "inForm": True}, False),   # 表单里的
+    ({"tag": "button", "type": "submit", "label": "好", "editable": False, "inForm": False}, False),
+    ({"tag": "a", "type": "", "label": "删除这条", "editable": False, "inForm": False}, False),     # 会改东西的
+    ({"tag": "button", "type": "", "label": "Buy now", "editable": False, "inForm": False}, False),
+    ({"tag": "input", "type": "text", "label": "搜索", "editable": True, "inForm": False}, False),
+    ({"tag": "a", "type": "", "label": "下一页", "editable": False}, False),                       # 不知道在不在表单里
+])
+def test_which_clicks_do_not_ask(item, free):
+    assert server_browser.ServerSitePolicy.free_click(item) is free
+
+
+def test_the_intranet_list_comes_from_the_service_environment(monkeypatch):
+    monkeypatch.setenv(server_browser.INTRANET_ENV, " 10.0.0.5, NAS.home ,bad host!, ,::1")
+    assert server_browser._intranet_hosts() == frozenset({"10.0.0.5", "nas.home", "::1"})
+    monkeypatch.delenv(server_browser.INTRANET_ENV)
+    assert server_browser._intranet_hosts() == frozenset()
+
+
+def test_in_the_tools_plain_clicks_read_and_risky_ones_ask(chrome, tmp_path, monkeypatch):
+    monkeypatch.setenv(server_browser.INTRANET_ENV, "10.0.0.5")
+
+    async def go():
+        tools, close = server_browser.build_server_browser_tools(str(tmp_path), _task())
+        by = {tool.name: tool for tool in tools}
+        await _run(by["browser_open"], {"url": "https://example.com/"})
+        driver = chrome.drivers[0]
+        driver.element = {"x": 1, "y": 2, "tag": "a", "type": "", "label": "下一页", "editable": False, "inForm": False}
+        plain = await by["browser_click"].prepare({"ref": "1"})
+        assert isinstance(plain, PreparedToolCall) and plain.operation_kind == "read"     # 不用确认
+        driver.element = {**driver.element, "tag": "button", "label": "提交订单"}
+        risky = await by["browser_click"].prepare({"ref": "1"})
+        assert risky.operation_kind == "interact"                                         # 照旧确认
+        driver.element = {"x": 1, "y": 2, "tag": "input", "type": "text", "label": "搜索", "editable": True,
+                          "inForm": False}
+        typed = await by["browser_type"].prepare({"ref": "1", "text": "你好"})
+        assert typed.operation_kind == "interact"
+        assert (await by["browser_scroll"].prepare({"direction": "down", "amount": 300})).operation_kind == "read"
+        await close()
+
+        tools, close = server_browser.build_server_browser_tools(str(tmp_path), _task())
+        by = {tool.name: tool for tool in tools}
+        await _run(by["browser_open"], {"url": "https://mail.qq.com/"})                     # 邮箱：能打开、能读
+        assert "正文" in str(await _run(by["browser_snapshot"], {}))
+        assert "只能读" in str(await by["browser_click"].prepare({"ref": "1"}))             # 不能点
+        await close()
+
+        tools, close = server_browser.build_server_browser_tools(str(tmp_path), _task())
+        by = {tool.name: tool for tool in tools}
+        await _run(by["browser_open"], {"url": "https://10.0.0.5/"})                        # 列出的内网主机
+        assert chrome.drivers[-1].url == "https://10.0.0.5/"
+        await close()
+    asyncio.run(go())
+
+
+def test_listing_a_bank_as_intranet_does_not_open_it(chrome):
+    # 内网名单只放行内网主机，不能拿来绕开银行支付、账号与密码管理
+    policy = server_browser.ServerSitePolicy({"mybank.lan", "accounts.google.com"})
+    assert policy.reason("https://mybank.lan/", "read") and policy.reason("https://accounts.google.com/", "read")
