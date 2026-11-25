@@ -359,8 +359,11 @@ class Routines:
                 item['state']['task'] = None
             self.registry._write('routines.json', value)
 
-    def run_now(self, routine_id, *, owner):
-        """Dispatch a saved routine after the caller proves an explicit owner action."""
+    def run_now(self, routine_id, *, owner, hook=None):
+        """Dispatch a saved routine after the caller proves an explicit owner action.
+
+        hook：它的 webhook 地址被叫了（``{"call", "data", "test"}``，只由 web 层核对过地址和签名后填）。
+        这次运行带着对方发来的内容，从一开始就按外部内容处理。"""
         from src.gateway.audit import append_audit
         from src.scheduling.staff_runner import get_staff_service
         from src.workflow.staff.approvals import digest
@@ -371,6 +374,8 @@ class Routines:
                 raise RoutineRunRejected('not_found', '没有这条例行工作')
             if item['state'].get('error'):
                 raise RoutineRunRejected('needs_review', f"它停着等你核对：{item['state']['error']}")
+            if hook is not None and not item['enabled'] and not hook.get('test'):
+                raise RoutineRunRejected('paused', '它暂停着，没有运行')
             if self.awaiting_takeover_resume(item):
                 raise RoutineRunRejected('needs_review', '接手以后要先恢复它，才能运行')
             claim = item['state'].get('task')
@@ -387,20 +392,24 @@ class Routines:
             slot = when.isoformat()
             definition = {key: value for key, value in item.items() if key != 'state'}
             if not append_audit(self.root, {
-                'category': 'decision', 'operation': '主人手动运行例行工作', 'operation_kind': 'execute',
-                'decision': 'allowed', 'decision_source': 'user', 'approval_scope': 'once',
-                'approval_source': 'routine_manual', 'routine_id': routine_id, 'actor': owner,
+                'category': 'decision',
+                'operation': '例行工作的 webhook 地址被调用' if hook is not None else '主人手动运行例行工作',
+                'operation_kind': 'execute', 'decision': 'allowed',
+                'decision_source': 'external' if hook is not None else 'user', 'approval_scope': 'once',
+                'approval_source': 'routine_webhook' if hook is not None else 'routine_manual',
+                **({'hook_call': hook['call'], 'hook_test': bool(hook.get('test'))} if hook is not None else {}),
+                'routine_id': routine_id, 'actor': owner,
                 'routine_revision': item['revision'], 'slot': slot,
                 'action_digest': digest({'definition': definition, 'slot': slot}),
             }, durable=True):
                 raise RoutineRunRejected('audit_unavailable', '暂时无法记录这次手动运行，未派发')
-            started = self.dispatch(staff, when, only=routine_id, manual=True)
+            started = self.dispatch(staff, when, only=routine_id, manual=True, hook=hook)
             if not started:
                 reason = self.get(routine_id)['state'].get('error')
                 raise RoutineRunRejected('not_started', f"没能运行：{reason or '它的状态刚刚变了，请刷新'}")
             return started[0]
 
-    def dispatch(self, staff, now, *, only=None, manual=False):
+    def dispatch(self, staff, now, *, only=None, manual=False, hook=None):
         started = []
         with TASK_STATE_LOCK:
             for original in self.list():
@@ -439,7 +448,8 @@ class Routines:
                     task = staff.assign(item['owner'], {k: item[k] for k in ('member', 'prompt', 'acceptance', 'delivery')},
                         expected=(member, role), task_id=task_id,
                         routine={'id': item['id'], 'revision': item['revision'], 'slot': slot, 'legacy': item['legacy'],
-                                 'token_budget': item['token_budget'], 'manual': manual}, after=self.settle,
+                                 'token_budget': item['token_budget'], 'manual': manual,
+                                 **({'hook': dict(hook)} if hook is not None else {})}, after=self.settle,
                         **({'initiator': item['initiator']} if 'initiator' in item else {}))
                     started.append(task.id)
                 except Exception as error:  # noqa: BLE001 - park this claim, then dispatch the other routines.

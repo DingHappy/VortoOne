@@ -53,7 +53,9 @@ PUBLIC_DOWNLOAD_ROUTES = frozenset({("GET", "/api/desktop/latest")})
 # /api/app/invitations/<邀请令牌>…：收到邀请的人还没有账号，凭令牌本身看邀请；接受邀请那一条由路由自己
 # 核对成员会话（routers/app_api.py）。这个前缀下没有任何按空间读数据的接口。
 _EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/static", "/api/auth/handover/",
-                    "/api/app/invitations/")
+                    "/api/app/invitations/",
+                    # 例行工作的 webhook 触发地址：凭地址里的随机串（和签名）进，不认登录（routine_hooks.py）
+                    "/api/routine-hooks/")
 _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/health", "/api/health/quick",
                  "/api/auth/login", "/api/auth/logout", "/api/auth/status",
@@ -66,6 +68,8 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/auth/request-password-reset",
                  # 「不是我改的邮箱」：从旧邮箱的通知链接打开，可能没登录；这里还不能改邮箱，只回「没有要撤回的」
                  "/api/app/email-undo",
+                 # 新邮箱里的确认链接：凭链接里的一次性令牌，不要求登录（routers/app_api.py）
+                 "/api/app/account/email/confirm",
                  # 另一台设备凭一次性登录换登录：核对它自己的一次性凭据（members/one_time.py）
                  "/api/auth/sign-in/one-time-token",
                  # 装好时的一次性认领链接（members/owner_account.py）：核对它自己的认领令牌

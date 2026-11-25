@@ -138,10 +138,12 @@ def test_workspace_mail_provider_catalog_does_not_use_the_host_mailbox(home, mon
     monkeypatch.setattr(mail.imaplib, "IMAP4_SSL", unexpected)
     browser = _join(home)
     url = f"{home['base']}/mail/providers"
-    for client in (home["owner"], browser):
+    # 2026-11-24 起所有者能接团队 IMAP 邮箱（主人定）：目录仍不读也不连本机的邮箱
+    for client, imap in ((home["owner"], True), (browser, False)):
         response = client.get(url)
         assert response.status_code == 200
-        assert response.json() == {"composio": False, "imap": False, "presets": []}
+        assert response.json()["composio"] is False and response.json()["imap"] is imap
+        assert bool(response.json()["presets"]) is imap
         assert client.get("/api/app/organizations/another-home/mail/providers").status_code == 404
     assert browser.get(url, headers={"Origin": "https://other.example"}).status_code == 403
     guest = TestClient(home["app"], headers=ORIGIN)

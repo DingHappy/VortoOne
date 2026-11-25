@@ -587,6 +587,13 @@ class MemberRegistry:
                     "department", channel["audience_roles"], held, joined=False, privileged=privileged):
                 channel["joined"].pop(member_id, None)
 
+    def set_member_email(self, member_id: str, address: str) -> None:
+        """成员改了登录邮箱：登记上的邮箱跟着换（查重、名单都看它）。"""
+        with self._change() as state:
+            member = state["members"].get(str(member_id))
+            if member is not None:
+                member["email"] = address
+
     def remove_member(self, actor: Principal, member_id: str) -> None:
         """把成员移出空间；在各个 agent 上单独给他定的级别一并清掉。成员也可以自己退出。"""
         with self._change() as state:

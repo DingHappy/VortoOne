@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 492 个，剩 **139** 个：
-- **要做：68**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 560 个，剩 **71** 个：
+- **要做：0**
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -14,7 +14,7 @@
 > `task-manager`、`waiting`、`active-runs` 已改成读真实记录；`mail/accounts`、`calendar`、`proposals` 等还要逐个核对。
 > 报进度时把这一类单独说，别混在「已接」里。
 >
-> **密钥申请依赖连接电脑线**：`secret-requests` 4 个和 agent 的 `secrets` 2 个，合同里密钥只有三种去处：那台电脑上 agent 的
+> **密钥申请依赖连接电脑线**（2026-11-24 起如实回答 404，等电脑侧能执行时再真做）：`secret-requests` 4 个和 agent 的 `secrets` 2 个，合同里密钥只有三种去处：那台电脑上 agent 的
 > 环境变量、文件、浏览器里的登录框。家里的 agent 三样都没有，现在接上只会收下密钥而没人能用；等电脑侧能执行时一起做。
 
 ## 怎么核对
@@ -63,9 +63,7 @@
 wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 邀请链接 → 制品、技能、例行的剩余部分 → 个人与账号 → vault / 凭据 / 连接器 / 数据库 / 存储 → 邮件、日历、提醒 → 其它零散的
 
 几处需要主人定的：
-- wiki 页面进 agent 上下文时，成员写的内容算不算可信
 - vault 里的密钥归谁、怎么撤销
-- 存储要不要接 S3（D06、D07 当时都没定）
 
 ## 清单
 
@@ -90,7 +88,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/missions/{x}/decisions/{x}/choose` | `missions.choose` | 仅所有者。阻塞的问题都有答案、没有在做的一步时，agent 接着做，结果写进下一步提示（数据边界内）。已拍板的不能改选。 |
 | ☑ | POST | `ORG/missions/{x}/decisions/{x}/opinion` | `missions.opinion` | 仅所有者（参与者在后续 PR），只记倾向、不拍板。 |
 | ☑ | GET | `ORG/missions/{x}/deliveries` | `missions.deliveries` | 仅所有者。agent 用 `mission_deliver` 交付，这一步后 Mission 等验收（消息带 `meta.missionDelivery`）。 |
-| ☑ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` | 仅所有者，Mission 完成。`saveToWiki: true` 如实 409 `mission.wiki_unavailable`（Wiki 内容进 agent 上下文的可信度还没定）。 |
+| ☑ | POST | `ORG/missions/{x}/deliveries/{x}/accept` | `missions.acceptDelivery` | 所有者和「决定」成员，Mission 完成。`saveToWiki: true` 把目标、交付、核对清单和验收意见写成「Mission」文件夹里的一页（要有编辑 Wiki 的权限，不然 403、不收尾）；私有频道里的只给频道里的人看。 |
 | ☑ | POST | `ORG/missions/{x}/deliveries/{x}/changes` | `missions.requestDeliveryChanges` | 仅所有者，要写意见。Mission 回到进行中，agent 带着意见接着做、重新交付。 |
 | ☑ | PUT | `ORG/missions/{x}/deliveries/{x}/checks/{x}` | `missions.checkDelivery` | 仅所有者，每人各勾各的；有结论后不能再勾。 |
 | ☑ | PUT | `ORG/missions/{x}/executor` | `missions.setExecutor` | 只有 `agent`（原生 agent 自己做）；Claude、Codex 要连电脑，409 `mission.no_computer`。 |
@@ -114,7 +112,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/missions/{x}/worktree/retry` | `missions.retryWorktree` | 没有项目副本，409 `mission.no_worktree`。 |
 | ☑ | POST | `ORG/missions/{x}/{x}` | `missions.control` | 仅所有者，`start/pause/resume/stop`。绑定的 agent 在话题里一步接一步做，只用团队安全工具、按外部内容处理话题；失败、被打断、没列计划、一次累计 10 步时暂停并说明，计划做完等收尾。agent 要先加进频道。 |
 
-### org/agents（35 个，要做 15）
+### org/agents（35 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -124,41 +122,41 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `ORG/agents/{x}/audience/mail-loss` | `agents.mailLoss` | agent 不接邮箱，回空列表 |
 | — | PUT | `ORG/agents/{x}/brain` | `agents.setBrain` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | ☑ | GET | `ORG/agents/{x}/brain${scope ` | `agents.brain` | 就是已接的只读 `brain`，`scope` 不影响结果 |
-| ☐ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 读已接、写没接 |
-| ☐ | PUT | `ORG/agents/{x}/browser-profile` | `browserProfiles.setDefault` | 界面代码里没调用 |
-| ☐ | POST | `ORG/agents/{x}/browser-profile/request` | `browserProfiles.request` | 界面代码里没调用 |
-| ☐ | POST | `ORG/agents/{x}/browser/open` | `browser.open` |  |
-| ☐ | POST | `ORG/agents/{x}/browser/restart` | `browser.restart` |  |
-| ☐ | POST | `ORG/agents/{x}/browser/stop` | `browser.stop` |  |
+| ☑ | PUT | `ORG/agents/{x}/browser` | `browser.setDomains` | 按 agent 限定网站还没有：开了服务器浏览器时 409 `browser.sites_unavailable`（开放除受限站点外的公开网站，点击输入每步确认），没开时 409 `computer.unavailable`。 |
+| ☑ | PUT | `ORG/agents/{x}/browser-profile` | `browserProfiles.setDefault` | 没有浏览器档案：404。 |
+| ☑ | POST | `ORG/agents/{x}/browser-profile/request` | `browserProfiles.request` | 如实 409 `computer.unavailable`。 |
+| ☑ | POST | `ORG/agents/{x}/browser/open` | `browser.open` | 如实 409 `computer.unavailable`。 |
+| ☑ | POST | `ORG/agents/{x}/browser/restart` | `browser.restart` | 如实 409 `computer.unavailable`。 |
+| ☑ | POST | `ORG/agents/{x}/browser/stop` | `browser.stop` | 如实 409 `computer.unavailable`。 |
 | ☑ | GET | `ORG/agents/{x}/channels` | `agents.channels` | agent 所在的团队频道（只给所有者） |
 | ☑ | PUT | `ORG/agents/{x}/channels` | `agents.setChannels` | 所有者整组替换；主助理、本机 CLI、连登记项目的 agent 不进频道；不 @ 也回答回 409 |
-| ☐ | PUT | `ORG/agents/{x}/computer/target` | `sandbox.setTarget` |  |
-| ☐ | GET | `ORG/agents/{x}/databases` | `databases.agent` |  |
-| ☐ | PUT | `ORG/agents/{x}/databases/{x}` | `databases.setAgent` |  |
-| ☐ | GET | `ORG/agents/{x}/desktop/picture` | `desktop.picture` |  |
+| ☑ | PUT | `ORG/agents/{x}/computer/target` | `sandbox.setTarget` | 如实 409 `computer.unavailable`。 |
+| ☑ | GET | `ORG/agents/{x}/databases` | `databases.agent` | 如实是空的：这台服务器还连不了数据库。 |
+| ☑ | PUT | `ORG/agents/{x}/databases/{x}` | `databases.setAgent` | 没有数据库连接：404。 |
+| ☑ | GET | `ORG/agents/{x}/desktop/picture` | `desktop.picture` | 没有电脑和桌面：404 `desktop.no_machine`。 |
 | ☑ | GET | `ORG/agents/{x}/for-you` | `agentForYou.get` | agent 主动替人整理的东西还没有：空。 |
 | ☑ | PUT | `ORG/agents/{x}/group` | `agentGroups.move` | 分组就是部门，调整要经提议，回 409 |
 | ☑ | DELETE | `ORG/agents/{x}/holds/{x}` | `desktop.stopHold` | agent 在连接的电脑上开着的程序：这里没有，404（等连接电脑线）。 |
 | ☑ | GET | `ORG/agents/{x}/learned-skills` | `skills.learned` | agent 不自己写技能，是空的 |
-| ☐ | GET | `ORG/agents/{x}/mail` | `mail.agent` |  |
-| ☐ | PUT | `ORG/agents/{x}/mail/{x}` | `mail.setAgent` |  |
+| ☑ | GET | `ORG/agents/{x}/mail` | `mail.agent` | 这个 agent 在每个团队邮箱上的级别和规则（没授权是 none）。只给已认证的所有者；主助理用自己的邮件插件，404。 |
+| ☑ | PUT | `ORG/agents/{x}/mail/{x}` | `mail.setAgent` | read：搜索、读信、看文件夹；read_write 另外能放草稿（每次都要人确认）。规则里的文件夹、发件人、最近几天在工具里执行。发信的规则（收件人、不问就发）422 `mail.send_unavailable`，删信 422 `mail.delete_unavailable`。只在所有者自己发起的事里给 agent 这些工具（主人 2026-11-24 定）。 |
 | ☑ | GET | `ORG/agents/{x}/merge-repositories` | `repositories.merge` | 不经审批就合并的仓库：没有（空）。合并一律要人确认。 |
 | ☑ | PUT | `ORG/agents/{x}/merge-repositories` | `repositories.setMerge` | 只接受空列表，否则 409 `repositories.merge_needs_approval`：不开免审批合并。 |
 | ☑ | PUT | `ORG/agents/{x}/mission-command-approval` | `missions.setAgentDefault` | 只接受 `always`，和 Mission 自己的设置一致；其它 409。 |
 | — | PUT | `ORG/agents/{x}/repositories` | `repositories.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页 |
 | — | PUT | `ORG/agents/{x}/scopes` | `scopes.set` | 不做：改它等于改岗位授权，岗位改动要走提议核对，新界面没有核对页；界面代码里没调用 |
-| ☐ | GET | `ORG/agents/{x}/secrets` | `secrets.list` |  |
-| ☐ | DELETE | `ORG/agents/{x}/secrets/{x}${machineId ` | `secrets.remove` |  |
+| ☑ | GET | `ORG/agents/{x}/secrets` | `secrets.list` | 如实是空的：agent 没有电脑，没有交到电脑上的密钥。 |
+| ☑ | DELETE | `ORG/agents/{x}/secrets/{x}${machineId ` | `secrets.remove` | 没有这项密钥：404。 |
 | ☑ | GET | `ORG/agents/{x}/usage` | `agents.planUsage` | 仅所有者。这个 agent 这个月的 token 和折算的美元（只有 API 一个来源）。 |
 | ☑ | GET | `ORG/agents/{x}/usage-queue` | `agents.usageQueue` | 仅所有者。在等额度（专员额度用完）排着的事。 |
 | ☑ | POST | `ORG/agents/{x}/usage-queue/cancel` | `agents.cancelUsageQueue` | 仅所有者。排着的全部停下，走主人的停止决定。 |
-| ☐ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 读已接、写没接 |
+| ☑ | GET | `ORG/agents/{x}/{x}/control` | `browser.agentControl` | 如实 `canControl: false`：没有电脑可控制。 |
 
-### org/wiki（24 个，要做 1）
+### org/wiki（24 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` | Wiki 的智能体读取尚未开放，已登录且有编辑权限的调用返回明确的 409，页面和智能体授权均无变更。 |
+| ☑ | PUT | `ORG/wiki/bulk/agents` | `wiki.setAgents` | 有编辑权的人选哪些 agent 能读这几页（null 每个 agent，[] 都不能，默认 []）。只有对全体成员公开的页面能开放（`wiki.agents_need_everyone`）；之后收窄可见范围，agent 就读不到了。看不到的页面和不存在的答得一样。派活的 agent 用 `wiki_search` / `wiki_read` 读，结果按外部内容（主人 2026-11-24 定）。主助理读不到 Wiki。 |
 | ☑ | POST | `ORG/wiki/bulk/delete` | `wiki.removeMany` |  |
 | ☑ | GET | `ORG/wiki/folder-audience` | `wiki.folderAudience` | 仅所有者读取当前文件夹和最近有规则的上级。成员名单叠加祖先限制，只显示当前在册成员。 |
 | ☑ | PUT | `ORG/wiki/folder-audience` | `wiki.setFolderAudience` | 仅所有者按在册成员收紧，页面与各级文件夹规则取交集。只有所有者能移动页面并收紧可见范围，移动不能扩大可见范围。角色、编辑权限和智能体授权返回 409。 |
@@ -234,7 +232,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | GET | `ORG/machines/{x}/queue` | `machines.queue` | Codex 连接电脑线 |
 | — | POST | `ORG/machines/{x}/{x}` | `machines.setPause` | Codex 连接电脑线 |
 
-### org/vault（12 个，要做 4）
+### org/vault（12 个，要做 0）
 
 首批只支持个人登录和 API Key 条目。每个当前成员只访问自己的条目，所有者按同一条规则。删除后当前条目失效，
 成员离开后无法访问原个人库。API 只回条目元数据，角色和 Agent 暂不能使用个人库。
@@ -256,10 +254,10 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/vault` | `vault.overview` | 仅调用人自己的元数据，显式启用 |
-| ☐ | POST | `ORG/vault/connections` | `vault.connect` | 界面代码里没调用 |
-| ☐ | DELETE | `ORG/vault/connections/{x}` | `vault.removeConnection` | 界面代码里没调用 |
-| ☐ | PATCH | `ORG/vault/connections/{x}` | `vault.updateConnection` | 界面代码里没调用 |
-| ☐ | POST | `ORG/vault/connections/{x}/sync` | `vault.syncConnection` | 界面代码里没调用 |
+| ☑ | POST | `ORG/vault/connections` | `vault.connect` | 外部密码库同步这里没有：409 `vault.connections_unavailable`（用导入）。 |
+| ☑ | DELETE | `ORG/vault/connections/{x}` | `vault.removeConnection` | 没有密码库连接：404。 |
+| ☑ | PATCH | `ORG/vault/connections/{x}` | `vault.updateConnection` | 没有密码库连接：404。 |
+| ☑ | POST | `ORG/vault/connections/{x}/sync` | `vault.syncConnection` | 没有密码库连接：404。 |
 | ☑ | POST | `ORG/vault/import` | `vault.importCsv` | 「导入密码」支持预览及保存到本人库，返回统计 |
 | ☑ | POST | `ORG/vault/items` | `vault.create` | 仅个人登录和 Key 条目，禁止共享 |
 | ☑ | DELETE | `ORG/vault/items/{x}` | `vault.remove` | 只允许条目本人删除 |
@@ -287,12 +285,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 工作区最多保留 8,016 条自选用户名登记，包含已离开的成员。已登记的本人用户名和默认用户名仍可选用。保存个人资料与登记智能体共用进程内事务锁，同一个工作区由持有运行租约的一个后端进程提供服务。
 
-### org/artifacts（11 个，要做 1）
+### org/artifacts（11 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/artifacts` | `artifacts.create` | 所有者可通过 JSON 创建私有文档、表格和 HTML，与 Drive 上传使用同一私有存储。其它种类回 415，附到频道回 422。 |
-| ☐ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传 UTF-8 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG。小文本以纯文本预览，图片最长边 12000 像素且总像素最多 4000 万。其它格式返回 415，频道或话题挂载返回 422，通用文件上传仍待接。 |
+| ☑ | POST | `ORG/artifacts/files` | `artifacts.upload` | 所有者可私有上传。UTF-8 的 HTML、TXT、Markdown、CSV、JSON 和静态 PNG、JPEG 照旧可预览（文本可追加版本）；别的格式（PDF、Office 文档、压缩包……）原样保存，只能按附件下载，不预览、不改，记下的类型不会是文本、图片或网页（接 Codex 半成品）。挂到频道或话题如实 422。 |
 | ☑ | GET | `ORG/artifacts/{x}/download` | `artifacts.download` | 仅所有者可下载 HTML、已有历史版本和私有文件原件。 |
 | ☑ | GET | `ORG/artifacts/{x}/file` | `artifacts.fileBlob` | 仅所有者可读取 HTML、历史版本和私有文件原件。私有文件核对存储的 SHA-256。 |
 | ☑ | POST | `ORG/artifacts/{x}/files` | `artifacts.uploadVersion` | 所有者可为私有 TXT、Markdown、CSV、JSON 追加同格式文件及可选备注。原版本可单独预览或下载，回收和还原保留历史。其它制品或格式返回 415。 |
@@ -348,17 +346,17 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/usage/plans` | `orgs.planUsage` | 仅所有者。这里没有订阅套餐账号（accounts 空），只有 API 用量。 |
 | ☑ | GET | `ORG/usage/report` | `orgs.usageReport` | 仅所有者。从 since 起按 agent、按种类（agent/summary）。按所有者给模型填的价格折成美元（没填价格的只记 token，不算钱，`partialCalls` 标出）。agent 没有美元预算（额度按 token 记），预算填 0。 |
 
-### org/routines（10 个，要做 5）
+### org/routines（10 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/routines/{x}/continue` | `routines.continueUsage` | 不跳过额度接着做：409，调高额度后它会自己接着做。 |
 | ☑ | POST | `ORG/routines/{x}/duplicate` | `routines.duplicate` | 所有者可复制现有本人例行定义；先按摘要审核，副本默认暂停 |
-| ☐ | GET | `ORG/routines/{x}/hook` | `routines.hook` |  |
-| ☐ | POST | `ORG/routines/{x}/hook/address` | `routines.newHookAddress` |  |
-| ☐ | DELETE | `ORG/routines/{x}/hook/secret` | `routines.removeHookSecret` |  |
-| ☐ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` |  |
-| ☐ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` |  |
+| ☑ | GET | `ORG/routines/{x}/hook` | `routines.hook` | webhook 触发的例行工作：触发地址 `/api/routine-hooks/<随机串>`（不认登录）、是否要签名、允许的方法、最近 20 次调用（只记结果、状态码、大小、进了哪次运行，不存内容）。只给已认证的所有者；不是 webhook 触发的 404。 |
+| ☑ | POST | `ORG/routines/{x}/hook/address` | `routines.newHookAddress` | 换一个新地址，旧地址立刻 404。 |
+| ☑ | DELETE | `ORG/routines/{x}/hook/secret` | `routines.removeHookSecret` | 去掉签名密钥，之后只凭地址。 |
+| ☑ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` | 新的签名密钥只显示这一次。之后每次调用要带 `X-VortoOne-Signature: sha256=<HMAC-SHA256>`（POST 等签请求体，GET 签查询串），不对 401 `bad_signature`。 |
+| ☑ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` | 用一份样例内容叫一次，agent 被告知这是测试；暂停着的也能试。 |
 | ☑ | POST | `ORG/routines/{x}/run` | `routines.runNow` | 立即运行一次，不改排期和启停；在跑、等验收、等核对时回 409 说明 |
 | ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录。列表显示最近 14 条，健康统计只计最近七天的已结束运行（取消除外）。 |
 | ☑ | POST | `ORG/routines/{x}/stop` | `routines.stop` | 所有者按当前认领停止本次执行，复用专员停止审计和执行池。没有运行、登记不匹配或取消未受理时拒绝；不改排期。 |
@@ -418,7 +416,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/messages/{x}/reactions` | `chat.reactions` |  |
 | ☑ | POST | `ORG/messages/{x}/reactions` | `chat.react` |  |
 
-### org/mail（7 个，要做 7）
+### org/mail（7 个，要做 0）
 
 已定：邮件只读，保存草稿须用户确认，由用户在自己的邮件客户端发送。
 现有本机 IMAP 插件已支持这条流程。它使用操作系统用户的凭据，组织内的邮箱账户和授权仍待接入。
@@ -426,13 +424,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/mail/accounts/composio` | `mail.connectComposio` |  |
-| ☐ | POST | `ORG/mail/accounts/imap` | `mail.connectImap` |  |
-| ☐ | DELETE | `ORG/mail/accounts/{x}` | `mail.disconnect` |  |
-| ☐ | PATCH | `ORG/mail/accounts/{x}` | `mail.update` |  |
-| ☐ | GET | `ORG/mail/accounts/{x}/folders` | `mail.folders` |  |
-| ☐ | GET | `ORG/mail/accounts/{x}/suggested-addresses` | `mail.suggestedAddresses` |  |
-| ☐ | GET | `ORG/mail/providers` | `mail.providers` | 已接能力查询，两种连接方式暂不可用；组织 IMAP 接通后再开放 |
+| ☑ | POST | `ORG/mail/accounts/composio` | `mail.connectComposio` | 这里没有 Gmail / Outlook 的一键连接：409 `mail.composio_unavailable`。 |
+| ☑ | POST | `ORG/mail/accounts/imap` | `mail.connectImap` | 所有者接团队 IMAP 邮箱（预设 iCloud、QQ、163、126、阿里、Yahoo，或自填服务器）：先真登录一次、打开收件箱，连不上 422 带 `auth` / `imap_unreachable` / `tls` / `blocked_host`，不留记录。授权码只存在服务器上，从不回给界面。 |
+| ☑ | DELETE | `ORG/mail/accounts/{x}` | `mail.disconnect` | 断开邮箱，授权码和给 agent 的授权一起删掉。 |
+| ☑ | PATCH | `ORG/mail/accounts/{x}` | `mail.update` | 名字、动作开关、别名、默认发件地址；换授权码先测，通过了才换（恢复「要重新连接」）。 |
+| ☑ | GET | `ORG/mail/accounts/{x}/folders` | `mail.folders` | IMAP 的文件夹（名字按 UTF-7 解开，角色按服务器标记）。登录失败就把邮箱标成要重新连接。 |
+| ☑ | GET | `ORG/mail/accounts/{x}/suggested-addresses` | `mail.suggestedAddresses` | 已发送文件夹最近 200 封用过的发件地址（不含主地址和已有别名），只读打开。 |
+| ☑ | GET | `ORG/mail/providers` | `mail.providers` | 所有者：IMAP 可用、给预设；Composio 没有。成员：都不可用。 |
 
 ### org/browser-profiles（7 个，要做 0）
 
@@ -458,16 +456,16 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | POST | `/api/app/invitations/{x}/requests/claim` | `invites.claim` | 凭申请时拿到的 key 看结果；直接加入的换一次性登录。 |
 | ☑ | GET | `/api/app/invitations/{x}/state` | `orgs.invitationState` | 保留尚未清理的过期邮箱邀请提示。原有效期内，仅接受该邀请且仍在册的登录成员显式请求 `receipt=1` 时可查看回执。旧客户端和其他人查询已消费的令牌返回 404。 |
 
-### org/databases（6 个，要做 6）
+### org/databases（6 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/databases` | `databases.list` |  |
-| ☐ | POST | `ORG/databases` | `databases.connect` |  |
-| ☐ | DELETE | `ORG/databases/{x}` | `databases.disconnect` |  |
-| ☐ | PATCH | `ORG/databases/{x}` | `databases.update` |  |
-| ☐ | GET | `ORG/databases/{x}/databases{x}` | `databases.serverDatabases` |  |
-| ☐ | GET | `ORG/databases/{x}/tables${database ` | `databases.tables` |  |
+| ☑ | GET | `ORG/databases` | `databases.list` | 如实是空的。服务器没装 Postgres 驱动（依赖里没有），连不了数据库。 |
+| ☑ | POST | `ORG/databases` | `databases.connect` | 如实 409 `databases.unavailable`：没装 Postgres 驱动。 |
+| ☑ | DELETE | `ORG/databases/{x}` | `databases.disconnect` | 没有数据库连接：404。 |
+| ☑ | PATCH | `ORG/databases/{x}` | `databases.update` | 没有数据库连接：404。 |
+| ☑ | GET | `ORG/databases/{x}/databases{x}` | `databases.serverDatabases` | 没有数据库连接：404。 |
+| ☑ | GET | `ORG/databases/{x}/tables${database ` | `databases.tables` | 没有数据库连接：404。 |
 
 ### org/join-requests（6 个，要做 0）
 
@@ -506,7 +504,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | POST | `ORG/browser/handoffs/{x}/done` | `browser.done` | Codex 连接电脑线 |
 | — | POST | `ORG/browser/handoffs/{x}/failed` | `browser.failed` | Codex 连接电脑线 |
 
-### /api/app/account（5 个，要做 1）
+### /api/app/account（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
@@ -514,7 +512,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | DELETE | `/api/app/account/deletion` | `account.restore` | 7 天内重新登录后可以恢复；到期了 409 `account.not_restorable`。注销中的会话只能看自己、看注销计划、恢复。 |
 | ☑ | GET | `/api/app/account/deletion` | `account.deletionPlan` | 成员：离开这个家（`leaves`），别的都为空；所有者：`soleOwner` 是这个家、`serverOwner: true`。 |
 | ☑ | POST | `/api/app/account/deletion/code` | `account.deletionCode` | 发信开着时把验证码发到自己的邮箱（和邀请验证码共用频率限制，`reauth.code_wait` 带 `retryIn`）；没开 409 `reauth.no_email`。 |
-| ☐ | POST | `/api/app/account/email` | `account.changeEmail` |  |
+| ☑ | POST | `/api/app/account/email` | `account.changeEmail` | 成员改自己的登录邮箱。没发信：10 分钟内凭密码登录过就马上换，否则 403 `reauth.sign_in`。发信开着：先给现在的邮箱发验证码（或 10 分钟内登录过），再给新邮箱发确认链接 `/api/app/account/email/confirm`，打开了才换；换好以后旧邮箱收到「不是我改的」。`email.same` 400、`email.held` 409；所有者 409 `account.owner_email`。 |
 
 ### org/agent-proposals（5 个，要做 0）
 
@@ -536,15 +534,15 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PATCH | `ORG/invite-links/{x}` | `invites.editLink` | 改给的身份组、名额、有效期，地址不变。 |
 | ☑ | POST | `ORG/invite-links/{x}/renew` | `invites.renewLink` | 再给 30 天。 |
 
-### org/storage（5 个，要做 3）
+### org/storage（5 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/storage` | `storage.get` | 显示当前服务器磁盘状态，仅所有者可读 |
-| ☐ | PUT | `ORG/storage` | `storage.save` | 当前仅用服务器磁盘，接口明确拒绝 |
-| ☐ | POST | `ORG/storage/migrate` | `storage.migrate` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | PUT | `ORG/storage` | `storage.save` | 存储不接 S3（主人 2026-11-24 定）：文件存在服务器磁盘，如实 409 `storage.s3_unavailable`。 |
+| ☑ | POST | `ORG/storage/migrate` | `storage.migrate` | 同上，409 `storage.s3_unavailable`。 |
 | ☑ | GET | `ORG/storage/migration` | `storage.migration` | 本地磁盘无迁移任务时返回 null，仅所有者可读 |
-| ☐ | POST | `ORG/storage/test` | `storage.test` | 当前仅用服务器磁盘，接口明确拒绝 |
+| ☑ | POST | `ORG/storage/test` | `storage.test` | 同上，409 `storage.s3_unavailable`。 |
 
 ### org/notifications（5 个，要做 0）
 
@@ -574,13 +572,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | PUT | `/api/app/jev` | `system.saveJev` | 不做：第三方 TypeSafe 服务，接口不公开；404 时界面藏起入口 |
 | — | POST | `/api/app/jev/check` | `system.checkJev` | 不做：第三方 TypeSafe 服务，接口不公开；404 时界面藏起入口 |
 
-### /api/app/push（4 个，要做 3）
+### /api/app/push（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/push/devices` | `push.register` |  |
-| ☐ | POST | `/api/app/push/devices/forget` | `push.unregister` |  |
-| ☐ | POST | `/api/app/push/stale` | `push.stale` |  |
+| ☑ | POST | `/api/app/push/devices` | `push.register` | 网页推送这里关着：404 `web_push_off`（手机通知用 iPhone App）。 |
+| ☑ | POST | `/api/app/push/devices/forget` | `push.unregister` | 没登记过网页推送订阅：204，什么都不做。 |
+| ☑ | POST | `/api/app/push/stale` | `push.stale` | 真做：按所有者的通知收件箱算出已读、完成、推迟或没有了的；成员这里没有通知，给的都算。 |
 | ☑ | GET | `/api/app/push/web` | `push.webKey` | 没有网页推送：按客户端约定回 404，界面据此隐藏入口（不另加路由）。 |
 
 ### org/team-proposals（4 个，要做 0）
@@ -610,14 +608,14 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | PATCH | `ORG/channel-categories/{x}` | `chat.renameCategory` |  |
 | ☑ | PUT | `ORG/channel-categories/{x}/place` | `chat.placeCategory` |  |
 
-### org/github-app（4 个，要做 4）
+### org/github-app（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/github-app` | `githubApp.info` | Settings 已能显示 App 未配置。仅已认证所有者看到服务器设置状态。安装绑定和可用状态仍待接，见 [接入草案](DESKTOP_GITHUB_APP.md)。 |
-| ☐ | POST | `ORG/github-app/complete` | `githubApp.complete` |  |
-| ☐ | POST | `ORG/github-app/install` | `githubApp.install` |  |
-| ☐ | DELETE | `ORG/github-app/installations/{x}` | `githubApp.remove` |  |
+| ☑ | GET | `ORG/github-app` | `githubApp.info` | 如实回「装不了、没有安装」：这台服务器没有 GitHub App（见 [接入草案](DESKTOP_GITHUB_APP.md)）。仅已认证所有者看到服务器设置状态。 |
+| ☑ | POST | `ORG/github-app/complete` | `githubApp.complete` | 这台服务器没有 GitHub App：409 `github.unavailable`。 |
+| ☑ | POST | `ORG/github-app/install` | `githubApp.install` | 同上，409 `github.unavailable`。 |
+| ☑ | DELETE | `ORG/github-app/installations/{x}` | `githubApp.remove` | 没有安装：404。 |
 
 ### org/ai-accounts（4 个，要做 0）
 
@@ -628,23 +626,23 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | — | PUT | `ORG/ai-accounts/{x}/serves` | `machines.setAccountServes` | Codex 连接电脑线 |
 | — | POST | `ORG/ai-accounts/{x}/take-back` | `machines.takeBackPlan` | Codex 连接电脑线 |
 
-### org/webhooks（4 个，要做 4）
+### org/webhooks（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/webhooks/github/repository` | `routines.addWebhookToRepo` |  |
-| ☐ | GET | `ORG/webhooks/{x}` | `routines.webhookSetup` |  |
-| ☐ | PUT | `ORG/webhooks/{x}` | `routines.ensureWebhook` |  |
-| ☐ | PUT | `ORG/webhooks/{x}/secret` | `routines.setWebhookSecret` |  |
+| ☑ | POST | `ORG/webhooks/github/repository` | `routines.addWebhookToRepo` | 没有 GitHub App：409 `github.unavailable`。 |
+| ☑ | GET | `ORG/webhooks/{x}` | `routines.webhookSetup` | 如实回「没有设置、不能管」：这里没有按 GitHub / Sentry 事件触发的例行工作（例行工作自己有 webhook 地址）。 |
+| ☑ | PUT | `ORG/webhooks/{x}` | `routines.ensureWebhook` | 如实 409 `webhooks.unavailable`。 |
+| ☑ | PUT | `ORG/webhooks/{x}/secret` | `routines.setWebhookSecret` | 如实 409 `webhooks.unavailable`。 |
 
-### org/secret-requests（4 个，要做 4）
+### org/secret-requests（4 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/secret-requests/{x}` | `secrets.get` |  |
-| ☐ | POST | `ORG/secret-requests/{x}/decline` | `secrets.decline` |  |
-| ☐ | POST | `ORG/secret-requests/{x}/deliver` | `secrets.deliver` |  |
-| ☐ | POST | `ORG/secret-requests/{x}/vault` | `secrets.saveToVault` |  |
+| ☑ | GET | `ORG/secret-requests/{x}` | `secrets.get` | agent 没有电脑可用，从不要密钥：404 `secret.not_found`（等连接电脑线）。 |
+| ☑ | POST | `ORG/secret-requests/{x}/decline` | `secrets.decline` | 同上，404。 |
+| ☑ | POST | `ORG/secret-requests/{x}/deliver` | `secrets.deliver` | 同上，404：不收下用不了的密钥。 |
+| ☑ | POST | `ORG/secret-requests/{x}/vault` | `secrets.saveToVault` | 同上，404。 |
 
 ### org/reminders（3 个，要做 0）
 
@@ -702,13 +700,13 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/blocks/{x}/state` | `artifacts.blockState` | 同上，404。 |
 | ☑ | PUT | `ORG/blocks/{x}/state` | `artifacts.setBlockState` | 同上，404。 |
 
-### org/proposals（3 个，要做 3）
+### org/proposals（3 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/proposals/{x}/accept` | `proposals.accept` |  |
-| ☐ | POST | `ORG/proposals/{x}/ask` | `proposals.ask` |  |
-| ☐ | POST | `ORG/proposals/{x}/refuse` | `proposals.refuse` |  |
+| ☑ | POST | `ORG/proposals/{x}/accept` | `proposals.accept` | 团队背景的提议：agent 用 `propose_team_context` 交一份完整的新版本，所有者看前后对比，可以改几个字（`text`）再采纳。背景在提议之后改过的 409 `proposal.stale`。只有已认证的所有者能决定。 |
+| ☑ | POST | `ORG/proposals/{x}/ask` | `proposals.ask` | 让 agent 提这条的成员可以请所有者看看（记下 `askedAt`，所有者的列表本来就列着每条待决定的）。成员只看得到自己发起的。 |
+| ☑ | POST | `ORG/proposals/{x}/refuse` | `proposals.refuse` | 所有者拒绝，团队背景不变。读过外部内容的那一轮提的，`evidence` 里注明。 |
 
 ### org/actions（2 个，要做 0）
 
@@ -777,19 +775,19 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/agent-setup` | `agents.newAgentSetup` | 不存上一次的设置，新 agent 用默认模型，回 null |
 | ☑ | POST | `ORG/agent-setup` | `agents.applySetup` | 换模型要经提议，回 409 |
 
-### /api/app/github-app（2 个，要做 2）
+### /api/app/github-app（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `/api/app/github-app/manifest` | `githubApp.startManifest` |  |
-| ☐ | DELETE | `/api/app/github-app/settings` | `githubApp.removeSettings` |  |
+| ☑ | POST | `/api/app/github-app/manifest` | `githubApp.startManifest` | 这台服务器还不能注册 GitHub App：409 `github.unavailable`。 |
+| ☑ | DELETE | `/api/app/github-app/settings` | `githubApp.removeSettings` | 本来就没有 App：如实回「关着」的设置。 |
 
-### org/github（2 个，要做 2）
+### org/github（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | GET | `ORG/github/access` | `githubApp.access` | 等待工作区绑定的 GitHub 用户授权和组织访问结果。 |
-| ☐ | GET | `ORG/github/repositories` | `githubApp.repositories` | 等待向该工作区验证的 GitHub 用户授权或 App 安装所授予的仓库清单。 |
+| ☑ | GET | `ORG/github/access` | `githubApp.access` | 如实回没有（`orgs: null`）。 |
+| ☑ | GET | `ORG/github/repositories` | `githubApp.repositories` | 如实回没连上、没有仓库。 |
 
 ### org/memories（2 个，要做 0）
 
@@ -833,12 +831,12 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/artifacts-trash` | `artifacts.trash` | 列出所有者从 Drive 删除的助理页面，成员返回空。30 天到期即无法还原，打开回收站时清理到期文件。工作区维护占锁时回 `423 unavailable`。旧工具与旧 API 删除仍直接清除。 |
 | ☑ | DELETE | `ORG/artifacts-trash/{x}` | `artifacts.purge` | 只有实际所有者可以清除回收站中的文件和所有历史版本。 |
 
-### org/notification-prefs（2 个，要做 1）
+### org/notification-prefs（2 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | GET | `ORG/notification-prefs` | `notifications.prefs` | 所有者可查看已配置的 APNs 手机目标和待审批、回复开关。设备按实际投递登记去重。 |
-| ☐ | PUT | `ORG/notification-prefs` | `notifications.setPref` | APNs 的待审批开关覆盖 iPhone 回合和既有后台专员待审批提醒，回复开关用于 iPhone 回合。台账、IM 和审批状态继续照常。其余类别返回 422，浏览器、桌面横幅及其它来源的分类投递待接。 |
+| ☑ | PUT | `ORG/notification-prefs` | `notifications.setPref` | 手机推送按类别开关：待审批、回复、任务（专员任务的完成、失败、提问）、例行工作。台账、IM 和审批状态照常。提到、话题、表情、电脑这里不推，开关不会生效，如实 422。 |
 
 ### org/questions（2 个，要做 0）
 
@@ -851,7 +849,7 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☑ | POST | `/api/app/email-undo` | `account.undoEmailChange` | 这里还不能改登录邮箱，没有要撤回的：404 `email.undo_gone`（不登录也能调，只回这一句）。 |
+| ☑ | POST | `/api/app/email-undo` | `account.undoEmailChange` | 「不是我改的」（7 天内）：换回旧邮箱，所有登录结束、委托出去的凭据作废。过期或用过的 404 `email.undo_gone`。从旧邮箱的通知点进来，可能没登录，要求同源。 |
 
 ### /api/app/organizations（1 个，要做 0）
 
@@ -919,11 +917,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | POST | `ORG/autonomy-proposals/{x}` | `agents.decideCostly` | agent 主动提出的高花费工作还没有：404。 |
 
-### org/agent-imports（1 个，要做 1）
+### org/agent-imports（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/agent-imports/github` | `agents.importFromGithub` |  |
+| ☑ | POST | `ORG/agent-imports/github` | `agents.importFromGithub` | 没有 GitHub App：409 `github.unavailable`。 |
 
 ### org/brain-machines（1 个，要做 0）
 
@@ -973,11 +971,11 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 |---|---|---|---|---|
 | ☑ | GET | `ORG/tasks/{x}/output` | `missions.taskOutput` | 已接入现有任务台账保存的输出，仅所有者可读 |
 
-### org/admin-asks（1 个，要做 1）
+### org/admin-asks（1 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
-| ☐ | POST | `ORG/admin-asks` | `notifications.askAdmins` | 无创建角色权限的在册成员可向所有者申请创建角色。在已加入且可发言、呼叫智能体的频道，成员可以申请添加自己可见且可进频道的角色。每人最多 10 个频道申请，工作区最多 200 个。同一申请 24 小时内去重，七天过期。所有者通过原有入口添加角色后，对应申请从收件箱移除。Webhook 请求待接。 |
+| ☑ | POST | `ORG/admin-asks` | `notifications.askAdmins` | 无创建角色权限的在册成员可向所有者申请创建角色。在已加入且可发言、呼叫智能体的频道，成员可以申请添加自己可见且可进频道的角色。每人最多 10 个频道申请，工作区最多 200 个。同一申请 24 小时内去重，七天过期。所有者通过原有入口添加角色后，对应申请从收件箱移除。请所有者接 webhook 的申请如实 409 `webhooks.unavailable`：所有者也接不了。 |
 
 ### org/proposals${filter（1 个，要做 0）
 

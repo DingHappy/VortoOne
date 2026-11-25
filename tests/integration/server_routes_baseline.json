@@ -72,6 +72,18 @@
     ]
   },
   {
+    "path": "/api/app/account/email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/account/email/confirm",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/device-accounts/switch",
     "methods": [
       "POST"
@@ -99,6 +111,18 @@
     "path": "/api/app/feedback/offers/{message_id}",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/github-app/manifest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/github-app/settings",
+    "methods": [
+      "DELETE"
     ]
   },
   {
@@ -162,6 +186,72 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agent-imports/github",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser-profile",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser-profile/request",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/open",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/restart",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/browser/stop",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/computer/target",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/databases",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/databases/{connection_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/desktop/picture",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/for-you",
     "methods": [
       "GET"
@@ -171,6 +261,18 @@
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/holds/{hold_id}",
     "methods": [
       "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/mail",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/mail/{account_id}",
+    "methods": [
+      "PUT"
     ]
   },
   {
@@ -192,6 +294,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/secrets",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/secrets/{name}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage",
     "methods": [
       "GET"
@@ -207,6 +321,12 @@
     "path": "/api/app/organizations/{org_id}/agents/{agent_id}/usage-queue/cancel",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/agents/{agent_id}/{screen}/control",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -300,6 +420,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/databases",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}/databases",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/databases/{connection_id}/tables",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/deletion",
     "methods": [
       "DELETE"
@@ -315,6 +471,36 @@
     "path": "/api/app/organizations/{org_id}/deletion/code",
     "methods": [
       "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github-app/complete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github-app/install",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github-app/installations/{installation_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github/access",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/github/repositories",
+    "methods": [
+      "GET"
     ]
   },
   {
@@ -366,6 +552,42 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/mail/accounts/composio",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/accounts/imap",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/accounts/{account_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/accounts/{account_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/accounts/{account_id}/folders",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/mail/accounts/{account_id}/suggested-addresses",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/me/agent-style",
     "methods": [
       "PUT"
@@ -414,6 +636,24 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/proposals/{proposal_id}/accept",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/proposals/{proposal_id}/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/proposals/{proposal_id}/refuse",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/refs/{ref_id}",
     "methods": [
       "GET"
@@ -444,6 +684,36 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/address",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/secret",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/secret",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/test",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/runs/{run_id}/device-wait",
     "methods": [
       "POST"
@@ -465,6 +735,30 @@
     "path": "/api/app/organizations/{org_id}/sandbox-settings",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}/decline",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}/deliver",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/secret-requests/{request_id}/vault",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -630,7 +924,73 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/vault/connections",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/connections/{connection_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/connections/{connection_id}",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/vault/connections/{connection_id}/sync",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/vault/items/{item_id}/move",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/github/repository",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/{provider}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/{provider}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/webhooks/{provider}/secret",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/app/push/devices",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/push/devices/forget",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/push/stale",
     "methods": [
       "POST"
     ]
@@ -1047,6 +1407,16 @@
     "path": "/api/hooks",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/routine-hooks/{address}",
+    "methods": [
+      "DELETE",
+      "GET",
+      "PATCH",
+      "POST",
+      "PUT"
     ]
   },
   {

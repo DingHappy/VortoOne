@@ -3440,12 +3440,327 @@ async def unread_team_threads(org_id: str, request: Request):
 _EMPTY: Dict[str, Any] = {
     "/unread-tasks": {"tasks": []},
     "/machines/outages": {"outages": [], "targets": []},
-    "/proposals": {"proposals": []},
     "/connectors": {"connections": []},
-    "/mail/accounts": {"accounts": []},
     "/skill-settings": {"agentsImprove": False},
     "/dashboards": {"home": None, "dashboards": [], "homeDashboardId": None},
 }
+
+
+# ── 提议：agent 提改团队背景，所有者采纳才生效（主人 2026-11-24 定）────────────────
+
+async def _proposal_call(org_id: str, request: Request, action, *, decide: bool = False):
+    from src.web import app_proposals
+    from src.workflow.members.context_proposals import ProposalError
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", "加入这个家以后才能看提议")
+    if decide and (not who.is_owner or not app_staff.owner_proof(request)):
+        return _error(403, "forbidden", "团队背景的提议只有所有者能决定")
+    try:
+        result = await asyncio.to_thread(action, root, who, app_proposals)
+    except ProposalError as error:
+        return _error(error.status, error.code, str(error))
+    except OSError:
+        return _error(503, "unavailable", "提议记录暂时读不出来")
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/proposals")
+async def list_proposals(org_id: str, request: Request, ids: str = Query(default="", max_length=4000)):
+    wanted = [item for item in ids.split(",") if item] if ids else None
+    return await _proposal_call(org_id, request, lambda root, who, views_: {
+        "proposals": views_.listing(root, who, wanted)})
+
+
+class _ProposalText(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    text: Optional[str] = Field(default=None, max_length=4000)
+
+
+@router.post(_ORG + "/proposals/{proposal_id}/accept")
+async def accept_proposal(org_id: str, proposal_id: str, request: Request, body: _ProposalText | None = None):
+    from src.workflow.members.context_proposals import ContextProposals
+    text = (body or _ProposalText()).text
+    return await _proposal_call(org_id, request, lambda root, who, views_: views_.one(
+        root, who, ContextProposals(root).accept(proposal_id, who.id, text)), decide=True)
+
+
+@router.post(_ORG + "/proposals/{proposal_id}/refuse")
+async def refuse_proposal(org_id: str, proposal_id: str, request: Request):
+    from src.workflow.members.context_proposals import ContextProposals
+    return await _proposal_call(org_id, request, lambda root, who, views_: views_.one(
+        root, who, ContextProposals(root).refuse(proposal_id, who.id)), decide=True)
+
+
+@router.post(_ORG + "/proposals/{proposal_id}/ask")
+async def ask_about_proposal(org_id: str, proposal_id: str, request: Request):
+    """发起的成员请所有者看看。所有者的提议列表本来就列着每一条待决定的，这里记下时间，界面据此显示「已请所有者看」。"""
+    from src.workflow.members.context_proposals import ContextProposals, ProposalError
+
+    def ask(root, who, views_):
+        if who.is_owner:
+            raise ProposalError("proposal.yours", "你就是决定的人，直接采纳或拒绝")
+        return views_.one(root, who, ContextProposals(root).ask(proposal_id, who.id))
+    return await _proposal_call(org_id, request, ask)
+
+
+# ── 等别的能力的几组：如实回答（2026-11-24，主人「剩下的你也继续推进」）──────────────
+# 没有的就说没有，回真实的空；做不了的 409 说清楚；不存在的记录 404。不收下用不了的东西、不存不生效的设置。
+
+def _honest_gate(request: Request, org_id: str, *, members_too: bool = False, write: bool = False):
+    """读：所有者或（members_too 时）在册成员；改：所有者，且带所有者证明。"""
+    root = _root(org_id)
+    who = _who(request, root)
+    if who is None:
+        return _error(403, "forbidden", _NOT_MEMBER)
+    if who.is_member and not members_too:
+        return _error(403, "forbidden", "这里只有所有者能用")
+    if who.is_owner and write and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return None
+
+
+def _agent_gate(request: Request, org_id: str, agent_id: str, **kwargs):
+    refused = _honest_gate(request, org_id, **kwargs)
+    if refused is not None:
+        return refused
+    if not _known_agent(org_id, agent_id):
+        return _error(404, "not_found", "没有这个 agent")
+    return None
+
+
+# 密钥申请：合同里密钥只能交到 agent 那台电脑上（环境变量、文件、浏览器登录框），这里的 agent 没有电脑，
+# 也就从不发起密钥申请。没有申请可看、可交、可拒。
+_NO_SECRET_REQUEST = "这里的 agent 还没有电脑可用，从不要密钥：没有这条申请"
+
+
+@router.get(_ORG + "/secret-requests/{request_id}")
+@router.post(_ORG + "/secret-requests/{request_id}/decline")
+@router.post(_ORG + "/secret-requests/{request_id}/deliver")
+@router.post(_ORG + "/secret-requests/{request_id}/vault")
+async def secret_request(org_id: str, request_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _error(404, "secret.not_found", _NO_SECRET_REQUEST)
+
+
+@router.get(_ORG + "/agents/{agent_id}/secrets")
+async def agent_secrets(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id)
+    return refused or _no_store({"secrets": []})            # 没有电脑，也就没有交到电脑上的密钥
+
+
+@router.delete(_ORG + "/agents/{agent_id}/secrets/{name}")
+async def remove_agent_secret(org_id: str, agent_id: str, name: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, write=True)
+    return refused or _error(404, "secret.not_found", "这个 agent 的电脑上没有这项密钥")
+
+
+# 保险库连接（1Password、Bitwarden 之类的外部密码库同步）：这里没有
+@router.post(_ORG + "/vault/connections")
+async def connect_vault(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or _error(409, "vault.connections_unavailable", "这里还不能连外部的密码库：用「导入密码」或「导入 .env」")
+
+
+@router.patch(_ORG + "/vault/connections/{connection_id}")
+@router.delete(_ORG + "/vault/connections/{connection_id}")
+@router.post(_ORG + "/vault/connections/{connection_id}/sync")
+async def vault_connection(org_id: str, connection_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True, write=True)
+    return refused or _error(404, "not_found", "没有这个密码库连接")
+
+
+# 每个 agent 一个浏览器、它的电脑和桌面：要等连接电脑那条线
+_NO_MACHINE = "这个 agent 没有接电脑，没有浏览器和桌面可用"
+
+
+@router.put(_ORG + "/agents/{agent_id}/browser")
+async def set_agent_browser_sites(org_id: str, agent_id: str, request: Request):
+    from src.agents.tools.server_browser import server_browser_enabled
+    refused = _agent_gate(request, org_id, agent_id, members_too=True, write=True)
+    if refused is not None:
+        return refused
+    if await asyncio.to_thread(server_browser_enabled):
+        return _error(409, "browser.sites_unavailable",
+                      "还不能按 agent 限定网站：服务器上的浏览器开放除受限站点外的所有公开网站，点击和输入每步都要确认")
+    return _error(409, "computer.unavailable", _NO_MACHINE)
+
+
+@router.post(_ORG + "/agents/{agent_id}/browser/open")
+@router.post(_ORG + "/agents/{agent_id}/browser/stop")
+@router.post(_ORG + "/agents/{agent_id}/browser/restart")
+@router.post(_ORG + "/agents/{agent_id}/browser-profile/request")
+@router.put(_ORG + "/agents/{agent_id}/computer/target")
+async def agent_machine_action(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, members_too=True, write=True)
+    return refused or _error(409, "computer.unavailable", _NO_MACHINE)
+
+
+@router.put(_ORG + "/agents/{agent_id}/browser-profile")
+async def set_agent_browser_profile(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, write=True)
+    return refused or _error(404, "not_found", "没有浏览器档案可选")
+
+
+@router.get(_ORG + "/agents/{agent_id}/{screen}/control")
+async def agent_screen_control(org_id: str, agent_id: str, screen: Literal["browser", "desktop"], request: Request):
+    refused = _agent_gate(request, org_id, agent_id, members_too=True)
+    return refused or _no_store({"canControl": False})
+
+
+@router.get(_ORG + "/agents/{agent_id}/desktop/picture")
+async def agent_desktop_picture(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, members_too=True)
+    return refused or _error(404, "desktop.no_machine", _NO_MACHINE)
+
+
+# 数据库：服务器没装 Postgres 驱动（依赖里没有），连不了；列表如实是空的
+_NO_DATABASES = "这台服务器还不能连数据库（没装 Postgres 驱动）"
+
+
+@router.get(_ORG + "/databases")
+async def databases(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id)
+    return refused or _no_store({"connections": []})
+
+
+@router.post(_ORG + "/databases")
+async def connect_database(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "databases.unavailable", _NO_DATABASES)
+
+
+@router.patch(_ORG + "/databases/{connection_id}")
+@router.delete(_ORG + "/databases/{connection_id}")
+@router.get(_ORG + "/databases/{connection_id}/tables")
+@router.get(_ORG + "/databases/{connection_id}/databases")
+async def database_connection(org_id: str, connection_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=request.method != "GET")
+    return refused or _error(404, "not_found", "没有这个数据库连接")
+
+
+@router.get(_ORG + "/agents/{agent_id}/databases")
+async def agent_databases(org_id: str, agent_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id)
+    return refused or _no_store({"databases": []})
+
+
+@router.put(_ORG + "/agents/{agent_id}/databases/{connection_id}")
+async def set_agent_database(org_id: str, agent_id: str, connection_id: str, request: Request):
+    refused = _agent_gate(request, org_id, agent_id, write=True)
+    return refused or _error(404, "not_found", "没有这个数据库连接")
+
+
+# GitHub App：这台服务器没有注册 GitHub App（状态接口已如实回「装不了」）
+_NO_GITHUB = "这台服务器还没有 GitHub App，连不了 GitHub"
+
+
+@router.post(_ORG + "/github-app/install")
+@router.post(_ORG + "/github-app/complete")
+@router.post(_ORG + "/agent-imports/github")
+async def github_app_action(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "github.unavailable", _NO_GITHUB)
+
+
+@router.delete(_ORG + "/github-app/installations/{installation_id}")
+async def remove_github_installation(org_id: str, installation_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(404, "not_found", "没有这个 GitHub 安装")
+
+
+@router.get(_ORG + "/github/repositories")
+async def github_repositories(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _no_store({"connected": False, "accounts": [], "truncated": False})
+
+
+@router.get(_ORG + "/github/access")
+async def github_access(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id)
+    return refused or _no_store({"orgs": None, "manageUrl": None})
+
+
+def _server_owner(request: Request):
+    """服务器级的 GitHub App 设置：只有所有者（带所有者证明）。"""
+    root = os.getcwd()
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "这里只有所有者能用")
+    if not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", _NEEDS_OWNER)
+    return None
+
+
+@router.post("/api/app/github-app/manifest")
+async def github_app_manifest(request: Request):
+    return _server_owner(request) or _error(409, "github.unavailable", "这台服务器还不能注册 GitHub App")
+
+
+@router.delete("/api/app/github-app/settings")
+async def remove_github_app_settings(request: Request):
+    # 本来就没有 App：如实回「关着」的设置
+    return _server_owner(request) or _no_store({"source": None, "slug": None, "htmlUrl": None, "state": "off",
+                                                "canCreate": False})
+
+
+# GitHub / Sentry 的服务级 webhook（事件触发的例行工作）：这里没有事件触发
+def _webhook_off(provider: str) -> dict:
+    return {"provider": provider, "id": None, "url": None, "secret": None, "receivedAt": None, "refusedAt": None,
+            "secretSet": False, "canManage": False, "oneClick": False}
+
+
+@router.get(_ORG + "/webhooks/{provider}")
+async def webhook_setup(org_id: str, provider: Literal["github", "sentry"], request: Request):
+    refused = _honest_gate(request, org_id, members_too=True)
+    return refused or _no_store(_webhook_off(provider))
+
+
+@router.put(_ORG + "/webhooks/{provider}")
+@router.put(_ORG + "/webhooks/{provider}/secret")
+async def ensure_webhook(org_id: str, provider: Literal["github", "sentry"], request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "webhooks.unavailable",
+                             "这里还没有按 GitHub / Sentry 事件触发的例行工作：用例行工作自己的 webhook 地址")
+
+
+@router.post(_ORG + "/webhooks/github/repository")
+async def add_github_webhook(org_id: str, request: Request):
+    refused = _honest_gate(request, org_id, write=True)
+    return refused or _error(409, "github.unavailable", _NO_GITHUB)
+
+
+# 网页推送（Web Push）这里关着：登记浏览器订阅如实拒绝；取消登记只管自己的，没有就什么都不做
+@router.post("/api/app/push/devices")
+async def register_push_device(request: Request):
+    return _error(404, "web_push_off", "这台服务器没有开网页推送：手机通知用 iPhone App")
+
+
+class _PushForget(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    token: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/api/app/push/devices/forget", status_code=204)
+async def forget_push_device(body: _PushForget, request: Request):
+    return Response(status_code=204)                         # 网页推送没登记过任何订阅：没有要停的
+
+
+class _PushStale(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    ids: List[str] = Field(max_length=100)
+
+
+@router.post("/api/app/push/stale")
+async def stale_notices(body: _PushStale, request: Request):
+    """这些通知里已经读过、完成、推迟或没有了的：浏览器据此关掉还挂着的通知。"""
+    root = os.getcwd()
+    owner = member_auth.principal(request, root).is_owner
+    try:
+        stale = await asyncio.to_thread(app_notice_inbox.stale, root, body.ids, owner=owner)
+    except (OSError, ValueError):
+        return _error(503, "unavailable", "通知记录暂时读不出来")
+    return _no_store({"stale": stale})
 
 
 def _register_empty(path: str, payload: Any) -> None:
@@ -3766,11 +4081,104 @@ async def vault_remove(org_id: str, item_id: str, request: Request):
 
 @router.get(_ORG + "/mail/providers")
 async def mail_providers(org_id: str, request: Request):
+    from src.workflow.members.mailboxes import PRESETS
     root = _root(org_id)
-    if _who(request, root) is None:
+    who = _who(request, root)
+    if who is None:
         return _error(403, "forbidden", _NOT_MEMBER)
-    # 组织的连接目录只公布能从这里添加的服务。旧 IMAP 插件的凭据属于服务的操作系统用户。
-    return {"composio": False, "imap": False, "presets": []}
+    # 团队邮箱只有所有者能接（主人 2026-11-24 定）；Gmail / Outlook（Composio）这里没有
+    return {"composio": False, "imap": who.is_owner, "presets": PRESETS if who.is_owner else []}
+
+
+async def _mail_call(org_id: str, request: Request, action, *, status: int = 200, read: bool = False):
+    """团队邮箱：只给所有者；改要带所有者证明（读和 AI 密钥一样不要求，列表里没有授权码）。
+    连接失败回 422，code 是界面认的 MailConnectError。"""
+    from src.plugins.mail import MailError
+    from src.workflow.members.mailboxes import MailboxError
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner:
+        return _error(403, "forbidden", "团队邮箱只有所有者能管")
+    if not read and not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "团队邮箱只有已认证的所有者能改")
+    try:
+        result = await asyncio.to_thread(action, root)
+    except MailError as error:
+        return _error(422, error.code, str(error))
+    except MailboxError as error:
+        return _error(error.status, error.code, str(error))
+    except OSError:
+        return _error(503, "unavailable", "邮箱登记暂时读不出来")
+    if result is None:
+        return Response(status_code=204)
+    return JSONResponse(result, status_code=status, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/mail/accounts")
+async def mail_accounts(org_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"accounts": app_mail.accounts(root)}, read=True)
+
+
+@router.post(_ORG + "/mail/accounts/imap")
+async def connect_mail_imap(org_id: str, body: Dict[str, Any], request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"account": app_mail.connect(root, body)})
+
+
+@router.post(_ORG + "/mail/accounts/composio")
+async def connect_mail_composio(org_id: str, request: Request):
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "团队邮箱只有已认证的所有者能管")
+    return _error(409, "mail.composio_unavailable", "这里没有 Gmail / Outlook 的一键连接：用 IMAP 和客户端专用密码接")
+
+
+@router.patch(_ORG + "/mail/accounts/{account_id}")
+async def update_mail_account(org_id: str, account_id: str, body: Dict[str, Any], request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"account": app_mail.update(root, account_id, body)})
+
+
+@router.delete(_ORG + "/mail/accounts/{account_id}", status_code=204)
+async def disconnect_mail_account(org_id: str, account_id: str, request: Request):
+    from src.workflow.members.mailboxes import Mailboxes
+    return await _mail_call(org_id, request, lambda root: Mailboxes(root).remove(account_id))
+
+
+@router.get(_ORG + "/mail/accounts/{account_id}/folders")
+async def mail_folders(org_id: str, account_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {"folders": app_mail.folders(root, account_id)},
+                            read=True)
+
+
+@router.get(_ORG + "/mail/accounts/{account_id}/suggested-addresses")
+async def mail_suggested_addresses(org_id: str, account_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {
+        "addresses": app_mail.suggested_addresses(root, account_id)}, read=True)
+
+
+def _mailbox_staff(root: str, agent_id: str) -> str:
+    from src.workflow.members.mailboxes import MailboxError
+    staff_id = _staff_of(root, agent_id)
+    if staff_id is None:
+        raise MailboxError(404, "not_found", "没有这个 agent（主助理用的是自己的邮件插件）")
+    return staff_id
+
+
+@router.get(_ORG + "/agents/{agent_id}/mail")
+async def agent_mail(org_id: str, agent_id: str, request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: {
+        "mailboxes": app_mail.agent_mailboxes(root, _mailbox_staff(root, agent_id))}, read=True)
+
+
+@router.put(_ORG + "/agents/{agent_id}/mail/{account_id}")
+async def set_agent_mail(org_id: str, agent_id: str, account_id: str, body: Dict[str, Any], request: Request):
+    from src.web import app_mail
+    return await _mail_call(org_id, request, lambda root: app_mail.set_agent(
+        root, _mailbox_staff(root, agent_id), account_id, body))
 
 
 # ── 私人日历 ──────────────────────────────────────────────────────────────
@@ -3855,6 +4263,18 @@ class _WikiAppend(BaseModel):
     source: _WikiMessageSource
 
 
+def _wiki_for(root: str, actor):
+    """这个人眼里的 Wiki（能不能写、能不能管、看得到哪些公开频道的来源）。"""
+    state = MemberRegistry(root).snapshot()
+    if actor.is_member and actor.id not in state["members"]:
+        raise WikiError(403, "forbidden", _NOT_MEMBER)
+    keys = app_members.permission_keys(root, actor)
+    owner_id = views.owner_id(root)
+    people = frozenset({owner_id, *state["members"]})
+    return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
+                                 TeamChannels.readable_public_names(state, actor)))
+
+
 async def _wiki_call(request, org_id, action, *, listing=False, source=None, read_body=None):
     from src.workflow.members.registry import Damaged, Missing, Refused
 
@@ -3868,14 +4288,7 @@ async def _wiki_call(request, org_id, action, *, listing=False, source=None, rea
         return _error(403, "owner_proof_required", "Wiki 需要已认证的同源会话")
 
     def wiki_for_reader():
-        state = MemberRegistry(root).snapshot()
-        if actor.is_member and actor.id not in state["members"]:
-            raise WikiError(403, "forbidden", _NOT_MEMBER)
-        keys = app_members.permission_keys(root, actor)
-        owner_id = views.owner_id(root)
-        people = frozenset({owner_id, *state["members"]})
-        return Wiki(root, WikiReader(actor, owner_id, people, "edit_wiki" in keys, "configure" in keys,
-                                     TeamChannels.readable_public_names(state, actor)))
+        return _wiki_for(root, actor)
 
     def execute():
         if source is None:
@@ -4037,7 +4450,14 @@ async def wiki_version(org_id: str, slug: str, version: int, request: Request):
 
 @router.put(_WIKI + "/bulk/agents")
 async def set_wiki_page_agents(org_id: str, body: Dict[str, Any], request: Request):
-    return await _wiki_call(request, org_id, lambda wiki: wiki.set_agents(body))
+    root = _root(org_id)
+
+    def known_agents():
+        try:
+            return frozenset(row["id"] for row in app_channels.channel_agents(root).values())   # 派活的 agent 才读得到
+        except (OSError, ValueError):
+            return frozenset()
+    return await _wiki_call(request, org_id, lambda wiki: wiki.set_agents(body, known_agents=known_agents()))
 
 
 @router.post(_WIKI + "/bulk/delete")
@@ -4119,7 +4539,7 @@ def _mission_progress(items=()):
             "doing": statuses.count("doing"), "waiting": statuses.count("waiting_you")}
 
 
-def _mission_view(drafts, row, *, plan=None, running=0, pending=None, role="owner", asked=False):
+def _mission_view(drafts, row, *, plan=None, running=0, pending=None, role="owner", asked=False, wiki_page=None):
     """plan：最新一版计划（{"version", "items"}，没有就 None）；running：正在做的步数；
     pending：还在等人的决定和交付（{decisions, provisional, deliveries}）。"""
     pending = pending or {}
@@ -4148,7 +4568,7 @@ def _mission_view(drafts, row, *, plan=None, running=0, pending=None, role="owne
         "canCancelDraft": role == "owner" and status == "proposed",
         "startedAt": row["started_at"], "pausedAt": row["paused_at"] if status == "paused" else None,
         "closedAt": row["closed_at"], "closeReason": row["note"],
-        "wikiPageId": None,
+        "wikiPageId": wiki_page,
     }
 
 
@@ -4164,7 +4584,7 @@ def _mission_full(drafts, actor, mission_id):
     return _mission_view(drafts, row, plan=plans[0] if plans else None,
                          running=app_missions.running(drafts.channels.registry.root, mission_id, steps),
                          pending={**MissionCards(runs).counts(mission_id), **people.counts(actor, mission_id)},
-                         role=role, asked=asked)
+                         role=role, asked=asked, wiki_page=MissionCards(runs).wiki_page_of(mission_id))
 
 
 async def _mission_request(org_id, request, action, *, status=200, members=False):
@@ -4576,6 +4996,27 @@ async def check_mission_delivery(org_id: str, mission_id: str, delivery_id: str,
                                   _mission_cards(drafts).check(actor, mission_id, delivery_id, item_id, body.checked))
 
 
+def _mission_wiki_page(drafts, actor, mission_id, delivery, note, reader):
+    """交付写成的 Wiki 页面：目标、交付说明、核对清单、验收意见。私有频道的只给频道里的人看。"""
+    row = drafts.get(actor, mission_id)
+    lines = [f"# {row['title']}", "", f"**目标**：{row['goal']}" if row.get("goal") else "", "", "## 交付", "",
+             delivery["summary"], ""]
+    if delivery["checklist"]:
+        lines += ["## 核对清单", ""] + [f"- [{'x' if item['checkedBy'] else ' '}] {item['text']}"
+                                       for item in delivery["checklist"]] + [""]
+    if note:
+        lines += [f"**验收意见**：{note}", ""]
+    state = drafts.channels.registry.snapshot()
+    channel = state["channels"].get(row["channel_id"]) or {}
+    audience = None
+    if channel.get("kind") != "public":
+        people = [person for person in [reader.owner_id, *(channel.get("joined") or {})]
+                  if person in reader.known_people]
+        audience = {"mode": "people", "userIds": list(dict.fromkeys(people)) or [reader.owner_id]}
+    return {"title": f"Mission：{row['title']}"[:120], "folder": "Mission", "tags": ["mission"],
+            "body": "\n".join(lines).strip() + "\n", "audience": audience}
+
+
 class _MissionAccept(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     saveToWiki: bool = False
@@ -4585,15 +5026,27 @@ class _MissionAccept(BaseModel):
 @router.post(_ORG + "/missions/{mission_id}/deliveries/{delivery_id}/accept")
 async def accept_mission_delivery(org_id: str, mission_id: str, delivery_id: str, body: _MissionAccept,
                                   request: Request):
-    """验收通过：Mission 完成。存到 Wiki 还没接（Wiki 内容进 agent 上下文的可信度没定），如实拒绝。"""
+    """验收通过：Mission 完成。勾了「存到 Wiki」就把交付写成一页 Wiki（主人 2026-11-24 定：成员和 agent
+    写的内容按资料处理，Wiki 可以开放）。私有频道里的 Mission，这页只给频道里的人看。"""
+    from src.workflow.wiki import WikiError
     stop: Dict[str, Any] = {}
 
     def accept(drafts, actor):
-        if body.saveToWiki:
-            return _error(409, "mission.wiki_unavailable", "存到 Wiki 还没接上：取消「存到 Wiki」再完成")
         cards = _mission_cards(drafts)
-        _, _, stop["task"] = cards.conclude(actor, mission_id, delivery_id, "accepted",
-                                            (body.note or "").strip() or None)
+        root = drafts.channels.registry.root
+        wiki = None
+        if body.saveToWiki:
+            wiki = _wiki_for(root, actor)
+            if not wiki.reader.can_write:
+                return _error(403, "forbidden", "你没有编辑 Wiki 的权限：取消「存到 Wiki」再完成")
+        note = (body.note or "").strip() or None
+        delivery, _, stop["task"] = cards.conclude(actor, mission_id, delivery_id, "accepted", note)
+        if wiki is not None and not cards.wiki_page_of(mission_id):
+            try:
+                page = wiki.create(_mission_wiki_page(drafts, actor, mission_id, delivery, note, wiki.reader))
+                cards.mark_saved(delivery_id, page["id"])
+            except (WikiError, OSError, ValueError) as error:
+                return _error(409, "mission.wiki_failed", f"Mission 已经完成，但没能存到 Wiki：{error}")
         return _mission_full(drafts, actor, mission_id)
 
     response = await _mission_request(org_id, request, members=True, action=accept)
@@ -5337,10 +5790,124 @@ class _EmailUndo(BaseModel):
 
 @router.post("/api/app/email-undo")
 async def undo_email_change(body: _EmailUndo, request: Request):
-    """「不是我改的」：这里还不能改登录邮箱，也就没有要撤回的改动。"""
+    """「不是我改的」：从旧邮箱收到的通知点进来（可能没登录）。换回旧邮箱，所有登录都结束。"""
+    from src.workflow.members.accounts import Damaged, EmailHeld, LinkGone, MemberAccounts
     if not member_auth.same_origin(request):
         return _error(403, "forbidden", "这里现在不能撤回")
-    return _error(404, "email.undo_gone", "没有要撤回的邮箱改动")
+    root = os.getcwd()
+    try:
+        _, member_id, restored = await asyncio.to_thread(MemberAccounts(root).undo_email, body.token)
+        if member_id:
+            await asyncio.to_thread(MemberRegistry(root).set_member_email, member_id, restored)
+    except LinkGone as error:
+        return _error(404, "email.undo_gone", str(error))
+    except EmailHeld as error:
+        return _error(409, "email.held", str(error))
+    except (Damaged, OSError):
+        return _error(503, "unavailable", "暂时撤回不了")
+    return JSONResponse({"email": restored}, headers={"Cache-Control": "no-store"})
+
+
+# ── 改登录邮箱（2026-11-24，主人「剩下的你也继续推进」）──────────────────────────
+# 登录邮箱就是登录名。没发信：10 分钟内登录过就马上换。发信开着：先给现在的邮箱发验证码（或 10 分钟内登录过），
+# 再给新邮箱发确认链接，打开了才换；换好以后旧邮箱收到「不是我改的」，点了就换回去、所有登录结束。
+
+class _EmailChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    newEmail: str = Field(min_length=3, max_length=254)
+    code: str | None = Field(default=None, max_length=16)
+
+
+def _email_code_key(account_id: str) -> str:
+    return "account-email:" + account_id
+
+
+@router.post("/api/app/account/email")
+async def change_login_email(body: _EmailChange, request: Request):
+    from src.workflow.members import join_codes
+    from src.workflow.members.accounts import Damaged, EmailHeld, MemberAccounts
+    from src.workflow.members.registry import login_name
+
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        return _error(409, "account.owner_email", "所有者的登录由本机所有者认领管理，这里不能改")
+    account = request.state.member_account
+    try:
+        address = login_name(body.newEmail)
+    except ValueError:
+        return _error(400, "account.invalid_email", "新邮箱地址无效")
+    if address == account["email"]:
+        return _error(400, "email.same", "和现在的登录邮箱一样")
+    accounts = MemberAccounts(root)
+    token = request.cookies.get(member_auth.MEMBER_COOKIE, "")
+    try:
+        if address != account["email"] and await asyncio.to_thread(accounts.account_with_email, address):
+            return _error(409, "email.held", "这个邮箱已经是别的账号了")
+        recent = await asyncio.to_thread(accounts.recently_signed_in, account["id"], token)
+        if not join_codes.enabled():
+            if not recent:
+                return _error(403, "reauth.sign_in", "先用密码重新登录一次，10 分钟内回来改")
+            await asyncio.to_thread(accounts.change_email, account["id"], address)
+            if account.get("member"):
+                await asyncio.to_thread(MemberRegistry(root).set_member_email, account["member"], address)
+            return _no_store({"status": "changed", "email": address})
+        if body.code:
+            try:
+                join_codes.CODES.check(_email_code_key(account["id"]), account["email"], body.code)
+            except join_codes.CodeError as error:
+                return _reauth_code_error(error)
+        elif not recent:
+            try:
+                wait = await asyncio.to_thread(
+                    join_codes.CODES.send_code, _email_code_key(account["id"]), account["email"], "更换登录邮箱的验证码",
+                    "你在把这个家的登录邮箱换成别的地址，验证码是 {code}，10 分钟内有效。\n不是你在操作的话，改一下密码。")
+            except join_codes.CodeError as error:
+                return _reauth_code_error(error)
+            except OSError:
+                return _error(503, "mail_unavailable", "验证码没有发出去，请稍后再试")
+            return _no_store({"status": "code", "email": account["email"], "resendIn": wait})
+        link = await asyncio.to_thread(accounts.email_link, account["id"], address)
+        origin = _invitation_origin(request)
+        sent = await asyncio.to_thread(
+            join_codes.CODES.mail, address, "确认新的登录邮箱",
+            f"打开这个链接，把这个家的登录邮箱换成 {address}（24 小时内有效）：\n"
+            f"{origin}/api/app/account/email/confirm?token={link}\n不是你在操作的话，忽略这封邮件就好。")
+        if not sent:
+            return _error(429, "reauth.code_wait", "发得太多了，请过一会儿再试")
+    except EmailHeld as error:
+        return _error(409, "email.held", str(error))
+    except (Damaged, OSError, join_codes.CodeError):
+        return _error(503, "unavailable", "暂时改不了登录邮箱")
+    return _no_store({"status": "sent", "email": address})
+
+
+@router.get("/api/app/account/email/confirm")
+async def confirm_login_email(request: Request, token: str = Query(default="", max_length=200)):
+    """新邮箱里的确认链接（不要求登录，凭链接里的令牌）。换好以后给旧邮箱发「不是我改的」。"""
+    from fastapi.responses import RedirectResponse
+    from src.workflow.members import join_codes
+    from src.workflow.members.accounts import Damaged, EmailHeld, LinkGone, MemberAccounts
+    root = os.getcwd()
+    try:
+        _, member_id, old, new, undo = await asyncio.to_thread(MemberAccounts(root).confirm_email, token)
+        if member_id:
+            await asyncio.to_thread(MemberRegistry(root).set_member_email, member_id, new)
+    except (LinkGone, EmailHeld):
+        return RedirectResponse("/?email=failed", status_code=303, headers={"Cache-Control": "no-store"})
+    except (Damaged, OSError):
+        return RedirectResponse("/?email=failed", status_code=303, headers={"Cache-Control": "no-store"})
+    origin = _invitation_origin(request)
+    try:
+        await asyncio.to_thread(
+            join_codes.CODES.mail, old, "你的登录邮箱换了",
+            f"这个家的登录邮箱刚换成了 {new}。\n不是你改的话，7 天内打开这个链接换回来，所有登录都会结束：\n"
+            f"{origin}/email-undo?token={undo}", notice=True)
+    except (OSError, join_codes.CodeError):
+        logging.getLogger(__name__).warning("旧邮箱的「邮箱换了」通知没有发出", exc_info=True)
+    return RedirectResponse("/?email=changed", status_code=303, headers={"Cache-Control": "no-store"})
 
 
 class _OnboardingStep(BaseModel):
@@ -6023,12 +6590,21 @@ class _ChannelAgentAsk(BaseModel):
     agentId: str = Field(min_length=1, max_length=128)
 
 
+class _WebhookAsk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    what: Literal["webhook"]
+    provider: Literal["github", "sentry"]
+
+
 @router.post(_ORG + "/admin-asks")
-async def ask_owner(org_id: str, body: _AgentCreationAsk | _ChannelAgentAsk, request: Request):
+async def ask_owner(org_id: str, body: _AgentCreationAsk | _ChannelAgentAsk | _WebhookAsk, request: Request):
     root = _root(org_id)
     who = _who(request, root)
     if who is None or not who.is_member or not views.owner_connection():
         return _error(403, "forbidden", "只有当前在册成员能向所有者发送申请")
+    if isinstance(body, _WebhookAsk):
+        # 服务级 webhook 这里没有，所有者也接不了：不发一条做不到的申请
+        return _error(409, "webhooks.unavailable", "这里还没有按 GitHub / Sentry 事件触发的例行工作，所有者也接不了")
 
     def submit():
         if isinstance(body, _AgentCreationAsk):
@@ -6780,9 +7356,15 @@ async def describe_rule(org_id: str, body: Dict[str, Any]):
 
 
 def _routine_schedule(root: str, trigger: Any) -> tuple:
-    """界面的 trigger → (排期写法, 时区)。只认按时间的三种；事件、邮件、webhook、连接器触发没有对应能力。"""
+    """界面的 trigger → (排期写法, 时区)。认按时间的三种和 webhook；事件、邮件、连接器触发没有对应能力。"""
+    if isinstance(trigger, dict) and trigger.get("type") == "webhook":
+        from src.workflow.staff.routine_hooks import methods_of
+        if set(trigger) - {"type", "methods"}:
+            raise app_schedule.ScheduleError("invalid", "webhook 触发只能选方法")
+        methods_of(trigger.get("methods"))
+        return "webhook", _home_timezone(root, None)
     if not isinstance(trigger, dict) or trigger.get("type") not in ("schedule", "once"):
-        raise app_schedule.ScheduleError("routine.trigger_unsupported", "这里的例行工作只能按时间触发")
+        raise app_schedule.ScheduleError("routine.trigger_unsupported", "这里的例行工作只能按时间或 webhook 触发")
     if trigger["type"] == "once":
         at = trigger.get("at")
         tz = _home_timezone(root, trigger.get("timezone"))
@@ -6844,6 +7426,9 @@ def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
             "prompt": prompt.strip(), "schedule": schedule, "timezone": timezone,
             "delivery": "notify" if body.get("report") == "always" else "review", "enabled": True,
             "token_budget": 0, "acceptance": []}
+    if schedule == "webhook":
+        from src.workflow.staff.routine_hooks import RoutineHooks, methods_of
+        RoutineHooks(root).prepare(data["id"], methods_of(body["trigger"].get("methods")))
     return _submit_desktop_routine(root, data, f"主人在界面上新建例行工作「{data['name']}」")
 
 
@@ -6944,6 +7529,132 @@ async def run_routine(org_id: str, routine_id: str, request: Request):
         return _error(409, f"routine.{error.reason}", str(error))
     except (ValueError, OSError) as error:
         return _error(409, "routine.unavailable", str(error))
+
+
+# ── 例行工作的 webhook 触发（主人 2026-11-24 定：做，带密钥；触发进来的内容按外部内容）────────
+
+def _hook_routine(root: str, routine_id: str):
+    from src.workflow.staff.routines import Routines
+    item = next((row for row in Routines(root).list() if row["id"] == routine_id and not row["retired"]), None)
+    return item if item is not None and item["schedule"] == "webhook" else None
+
+
+async def _hook_call(org_id: str, routine_id: str, request: Request, action):
+    from src.workflow.staff.routine_hooks import HookDamaged, RoutineHooks
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "webhook 设置只有已认证的所有者能看能改")
+    try:
+        if await asyncio.to_thread(_hook_routine, root, routine_id) is None:
+            return _error(404, "not_found", "没有这条 webhook 触发的例行工作")
+        result = await asyncio.to_thread(action, RoutineHooks(root), _origin(request))
+    except (HookDamaged, OSError, ValueError):
+        return _error(503, "unavailable", "webhook 记录暂时读不出来")
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/routines/{routine_id}/hook")
+async def routine_hook(org_id: str, routine_id: str, request: Request):
+    return await _hook_call(org_id, routine_id, request, lambda hooks, origin: hooks.view(routine_id, origin))
+
+
+@router.post(_ORG + "/routines/{routine_id}/hook/address")
+async def new_routine_hook_address(org_id: str, routine_id: str, request: Request):
+    return await _hook_call(org_id, routine_id, request, lambda hooks, origin: hooks.new_address(routine_id, origin))
+
+
+@router.post(_ORG + "/routines/{routine_id}/hook/secret")
+async def new_routine_hook_secret(org_id: str, routine_id: str, request: Request):
+    def make(hooks, origin):
+        secret, hook = hooks.new_secret(routine_id, origin)
+        return {"secret": secret, "hook": hook}
+    return await _hook_call(org_id, routine_id, request, make)
+
+
+@router.delete(_ORG + "/routines/{routine_id}/hook/secret")
+async def remove_routine_hook_secret(org_id: str, routine_id: str, request: Request):
+    return await _hook_call(org_id, routine_id, request, lambda hooks, origin: hooks.remove_secret(routine_id, origin))
+
+
+_HOOK_SAMPLE = '{"text":"这是一次测试调用","test":true}'
+
+
+@router.post(_ORG + "/routines/{routine_id}/hook/test")
+async def test_routine_hook(org_id: str, routine_id: str, request: Request):
+    """「测试」：用一份样例内容叫一次，agent 会被告知这是测试。暂停着的也能试。"""
+    import uuid
+    from src.workflow.staff.routine_hooks import HookDamaged, RoutineHooks
+    from src.workflow.staff.routines import RoutineRunRejected, Routines
+    root = _root(org_id)
+    actor = member_auth.principal(request, root)
+    if not actor.is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "webhook 设置只有已认证的所有者能看能改")
+    if _hook_routine(root, routine_id) is None:
+        return _error(404, "not_found", "没有这条 webhook 触发的例行工作")
+    hooks = RoutineHooks(root)
+    try:
+        run = Routines(root).run_now(routine_id, owner=actor.id,
+                                     hook={"call": uuid.uuid4().hex[:16], "data": _HOOK_SAMPLE, "test": True})
+    except RoutineRunRejected as error:
+        if error.reason == "audit_unavailable":
+            return _error(503, "audit_unavailable", str(error))
+        return _error(409, f"routine.{error.reason}", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "routine.unavailable", str(error))
+    try:
+        hooks.record(routine_id, "accepted", 202, len(_HOOK_SAMPLE.encode()), run, True)
+        hook = hooks.view(routine_id, _origin(request))
+    except (HookDamaged, OSError):
+        return _error(503, "unavailable", "webhook 记录暂时读不出来")
+    return JSONResponse({"runId": run, "hook": hook}, headers={"Cache-Control": "no-store"})
+
+
+def _hook_answer(status: int, code: str, message: str, **extra):
+    return JSONResponse({"status": code, "message": message, **extra}, status_code=status,
+                        headers={"Cache-Control": "no-store", **({"Retry-After": "60"} if status == 429 else {})})
+
+
+@router.api_route("/api/routine-hooks/{address}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def call_routine_hook(address: str, request: Request):
+    """例行工作的触发地址：不登录，凭地址（和签名，设了密钥时）。对方发来的内容整段交给 agent 当资料。"""
+    import uuid
+    from src.workflow.staff.routine_hooks import MAX_BYTES, HookDamaged, RoutineHooks
+    from src.workflow.staff.routines import RoutineRunRejected, Routines
+    root = os.getcwd()
+    hooks = RoutineHooks(root)
+    try:
+        routine_id = hooks.routine_at(address)
+        if routine_id is None or _hook_routine(root, routine_id) is None:
+            return _hook_answer(404, "not_found", "没有这个触发地址")
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_BYTES:
+            data = b"x" * (MAX_BYTES + 1)              # 不读进来：按「太大」记一次
+        elif request.method == "GET":
+            data = request.url.query.encode("utf-8")
+        else:
+            data = await request.body()
+        refused = hooks.admit(routine_id, request.method, data, request.headers.get("x-vortoone-signature", ""),
+                              request.headers.get("idempotency-key", "").strip())
+    except (HookDamaged, OSError):
+        return _hook_answer(503, "unavailable", "暂时收不了")
+    if refused is not None:
+        outcome, status = refused
+        words = {"method": "这个地址不接受这种请求", "too_large": "内容太大", "bad_signature": "签名不对",
+                 "rate_limited": "调用太频繁，请稍后再试", "duplicate": "这次调用之前收到过，没有再运行"}
+        return _hook_answer(status, outcome, words[outcome])
+    call = uuid.uuid4().hex[:16]
+    try:
+        run = Routines(root).run_now(routine_id, owner="webhook",
+                                     hook={"call": call, "data": data.decode("utf-8", "replace"), "test": False})
+    except RoutineRunRejected as error:
+        if error.reason in ("running", "awaiting_review"):
+            hooks.record(routine_id, "rate_limited", 429, len(data), None, False)
+            return _hook_answer(429, "rate_limited", str(error))
+        return _hook_answer(409, "not_started", str(error))
+    except (ValueError, OSError) as error:
+        return _hook_answer(409, "not_started", str(error))
+    hooks.record(routine_id, "accepted", 202, len(data), run, False)
+    return _hook_answer(202, "accepted", "收到了，例行工作开始运行", runId=run)
 
 
 @router.get(_ORG + "/routines/proposals/review")
@@ -8306,8 +9017,13 @@ async def watch_paired_role_desktop(socket: WebSocket, org_id: str, agent_id: st
 
 @router.get(_ORG + "/agents/{agent_id}/browser")
 async def agent_browser(org_id: str, agent_id: str, request: Request):
+    from src.agents.tools.server_browser import server_browser_enabled
+    on = agent_id != views.main_agent_id(_root(org_id)) and await asyncio.to_thread(server_browser_enabled)
+    # 开着时：在服务器本机用浏览器，只在所有者发起的事里、点击输入每步确认；任何公开网站（受限站点除外）
     return await _screen_status(org_id, agent_id, request, "browser", {
-        "allowedDomains": None, "available": False, "reason": "no_machine", "detail": None, "machine": None,
+        "allowedDomains": None, "available": on, "reason": None if on else "no_machine",
+        "detail": "在服务器上用无头浏览器：只在所有者发起的事里，点击和输入每步都要确认" if on else None,
+        "machine": None,
     })
 
 

@@ -42,6 +42,7 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", r"/api/app/account/deletion"),               # 注销自己的账号：先看会怎样，再要验证码、注销、恢复
     ("POST", r"/api/app/account/deletion/code"),
     ("DELETE", r"/api/app/account"),
+    ("POST", r"/api/app/account/email"),                  # 改自己的登录邮箱
     ("DELETE", r"/api/app/account/deletion"),
     ("GET", r"/api/app/me/unread"),                        # 本人可见的工作区未读汇总
     ("POST", r"/api/app/feedback"),                       # 成员只提交文字，收件箱仅所有者可读
@@ -136,6 +137,8 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("POST", _ORG + r"/vault/(?:import|items|keys)"),
     ("PATCH", _ORG + r"/vault/items/[^/]+"),
     ("DELETE", _ORG + r"/vault/items/[^/]+"),
+    ("GET", _ORG + r"/proposals"),                        # 自己让 agent 提的团队背景修改，可以请所有者看看
+    ("POST", _ORG + r"/proposals/[^/]+/ask"),
     ("GET", _ORG + r"/routines/proposals"),
     ("POST", _ORG + r"/routines/proposals"),
     ("GET", _ORG + r"/members"),
@@ -154,6 +157,19 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("GET", _ORG + r"/team"),
     ("GET", _ORG + r"/agents/[^/]+"),
     ("GET", _ORG + r"/agents/[^/]+/(?:browser(?:/handoff)?|desktop)"),
+    # 等连接电脑线的几样：成员读到的也是如实的「没有」（这台没有电脑、没有 GitHub、没有密钥申请）
+    ("GET", _ORG + r"/agents/[^/]+/[^/]+/control"),          # 路由只认 browser、desktop
+    ("GET", _ORG + r"/agents/[^/]+/desktop/picture"),
+    ("POST", _ORG + r"/agents/[^/]+/(?:browser/(?:open|stop|restart)|browser-profile/request)"),
+    ("PUT", _ORG + r"/agents/[^/]+/(?:browser|computer/target)"),
+    ("GET", _ORG + r"/github/repositories"),
+    ("GET", _ORG + r"/webhooks/[^/]+"),                      # 路由只认 github、sentry
+    ("GET", _ORG + r"/secret-requests/[^/]+"),
+    ("POST", _ORG + r"/secret-requests/[^/]+/(?:decline|deliver|vault)"),
+    ("POST", _ORG + r"/vault/connections(?:/[^/]+/sync)?"),
+    ("PATCH", _ORG + r"/vault/connections/[^/]+"),
+    ("DELETE", _ORG + r"/vault/connections/[^/]+"),
+    ("POST", r"/api/app/push/(?:devices(?:/forget)?|stale)"),
     ("GET", _ORG + r"/agents/[^/]+/member-action-levels"),
     ("PUT", _ORG + r"/agents/[^/]+/member-action-levels/[^/]+"),
     ("GET", _ORG + r"/agents/[^/]+/member-policy"),
@@ -245,6 +261,7 @@ _EMPTY_ANSWERS: Tuple[Tuple[str, Any], ...] = (
     (r"/api/app/models", {"models": [], "defaultModel": ""}),
     (r"/api/app/connectors/catalog", {"connectors": [], "builtinScopes": []}),
     (_ORG + r"/memories", {"memories": []}),
+    (_ORG + r"/mail/accounts", {"accounts": []}),            # 团队邮箱只有所有者能看（主人 2026-11-24 定）
     (_ORG + r"/agents/[^/]+/memories", {"memories": []}),
     (_ORG + r"/agents/[^/]+/skills", {"skills": []}),
     (_ORG + r"/skills", {"skills": []}),

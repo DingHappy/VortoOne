@@ -32,6 +32,8 @@ PASSWORD_MIN, PASSWORD_MAX = 8, 128
 SESSION_DAYS, RESET_HOURS = 30, 24
 PASSWORD_REAUTH = timedelta(minutes=10)
 DELETION_DAYS = 7          # 成员注销自己的账号：7 天后才真正移出，之前可以恢复
+EMAIL_LINK = timedelta(hours=24)   # 改登录邮箱：发到新邮箱的确认链接多久有效
+EMAIL_UNDO = timedelta(days=7)     # 改好以后，旧邮箱收到的「不是我改的」多久有效
 MAX_ACCOUNTS, MAX_SESSIONS_EACH = 1000, 10
 LOCK_AFTER, LOCK_SECONDS = 5, 15 * 60
 
@@ -54,6 +56,14 @@ class WrongCredentials(PermissionError):
 
 class Locked(PermissionError):
     """输错太多次，暂时不能再试。"""
+
+
+class EmailHeld(RuntimeError):
+    """新邮箱已经是别的账号的登录名。"""
+
+
+class LinkGone(RuntimeError):
+    """确认或撤回的链接失效了（用过、过期、或者又改过）。"""
 
 
 class NotRestorable(RuntimeError):
@@ -503,6 +513,87 @@ class MemberAccounts:
             if str(account_id) in state["accounts"]:
                 self._end_sessions(state, str(account_id))
                 del state["accounts"][str(account_id)]
+
+    # ── 改登录邮箱（2026-11-24）───────────────────────────────────────────────
+
+    def recently_signed_in(self, account_id: str, token: str, *, now: Optional[datetime] = None) -> bool:
+        """这次的会话是 10 分钟内凭密码登录的。"""
+        with _LOCK:
+            state = self._load()
+        moment = now or _now()
+        session = self._valid_session(state, _digest(token), moment)
+        return (session is not None and session["account"] == account_id and session.get("password_verified") is True
+                and _iso(moment - PASSWORD_REAUTH) < str(session.get("created") or "") <= _iso(moment))
+
+    def _held(self, state: Dict[str, Any], account_id: str, address: str) -> bool:
+        return any(key != account_id and item.get("email") == address for key, item in state["accounts"].items())
+
+    def change_email(self, account_id: str, address: str) -> str:
+        """马上换登录名（没有发信的服务器）。返回旧的。"""
+        with self._change() as state:
+            account = state["accounts"].get(account_id)
+            if account is None:
+                raise LookupError("没有这个账号")
+            if self._held(state, account_id, address):
+                raise EmailHeld("这个邮箱已经是别的账号了")
+            old = account["email"]
+            account["email"] = address
+            account.pop("email_change", None)
+            return old
+
+    def email_link(self, account_id: str, address: str, *, now: Optional[datetime] = None) -> str:
+        """发到新邮箱的确认链接：打开了才换。又要了一次就作废上一次的。"""
+        with self._change() as state:
+            account = state["accounts"].get(account_id)
+            if account is None:
+                raise LookupError("没有这个账号")
+            if self._held(state, account_id, address):
+                raise EmailHeld("这个邮箱已经是别的账号了")
+            token = secrets.token_urlsafe(32)
+            account["email_change"] = {"digest": _digest(token), "email": address,
+                                       "expires": _iso((now or _now()) + EMAIL_LINK)}
+            return token
+
+    def confirm_email(self, token: str, *, now: Optional[datetime] = None) -> Tuple[str, str, str, str, str]:
+        """打开了确认链接：换登录名，旧邮箱拿到一个「不是我改的」。返回（账号, 成员, 旧, 新, 撤回令牌）。"""
+        moment, key = now or _now(), _digest(str(token or ""))
+        with self._change() as state:
+            for account_id, account in state["accounts"].items():
+                pending = account.get("email_change")
+                if not isinstance(pending, dict) or not secrets.compare_digest(pending["digest"], key):
+                    continue
+                account.pop("email_change", None)
+                if pending["expires"] <= _iso(moment):
+                    raise LinkGone("确认链接过期了，请重新改一次")
+                if self._held(state, account_id, pending["email"]):
+                    raise EmailHeld("这个邮箱已经是别的账号了")
+                old, undo = account["email"], secrets.token_urlsafe(32)
+                account["email"] = pending["email"]
+                account["email_undo"] = {"digest": _digest(undo), "email": old, "expires": _iso(moment + EMAIL_UNDO)}
+                return account_id, str(account.get("member") or ""), old, pending["email"], undo
+        raise LinkGone("确认链接无效或已经用过了")
+
+    def undo_email(self, token: str, *, now: Optional[datetime] = None) -> Tuple[str, str, str]:
+        """「不是我改的」：换回旧邮箱，所有登录都结束、委托出去的凭据作废。返回（账号, 成员, 换回的邮箱）。"""
+        moment, key = now or _now(), _digest(str(token or ""))
+        with self._change() as state:
+            for account_id, account in state["accounts"].items():
+                undo = account.get("email_undo")
+                if not isinstance(undo, dict) or not secrets.compare_digest(undo["digest"], key):
+                    continue
+                if undo["expires"] <= _iso(moment):
+                    account.pop("email_undo", None)
+                    raise LinkGone("撤回的期限过了")
+                if self._held(state, account_id, undo["email"]):
+                    raise EmailHeld("原来的邮箱已经被别的账号用了")
+                account["email"] = undo["email"]
+                account.pop("email_undo", None)
+                account.pop("email_change", None)
+                account.pop("reset", None)
+                self._revoke_delegated_credentials(account_id, account)
+                self._end_sessions(state, account_id)
+                return account_id, str(account.get("member") or ""), undo["email"]
+        raise LinkGone("没有要撤回的邮箱改动")
 
     # ── 更换和重置密码 ────────────────────────────────────────────────────────
 

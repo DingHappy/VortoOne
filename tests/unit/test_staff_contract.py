@@ -522,7 +522,9 @@ async def test_actual_member_assembly_runs_without_inheriting_owner_memory(tmp_p
         check()
         assert assigned == registry.role('reader') and person == member
         # 唯一多出来的是问交代人一个问题的工具，不带任何审批或授权
-        assert [tool.name for tool in extra_tools] == ['ask_person'] and extra_tools[0].operation_kind == 'read'
+        # 问人，和提议改团队背景（只记提议，所有者采纳才生效）：都只是记录，按读操作
+        assert [tool.name for tool in extra_tools] == ['ask_person', 'propose_team_context']
+        assert all(tool.operation_kind == 'read' for tool in extra_tools)
         return Agent()
     monkeypatch.setattr(staff, 'build_staff_member', factory)
     service.execute = lambda current, work, assigned, person, check: staff.execute_staff(

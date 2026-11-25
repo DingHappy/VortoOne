@@ -19,22 +19,26 @@ from urllib.parse import urlparse
 
 from src.agents.tool import Tool
 
-# 内置受限站点：命中域名本身或其任意子域。
-BLOCKED_DOMAINS = (
-    # 支付 / 银行
+# 内置受限站点：命中域名本身或其任意子域。按类分开，服务器上给 agent 的浏览器（server_browser.py）
+# 可以只读其中两类；银行支付、账号与密码管理始终不碰。
+PAYMENT_DOMAINS = (
     "paypal.com", "alipay.com", "tenpay.com", "pay.weixin.qq.com", "stripe.com", "wise.com",
     "icbc.com.cn", "ccb.com", "abchina.com", "boc.cn", "bankcomm.com", "cmbchina.com", "95559.com.cn",
     "chase.com", "bankofamerica.com", "wellsfargo.com", "citi.com", "hsbc.com", "hsbc.com.cn",
-    # 邮箱
+)
+MAIL_DOMAINS = (
     "mail.google.com", "outlook.live.com", "outlook.office.com", "mail.qq.com", "exmail.qq.com",
     "mail.163.com", "mail.126.com", "mail.yahoo.com", "icloud.com",
-    # 账号中心 / 密码管理
+)
+ACCOUNT_DOMAINS = (
     "accounts.google.com", "appleid.apple.com", "login.live.com", "login.microsoftonline.com",
     "1password.com", "bitwarden.com", "lastpass.com", "dashlane.com",
-    # 云控制台
+)
+CLOUD_CONSOLE_DOMAINS = (
     "console.aws.amazon.com", "signin.aws.amazon.com", "portal.azure.com",
     "console.cloud.google.com", "console.aliyun.com", "signin.aliyun.com", "console.cloud.tencent.com",
 )
+BLOCKED_DOMAINS = PAYMENT_DOMAINS + MAIL_DOMAINS + ACCOUNT_DOMAINS + CLOUD_CONSOLE_DOMAINS
 _KEYWORDS = ("bank",)   # 主机名里带 bank 的一律当银行处理
 
 def browser_control_enabled(kind: str) -> bool:

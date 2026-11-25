@@ -180,9 +180,14 @@ def build_task_browser(repo_root: str, confirm, allowed: Callable[[], bool], *, 
 
 
 def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_access: Callable[[], bool] | None = None,
-                   desktop_directory: Path | None = None):
+                   desktop_directory: Path | None = None, site_policy=None):
+    """site_policy：只有服务器上给 agent 的浏览器传（agents/tools/server_browser.py）。它决定「读」和「动」各能碰
+    哪些站点、哪些点击和滚动算只读（不用确认）。不传就是原来的规矩：受限站点一律拒绝，点击滚动每次确认。"""
     from src.agents.tools.browser import restricted_reason
     registry, selected = holder.registry, holder.backend
+
+    def check(url, action="read"):
+        return site_policy.reason(url, action) if site_policy is not None else restricted_reason(url)
     observed_desktop: bytes | None = None
     pending_desktop: bytes | None = None
 
@@ -270,7 +275,7 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
             return _DESKTOP_STALE + (_DESKTOP_RECHECK if has_window else "请重新确认打开任务浏览器。")
         return ""
 
-    async def guard(*, resume=False, expected_origin=""):
+    async def guard(*, resume=False, expected_origin="", action="read"):
         if holder.browser is None or not getattr(holder.browser, "running", False):
             return "浏览器还没打开；先用 browser_open 或 browser_connect。"
         error = grant_error()
@@ -279,7 +284,7 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
         if holder.human and not resume:
             return _WAIT  # Never inspect or navigate while the human owns login.
         url = await raw_url()
-        reason = restricted_reason(url)
+        reason = check(url, action)
         if expected_origin and _display_origin(url) != expected_origin:
             holder.human, holder.confirmed = True, False
             return _WAIT  # Anonymous handoffs must also return to the shown site.
@@ -337,7 +342,7 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
             if (not url.startswith("https://") or len(url) > 2048 or "?" in url or "#" in url
                     or args.get("connection_id")):
                 return "请提供不带查询参数或片段的公开 HTTPS 地址。"
-        reason = restricted_reason(url)
+        reason = check(url, "read")
         if reason or url == "about:blank":
             return reason or "需要 http(s) 网站地址。"
         connection = holder.connection
@@ -536,7 +541,7 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
 
     async def interact(args, *, typing=False):
         require_clear()
-        error = await guard()
+        error = await guard(action="act")
         if error:
             return error
         item = await element(args.get("ref"))
@@ -554,7 +559,7 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
         if typing:
             message += "\n内容：" + text[:300]
         async def apply():
-            error = await guard()
+            error = await guard(action="act")
             if error:
                 return error
             fresh = await element(args.get("ref"))
@@ -569,6 +574,8 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
                 await holder.browser.wait_ready()
                 return ("已输入。\n" if typing else "已点击。\n") + await action_readback()
             return await dispatch("type" if typing else "click", perform)
+        if not typing and site_policy is not None and site_policy.free_click(item):
+            return PreparedToolCall(apply, message, "read")          # 普通链接、展开：不用确认（服务器上的 agent）
         return PreparedToolCall(apply, message, INTERACT, denied_result='主人没有同意这次操作。')
 
     async def screenshot(_args):
@@ -605,7 +612,8 @@ def _session_tools(repo_root: str, holder: BrowserSession, confirm, *, task_acce
                 await holder.browser.scroll(amount if direction == "down" else -amount)
                 return await action_readback()
             return await dispatch("scroll", perform)
-        return PreparedToolCall(apply, f'在 {safe_url(before)} 向 {direction} 滚动 {amount} 像素？', INTERACT, denied_result='主人未同意滚动。')
+        kind = "read" if site_policy is not None and site_policy.free_scroll else INTERACT
+        return PreparedToolCall(apply, f'在 {safe_url(before)} 向 {direction} 滚动 {amount} 像素？', kind, denied_result='主人未同意滚动。')
 
     async def revoke(args):
         connection_id = str(args.get("connection_id") or "")

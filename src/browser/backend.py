@@ -70,13 +70,15 @@ class BrowserBackend:
         return mode in self.device_modes
 
 
-def chromium_backend() -> BrowserBackend:
-    """Construct a declaration only; browser detection/launch stays lazy."""
+def chromium_backend(*, headless: bool = False) -> BrowserBackend:
+    """Construct a declaration only; browser detection/launch stays lazy.
+
+    headless：没有显示器的服务器上运行（agent 在服务器上用浏览器）。驱动身份不变：都是同一个 Chromium。"""
     def create(launch: BrowserLaunch) -> BrowserDriver:
         from src.browser.cdp import CdpBrowser, find_browser
         executable = find_browser()
         if not executable:
             raise ValueError("未找到本机 Chromium 浏览器")
-        return CdpBrowser(executable, launch.profile_dir, device_mode=launch.device_mode)
+        return CdpBrowser(executable, launch.profile_dir, device_mode=launch.device_mode, headless=headless)
     return BrowserBackend(DEFAULT_BACKEND_ID, BROWSER_BACKEND_API,
                           frozenset({"desktop", "mobile"}), create)

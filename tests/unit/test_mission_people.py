@@ -210,3 +210,19 @@ def test_owner_only_actions_are_refused_below_the_routes_too(mission):
         with pytest.raises(Refused):
             action()
     assert store.pause(who, mission_id)["current_status"] == "paused"           # 「决定」能暂停
+
+
+async def test_a_decider_without_wiki_rights_cannot_save_to_the_wiki(mission):
+    # 「存到 Wiki」要有编辑 Wiki 的权限；没有就整件不做，Mission 也不收尾（2026-11-24）
+    from tests.unit.test_app_board import _drop_from_everyone
+    mission.script.extend([([("mission_plan", {"items": PLAN_DONE}), DELIVER], "做完了")])
+    member = _join_as(mission, "decide")
+    _drop_from_everyone({"owner": mission.owner, "base": mission.base}, "edit_wiki")
+    async with _client(mission) as owner:
+        assert (await owner.post(mission.route + "/start", json={})).status_code == 200
+        await _settled(mission, "awaiting_close")
+    [delivery] = member.get(mission.route + "/deliveries").json()
+    refused = member.post(f"{mission.route}/deliveries/{delivery['id']}/accept", json={"saveToWiki": True})
+    assert refused.status_code == 403
+    assert _view(mission, member)["status"] == "awaiting_close"
+    assert member.post(f"{mission.route}/deliveries/{delivery['id']}/accept", json={}).json()["status"] == "done"
