@@ -95,7 +95,8 @@ def test_member_request_checks_identity_scope_and_support_before_writing(home):
     permissions = _without_agent_creation(home)
     assert member.post(ask, json=body, headers={"Origin": "https://other.example"}).status_code == 403
     assert member.post(ask, json={**body, "userId": "someone-else"}).status_code == 422
-    assert member.post(ask, json={"what": "webhook", "provider": "github"}).status_code == 422
+    # 2026-11-24 起认得这类申请，如实拒绝：服务级 webhook 这里没有，所有者也接不了
+    assert member.post(ask, json={"what": "webhook", "provider": "github"}).status_code == 409
     assert owner.get(f"{base}/notifications").json()["items"] == []
     assert member.post(ask, json=body).status_code == 200
     pending = owner.get(f"{base}/notifications").json()["items"]
