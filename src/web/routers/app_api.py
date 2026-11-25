@@ -6838,9 +6838,15 @@ async def describe_rule(org_id: str, body: Dict[str, Any]):
 
 
 def _routine_schedule(root: str, trigger: Any) -> tuple:
-    """界面的 trigger → (排期写法, 时区)。只认按时间的三种；事件、邮件、webhook、连接器触发没有对应能力。"""
+    """界面的 trigger → (排期写法, 时区)。认按时间的三种和 webhook；事件、邮件、连接器触发没有对应能力。"""
+    if isinstance(trigger, dict) and trigger.get("type") == "webhook":
+        from src.workflow.staff.routine_hooks import methods_of
+        if set(trigger) - {"type", "methods"}:
+            raise app_schedule.ScheduleError("invalid", "webhook 触发只能选方法")
+        methods_of(trigger.get("methods"))
+        return "webhook", _home_timezone(root, None)
     if not isinstance(trigger, dict) or trigger.get("type") not in ("schedule", "once"):
-        raise app_schedule.ScheduleError("routine.trigger_unsupported", "这里的例行工作只能按时间触发")
+        raise app_schedule.ScheduleError("routine.trigger_unsupported", "这里的例行工作只能按时间或 webhook 触发")
     if trigger["type"] == "once":
         at = trigger.get("at")
         tz = _home_timezone(root, trigger.get("timezone"))
@@ -6902,6 +6908,9 @@ def _propose_routine(root: str, body: Dict[str, Any]) -> Dict[str, Any]:
             "prompt": prompt.strip(), "schedule": schedule, "timezone": timezone,
             "delivery": "notify" if body.get("report") == "always" else "review", "enabled": True,
             "token_budget": 0, "acceptance": []}
+    if schedule == "webhook":
+        from src.workflow.staff.routine_hooks import RoutineHooks, methods_of
+        RoutineHooks(root).prepare(data["id"], methods_of(body["trigger"].get("methods")))
     return _submit_desktop_routine(root, data, f"主人在界面上新建例行工作「{data['name']}」")
 
 
@@ -7002,6 +7011,132 @@ async def run_routine(org_id: str, routine_id: str, request: Request):
         return _error(409, f"routine.{error.reason}", str(error))
     except (ValueError, OSError) as error:
         return _error(409, "routine.unavailable", str(error))
+
+
+# ── 例行工作的 webhook 触发（主人 2026-11-24 定：做，带密钥；触发进来的内容按外部内容）────────
+
+def _hook_routine(root: str, routine_id: str):
+    from src.workflow.staff.routines import Routines
+    item = next((row for row in Routines(root).list() if row["id"] == routine_id and not row["retired"]), None)
+    return item if item is not None and item["schedule"] == "webhook" else None
+
+
+async def _hook_call(org_id: str, routine_id: str, request: Request, action):
+    from src.workflow.staff.routine_hooks import HookDamaged, RoutineHooks
+    root = _root(org_id)
+    if not member_auth.principal(request, root).is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "webhook 设置只有已认证的所有者能看能改")
+    try:
+        if await asyncio.to_thread(_hook_routine, root, routine_id) is None:
+            return _error(404, "not_found", "没有这条 webhook 触发的例行工作")
+        result = await asyncio.to_thread(action, RoutineHooks(root), _origin(request))
+    except (HookDamaged, OSError, ValueError):
+        return _error(503, "unavailable", "webhook 记录暂时读不出来")
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+@router.get(_ORG + "/routines/{routine_id}/hook")
+async def routine_hook(org_id: str, routine_id: str, request: Request):
+    return await _hook_call(org_id, routine_id, request, lambda hooks, origin: hooks.view(routine_id, origin))
+
+
+@router.post(_ORG + "/routines/{routine_id}/hook/address")
+async def new_routine_hook_address(org_id: str, routine_id: str, request: Request):
+    return await _hook_call(org_id, routine_id, request, lambda hooks, origin: hooks.new_address(routine_id, origin))
+
+
+@router.post(_ORG + "/routines/{routine_id}/hook/secret")
+async def new_routine_hook_secret(org_id: str, routine_id: str, request: Request):
+    def make(hooks, origin):
+        secret, hook = hooks.new_secret(routine_id, origin)
+        return {"secret": secret, "hook": hook}
+    return await _hook_call(org_id, routine_id, request, make)
+
+
+@router.delete(_ORG + "/routines/{routine_id}/hook/secret")
+async def remove_routine_hook_secret(org_id: str, routine_id: str, request: Request):
+    return await _hook_call(org_id, routine_id, request, lambda hooks, origin: hooks.remove_secret(routine_id, origin))
+
+
+_HOOK_SAMPLE = '{"text":"这是一次测试调用","test":true}'
+
+
+@router.post(_ORG + "/routines/{routine_id}/hook/test")
+async def test_routine_hook(org_id: str, routine_id: str, request: Request):
+    """「测试」：用一份样例内容叫一次，agent 会被告知这是测试。暂停着的也能试。"""
+    import uuid
+    from src.workflow.staff.routine_hooks import HookDamaged, RoutineHooks
+    from src.workflow.staff.routines import RoutineRunRejected, Routines
+    root = _root(org_id)
+    actor = member_auth.principal(request, root)
+    if not actor.is_owner or not app_staff.owner_proof(request):
+        return _error(403, "owner_proof_required", "webhook 设置只有已认证的所有者能看能改")
+    if _hook_routine(root, routine_id) is None:
+        return _error(404, "not_found", "没有这条 webhook 触发的例行工作")
+    hooks = RoutineHooks(root)
+    try:
+        run = Routines(root).run_now(routine_id, owner=actor.id,
+                                     hook={"call": uuid.uuid4().hex[:16], "data": _HOOK_SAMPLE, "test": True})
+    except RoutineRunRejected as error:
+        if error.reason == "audit_unavailable":
+            return _error(503, "audit_unavailable", str(error))
+        return _error(409, f"routine.{error.reason}", str(error))
+    except (ValueError, OSError) as error:
+        return _error(409, "routine.unavailable", str(error))
+    try:
+        hooks.record(routine_id, "accepted", 202, len(_HOOK_SAMPLE.encode()), run, True)
+        hook = hooks.view(routine_id, _origin(request))
+    except (HookDamaged, OSError):
+        return _error(503, "unavailable", "webhook 记录暂时读不出来")
+    return JSONResponse({"runId": run, "hook": hook}, headers={"Cache-Control": "no-store"})
+
+
+def _hook_answer(status: int, code: str, message: str, **extra):
+    return JSONResponse({"status": code, "message": message, **extra}, status_code=status,
+                        headers={"Cache-Control": "no-store", **({"Retry-After": "60"} if status == 429 else {})})
+
+
+@router.api_route("/api/routine-hooks/{address}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def call_routine_hook(address: str, request: Request):
+    """例行工作的触发地址：不登录，凭地址（和签名，设了密钥时）。对方发来的内容整段交给 agent 当资料。"""
+    import uuid
+    from src.workflow.staff.routine_hooks import MAX_BYTES, HookDamaged, RoutineHooks
+    from src.workflow.staff.routines import RoutineRunRejected, Routines
+    root = os.getcwd()
+    hooks = RoutineHooks(root)
+    try:
+        routine_id = hooks.routine_at(address)
+        if routine_id is None or _hook_routine(root, routine_id) is None:
+            return _hook_answer(404, "not_found", "没有这个触发地址")
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_BYTES:
+            data = b"x" * (MAX_BYTES + 1)              # 不读进来：按「太大」记一次
+        elif request.method == "GET":
+            data = request.url.query.encode("utf-8")
+        else:
+            data = await request.body()
+        refused = hooks.admit(routine_id, request.method, data, request.headers.get("x-vortoone-signature", ""),
+                              request.headers.get("idempotency-key", "").strip())
+    except (HookDamaged, OSError):
+        return _hook_answer(503, "unavailable", "暂时收不了")
+    if refused is not None:
+        outcome, status = refused
+        words = {"method": "这个地址不接受这种请求", "too_large": "内容太大", "bad_signature": "签名不对",
+                 "rate_limited": "调用太频繁，请稍后再试", "duplicate": "这次调用之前收到过，没有再运行"}
+        return _hook_answer(status, outcome, words[outcome])
+    call = uuid.uuid4().hex[:16]
+    try:
+        run = Routines(root).run_now(routine_id, owner="webhook",
+                                     hook={"call": call, "data": data.decode("utf-8", "replace"), "test": False})
+    except RoutineRunRejected as error:
+        if error.reason in ("running", "awaiting_review"):
+            hooks.record(routine_id, "rate_limited", 429, len(data), None, False)
+            return _hook_answer(429, "rate_limited", str(error))
+        return _hook_answer(409, "not_started", str(error))
+    except (ValueError, OSError) as error:
+        return _hook_answer(409, "not_started", str(error))
+    hooks.record(routine_id, "accepted", 202, len(data), run, False)
+    return _hook_answer(202, "accepted", "收到了，例行工作开始运行", runId=run)
 
 
 @router.get(_ORG + "/routines/proposals/review")

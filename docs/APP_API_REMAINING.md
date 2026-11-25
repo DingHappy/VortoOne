@@ -1,8 +1,8 @@
 # 新版 Desktop 后端接口：剩余清单
 
 核对日期 2026-11-22，基于 main（已含 #971–#978）。
-客户端合同里一共 631 个不重复接口，后端已接 495 个，剩 **136** 个：
-- **要做：65**（其中 6 个在界面代码里没有调用，可以往后排）
+客户端合同里一共 631 个不重复接口，后端已接 500 个，剩 **131** 个：
+- **要做：60**（其中 6 个在界面代码里没有调用，可以往后排）
 - **Codex 连接电脑线：58**（设备、机器、浏览器、浏览器配置、AI 账号）
 - **按已定决定不做：13**
 - **暂缓：0**（投票与选择卡已在 agent 进团队频道后接上）
@@ -348,17 +348,17 @@ wiki → 任务 missions → 频道 / 话题 / 消息 / 通知 / 加入申请 / 
 | ☑ | GET | `ORG/usage/plans` | `orgs.planUsage` | 仅所有者。这里没有订阅套餐账号（accounts 空），只有 API 用量。 |
 | ☑ | GET | `ORG/usage/report` | `orgs.usageReport` | 仅所有者。从 since 起按 agent、按种类（agent/summary）。按所有者给模型填的价格折成美元（没填价格的只记 token，不算钱，`partialCalls` 标出）。agent 没有美元预算（额度按 token 记），预算填 0。 |
 
-### org/routines（10 个，要做 5）
+### org/routines（10 个，要做 0）
 
 | | 方法 | 路径 | 客户端方法 | 备注 |
 |---|---|---|---|---|
 | ☑ | POST | `ORG/routines/{x}/continue` | `routines.continueUsage` | 不跳过额度接着做：409，调高额度后它会自己接着做。 |
 | ☑ | POST | `ORG/routines/{x}/duplicate` | `routines.duplicate` | 所有者可复制现有本人例行定义；先按摘要审核，副本默认暂停 |
-| ☐ | GET | `ORG/routines/{x}/hook` | `routines.hook` |  |
-| ☐ | POST | `ORG/routines/{x}/hook/address` | `routines.newHookAddress` |  |
-| ☐ | DELETE | `ORG/routines/{x}/hook/secret` | `routines.removeHookSecret` |  |
-| ☐ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` |  |
-| ☐ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` |  |
+| ☑ | GET | `ORG/routines/{x}/hook` | `routines.hook` | webhook 触发的例行工作：触发地址 `/api/routine-hooks/<随机串>`（不认登录）、是否要签名、允许的方法、最近 20 次调用（只记结果、状态码、大小、进了哪次运行，不存内容）。只给已认证的所有者；不是 webhook 触发的 404。 |
+| ☑ | POST | `ORG/routines/{x}/hook/address` | `routines.newHookAddress` | 换一个新地址，旧地址立刻 404。 |
+| ☑ | DELETE | `ORG/routines/{x}/hook/secret` | `routines.removeHookSecret` | 去掉签名密钥，之后只凭地址。 |
+| ☑ | POST | `ORG/routines/{x}/hook/secret` | `routines.newHookSecret` | 新的签名密钥只显示这一次。之后每次调用要带 `X-VortoOne-Signature: sha256=<HMAC-SHA256>`（POST 等签请求体，GET 签查询串），不对 401 `bad_signature`。 |
+| ☑ | POST | `ORG/routines/{x}/hook/test` | `routines.testHook` | 用一份样例内容叫一次，agent 被告知这是测试；暂停着的也能试。 |
 | ☑ | POST | `ORG/routines/{x}/run` | `routines.runNow` | 立即运行一次，不改排期和启停；在跑、等验收、等核对时回 409 说明 |
 | ☑ | GET | `ORG/routines/{x}/runs` | `routines.runs` | 所有者可读取任务台账中该例行工作最近 30 条运行记录。列表显示最近 14 条，健康统计只计最近七天的已结束运行（取消除外）。 |
 | ☑ | POST | `ORG/routines/{x}/stop` | `routines.stop` | 所有者按当前认领停止本次执行，复用专员停止审计和执行池。没有运行、登记不匹配或取消未受理时拒绝；不改排期。 |

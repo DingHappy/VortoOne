@@ -38,8 +38,10 @@ class RoutineSchedule:
         self.zone = zone(timezone_name)
         if not isinstance(expression, str) or len(expression) > 200:
             raise ValueError('排期无效')
+        # 'webhook'：只由它的触发地址叫起来，从不按时间到期（routine_hooks.py）
+        self.hook = expression == 'webhook'
         self.once = instant(expression[5:].strip()) if expression.startswith('once ') else None
-        self.schedule = None if self.once else parse_schedule(expression)
+        self.schedule = None if (self.once or self.hook) else parse_schedule(expression)
 
     def _matches(self, at):
         local = at.astimezone(self.zone)
@@ -51,6 +53,8 @@ class RoutineSchedule:
 
     def due(self, now, last):
         now, last = instant(now), instant(last)
+        if self.hook:
+            return None
         if self.once:
             return self.once if last < self.once <= now else None
         if self.schedule.kind == 'every':
@@ -65,6 +69,8 @@ class RoutineSchedule:
 
     def next(self, now, last):
         now, last = instant(now), instant(last)
+        if self.hook:
+            return None
         overdue = self.due(now, last)
         if overdue:
             return overdue
@@ -84,7 +90,7 @@ class RoutineSchedule:
         """Project future slots in [start, end), without mutating the dispatch cursor."""
         now, last = instant(now), instant(last)
         start, end = max(instant(start), now), instant(end)
-        if max(start, last) >= end:
+        if max(start, last) >= end or self.hook:
             return
         if self.once is not None:
             if start <= self.once < end and last < self.once:

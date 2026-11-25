@@ -462,6 +462,36 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/address",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/secret",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/secret",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/routines/{routine_id}/hook/test",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/runs/{run_id}/device-wait",
     "methods": [
       "POST"
@@ -1065,6 +1095,16 @@
     "path": "/api/hooks",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/routine-hooks/{address}",
+    "methods": [
+      "DELETE",
+      "GET",
+      "PATCH",
+      "POST",
+      "PUT"
     ]
   },
   {
