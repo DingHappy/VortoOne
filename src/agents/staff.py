@@ -316,6 +316,12 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     if _WIKI_TOOLS is not None and dispatch.get('source') == 'staff':
         # 读开放给它的 Wiki 页面：内容出自成员，按资料读（主人 2026-11-24 定）
         options['extra_tools'] = (*options.get('extra_tools', ()), *_WIKI_TOOLS(root, task, member['id']))
+    close_browser = None
+    if dispatch.get('source') == 'staff':
+        # 在服务器本机用浏览器：只读加每步确认、只给所有者发起的事（主人 2026-11-24 定）；开关没开就没有
+        from src.agents.tools.server_browser import build_server_browser_tools
+        browser_tools, close_browser = build_server_browser_tools(root, task)
+        options['extra_tools'] = (*options.get('extra_tools', ()), *browser_tools)
     if downgraded:
         options.pop('confirm_action', None)
         options['unattended'] = True
@@ -358,6 +364,8 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
         record_external(work, task, state.child_tainted)
         return reply
     finally:
+        if close_browser is not None:
+            await close_browser()                  # 这一步结束：关浏览器、删临时配置目录
         if agent.execution_report is not None:
             execution.publish(agent.execution_report)
         # MainAgent's lazily created client belongs to this fresh task context.

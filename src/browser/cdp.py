@@ -59,7 +59,8 @@ class CdpBrowser:
     """一个独立浏览器实例 + 一个受控标签页（flatten 会话）。"""
 
     def __init__(self, executable: str, profile_dir: Optional[Path] = None, *,
-                 device_mode: str = "desktop", private_preview: bool = False):
+                 device_mode: str = "desktop", private_preview: bool = False, headless: bool = False):
+        self._headless = headless          # 没有显示器的服务器上（agent 在服务器上用浏览器）
         if device_mode not in {"desktop", "mobile"}:
             raise ValueError("Unknown browser device mode")
         if private_preview and profile_dir is None:
@@ -132,6 +133,8 @@ class CdpBrowser:
         ]
         if self._private_preview:
             args.append("--disable-sync")
+        if self._headless:
+            args.append("--headless=new")      # 浏览器自己的沙箱照开（97 上实测可用），不加 --no-sandbox
         args.append("about:blank")
         try:
             self._proc = await asyncio.create_subprocess_exec(
