@@ -254,6 +254,27 @@ MEMBER_ROUTES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((method, re.com
     ("DELETE", _ORG + r"/machines/[^/]+"),
     ("POST", _ORG + r"/computer-pairings"),
     ("DELETE", _ORG + r"/computer-pairings/[^/]+"),
+    # 新界面的「连接电脑」：链接就是配对码，成员配自己的电脑（2026-11-25）；做不到的那些如实回答
+    ("POST", _ORG + r"/devices/connect-links"),
+    ("GET", _ORG + r"/devices/connect-links/[^/]+"),
+    ("POST", _ORG + r"/devices/computers/[^/]+/(?:phone-looks|wifi-pairings|xcode-fix|xcode-open)"),
+    ("GET", _ORG + r"/devices/computers/[^/]+/(?:wifi-iphones|xcode-fix|wifi-pairings/[^/]+)"),
+    ("PUT", _ORG + r"/devices/computers/[^/]+/wifi-iphones/[^/]+"),
+    ("DELETE", _ORG + r"/devices/computers/[^/]+/(?:xcode-fix|wifi-pairings/[^/]+)"),
+    ("GET", _ORG + r"/machines/[^/]+/(?:queue|cli-install|account-logins/[^/]+)"),
+    ("POST", _ORG + r"/machines/[^/]+/(?:access/(?:allow|ask|reduce)|account-logins(?:/[^/]+/code)?"
+             r"|cli-install(?:/ask)?|clis/check|move-agents|pause|resume)"),
+    ("DELETE", _ORG + r"/machines/[^/]+/(?:cli-install|account-logins/[^/]+|accounts/[^/]+)"),
+    ("PATCH", _ORG + r"/machines/[^/]+/accounts/[^/]+"),
+    ("GET", _ORG + r"/browser-profiles"),
+    ("POST", _ORG + r"/browser-profiles(?:/[^/]+/(?:takeover|handback|open))?"),
+    ("PATCH", _ORG + r"/browser-profiles/[^/]+"),
+    ("DELETE", _ORG + r"/browser-profiles/[^/]+"),
+    ("GET", _ORG + r"/browser/handoffs/[^/]+"),
+    ("POST", _ORG + r"/browser/handoffs/[^/]+/(?:cancel|control|done|failed)"),
+    ("GET", _ORG + r"/ai-accounts"),
+    ("POST", _ORG + r"/ai-accounts/(?:refresh|[^/]+/take-back)"),
+    ("PUT", _ORG + r"/ai-accounts/[^/]+/serves"),
 ))
 
 # 路径（GET）→ 成员看到的固定回答。

@@ -52,6 +52,17 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()
 
 
+# 用掉的配对码配上了哪台电脑：{配对编号: (成员 id 或 None, 电脑编号)}。只在进程里，最多留最近这么多条。
+_USED_PAIRINGS: dict = {}
+_USED_MAX = 200
+
+
+def _remember_used(pairing_id, member_id, connector_id) -> None:
+    _USED_PAIRINGS[pairing_id] = (member_id, connector_id)
+    while len(_USED_PAIRINGS) > _USED_MAX:
+        _USED_PAIRINGS.pop(next(iter(_USED_PAIRINGS)))
+
+
 def _id(value) -> bool:
     return isinstance(value, str) and bool(_ID.fullmatch(value))
 
@@ -306,6 +317,29 @@ class ConnectedComputers:
             raise ComputerDenied("配对人的成员身份或家的信任已变化")
         return {k: pairing[k] for k in ("pairing_id", "expires_at", "home_instance_id")} | {"code": code}
 
+    def link_state(self, pairing_id, expires_at, *, member_id=None) -> tuple:
+        """新界面「连接电脑」的链接现在怎样：(waiting|joined|expired, 电脑编号或 None)。
+
+        不改存储格式（旧版本读到多出来的字段会整个拒绝）：配对码还在就是等待中；用掉的配对码配上了哪台电脑
+        只记在进程里（_USED_PAIRINGS），服务重启后用过的链接显示过期——不按时间去猜，免得算错电脑。"""
+        if not _id(pairing_id) or not _integer(expires_at):
+            raise ValueError("链接编号无效")
+        if member_id is not None:
+            self._require_member(member_id)
+        now = int(self.clock())
+        data = self._load()
+        used = _USED_PAIRINGS.get(pairing_id)
+        if used is not None and used[0] == member_id:
+            if any(row["connector_id"] == used[1] and row.get("paired_member_id") == member_id
+                   and row["revoked_at"] is None for row in self._scope_rows(data, member_id)):
+                return "joined", used[1]
+            return "expired", None                       # 配上以后又撤掉了
+        slot = self._slot(data, member_id)
+        pairing = slot["pairing"] if slot else None
+        if pairing is not None and pairing["pairing_id"] == pairing_id:
+            return ("waiting" if now < pairing["expires_at"] else "expired"), None
+        return "expired", None
+
     def cancel_pairing(self, pairing_id, *, member_id=None):
         if not _id(pairing_id):
             raise ValueError("配对编号无效")
@@ -348,6 +382,7 @@ class ConnectedComputers:
                 raise
             slot["pairing"] = None
             self._save(data)
+            _remember_used(pairing["pairing_id"], pairing.get("paired_member_id"), connector_id)
         binding = {k: item[k] for k in _BINDING}
         if not self._valid_scope(pairing, identity, pairing=True) or not self.check(binding):
             raise ComputerDenied("配对人的成员身份或家的信任已变化")
