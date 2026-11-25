@@ -1,10 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUCKET, PREFIX, releaseUploads, requirePublicStable, stableMirrorCandidate, stringToSign } from "./oss-release.mjs";
+import {
+  BUCKET, PREFIX, releaseUploads, requirePublicStable, stableMirrorCandidate, stableReleaseCandidate, stageRelease, stringToSign,
+} from "./oss-release.mjs";
 import { GITHUB_LATEST, MIRROR_BASE, REPO, dmgAssetName, mirrorAssetBase, updaterAssetName, updaterManifest } from "./updater-release.mjs";
 
 test("uploads go to the bucket and folder the app downloads from", () => {
@@ -28,8 +30,8 @@ test("each release goes into its own v<version>/ folder: update archive and DMG"
   ]);
 });
 
-function stableFixture(t) {
-  const bundle = mkdtempSync(join(tmpdir(), "vorto-oss-release-"));
+function stableFixture(t, bundle = mkdtempSync(join(tmpdir(), "vorto-oss-release-"))) {
+  mkdirSync(bundle, { recursive: true });
   t.after(() => rmSync(bundle, { recursive: true, force: true }));
   const config = { version: "0.3.0", identifier: "com.vorto.vortoone" };
   const { version } = config;
@@ -112,4 +114,68 @@ test("requires a current public GitHub release, exact tag, matching assets, and 
   await assert.rejects(() => requirePublicStable(candidate, read), /更新入口尚未提供/);
   release.prerelease = true;
   await assert.rejects(() => requirePublicStable(candidate, read), /最新正式版/);
+});
+
+function threePlatformFixture(t) {
+  const root = mkdtempSync(join(tmpdir(), "vorto-oss-stable-"));
+  const mac = stableFixture(t, join(root, "macos-arm64"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const write = (platform, extension, triple, overrides = {}) => {
+    const dir = join(root, platform);
+    mkdirSync(dir, { recursive: true });
+    const installer = `VortoOne_${mac.config.version}_${platform}${extension}`;
+    const bytes = `fixture ${platform}`;
+    writeFileSync(join(dir, installer), bytes);
+    writeFileSync(join(dir, "SHA256SUMS"), `${digest(bytes)}  ${installer}\n`);
+    writeFileSync(join(dir, "desktop-release.json"), JSON.stringify({
+      channel: "stable", identifier: mac.config.identifier, version: mac.config.version, commit: mac.evidence.commit,
+      platform, installer, sha256: digest(bytes),
+      runtime: { runtimeEnvironment: "managed", targetTriple: triple, pythonProvenance: { verifiedArchive: true } },
+      ...overrides,
+    }));
+    return installer;
+  };
+  const windows = write("windows-x64", ".exe", "x86_64-pc-windows-msvc");
+  const ubuntu = write("ubuntu-amd64", ".deb", "x86_64-unknown-linux-gnu");
+  return { ...mac, root, write, windows, ubuntu };
+}
+
+test("a stable release carries all three platforms and one checksum file, uploaded before the manifest", (t) => {
+  const { archive, config, installer, root, windows, ubuntu } = threePlatformFixture(t);
+  const candidate = stableReleaseCandidate(root, config);
+  const folder = `${PREFIX}/v${config.version}`;
+  assert.deepEqual(candidate.uploads.map(({ key }) => key), [
+    `${folder}/${archive}`, `${folder}/${installer}`, `${folder}/${windows}`, `${folder}/${ubuntu}`, `${folder}/SHA256SUMS`,
+  ]);
+  const sums = candidate.assets.SHA256SUMS.bytes.toString("utf8").trimEnd().split("\n");
+  assert.deepEqual(sums.map((line) => line.split("  ")[1]).sort(),
+    [installer, archive, `${archive}.sig`, "latest.json", windows, ubuntu].sort());
+  for (const line of sums) {
+    const [hash, name] = line.split("  ");
+    assert.equal(hash, candidate.assets[name].sha256);
+  }
+
+  const stage = join(root, "release");
+  const staged = stageRelease(candidate, stage);
+  assert.equal(staged.length, 7);
+  assert.deepEqual(readdirSync(stage).sort(), Object.keys(candidate.assets).sort());
+  assert.equal(readFileSync(join(stage, windows), "utf8"), "fixture windows-x64");
+  assert.throws(() => stageRelease(candidate, stage), /不是空目录/);
+});
+
+test("Windows and Ubuntu installers must be the same version and commit as macOS, with intact bytes", (t) => {
+  const { config, root, write, windows } = threePlatformFixture(t);
+  write("windows-x64", ".exe", "x86_64-pc-windows-msvc", { commit: "d".repeat(40) });
+  assert.throws(() => stableReleaseCandidate(root, config), /同一个提交/);
+  write("windows-x64", ".exe", "x86_64-pc-windows-msvc", { runtime: { runtimeEnvironment: "external" } });
+  assert.throws(() => stableReleaseCandidate(root, config), /固定运行时/);
+  write("windows-x64", ".exe", "x86_64-pc-windows-msvc", { version: "0.2.9" });
+  assert.throws(() => stableReleaseCandidate(root, config), /构建证据/);
+  write("windows-x64", ".exe", "x86_64-pc-windows-msvc");
+  writeFileSync(join(root, "windows-x64", windows), "tampered");
+  assert.throws(() => stableReleaseCandidate(root, config), /SHA-256/);
+  rmSync(join(root, "ubuntu-amd64"), { recursive: true });
+  write("windows-x64", ".exe", "x86_64-pc-windows-msvc");
+  assert.throws(() => stableReleaseCandidate(root, config), /ubuntu-amd64 的正式版构建证据/);
 });

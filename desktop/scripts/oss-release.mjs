@@ -5,10 +5,13 @@
 // 上传凭据只在发版的这台机器上：macOS 钥匙串条目 vortoone-oss-upload（账户名 = AccessKey ID，密码 = Secret），
 // 属于只能读写 bucket `vorto` 下 vortoone/desktop/ 的 RAM 子账号。镜像被人改了也装不进去：App 只认内置公钥签过的包。
 // 用法：node scripts/oss-release.mjs
-// 新桌面正式版在 GitHub 发布并成为最新版本后：node desktop/scripts/oss-release.mjs --stable
+// 新桌面正式版：Mac 产物在 channel/stable/macos-arm64/，「VortoOne stable installer checks」的 Windows、Ubuntu 产物解压到
+//   channel/stable/windows-x64/ 与 channel/stable/ubuntu-amd64/。三个平台必须来自同一个提交。
+//   node desktop/scripts/oss-release.mjs --stable --stage <空目录>  核对三平台，把 GitHub 发布要传的全部附件（含总校验和）放进去
+//   在 GitHub 发布并成为最新版本后：node desktop/scripts/oss-release.mjs --stable  传三平台安装包、校验和，最后传清单
 import { execFileSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -112,6 +115,64 @@ export function stableMirrorCandidate(bundle, { version, identifier }) {
   return { version, commit: evidence.commit, assets, uploads, manifest };
 }
 
+/** Windows / Ubuntu 正式版安装包：[平台, 扩展名, Content-Type, 运行时目标]。 */
+export const PORTABLE_PLATFORMS = [
+  ["windows-x64", ".exe", "application/vnd.microsoft.portable-executable", "x86_64-pc-windows-msvc"],
+  ["ubuntu-amd64", ".deb", "application/vnd.debian.binary-package", "x86_64-unknown-linux-gnu"],
+];
+
+/** 读 CI 构建的 Windows、Ubuntu 正式版产物，核对它们与 macOS 是同一版、同一个提交。 */
+export function portableInstallers(root, { version, identifier, commit }) {
+  return PORTABLE_PLATFORMS.map(([platform, extension, type, triple]) => {
+    const dir = join(root, platform);
+    const name = `VortoOne_${version}_${platform}${extension}`;
+    let evidence;
+    try {
+      evidence = JSON.parse(readFileSync(join(dir, "desktop-release.json"), "utf8"));
+    } catch {
+      throw new Error(`没有 ${platform} 的正式版构建证据：把「VortoOne stable installer checks」的产物解压到 ${dir}`);
+    }
+    if (evidence.channel !== "stable" || evidence.platform !== platform || evidence.version !== version
+      || evidence.identifier !== identifier || evidence.installer !== name
+      || evidence.runtime?.runtimeEnvironment !== "managed" || evidence.runtime?.targetTriple !== triple
+      || evidence.runtime?.pythonProvenance?.verifiedArchive !== true) {
+      throw new Error(`${platform} 的构建证据不是这一版带固定运行时的正式安装包`);
+    }
+    if (evidence.commit !== commit) throw new Error(`${platform} 安装包和 macOS 不是同一个提交构建的`);
+    const bytes = readFileSync(join(dir, name));
+    const sums = readFileSync(join(dir, "SHA256SUMS"), "utf8").trimEnd();
+    if (sha256(bytes) !== evidence.sha256 || sums !== `${evidence.sha256}  ${name}`) {
+      throw new Error(`${platform} 安装包的 SHA-256 与构建证据不一致`);
+    }
+    return { name, type, bytes };
+  });
+}
+
+/** 三个平台的正式版：GitHub 发布的全部附件（含总校验和）和镜像要传的对象。 */
+export function stableReleaseCandidate(root, config) {
+  const mac = stableMirrorCandidate(join(root, "macos-arm64"), config);
+  const portable = portableInstallers(root, { ...config, commit: mac.commit });
+  const assets = { ...mac.assets };
+  for (const { name, bytes } of portable) assets[name] = { bytes, sha256: sha256(bytes) };
+  const sums = Buffer.from(Object.entries(assets).map(([name, asset]) => `${asset.sha256}  ${name}\n`).join(""));
+  assets.SHA256SUMS = { bytes: sums, sha256: sha256(sums) };
+  const folder = `${PREFIX}/v${mac.version}`;
+  const uploads = [
+    ...mac.uploads,
+    ...portable.map(({ name, type, bytes }) => ({ key: `${folder}/${name}`, type, bytes })),
+    { key: `${folder}/SHA256SUMS`, type: "text/plain; charset=utf-8", bytes: sums },
+  ];
+  return { ...mac, assets, uploads };
+}
+
+/** 把 GitHub 发布要传的附件写进一个空目录。 */
+export function stageRelease(candidate, dir) {
+  mkdirSync(dir, { recursive: true });
+  if (readdirSync(dir).length) throw new Error(`${dir} 不是空目录`);
+  for (const [name, { bytes }] of Object.entries(candidate.assets)) writeFileSync(join(dir, name), bytes);
+  return Object.keys(candidate.assets).map((name) => join(dir, name));
+}
+
 // Use the release operator's GitHub CLI for API metadata so a shared-IP
 // rate limit cannot delay a rollout. The updater file is still read publicly.
 function stableReleaseRead(url) {
@@ -168,15 +229,21 @@ async function publishMirror({ version, uploads, manifest }, beforeLatest) {
 async function main() {
   const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
   const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === "--stable") {
+  const staging = args.length === 3 && args[1] === "--stage";
+  if (args[0] === "--stable" && (args.length === 1 || staging)) {
     const tauri = join(desktop, "..", "frontend", "apps", "desktop-dev", "src-tauri");
     const config = JSON.parse(readFileSync(join(tauri, "tauri.stable.conf.json"), "utf8"));
-    const candidate = stableMirrorCandidate(join(tauri, "target", "release", "channel", "stable", "macos-arm64"), config);
+    const candidate = stableReleaseCandidate(join(tauri, "target", "release", "channel", "stable"), config);
+    if (staging) {
+      for (const path of stageRelease(candidate, args[2])) console.log(path);
+      console.log(`三个平台来自 ${candidate.commit}；在 GitHub 发布 v${candidate.version} 并成为最新版本后再运行 --stable`);
+      return;
+    }
     await requirePublicStable(candidate);
     await publishMirror(candidate, () => requirePublicStable(candidate));
     return;
   }
-  if (args.length) throw new Error("用法：node desktop/scripts/oss-release.mjs [--stable]");
+  if (args.length) throw new Error("用法：node desktop/scripts/oss-release.mjs [--stable [--stage <空目录>]]");
   const version = JSON.parse(readFileSync(join(desktop, "src-tauri", "tauri.conf.json"), "utf8")).version;
   const bundle = join(desktop, "src-tauri", "target", "release", "bundle");
   const uploads = releaseUploads(version, bundle);
