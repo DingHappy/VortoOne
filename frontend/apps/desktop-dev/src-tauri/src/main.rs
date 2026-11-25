@@ -377,6 +377,7 @@ fn main() {
             model_settings::model_settings_get, model_settings::model_settings_save,
             connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
             connector::computer_remove, connector::computers_open, connector::computer_folder_settings,
+            connector::pair_link_take,
             connector::computer_browser_share,
             connector::computer_desktop_share,
             connector::task_browser_enabled, connector::task_browser_set,

@@ -27,6 +27,8 @@ pub struct ShellState {
     welcome_mode: Mutex<Option<String>>,
     /// 别处交来、还没被欢迎窗口取走的连接链接（只留最新的一个）
     link: Mutex<Option<String>>,
+    /// 新界面「连接电脑」打开的配对链接（家的地址, 配对码），等「连接的电脑」窗口来取（只留最新的一个）
+    pair_link: Mutex<Option<(String, String)>>,
     installing: AtomicBool,
     cancel: AtomicBool,
     /// 正在打开或关掉「让别的设备连进来」；人点了不等了。
@@ -703,8 +705,57 @@ pub fn accepted_link(raw: &str) -> Option<String> {
     matches!(after.chars().next(), None | Some('?') | Some('/') | Some('#')).then(|| text.to_string())
 }
 
+/// 新界面「连接电脑」的配对链接 `vortoone://pair?server=<家的 https 地址>&link=<12 位配对码>`。
+/// 只用来**填好**「连接的电脑」窗口：人照旧核对家的身份、点确认，再过本机系统确认窗口（链接本身不能配对）。
+/// 地址只收 https、不带账号密码和路径；码只收 12 位 A–Z、2–7。别的一律丢掉不提示。
+pub fn accepted_pair_link(raw: &str) -> Option<(String, String)> {
+    let text = raw.trim();
+    if text.is_empty() || text.len() > LINK_MAX || text.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return None;
+    }
+    let parsed = tauri::Url::parse(text).ok()?;
+    if !parsed.scheme().eq_ignore_ascii_case("vortoone") || parsed.host_str() != Some("pair")
+        || !matches!(parsed.path(), "" | "/") || parsed.fragment().is_some() {
+        return None;
+    }
+    let (mut server, mut code) = (None, None);
+    for (key, value) in parsed.query_pairs() {
+        match key.as_ref() {
+            "server" if server.is_none() => server = Some(value.into_owned()),
+            "link" if code.is_none() => code = Some(value.into_owned()),
+            _ => return None,
+        }
+    }
+    let home = tauri::Url::parse(&server?).ok()?;
+    if home.scheme() != "https" || home.host_str().is_none() || !home.username().is_empty() || home.password().is_some()
+        || !matches!(home.path(), "" | "/") || home.query().is_some() || home.fragment().is_some() {
+        return None;
+    }
+    let code = code?.to_ascii_uppercase();
+    if code.len() != 12 || !code.chars().all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c)) {
+        return None;
+    }
+    Some((home.origin().ascii_serialization(), code))
+}
+
+impl ShellState {
+    /// 「连接的电脑」窗口来取配对链接（取走就没了）。
+    pub fn take_pair_link(&self) -> Option<(String, String)> {
+        self.pair_link.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
+
 /// 系统交来一个链接（点了链接、扫了码）：留着，打开欢迎窗口，告诉它来取。
 pub fn receive_link(app: &tauri::AppHandle, raw: &str) {
+    if let Some(pair) = accepted_pair_link(raw) {
+        if let Ok(mut slot) = app.state::<ShellState>().pair_link.lock() {
+            *slot = Some(pair);
+        }
+        if let Err(error) = crate::connector::open(app) {
+            eprintln!("无法打开连接的电脑窗口: {error}");
+        }
+        return;
+    }
     let Some(link) = accepted_link(raw) else { return };
     if let Ok(mut slot) = app.state::<ShellState>().link.lock() {
         *slot = Some(link);
@@ -1033,6 +1084,24 @@ mod tests {
         for no in ["vortoone://pair?server=x&link=ABCD-EFGH", "vortoone://connectx?server=x", "other://connect?server=x",
                    "https://box.example/connect", "vortoone://connect?server=x y", "vortoone://connect?server=\u{7}x", "", long.as_str()] {
             assert_eq!(accepted_link(no), None, "{no}");
+        }
+    }
+
+    #[test]
+    fn pair_links_only_fill_in_a_https_home_and_a_twelve_letter_code() {
+        let ok = "vortoone://pair?server=https%3A%2F%2Fhome.example&link=abcdefgh2345";
+        assert_eq!(accepted_pair_link(ok), Some(("https://home.example".into(), "ABCDEFGH2345".into())));
+        assert_eq!(accepted_pair_link("vortoone://pair?server=https%3A%2F%2Fhome.example%3A8443%2F&link=ABCDEFGH2345")
+                   .map(|pair| pair.0).as_deref(), Some("https://home.example:8443"));
+        for no in ["vortoone://pair?server=http%3A%2F%2Fhome.example&link=ABCDEFGH2345",          // 不是 https
+                   "vortoone://pair?server=https%3A%2F%2Fu%3Ap%40home.example&link=ABCDEFGH2345",  // 带账号密码
+                   "vortoone://pair?server=https%3A%2F%2Fhome.example%2Fx&link=ABCDEFGH2345",      // 带路径
+                   "vortoone://pair?server=https%3A%2F%2Fhome.example&link=ABCD-EFGH",              // 码不对
+                   "vortoone://pair?server=https%3A%2F%2Fhome.example&link=ABCDEFGH2341",           // 1 不在码表里
+                   "vortoone://pair?server=https%3A%2F%2Fhome.example&link=ABCDEFGH2345&x=1",       // 多余参数
+                   "vortoone://pair?server=https%3A%2F%2Fa.example&server=https%3A%2F%2Fb.example&link=ABCDEFGH2345",
+                   "vortoone://connect?server=https%3A%2F%2Fhome.example", "other://pair?server=x&link=y", ""] {
+            assert_eq!(accepted_pair_link(no), None, "{no}");
         }
     }
 

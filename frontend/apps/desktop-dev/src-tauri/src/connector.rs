@@ -1785,6 +1785,14 @@ pub async fn computer_remove(
     }).await.map_err(|_| "未能移除电脑配对")?
 }
 
+/// 新界面「连接电脑」打开的配对链接：只交给本机「连接的电脑」窗口，用来填好地址和配对码。
+#[tauri::command]
+pub fn pair_link_take(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<Option<serde_json::Value>, String> {
+    check(&window)?;
+    Ok(app.state::<crate::shell::ShellState>().take_pair_link()
+        .map(|(server, code)| serde_json::json!({"server": server, "code": code})))
+}
+
 #[tauri::command]
 pub fn computers_open(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
     // Existing packaged prefs may open this window; a remote live page cannot.
