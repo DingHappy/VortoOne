@@ -1,6 +1,7 @@
 """Private HTML creation and file uploads for Desktop Drive."""
 import asyncio
 import json
+import re
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
@@ -43,7 +44,22 @@ def _invalid(*, for_version: bool = False):
 
 
 def _unsupported_file():
-    return UploadError(415, "artifact.upload_format", "仅支持 UTF-8 编码的 HTML、TXT、Markdown、CSV、JSON 以及静态 PNG 和 JPEG")
+    return UploadError(415, "artifact.upload_format",
+                       "HTML、TXT、Markdown、CSV、JSON 要是 UTF-8 编码，PNG 和 JPEG 要是静态图片；别的格式原样保存，只能下载")
+
+
+# 能预览或渲染的扩展名：要么按它的格式收，要么拒绝，不当成「只能下载的文件」
+_RENDERABLE_EXTENSIONS = frozenset({".html", ".htm", ".xhtml", ".svg", *_TEXT_MIME, *_IMAGE_MIME})
+_SAFE_MIME = re.compile(r"[a-z0-9][a-z0-9.+-]{0,62}/[a-z0-9][a-z0-9.+-]{0,126}")
+
+
+def _stored_type(declared: str) -> str:
+    """只能下载的文件记下的类型：界面拿它挑图标。文本、图片、HTML 这几类会被当成可预览的制品，一律不用。"""
+    kind = declared.lower()
+    if (not _SAFE_MIME.fullmatch(kind) or kind in TEXT_CONTENT_TYPES or kind.startswith(("text/", "image/"))
+            or "html" in kind or kind.endswith(("/xml", "+xml")) or "javascript" in kind):
+        return "application/octet-stream"
+    return kind
 
 
 async def _read_body(request: Request, cap: int, invalid: UploadError, oversized: UploadError) -> bytes:
@@ -196,7 +212,9 @@ def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError
         compatible_mimes = (*text_mimes, "application/octet-stream", "text/plain")
     else:
         compatible_mimes = ()
-    if not is_html and mime not in compatible_mimes:
+    # 通用文件（PDF、Office 文档、压缩包……）：原样保存，只能下载（下载一律按附件、沙箱、nosniff 给出）
+    generic = not is_html and extension not in _RENDERABLE_EXTENSIONS      # 追加版本的在上面已经只收文本
+    if not generic and not is_html and mime not in compatible_mimes:
         raise _unsupported_file()
     if "/" in filename or "\\" in filename or not filename.strip():
         raise invalid
@@ -220,6 +238,11 @@ def _parse_form(content_type: str, body: bytes, cap: int, oversized: UploadError
     if ((not for_version and len(value) > 200)
             or any(ord(char) < 32 and char not in allowed_whitespace for char in value)):
         raise invalid
+
+    if generic:
+        if not data:
+            raise invalid
+        return value, FileUpload(filename, _stored_type(mime), data)
 
     if image_mime:
         try:
