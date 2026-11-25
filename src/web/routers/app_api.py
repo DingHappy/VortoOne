@@ -5532,10 +5532,124 @@ class _EmailUndo(BaseModel):
 
 @router.post("/api/app/email-undo")
 async def undo_email_change(body: _EmailUndo, request: Request):
-    """「不是我改的」：这里还不能改登录邮箱，也就没有要撤回的改动。"""
+    """「不是我改的」：从旧邮箱收到的通知点进来（可能没登录）。换回旧邮箱，所有登录都结束。"""
+    from src.workflow.members.accounts import Damaged, EmailHeld, LinkGone, MemberAccounts
     if not member_auth.same_origin(request):
         return _error(403, "forbidden", "这里现在不能撤回")
-    return _error(404, "email.undo_gone", "没有要撤回的邮箱改动")
+    root = os.getcwd()
+    try:
+        _, member_id, restored = await asyncio.to_thread(MemberAccounts(root).undo_email, body.token)
+        if member_id:
+            await asyncio.to_thread(MemberRegistry(root).set_member_email, member_id, restored)
+    except LinkGone as error:
+        return _error(404, "email.undo_gone", str(error))
+    except EmailHeld as error:
+        return _error(409, "email.held", str(error))
+    except (Damaged, OSError):
+        return _error(503, "unavailable", "暂时撤回不了")
+    return JSONResponse({"email": restored}, headers={"Cache-Control": "no-store"})
+
+
+# ── 改登录邮箱（2026-11-24，主人「剩下的你也继续推进」）──────────────────────────
+# 登录邮箱就是登录名。没发信：10 分钟内登录过就马上换。发信开着：先给现在的邮箱发验证码（或 10 分钟内登录过），
+# 再给新邮箱发确认链接，打开了才换；换好以后旧邮箱收到「不是我改的」，点了就换回去、所有登录结束。
+
+class _EmailChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    newEmail: str = Field(min_length=3, max_length=254)
+    code: str | None = Field(default=None, max_length=16)
+
+
+def _email_code_key(account_id: str) -> str:
+    return "account-email:" + account_id
+
+
+@router.post("/api/app/account/email")
+async def change_login_email(body: _EmailChange, request: Request):
+    from src.workflow.members import join_codes
+    from src.workflow.members.accounts import Damaged, EmailHeld, MemberAccounts
+    from src.workflow.members.registry import login_name
+
+    root = os.getcwd()
+    actor = member_auth.principal(request, root)
+    if actor.is_owner:
+        if not app_staff.owner_proof(request):
+            return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        return _error(409, "account.owner_email", "所有者的登录由本机所有者认领管理，这里不能改")
+    account = request.state.member_account
+    try:
+        address = login_name(body.newEmail)
+    except ValueError:
+        return _error(400, "account.invalid_email", "新邮箱地址无效")
+    if address == account["email"]:
+        return _error(400, "email.same", "和现在的登录邮箱一样")
+    accounts = MemberAccounts(root)
+    token = request.cookies.get(member_auth.MEMBER_COOKIE, "")
+    try:
+        if address != account["email"] and await asyncio.to_thread(accounts.account_with_email, address):
+            return _error(409, "email.held", "这个邮箱已经是别的账号了")
+        recent = await asyncio.to_thread(accounts.recently_signed_in, account["id"], token)
+        if not join_codes.enabled():
+            if not recent:
+                return _error(403, "reauth.sign_in", "先用密码重新登录一次，10 分钟内回来改")
+            await asyncio.to_thread(accounts.change_email, account["id"], address)
+            if account.get("member"):
+                await asyncio.to_thread(MemberRegistry(root).set_member_email, account["member"], address)
+            return _no_store({"status": "changed", "email": address})
+        if body.code:
+            try:
+                join_codes.CODES.check(_email_code_key(account["id"]), account["email"], body.code)
+            except join_codes.CodeError as error:
+                return _reauth_code_error(error)
+        elif not recent:
+            try:
+                wait = await asyncio.to_thread(
+                    join_codes.CODES.send_code, _email_code_key(account["id"]), account["email"], "更换登录邮箱的验证码",
+                    "你在把这个家的登录邮箱换成别的地址，验证码是 {code}，10 分钟内有效。\n不是你在操作的话，改一下密码。")
+            except join_codes.CodeError as error:
+                return _reauth_code_error(error)
+            except OSError:
+                return _error(503, "mail_unavailable", "验证码没有发出去，请稍后再试")
+            return _no_store({"status": "code", "email": account["email"], "resendIn": wait})
+        link = await asyncio.to_thread(accounts.email_link, account["id"], address)
+        origin = _invitation_origin(request)
+        sent = await asyncio.to_thread(
+            join_codes.CODES.mail, address, "确认新的登录邮箱",
+            f"打开这个链接，把这个家的登录邮箱换成 {address}（24 小时内有效）：\n"
+            f"{origin}/api/app/account/email/confirm?token={link}\n不是你在操作的话，忽略这封邮件就好。")
+        if not sent:
+            return _error(429, "reauth.code_wait", "发得太多了，请过一会儿再试")
+    except EmailHeld as error:
+        return _error(409, "email.held", str(error))
+    except (Damaged, OSError, join_codes.CodeError):
+        return _error(503, "unavailable", "暂时改不了登录邮箱")
+    return _no_store({"status": "sent", "email": address})
+
+
+@router.get("/api/app/account/email/confirm")
+async def confirm_login_email(request: Request, token: str = Query(default="", max_length=200)):
+    """新邮箱里的确认链接（不要求登录，凭链接里的令牌）。换好以后给旧邮箱发「不是我改的」。"""
+    from fastapi.responses import RedirectResponse
+    from src.workflow.members import join_codes
+    from src.workflow.members.accounts import Damaged, EmailHeld, LinkGone, MemberAccounts
+    root = os.getcwd()
+    try:
+        _, member_id, old, new, undo = await asyncio.to_thread(MemberAccounts(root).confirm_email, token)
+        if member_id:
+            await asyncio.to_thread(MemberRegistry(root).set_member_email, member_id, new)
+    except (LinkGone, EmailHeld):
+        return RedirectResponse("/?email=failed", status_code=303, headers={"Cache-Control": "no-store"})
+    except (Damaged, OSError):
+        return RedirectResponse("/?email=failed", status_code=303, headers={"Cache-Control": "no-store"})
+    origin = _invitation_origin(request)
+    try:
+        await asyncio.to_thread(
+            join_codes.CODES.mail, old, "你的登录邮箱换了",
+            f"这个家的登录邮箱刚换成了 {new}。\n不是你改的话，7 天内打开这个链接换回来，所有登录都会结束：\n"
+            f"{origin}/email-undo?token={undo}", notice=True)
+    except (OSError, join_codes.CodeError):
+        logging.getLogger(__name__).warning("旧邮箱的「邮箱换了」通知没有发出", exc_info=True)
+    return RedirectResponse("/?email=changed", status_code=303, headers={"Cache-Control": "no-store"})
 
 
 class _OnboardingStep(BaseModel):

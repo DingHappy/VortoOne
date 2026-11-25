@@ -68,6 +68,8 @@ _EXEMPT_EXACT = {"/", "/review", "/mobile", "/mobile/", "/mobile/manage",
                  "/api/auth/request-password-reset",
                  # 「不是我改的邮箱」：从旧邮箱的通知链接打开，可能没登录；这里还不能改邮箱，只回「没有要撤回的」
                  "/api/app/email-undo",
+                 # 新邮箱里的确认链接：凭链接里的一次性令牌，不要求登录（routers/app_api.py）
+                 "/api/app/account/email/confirm",
                  # 另一台设备凭一次性登录换登录：核对它自己的一次性凭据（members/one_time.py）
                  "/api/auth/sign-in/one-time-token",
                  # 装好时的一次性认领链接（members/owner_account.py）：核对它自己的认领令牌
