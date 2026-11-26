@@ -67,11 +67,15 @@ export function NoAiBanner({ agentIds, dmAgentId }: { agentIds: string[]; dmAgen
       <div className="noai-banner ac-actline" role="status">
         <span className="noai-banner__text ac-iconline">
           <Icon name="plug" size={16} />
-          <b>{t(noAiStatusKey(status.data, dmAgentId), agentGrammar(name))}</b>
+          <b>
+            {agent?.personalCodex
+              ? t("personalCodex.notReady")
+              : t(noAiStatusKey(status.data, dmAgentId), agentGrammar(name))}
+          </b>
         </span>
         {mayConnectAi(agent, me.user.id, org) && (
           <Button size="sm" onClick={() => connect.open({ agentId: dmAgentId, chat: true })}>
-            {t("noAi.action")}
+            {t(agent?.personalCodex ? "personalCodex.check" : "noAi.action")}
           </Button>
         )}
       </div>

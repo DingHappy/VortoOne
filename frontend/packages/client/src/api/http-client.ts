@@ -195,6 +195,7 @@ import type {
   PendingReturn,
   PeopleUsage,
   Person,
+  PersonalCodexStatus,
   PersonLimits,
   PersonUsage,
   PhoneDevice,
@@ -858,6 +859,9 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         request<{ previous: AgentLineChange[] }>(`${org(orgId)}/agent-lines`, { method: "PUT", json: { changes } }),
       proposeChannelMove: (orgId, input) => request(`${org(orgId)}/team/channel-move`, { json: input }),
       create: (orgId, input) => request<Agent>(`${org(orgId)}/agents`, { json: input }),
+      personalCodexStatus: (orgId) => request<PersonalCodexStatus>(`${org(orgId)}/personal-codex-agent`),
+      createPersonalCodex: (orgId, input) =>
+        request<Agent>(`${org(orgId)}/personal-codex-agent`, { json: input }),
       proposal: (orgId, messageId) => request<AgentProposal>(`${org(orgId)}/agent-proposals/${enc(messageId)}`),
       denyProposal: (orgId, messageId) =>
         request<AgentProposal>(`${org(orgId)}/agent-proposals/${enc(messageId)}/deny`, { json: {} }),

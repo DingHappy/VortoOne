@@ -220,7 +220,7 @@ def test_an_older_member_file_has_nothing_open(tmp_path):
 
 @pytest.mark.parametrize("engine, shared, allowed", [
     ("vortocode", False, True), ("opencode", False, True),
-    ("claude-code", False, False), ("codex", False, False), ("claude-code", True, True)])
+    ("claude-code", False, False), ("codex", False, False), ("codex", True, False), ("claude-code", True, True)])
 def test_plan_allows(tmp_path, engine, shared, allowed):
     from src.workflow.staff.initiators import plan_allows
     if shared:

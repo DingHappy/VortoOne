@@ -4156,6 +4156,18 @@
     ]
   },
   {
+    "path": "/api/app/organizations/{org_id}/personal-codex-agent",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/app/organizations/{org_id}/personal-codex-agent",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/app/organizations/{org_id}/permissions/{row}",
     "methods": [
       "PUT"

@@ -618,7 +618,7 @@ export function AudienceEditor({ layout = "cards" }: { layout?: "cards" | "rows"
               {audienceSummary(t, agent, (id) => dir.memberById.get(id)?.name, dir.roleName, org)}
             </Chip>
           </span>
-          <span className="small muted">{t("audience.notListed")}</span>
+          {!agent.personalCodex && <span className="small muted">{t("audience.notListed")}</span>}
         </>
       )}
     </>

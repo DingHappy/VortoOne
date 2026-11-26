@@ -225,6 +225,9 @@ class StaffService:
         return await self.actions.request(task, role, member, call, budget)
 
     def check(self, member, role, *, task=None):
+        if member['engine'] == 'codex' and task is not None:
+            from src.workflow.staff.initiators import require_personal_codex_dispatch
+            require_personal_codex_dispatch(self.root, task, member, role)
         if task is not None and task.collaboration.get('dispatch', {}).get('routine'):
             from src.workflow.staff.routines import Routines
             Routines(self.root).check_task(task)
@@ -283,7 +286,7 @@ class StaffService:
                     condition.notify_all()
 
     def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
-               via=None, channel=None, mission=None):
+               via=None, channel=None, mission=None, owner_chat=False):
         """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。
 
         via：这件事经哪个 AI 应用发来（``{"kind": "ai_app", "grant", "name"}``，只由 web 层的 /mcp 填）。
@@ -308,6 +311,17 @@ class StaffService:
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)
+            codex_owner = None
+            if member['engine'] == 'codex':
+                from src.gateway.main_conversation import main_chat_key
+                from src.workflow.staff.initiators import PERSONAL_CODEX_PRIVATE, require_personal_codex_owner
+                from src.workflow.staff.owner_confirmation import require_owner_route
+
+                if (owner_chat is not True or any(value is not None for value in (routine, initiator, via, channel, mission))
+                        or owner != main_chat_key(self.root) or args.get('delivery') != 'notify' or args.get('acceptance')):
+                    raise ValueError(PERSONAL_CODEX_PRIVATE)
+                require_owner_route(self.root)
+                codex_owner = require_personal_codex_owner(self.root, role)
             started_by = None
             if initiator is not None:
                 from src.workflow.staff.initiators import record
@@ -318,7 +332,8 @@ class StaffService:
             if expected is not None and (member, role) != expected:
                 raise ValueError('确认期间专员或岗位已变化，未创建任务')
             notes = None
-            if member['department'] and started_by is None:      # 部门笔记是主人确认的内部资料，不带进成员的任务
+            if member['department'] and started_by is None and codex_owner is None:
+                # 部门笔记是内部资料，不带进成员的任务或个人 Codex 私聊。
                 from src.workflow.staff.notes import StaffNotes
                 notes = StaffNotes(self.root).snapshot(member['department'])
             task = self.collaboration(owner).create(args['prompt'], member['id'], args.get('acceptance'),
@@ -330,6 +345,7 @@ class StaffService:
                           **({'via': dict(via)} if via is not None else {}),
                           **({'channel': dict(channel)} if channel is not None else {}),
                           **({'mission': mission} if mission is not None else {}),
+                          **({'personal_codex_owner': codex_owner} if codex_owner is not None else {}),
                           'delivery': args.get('delivery', 'review'), 'max_steps': role['max_steps'],
                           'timeout_seconds': role['timeout_seconds'], **({'routine': routine} if routine else {})})
             from src.workflow.staff.recovery import seed_queue_proof
@@ -354,8 +370,10 @@ class StaffService:
         work = self.collaboration(task.owner_session)
         # A slot is local scheduling state; durable work remains the existing task record.
         condition, running = self._slots.setdefault(member['id'], (asyncio.Condition(), [0]))
+        def check_assignment():
+            self.check(member, role, task=work.get(task.id) if member['engine'] == 'codex' else task)
         async def execute():
-            self.check(member, role, task=task)
+            check_assignment()
             current = work.get(task.id)
             if current.collaboration['round'] != number:
                 raise ValueError('任务轮次已变化')
@@ -366,7 +384,7 @@ class StaffService:
             try:
                 budget.resume()
                 await self.wait_for_budget(current, role, member)
-                result = await self.execute(current, work, deepcopy(role), deepcopy(member), lambda: self.check(member, role, task=task))
+                result = await self.execute(current, work, deepcopy(role), deepcopy(member), check_assignment)
             except asyncio.CancelledError:
                 if budget.expired:
                     raise TimeoutError('专员执行超过登记时限') from None
@@ -435,6 +453,9 @@ class StaffService:
             if dispatch.get('source') != 'staff':
                 raise ValueError('不是专员任务')
             member, role = self.assignment({'member': dispatch['member'], 'prompt': previous.prompt})
+            if member['engine'] == 'codex':
+                from src.workflow.staff.initiators import PERSONAL_CODEX_PRIVATE
+                raise ValueError(PERSONAL_CODEX_PRIVATE)
             self.executable(role)
             if role['revision'] != dispatch['role_revision'] or member['revision'] != dispatch['member_revision']:
                 raise ValueError('原岗位或专员已变化，须重新派活，不能扩大原任务权限')

@@ -2258,6 +2258,12 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       },
     },
     agents: {
+      personalCodexStatus: async () => {
+        throw new ApiError(404, "not_found", "Personal Codex is only available on a workspace host");
+      },
+      createPersonalCodex: async () => {
+        throw new ApiError(404, "not_found", "Personal Codex is only available on a workspace host");
+      },
       memberActionLevels: async (_orgId, agentId) => {
         const audience = audienceOf(actionLevelAgent(agentId));
         const levels = actionLevels.get(agentId);

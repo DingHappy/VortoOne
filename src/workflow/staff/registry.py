@@ -14,7 +14,7 @@ from src.workflow.staff.roles import builtin_roles, canonical_roles, published_r
 _ID = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}$')
 _ENGINES = {'vortocode', 'opencode', 'deepseek-harness', 'claude-code', 'codex'}
 _FIELDS = {'id', 'title', 'brief', 'grants', 'engine', 'max_steps', 'timeout_seconds', 'builtin', 'revision', 'enabled',
-           'project', 'project_binding'}
+           'project', 'project_binding', 'personal_codex_owner'}
 _FORBIDDEN_TOOLS = {'staff_assign', 'staff_propose', 'staff_plan', 'routine_propose', 'task', 'research_parallel',
     'team_propose', 'team_assign', 'task_followup', 'task_release', 'cron_add', 'cron_run', 'cron_toggle',
     'cron_set_web', 'cron_set_prompt', 'send_file', 'send_image', 'send_document', 'open_pr', 'pr_fix',
@@ -193,7 +193,19 @@ class StaffRegistry:
     def _finish_role(self, item, builtin):
         item.update(builtin=builtin, enabled=item.get('enabled', True), revision=item.get('revision', 1))
         from src.workflow.staff.projects import validate
+        from src.workflow.staff.roles import personal_codex_role
         validate(item)
+        if item['id'].startswith('personal-codex-') or 'personal_codex_owner' in item:
+            binding = item.get('personal_codex_owner')
+            if (not personal_codex_role(item) or not isinstance(binding, dict)
+                    or set(binding) != {'home_instance_id', 'owner_subject', 'trust_epoch', 'os_uid'}
+                    or any(not isinstance(binding[key], str) or not re.fullmatch(r'[a-f0-9]{32}', binding[key])
+                           for key in ('home_instance_id', 'trust_epoch'))
+                    or (binding['owner_subject'] is not None
+                        and (not isinstance(binding['owner_subject'], str)
+                             or not re.fullmatch(r'[a-f0-9]{32}', binding['owner_subject'])))
+                    or type(binding['os_uid']) is not int or binding['os_uid'] < 0):
+                raise ValueError('个人 Codex 岗位缺少有效的所有者及执行账号绑定')
         if type(item['enabled']) is not bool or type(item['revision']) is not int or item['revision'] <= 0:
             raise ValueError('岗位状态或版本无效')
         return item
@@ -251,6 +263,8 @@ class StaffRegistry:
             if previous and data.get('revision') != previous['revision']:
                 raise ValueError('岗位版本已变化，请重新核对')
             item = self.validate_role(data)
+            if previous and previous.get('personal_codex_owner') != item.get('personal_codex_owner'):
+                raise ValueError('个人 Codex 的所有者及执行账号绑定不能修改，请重新创建智能体')
             if item.get('project_binding'):
                 from src.workflow.staff.projects import check
                 check(item)
@@ -333,7 +347,9 @@ class StaffRegistry:
             raise ValueError('D10：新专员只有开发岗允许外部框架；本机 CLI 另可用于只读、不看私人资料的岗位')
         if item['engine'] == 'codex':
             from src.agents.team_engines import CODEX_UNCONFINED
-            raise ValueError(CODEX_UNCONFINED)
+            from src.workflow.staff.roles import personal_codex_role
+            if not personal_codex_role(assigned):
+                raise ValueError(CODEX_UNCONFINED)
         if not isinstance(item.get('model', ''), str) or len(item.get('model', '')) > 160:
             raise ValueError('模型名称无效')
         from src.workflow.staff.departments import Departments

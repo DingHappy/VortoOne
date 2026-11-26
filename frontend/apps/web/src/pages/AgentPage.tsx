@@ -738,7 +738,9 @@ function AgentProfile({
     revert,
     changes,
     changeOf: (key) => byKey.get(key),
-    can: (field) => canEdit(viewer, field),
+    can: (field) =>
+      canEdit(viewer, field) &&
+      !(agent.personalCodex && ["audience", "channels", "instructions", "key", "machine", "model", "owner", "role"].includes(field)),
     errors,
     resources,
     accessState: access.isLoading ? "loading" : access.data ? "ready" : "unavailable",

@@ -1878,10 +1878,7 @@ async def ai_status(org_id: str, request: Request):
         shown = await _visible_ids(request, root)
     except PermissionError as error:
         return _error(403, "forbidden", str(error))
-    status = views.ai_status(root)
-    if shown is not None:
-        status["agents"] = [row for row in status["agents"] if row["agentId"] in shown]
-    return status
+    return await asyncio.to_thread(views.ai_status, root, shown)
 
 
 # ── 私聊与消息 ────────────────────────────────────────────────────────────────
@@ -2732,9 +2729,18 @@ async def post_message(org_id: str, channel_id: str, body: _Post, request: Reque
             return _error(413, "message_too_long", "交给专员的一件事最多 4000 字")
         if not app_staff.owner_proof(request):
             return _error(403, "owner_proof_required", _NEEDS_OWNER)
+        from src.web.routers.computers import direct_local_request, has_computer_owner_proof
+        local_owner = direct_local_request(request) and has_computer_owner_proof(request)
+        if not local_owner:
+            from src.workflow.staff.registry import StaffRegistry
+            staff = _staff_read(lambda: StaffRegistry(member[0]).member(member[1]))
+            if isinstance(staff, JSONResponse):
+                return staff
+            if staff.get("engine") == "codex":
+                return _error(403, "local_owner_required", "请在运行 Codex 的 Mac 上打开本机工作区")
         # 执行池只能在事件循环线程里登记任务（见 _as_member 的 dispatch）
         await _dispatch_ready(member[0])
-        return _staff_read(lambda: app_staff.send(member[0], member[1], text, client_id))
+        return _staff_read(lambda: app_staff.send(member[0], member[1], text, client_id, local_owner=local_owner))
     try:
         from src.web.routers.computers import (
             has_computer_owner_proof, has_local_owner_browser_session, has_owner_browser_session,
@@ -8827,6 +8833,48 @@ async def adjust_proposed_team_agent(org_id: str, message_id: str, handle: str, 
     return await _agent_proposal_call(request, org_id, message_id, run, kind="bundle")
 
 
+class _PersonalCodexCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=80)
+    handle: str = Field(min_length=2, max_length=32)
+    project: str = Field(default="", max_length=100)
+
+
+@router.get(_ORG + "/personal-codex-agent")
+async def personal_codex_availability(org_id: str, request: Request):
+    from src.agents.external_workers import personal_codex_status
+    from src.web.routers.computers import direct_local_request, has_computer_owner_proof
+    from src.workflow.workbench.resident_projects import load_resident_projects
+
+    root = _root(org_id)
+    if (not direct_local_request(request) or not member_auth.principal(request, root).is_owner
+            or not has_computer_owner_proof(request)):
+        return _error(403, "local_owner_required", "请在运行 Codex 的 Mac 上打开本机工作区")
+    status = await asyncio.to_thread(personal_codex_status)
+    projects = await asyncio.to_thread(load_resident_projects)
+    return _no_store({"status": status, "projects": [project["name"] for project in projects]})
+
+
+@router.post(_ORG + "/personal-codex-agent")
+async def create_personal_codex_agent(org_id: str, request: Request, body: _PersonalCodexCreate):
+    from src.agents.external_workers import personal_codex_status
+    from src.web.routers.computers import direct_local_request, has_computer_owner_proof
+    from src.workflow.staff.agent_lifecycle import create_personal_codex
+
+    root = _root(org_id)
+    who = member_auth.principal(request, root)
+    if not direct_local_request(request) or not who.is_owner or not has_computer_owner_proof(request):
+        return _error(403, "local_owner_required", "请在运行 Codex 的 Mac 上打开本机工作区")
+
+    def run():
+        if personal_codex_status() != "ready":
+            raise ValueError("请在当前服务所在电脑的官方 Codex 中登录自己的 ChatGPT 账号，再试一次")
+        staff_id = create_personal_codex(root, who, name=body.name, handle=body.handle, project=body.project)
+        return _agent_view(root, staff_id)
+
+    return await _lifecycle(request, run)
+
+
 @router.post(_ORG + "/agents")
 async def agent_create(org_id: str, request: Request):
     from src.workflow.staff import agent_lifecycle
@@ -8923,7 +8971,7 @@ async def agent_brain(org_id: str, agent_id: str):
     agent = _agent(org_id, agent_id)
     if agent is None:
         return _error(404, "not_found", "没有这个角色")
-    return views.agent_brain(_root(org_id), agent)
+    return await asyncio.to_thread(views.agent_brain, _root(org_id), agent)
 
 
 @router.get(_ORG + "/agents/{agent_id}/access")

@@ -90,6 +90,7 @@ import {
 import { useScrollEdges } from "@/lib/scroll-edges";
 import { useToast } from "@/lib/toast";
 import { AppsPickerDialog } from "./AppsPicker";
+import { PersonalCodexDialog, usePersonalCodexStatus } from "./PersonalCodexDialog";
 import { useNewAgentBrain } from "./useNewAgentBrain";
 import "../team-plan.css";
 import "./new-agent-card.css";
@@ -378,6 +379,9 @@ function NewAgentDialog({
   const brain = useNewAgentBrain(request.accountId);
   const connectAi = useConnectAi();
   const qc = useQueryClient();
+  const [connectingCodex, setConnectingCodex] = useState(false);
+  const canCreatePersonalCodex = org.role === "owner" && !request.channelId && !request.accountId;
+  const personalCodexStatus = usePersonalCodexStatus(canCreatePersonalCodex);
 
   const picks: Pick[] = useMemo(
     () => ["zero", ...(personal ? PERSONAL_STARTERS.map((s) => s.id) : ROLE_GROUPS.flatMap((g) => [...g.roles]))],
@@ -1208,6 +1212,11 @@ function NewAgentDialog({
                   <Icon name="download" size={16} />
                   {t("newAgentCard.import")}
                 </button>
+                {canCreatePersonalCodex && personalCodexStatus.isSuccess && (
+                  <Button size="sm" icon="brainCodex" onClick={() => setConnectingCodex(true)}>
+                    {t("personalCodex.title")}
+                  </Button>
+                )}
                 {!brain.hasAi && connectAi && (
                   <Button size="sm" icon="bolt" onClick={() => connectAi.open({ forNewAgent: true })}>
                     {t("noAi.banner.orgAction")}
@@ -1275,6 +1284,18 @@ function NewAgentDialog({
         <Suspense fallback={null}>
           <ImportAgentsDialog orgId={org.id} standalone onClose={() => setImporting(false)} />
         </Suspense>
+      )}
+      {connectingCodex && canCreatePersonalCodex && (
+        <PersonalCodexDialog
+          orgId={org.id}
+          handles={handles}
+          preflight={personalCodexStatus}
+          onClose={() => setConnectingCodex(false)}
+          onCreated={(agentId) => {
+            onCreated(null);
+            void navigate({ to: "/org/$orgId/dm/agent/$agentId", params: { orgId: org.id, agentId } });
+          }}
+        />
       )}
       {/* Signing in on the provider's page comes back here, to this card (`takeResume`). */}
       <ConnectFlow

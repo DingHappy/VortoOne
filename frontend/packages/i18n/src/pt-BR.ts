@@ -7416,6 +7416,22 @@ export const ptBR = {
       },
     },
   },
+  personalCodex: {
+    title: "Usar o Codex já conectado",
+    check: "Verificar conexão com o Codex",
+    notReady: "Verifique a conexão do Codex no computador do espaço de trabalho.",
+    description: "Só você pode usar este agente. Ele roda no computador onde fica este espaço de trabalho.",
+    project: "Projeto cadastrado",
+    chatOnly: "Só conversar",
+    projectUnavailable: "Este projeto não está mais cadastrado. Escolha um projeto ou Só conversar.",
+    create: "Criar agente privado",
+    status: {
+      ready: "Sua assinatura do ChatGPT está pronta para uso.",
+      missing: "Instale o Codex CLI oficial no computador onde fica este espaço de trabalho e tente novamente.",
+      signed_out: "Execute codex login nesse computador e entre com sua conta do ChatGPT.",
+      unsupported: "O Codex pessoal exige um espaço de trabalho local no Mac e um Codex CLI com isolamento de projetos.",
+    },
+  },
   /** A new agent's dialog (ADR 0164): pick on the left, its card edited in place on the right; its chat's band. */
   newAgentCard: {
     title: "Novo agente",

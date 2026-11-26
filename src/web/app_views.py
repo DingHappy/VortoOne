@@ -159,6 +159,11 @@ def agents(root: str) -> List[Dict[str, Any]]:
             "supportsMemberPolicy": supports_member_policy, "canManageMemberPolicy": can_manage_levels and supports_member_policy,
             "canTalk": member.get("status", "active") == "active", "seesDetails": True,
         }
+        if member.get("engine") == "codex":
+            private = {"mode": "owner", "userIds": [], "roleIds": []}
+            row.update(brain={"kind": "codex", "model": row["model"] or None},
+                       personalCodex=True, hasCredential=False,
+                       audience={**private, "consultable": False}, audienceMode=private["mode"])
         if extra.get("appearance"):
             row["appearance"] = dict(extra["appearance"])
         setup = extra.get("setup")
@@ -216,10 +221,20 @@ def agent_statuses(root: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def ai_status(root: str) -> Dict[str, Any]:
+def ai_status(root: str, shown: Optional[set[str]] = None) -> Dict[str, Any]:
     ready = model_connected()
     state = {"state": "ready"} if ready else {"state": "no_ai", "reason": "no_key"}
-    return {"any": ready, "apiKey": ready, "agents": [{"agentId": a["id"], **state} for a in agents(root)]}
+    rows = [row for row in agents(root) if shown is None or row["id"] in shown]
+    codex_state = state
+    codex_agents = {row["id"] for row in rows if row.get("brain", {}).get("kind") == "codex"}
+    if codex_agents:
+        from src.agents.external_workers import personal_codex_status
+        status = personal_codex_status()
+        reasons = {"missing": "cli_missing", "signed_out": "not_signed_in", "unsupported": "cli_failed"}
+        codex_state = {"state": "ready"} if status == "ready" else {
+            "state": "no_ai", "reason": reasons.get(status, "cli_failed")}
+    states = [{"agentId": row["id"], **(codex_state if row["id"] in codex_agents else state)} for row in rows]
+    return {"any": any(item["state"] == "ready" for item in states), "apiKey": ready, "agents": states}
 
 
 def _owner_card(root: str) -> Dict[str, str]:
@@ -1428,11 +1443,16 @@ def _member_of(root: str, agent_id: str) -> Optional[Dict[str, Any]]:
 
 
 def agent_brain(root: str, agent: Dict[str, Any]) -> Dict[str, Any]:
-    """这个角色用什么思考。这里只有「模型」一种，换模型与账号不在这个界面做，所以全部只读。"""
-    ready = model_connected()
-    return {"agentId": agent["id"], "brain": "model", "model": agent["model"] or None,
+    """这个角色的只读模型配置。个人 Codex 的登录由本机官方 CLI 管理。"""
+    engine = agent.get("brain", {}).get("kind", "model")
+    if engine == "codex":
+        from src.agents.external_workers import personal_codex_status
+        ready = personal_codex_status() == "ready"
+    else:
+        ready = model_connected()
+    return {"agentId": agent["id"], "brain": engine, "model": agent["model"] or None,
             "effectiveModel": agent["model"] or None, "fallback": False, "extraUsage": False, "computer": None,
-            "options": [{"kind": "model", "available": ready, "models": [], "defaultModel": None}],
+            "options": [{"kind": engine, "available": ready, "models": [], "defaultModel": None}],
             "machines": [], "canEdit": False, "account": None, "effort": None, "speed": "standard",
             "accounts": [], "canManageAccounts": False, "accountsSupported": False, "onlyOwner": False,
             "canUsePlans": False, "ownSignIn": False, "ownUsage": {}}
