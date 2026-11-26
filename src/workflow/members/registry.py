@@ -362,11 +362,17 @@ class MemberRegistry:
                 "act": rules.act_level(held, posts)}
 
     # ── 用个人订阅的 agent 回不回应别人 ─────────────────────────────────────────
-    # 主人 2026-11-16 定（参照 agentes-chat ADR 0059 §5）：用本机 Claude Code / Codex（所有者的个人订阅）的
-    # agent 默认只回应所有者；所有者可以对单个 agent 打开「也回应别人」。只有所有者能开关——订阅是他的。
+    # Claude Code 保留旧的共享设置。个人 Codex 的订阅与私聊始终仅所有者可用。
+
+    def _personal_codex(self, agent_id: str) -> bool:
+        from src.workflow.staff.registry import StaffRegistry
+
+        return any(row['id'] == agent_id and row.get('engine') == 'codex'
+                   for row in StaffRegistry(self.root).members())
 
     def plan_shared(self, agent_id: str) -> bool:
-        return str(agent_id) in self.snapshot()["plans_shared"]
+        agent = str(agent_id)
+        return agent in self.snapshot()["plans_shared"] and not self._personal_codex(agent)
 
     def share_plan(self, actor: Principal, agent_id: str, shared: bool, *, now: Optional[datetime] = None) -> None:
         """打开或关上。调用方负责先让所有者看过条款提示，并记审计。"""
@@ -375,6 +381,8 @@ class MemberRegistry:
             raise ValueError("agent 标识无效")
         if not actor.is_owner:
             raise Refused("只有所有者能决定自己的订阅回不回应别人")
+        if shared and self._personal_codex(agent):
+            raise Refused("个人 Codex 的订阅仅供所有者使用")
         with self._change() as state:
             if shared:
                 state["plans_shared"][agent] = {"at": _iso(now or _now())}
@@ -397,6 +405,8 @@ class MemberRegistry:
         """在同一份快照核对成员、所需的权限项和对智能体的办事级别。不在册的抛 Missing。"""
         state = self.snapshot()
         held = self._member(state, member_id).get("groups") or []
+        if self._personal_codex(str(agent_id)):
+            return "none"
         posts = self._posts(state)
         if required_permission is not None and not rules.has(required_permission, held, posts):
             return "none"
@@ -967,7 +977,10 @@ class MemberRegistry:
 
     def audience(self, agent_id: str) -> Dict[str, Any]:
         """这个 agent 的受众；没设过是所有人。"""
-        found = self.snapshot()["agent_audiences"].get(str(agent_id))
+        agent = str(agent_id)
+        if self._personal_codex(agent):
+            return {"mode": "owner", "userIds": [], "roleIds": []}
+        found = self.snapshot()["agent_audiences"].get(agent)
         return dict(found) if isinstance(found, dict) else {"mode": "everyone", "userIds": [], "roleIds": []}
 
     def set_audience(self, actor: Principal, agent_id: str, audience: Mapping[str, Any]) -> Dict[str, Any]:
@@ -975,11 +988,14 @@ class MemberRegistry:
         agent = str(agent_id)
         if not _AGENT.fullmatch(agent):
             raise ValueError("agent 标识无效")
+        private = self._personal_codex(agent)
         with self._change() as state:
             owner, _held = self._actor(state, actor)
             if not owner:
                 raise Refused("只有所有者能定谁能和 agent 对话")
             checked = rules.check_audience(audience, state["members"], state["groups"])
+            if private and checked["mode"] != "owner":
+                raise Refused("个人 Codex 只回应所有者")
             if checked["mode"] == "everyone":
                 state["agent_audiences"].pop(agent, None)
             else:

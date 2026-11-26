@@ -62,7 +62,7 @@ ENGINE_LABELS = {"opencode": "OpenCode", "deepseek-harness": "DeepSeek Harness",
 CLI_WORKERS = {"claude-code": "claude", "codex": "codex"}
 # 能把读写都限定在工作目录里的 CLI。Codex 不在内：2026-11-16 本机实测（codex-cli 0.169.0），它的
 # read-only 和 workspace-write 沙箱都能读到 cwd 以外的文件（主目录里的也能），又没有关掉命令工具的开关。
-# 找到可靠的隔离办法之前，Codex 不当 agent 用；隔离开发流水线里的实验性 Codex 执行者不受这里影响。
+# 普通岗位保持拒绝。个人 Codex 专用岗位单独走新版沙箱探针与主人私聊授权。
 CONFINED_CLI = frozenset({"claude-code"})
 CODEX_UNCONFINED = ("Codex 现在不能当 agent 用：它的沙箱限制不了读取范围，能读到项目副本以外的文件。"
                     "可以先选 Claude Code 或 OpenCode")
@@ -258,7 +258,7 @@ async def run_external(engine: str, role: str, model: str, prompt: str, *, timeo
 
 
 async def run_developer(engine: str, model: str, prompt: str, *, timeout: float, child_id: str,
-                        workdir: str, check, execution_ref=None, on_snapshot=None) -> AcpResult:
+                        workdir: str, check, execution_ref=None, on_snapshot=None, personal_codex=False) -> AcpResult:
     """Trusted one-shot binding for registered OpenCode development specialists.
 
     The original ACP assembly still owns config, environment and permission
@@ -268,7 +268,8 @@ async def run_developer(engine: str, model: str, prompt: str, *, timeout: float,
     from src.agents.backends.execution import ExecutionRef, new_run_id, process_instance
     if engine in CLI_WORKERS:
         return await run_cli_developer(engine, model, prompt, timeout=timeout, child_id=child_id, workdir=workdir,
-                                       check=check, execution_ref=execution_ref, on_snapshot=on_snapshot)
+                                       check=check, execution_ref=execution_ref, on_snapshot=on_snapshot,
+                                       personal_codex=personal_codex)
     if engine != 'opencode':
         raise EngineUnavailable('开发成员目前只能由 OpenCode、Claude Code 或 Codex 担任')
     ref = execution_ref if execution_ref is not None else ExecutionRef(
@@ -285,7 +286,7 @@ async def run_developer(engine: str, model: str, prompt: str, *, timeout: float,
 
 
 async def run_cli_developer(engine: str, model: str, prompt: str, *, timeout: float, child_id: str, workdir: str,
-                            check=None, execution_ref=None, on_snapshot=None) -> AcpResult:
+                            check=None, execution_ref=None, on_snapshot=None, personal_codex=False) -> AcpResult:
     """登记的开发 agent 用本机 Claude Code / Codex 跑一轮（主人 2026-11-16 定）。
 
     和 OpenCode 开发成员同一份合同：只在这一轮的一次性项目副本里读写；不执行命令（Claude Code 不给 Bash；
@@ -294,19 +295,23 @@ async def run_cli_developer(engine: str, model: str, prompt: str, *, timeout: fl
     """
     from src.agents import external_workers as workers
     from src.agents.backends.execution import ExecutionRef, new_run_id, process_instance
-    if engine not in CONFINED_CLI:
+    if engine not in CONFINED_CLI and not (engine == "codex" and personal_codex):
         raise EngineUnavailable(CODEX_UNCONFINED)
     worker = CLI_WORKERS[engine]
     if check is not None:
         check()
-    if not workers.worker_binary(worker):
+    if engine != "codex" and not workers.worker_binary(worker):
         raise EngineUnavailable(f"这台电脑上没有装 {ENGINE_LABELS[engine]}，或者没有登录")
     ref = execution_ref
     if ref is None or ref.backend_id != worker:
         ref = ExecutionRef(worker, process_instance("external-cli"), new_run_id(), task_id=child_id)
-    run = await workers.run_worker(worker, prompt, workdir, write=True, system=ROLE_PROMPTS["developer"],
-                                   timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot,
-                                   commands=False, model=model)
+    if engine == "codex":
+        run = await workers.run_personal_codex(prompt, workdir, write=True, system=ROLE_PROMPTS["developer"],
+                                               timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot)
+    else:
+        run = await workers.run_worker(worker, prompt, workdir, write=True, system=ROLE_PROMPTS["developer"],
+                                       timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot,
+                                       commands=False, model=model)
     if check is not None:
         check()
     if run.failure_code == "unavailable":
@@ -342,7 +347,8 @@ def _lost_session(run, session) -> bool:
 
 async def run_cli_general(engine: str, model: str, prompt: str, *, system: str, web: bool, timeout: float,
                           task_id: str, check=None, execution_ref=None, on_snapshot=None,
-                          session=None, context_tokens: Optional[int] = None) -> "CliGeneralResult":
+                          session=None, context_tokens: Optional[int] = None,
+                          personal_codex=False) -> "CliGeneralResult":
     """登记的通用 agent 用本机 CLI 跑一轮（简单版，主人 2026-11-16 定）：只做研究、审查、写作。
 
     CLI 在一个用完即删的空目录里跑。内置工具只开联网搜索与抓网页（岗位允许联网时），否则一样不开：
@@ -353,24 +359,28 @@ async def run_cli_general(engine: str, model: str, prompt: str, *, system: str, 
     """
     from src.agents import external_workers as workers
     from src.agents.backends.execution import ExecutionRef, new_run_id, process_instance
-    if engine not in CONFINED_CLI:
+    if engine not in CONFINED_CLI and not (engine == "codex" and personal_codex):
         raise EngineUnavailable(CODEX_UNCONFINED)
     worker = CLI_WORKERS[engine]
     if check is not None:
         check()
-    if not workers.worker_binary(worker):
+    if engine != "codex" and not workers.worker_binary(worker):
         raise EngineUnavailable(f"这台电脑上没有装 {ENGINE_LABELS[engine]}，或者没有登录")
     ref = execution_ref
     if ref is None or ref.backend_id != worker:
         ref = ExecutionRef(worker, process_instance("external-cli"), new_run_id(), task_id=task_id)
     scratch = Path(session.cwd) if session is not None else _scratch_dir(task_id)
     try:
-        run = await workers.run_worker(worker, prompt, str(scratch), write=False, system=system,
-                                       timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot,
-                                       commands=False, model=model,
-                                       only_tools=("WebSearch", "WebFetch") if web else (),
-                                       session=(session.id, session.resume) if session is not None else None,
-                                       context_tokens=context_tokens)
+        if engine == "codex":
+            run = await workers.run_personal_codex(prompt, str(scratch), write=False, system=system,
+                                                   timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot)
+        else:
+            run = await workers.run_worker(worker, prompt, str(scratch), write=False, system=system,
+                                           timeout=int(timeout), execution_ref=ref, on_snapshot=on_snapshot,
+                                           commands=False, model=model,
+                                           only_tools=("WebSearch", "WebFetch") if web else (),
+                                           session=(session.id, session.resume) if session is not None else None,
+                                           context_tokens=context_tokens)
     finally:
         if session is None:
             shutil.rmtree(scratch, ignore_errors=True)

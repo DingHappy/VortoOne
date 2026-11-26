@@ -28,6 +28,38 @@ def _git(cwd, *args: str, check: bool = True) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, check=check)
 
 
+_EXTERNAL_GIT_HELPERS = (r"^(filter\..+\.(clean|smudge|process)|diff\.external|"
+                         r"diff\..+\.(command|textconv)|merge\..+\.driver|interactive\.difffilter)$")
+
+
+def personal_git(cwd, *args: str, check: bool = True, stdin: Optional[str] = None) -> subprocess.CompletedProcess:
+    """Host-side Git for the private Codex path. No hooks, signing or lazy fetching."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_NO_LAZY_FETCH="1", GIT_ALLOW_PROTOCOL="")
+    return subprocess.run(["git", "--no-pager", "-C", str(cwd), "-c", "core.hooksPath=/dev/null", "-c",
+                           "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "submodule.recurse=false",
+                           "-c", "maintenance.auto=false", "-c", "gc.auto=0", *args], env=env, input=stdin,
+                          capture_output=True, text=True, check=check)
+
+
+def require_personal_git(cwd) -> None:
+    """Reject configured helpers before checkout, patch application or staging.
+
+    A checkout can select any configured driver via its own .gitattributes, including
+    when that file was changed by the agent. Only inspect keys, never helper contents.
+    """
+    result = personal_git(cwd, "config", "--includes", "--name-only", "--get-regexp", _EXTERNAL_GIT_HELPERS, check=False)
+    if result.returncode != 1 or result.stdout or result.stderr:
+        raise ValueError("项目配置了外部 Git 助手或无法安全核对，个人 Codex 未使用这个项目")
+
+
+def checkout_personal_worktree(path) -> None:
+    # .git includes can differ by worktree path and current branch. Check again
+    # after the metadata-only worktree creation, before any tracked file is read.
+    require_personal_git(path)
+    personal_git(path, "reset", "--hard", "HEAD")
+
+
 # 共享 .git 上的写操作（worktree add/remove/prune、分支建/提交/apply）必须串行：多个并行
 # run_isolated_task（asyncio.gather）若真并发跑这些会在 worktree 登记表/refs 上竞争。此前它们是
 # 同步 subprocess 直接在事件循环上跑——侥幸被单线程串行化，但**冻住整个事件循环**（UI 卡死），
@@ -46,7 +78,7 @@ def _worktrees_dir(repo_root) -> Path:
     return state_dir(repo_root) / "worktrees"
 
 
-def _apply_diff(path, diff: str) -> tuple[bool, str]:
+def _apply_diff(path, diff: str, *, personal: bool = False) -> tuple[bool, str]:
     """把一个 unified diff 应用到 worktree。先直 apply；失败退一步 `--3way`。
 
     并行集成里前一块改过的上下文常让后一块直 apply 因"上下文不匹配"被拒，但真实改动并不重叠
@@ -54,11 +86,17 @@ def _apply_diff(path, diff: str) -> tuple[bool, str]:
     真冲突时 3way 返回非 0 并留 `<<<<<<<` marker → 当失败处理（调用方会 reset 清掉，绝不提交 marker）。
     返回 (是否干净应用, 错误信息)。
     """
-    common = ["git", "-C", str(path), "apply", "--whitespace=nowarn"]
-    ap = subprocess.run(common, input=diff, capture_output=True, text=True)
+    def apply(*flags):
+        if personal:
+            require_personal_git(path)
+            return personal_git(path, "apply", "--whitespace=nowarn", *flags, stdin=diff, check=False)
+        return subprocess.run(["git", "-C", str(path), "apply", "--whitespace=nowarn", *flags],
+                              input=diff, capture_output=True, text=True)
+
+    ap = apply()
     if ap.returncode == 0:
         return True, ""
-    ap3 = subprocess.run(common + ["--3way"], input=diff, capture_output=True, text=True)
+    ap3 = apply("--3way")
     if ap3.returncode == 0:                       # 三方干净合上（无 marker）
         return True, ""
     return False, (ap3.stderr or ap.stderr or "").strip()[:300]
@@ -204,7 +242,7 @@ def _skipped_verification(paths_hint: str = "") -> dict:
             "cmd": "(skipped: docs-only)"}
 
 
-def collect_diff(worktree) -> str:
+def collect_diff(worktree, *, personal: bool = False) -> str:
     """worktree 内相对 HEAD 的全部改动（含新增文件）的 unified diff。
 
     用临时 excludesFile 把构建/缓存噪音（见 _DIFF_ARTIFACT_IGNORES）挡在 `git add` 之外，
@@ -215,6 +253,10 @@ def collect_diff(worktree) -> str:
         f.write("\n".join(_DIFF_ARTIFACT_IGNORES) + "\n")
         excludes = f.name
     try:
+        if personal:
+            require_personal_git(worktree)
+            personal_git(worktree, "-c", f"core.excludesFile={excludes}", "add", "-A")
+            return personal_git(worktree, "diff", "--cached", "--no-ext-diff", "--no-textconv").stdout
         # `git add` 默认跳过被忽略的未跟踪文件；用 -c 注入 excludesFile 即兜底忽略上面这些。
         _git(worktree, "-c", f"core.excludesFile={excludes}", "add", "-A")
         return _git(worktree, "diff", "--cached").stdout
@@ -222,44 +264,53 @@ def collect_diff(worktree) -> str:
         Path(excludes).unlink(missing_ok=True)
 
 
-def remove_worktree(repo_root, path) -> None:
+def remove_worktree(repo_root, path, *, personal: bool = False) -> None:
     """移除 worktree 并清理目录与登记（幂等、不抛）。"""
     path = Path(path)
-    _git(repo_root, "worktree", "remove", "--force", str(path), check=False)
+    git = personal_git if personal else _git
+    git(repo_root, "worktree", "remove", "--force", str(path), check=False)
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
-    _git(repo_root, "worktree", "prune", check=False)
+    git(repo_root, "worktree", "prune", check=False)
     from src.agents.worktree_bindings import forget_worktree_binding
     forget_worktree_binding(str(repo_root), path.name)
 
 
-def apply_diff_to_branch(repo_root, branch: str, diff: str, message: str) -> dict:
+def apply_diff_to_branch(repo_root, branch: str, diff: str, message: str, *, run_hooks: bool = True) -> dict:
     """把 diff 应用到一个**新分支**并提交——用一次性 worktree，绝不碰主工作区/当前分支/main。
 
     返回 {ok, branch, error}。失败（apply/commit 出错）则删掉刚建的空分支，不留残留。
     """
     path = _worktrees_dir(repo_root) / ("apply-" + branch.replace("/", "-"))
     path.parent.mkdir(parents=True, exist_ok=True)
+    if not run_hooks:
+        require_personal_git(repo_root)
     if path.exists():
-        remove_worktree(repo_root, path)
-    add = _git(repo_root, "worktree", "add", "-b", branch, str(path), "HEAD", check=False)
+        remove_worktree(repo_root, path, personal=not run_hooks)
+    git = _git if run_hooks else personal_git
+    checkout = () if run_hooks else ("--no-checkout",)
+    add = git(repo_root, "worktree", "add", *checkout, "-b", branch, str(path), "HEAD", check=False)
     if add.returncode != 0:
         return {"ok": False, "branch": branch, "error": (add.stderr or "worktree add 失败").strip()[:300]}
     ok = False
     try:
-        applied, err = _apply_diff(path, diff)    # 直 apply，失败退一步 3way
+        if not run_hooks:
+            checkout_personal_worktree(path)
+        applied, err = _apply_diff(path, diff, personal=not run_hooks)    # 直 apply，失败退一步 3way
         if not applied:
             return {"ok": False, "branch": branch, "error": "git apply 失败: " + err}
-        _git(path, "add", "-A")
-        cm = _git(path, "commit", "-m", message, check=False)
+        if not run_hooks:
+            require_personal_git(path)
+        git(path, "add", "-A")
+        cm = git(path, "commit", "-m", message, check=False)
         if cm.returncode != 0:
             return {"ok": False, "branch": branch, "error": "commit 失败: " + (cm.stderr or "").strip()[:300]}
         ok = True
         return {"ok": True, "branch": branch, "error": ""}
     finally:
-        remove_worktree(repo_root, path)
+        remove_worktree(repo_root, path, personal=not run_hooks)
         if not ok:
-            _git(repo_root, "branch", "-D", branch, check=False)   # 失败：删掉残留空分支
+            git(repo_root, "branch", "-D", branch, check=False)   # 失败：删掉残留空分支
 
 
 def apply_diffs_to_branch(repo_root, branch: str, items: list,

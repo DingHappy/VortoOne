@@ -33,23 +33,34 @@ def _git(cwd: Any, *args: str, check: bool = True, stdin: Optional[str] = None) 
     return result
 
 
-def prepare(repo_root: str, child_id: str, number: int, previous_branch: str = "") -> Path:
+def prepare(repo_root: str, child_id: str, number: int, previous_branch: str = "", *,
+            run_hooks: bool = True) -> Path:
     """建本轮的一次性 worktree（基于项目当前 HEAD）；返工轮先放上上一轮分支的改动。"""
+    from src.agents.worktree import checkout_personal_worktree, personal_git, require_personal_git
     from src.utils.state_dir import ensure_state_gitignore
+    if not run_hooks:
+        require_personal_git(repo_root)
     ensure_state_gitignore(repo_root)
     path = state_dir(repo_root) / "worktrees" / f"team-{child_id}-r{number}"
     if path.exists():
-        cleanup(repo_root, path)
+        cleanup(repo_root, path, personal=not run_hooks)
     path.parent.mkdir(parents=True, exist_ok=True)
-    _git(repo_root, "worktree", "add", "--detach", str(path), "HEAD")
-    if previous_branch:
-        try:
-            diff = _git(repo_root, "diff", "--binary", f"HEAD...{previous_branch}").stdout
+    git = _git if run_hooks else personal_git
+    checkout = () if run_hooks else ("--no-checkout",)
+    git(repo_root, "worktree", "add", *checkout, "--detach", str(path), "HEAD")
+    try:
+        if not run_hooks:
+            checkout_personal_worktree(path)
+        if previous_branch:
+            diff_flags = () if run_hooks else ("--no-ext-diff", "--no-textconv")
+            diff = git(repo_root, "diff", "--binary", *diff_flags, f"HEAD...{previous_branch}").stdout
             if diff.strip():
-                _git(path, "apply", "--3way", "--whitespace=nowarn", stdin=diff)
-        except Exception:
-            cleanup(repo_root, path)
-            raise
+                if not run_hooks:
+                    require_personal_git(path)
+                git(path, "apply", "--3way", "--whitespace=nowarn", stdin=diff)
+    except Exception:
+        cleanup(repo_root, path, personal=not run_hooks)
+        raise
     return path
 
 
@@ -63,9 +74,9 @@ def continuable(repo_root: str, branch: str) -> bool:
     return _git(repo_root, "merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode != 0
 
 
-def cleanup(repo_root: str, path: Any) -> None:
+def cleanup(repo_root: str, path: Any, *, personal: bool = False) -> None:
     from src.agents.worktree import remove_worktree
-    remove_worktree(repo_root, path)
+    remove_worktree(repo_root, path, **({"personal": True} if personal else {}))
 
 
 def _verify_command(repo_root: str, files: List[str]) -> Optional[List[str]]:
@@ -111,16 +122,18 @@ def _verify(repo_root: str, path: Any, cmd: List[str], run_tests: Any = None) ->
 
 
 def finish_round(repo_root: str, path: Any, *, child_id: str, number: int, objective: str,
-                 run_tests: Any = None) -> Dict[str, Any]:
+                 run_tests: Any = None, verify: bool = True) -> Dict[str, Any]:
     """收集改动、跑验证、落分支。返回交付记录（不抛：失败写在 ``error`` 里）。"""
     from src.agents import worktree
-    diff = worktree.collect_diff(path)
+    diff = worktree.collect_diff(path, **({"personal": True} if not verify else {}))
     if not diff.strip():
-        return {"round": number, "files": [], "error": "成员没有改动任何文件"}
+        return {"round": number, "files": [], **({"error": "成员没有改动任何文件"} if verify else {})}
     files = list(dict.fromkeys(worktree.diff_paths(diff)))
     delivery: Dict[str, Any] = {"round": number, "files": files}
-    cmd = _verify_command(repo_root, files)
-    if cmd is None:
+    cmd = _verify_command(repo_root, files) if verify else None
+    if not verify:
+        delivery.update(verified=None, verify_cmd="", verify_output="个人 Codex 交回的改动等待主人检查和运行测试")
+    elif cmd is None:
         delivery.update(verified=None, verify_cmd="", verify_output="项目没有匹配这些文件的验证配置，没有跑测试")
     else:
         outcome = _verify(repo_root, path, cmd, run_tests)
@@ -133,7 +146,8 @@ def finish_round(repo_root: str, path: Any, *, child_id: str, number: int, objec
             delivery["flaky"] = len(outcome["flaky"])
     branch = branch_name(child_id, number)
     message = f"team({child_id}): 第 {number} 轮\n\n{objective[:500]}"
-    landed = worktree.apply_diff_to_branch(repo_root, branch, diff, message)
+    landed = worktree.apply_diff_to_branch(repo_root, branch, diff, message,
+                                           **({"run_hooks": False} if not verify else {}))
     if not landed.get("ok"):
         delivery["error"] = f"改动没能落到分支：{landed.get('error')}"
         return delivery
@@ -154,6 +168,8 @@ def describe(delivery: Dict[str, Any], project: str) -> str:
     """给协调人看的交付说明（代码拼的事实）。"""
     if delivery.get("error"):
         return f"【交付】没有交付：{delivery['error']}"
+    if not delivery.get("branch"):
+        return "【交付】本轮没有改动项目文件"
     files = delivery.get("files") or []
     shown = "、".join(files[:_MAX_FILES_SHOWN]) + (f" 等 {len(files)} 个" if len(files) > _MAX_FILES_SHOWN else "")
     verified = delivery.get("verified")

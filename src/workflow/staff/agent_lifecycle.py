@@ -132,6 +132,44 @@ def create(root: str, actor: Principal, *, name: Any, handle: Any, title: Any = 
     return handle
 
 
+def create_personal_codex(root: str, actor: Principal, *, name: str, handle: str, project: str) -> str:
+    """Authorize a private Codex agent on the workspace's service host."""
+    from src.workflow.members.profile_preferences import check_agent_handle
+    from src.workflow.staff.initiators import personal_codex_owner_binding
+    from src.workflow.staff.owner_confirmation import owner_route
+    from src.workflow.staff.projects import bind
+    from src.workflow.staff.registry import StaffRegistry
+    from src.workflow.staff.roles import builtin_roles
+    from src.workflow.tasks.tasks import TASK_STATE_LOCK
+
+    _owner_only(actor)
+    name = _text(name, "名字", MAX_NAME, required=True)
+    if not _HANDLE.fullmatch(handle) or handle in _RESERVED:
+        raise ValueError("handle 只能是 2～32 个小写字母、数字、- 或 _，且不能是保留的名字")
+    template = 'developer' if project else 'reviewer'
+    # Chat-only uses the bare reviewer, without the task-delivery reader.
+    role = next(item for item in builtin_roles(legacy=not project) if item['id'] == template)
+    role_id = f"personal-codex-{uuid.uuid4().hex[:12]}"
+    data = {key: role[key] for key in ('grants', 'max_steps', 'timeout_seconds')}
+    data.update(id=role_id, title='Codex', engine=['codex'],
+                brief='你是所有者自己的 Codex 智能体。仅按当前任务工作，交回清楚的答复。')
+    if project:
+        data['project'] = project
+        data = bind(data)
+
+    registry = StaffRegistry(root)
+    with TASK_STATE_LOCK, owner_route(root):
+        check_agent_handle(root, handle)
+        if handle in registry.reserved_member_handles():
+            raise ValueError("这个 handle 已经有 agent 用了（包括删掉的），换一个")
+        data['personal_codex_owner'] = personal_codex_owner_binding(root)
+        _approve(root, 'role', data, '所有者授权个人 Codex 的岗位与项目')
+        _approve(root, 'member', {'id': handle, 'name': name, 'role': role_id, 'engine': 'codex', 'model': ''},
+                 '所有者创建仅自己可调用的 Codex 智能体')
+    AgentProfiles(root).create(handle, look={}, setup=None)
+    return handle
+
+
 def update(root: str, actor: Principal, staff_id: str, change: Mapping[str, Any]) -> None:
     """改名字、角色、说明、模型、外观、受众。改说明和角色是给它的岗位提一个新版本，改名字和模型是给专员提一个新版本，都当场批准。"""
     from src.workflow.members.registry import MemberRegistry
@@ -149,6 +187,8 @@ def update(root: str, actor: Principal, staff_id: str, change: Mapping[str, Any]
     if "appearance" in change:
         check_look(change["appearance"])
     role = registry.role(member["role"])
+    if member["engine"] == "codex" and set(change) & {"audience", "role", "instructions", "model"}:
+        raise ValueError("个人 Codex 的受众、岗位与订阅在创建时绑定")
     with owner_route(root):
         if "instructions" in change or "role" in change:
             if role.get("builtin"):

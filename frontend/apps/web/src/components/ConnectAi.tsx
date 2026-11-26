@@ -2,6 +2,7 @@ import type { ConnectIntent, Credential, MachineAccount } from "@vortoone/client
 import {
   keys,
   useAddCredential,
+  useAgents,
   useAiAccounts,
   useAiStatus,
   useApi,
@@ -72,6 +73,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
   type CSSProperties,
+  type ComponentProps,
   createContext,
   type ReactNode,
   useCallback,
@@ -109,6 +111,7 @@ import { bestHave, ConnectHave, haveId } from "@/components/arrival/ConnectHave"
 import { ConnectScene, isScenePlan, type SceneAgent, TeamScene, useDawn } from "@/components/arrival/TeamScene";
 import { ConnectDialog, type ConnectStart } from "@/components/devices/ConnectDialog";
 import { NEW_AGENT_EVENT, type NewAgentRequest } from "@/components/new-agent/NewAgentDialog";
+import { PersonalCodexConnectionDialog } from "@/components/new-agent/PersonalCodexDialog";
 import { useOrg } from "@/components/org-context";
 import { KeyRefused, ProviderKeySelect } from "@/components/ProviderKey";
 import { useDirectory } from "@/hooks/useDirectory";
@@ -266,7 +269,7 @@ export function ConnectAiProvider({
     <ConnectAiContext.Provider value={value}>
       {children}
       {request && (
-        <ConnectAiDialog
+        <ConnectAiTarget
           key={request.n}
           request={request}
           poll={poll ?? false}
@@ -285,6 +288,18 @@ export function ConnectAiProvider({
 }
 
 const PAIR_START: ConnectStart = { step: "choose" };
+
+function ConnectAiTarget(props: ComponentProps<typeof ConnectAiDialog>) {
+  const { org } = useOrg();
+  const { request, onClose } = props;
+  const agentId = request.agentId ?? (request.agentIds?.length === 1 ? request.agentIds[0] : undefined);
+  const agents = useAgents(org.id, Boolean(agentId));
+  if (agentId && agents.isPending) return null;
+  if (agents.data?.some((agent) => agent.id === agentId && agent.personalCodex)) {
+    return org.role === "owner" ? <PersonalCodexConnectionDialog onClose={onClose} /> : null;
+  }
+  return <ConnectAiDialog {...props} />;
+}
 
 /** A chosen plan's steps, named as its maker sells it; the key's, as the picker names it. */
 const stepTitle = (t: TFunction, choice: AiChoice) =>
@@ -453,7 +468,7 @@ function ConnectAiDialog({
   const mayAddKey = can(org, "manage_credentials");
   const hold = usePlanHold();
   // The team's right hand thinks with each person's own AI (ADR 0137 §11): everyone's to connect for their DM.
-  const mine = dir.agents.filter((a) => a.ownerUserId === me.user.id || isRightHand(a));
+  const mine = dir.agents.filter((a) => !a.personalCodex && (a.ownerUserId === me.user.id || isRightHand(a)));
   // An agent's card names whom to choose from. Opened for one agent, it is for that agent alone: the title names it,
   // so no For offers another. Anywhere else every agent of the viewer's stays a choice.
   const named = request.agentIds?.length ? request.agentIds : null;

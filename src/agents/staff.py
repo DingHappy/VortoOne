@@ -201,7 +201,11 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
     check()
     from src.workflow.staff.initiators import initiator_of, member_authority, plan_allows, require_member_operations, role_for_member
     principal = initiator_of(task)
-    from src.workflow.staff.roles import is_full, unattended_role
+    from src.workflow.staff.roles import is_full, personal_codex_role, unattended_role
+    personal_codex = member['engine'] == 'codex' and personal_codex_role(role)
+    if member['engine'] == 'codex':
+        from src.workflow.staff.initiators import require_personal_codex_dispatch
+        require_personal_codex_dispatch(root, task, member, role)
     # 完整能力的 agent 担任例行工作：降为无人值守档（主人 2026-11-22 定）。和谁登记的、批过什么档位都无关
     downgraded = is_full(role) and bool(task.collaboration['dispatch'].get('routine'))
     turn_role = unattended_role(role) if downgraded else role          # 审批、额度仍按登记的岗位核对；只有装配工具和回合模式用收窄后的
@@ -263,14 +267,16 @@ async def execute_staff(root, task, work, role, member, check, *, approval_servi
             {**task.collaboration['dispatch'], 'model': member['model']}, member['engine'], project,
             bool(task.collaboration.get('tainted')), record_delivery=record, check=check,
             execution_ref=execution.ref, on_snapshot=execution.publish,
-            execute_backend=partial(run_developer, member['engine'], member['model']),
+            execute_backend=partial(run_developer, member['engine'], member['model'],
+                                    **({'personal_codex': True} if personal_codex else {})),
             continue_from=continue_from, lead=lead)
         from src.workflow.staff.conversation_context import record_external
         record_external(work, task, bool(getattr(done, 'collaboration', {}).get('tainted', True)))
         return done
     from src.workflow.staff.roles import CLI_ENGINES
     if member['engine'] in CLI_ENGINES:
-        return await _execute_cli_general(root, task, work, turn_role, member, check, approval_service)
+        return await _execute_cli_general(root, task, work, turn_role, member, check, approval_service,
+                                          personal_codex=personal_codex)
     from dataclasses import replace
     import time
     from src.agents.backends.execution import ExecutionState
@@ -381,7 +387,7 @@ def _continues_conversation(task):
             and int(task.collaboration.get('round') or 1) == 1)
 
 
-async def _execute_cli_general(root, task, work, role, member, check, approval_service):
+async def _execute_cli_general(root, task, work, role, member, check, approval_service, *, personal_codex=False):
     """通用 agent 用本机 CLI（简单版）：只做研究、审查、写作，CLI 碰不到所有者的任何资料。"""
     from src.agents.team_engines import CLI_WORKERS, run_cli_general
     from src.agents.team_members import member_prompt
@@ -412,11 +418,11 @@ async def _execute_cli_general(root, task, work, role, member, check, approval_s
     initiator = initiator_of(task)
     viewer = initiator.id if initiator is not None else None
     # 接着这个人和这个 agent 上次的会话聊（会话规则见 cli_sessions）。例行工作上面已经拒了，走不到这里
-    session = sessions.take(member['id'], viewer)
+    session = None if personal_codex else sessions.take(member['id'], viewer)
     try:
         for attempt in range(2):
             sent = prompt
-            if session is not None and not session.resume:
+            if personal_codex or (session is not None and not session.resume):
                 from src.workflow.staff.conversation_context import earlier_conversation
                 sent = earlier_conversation(root, member['id'], viewer, task.id) + prompt
             execution = StaffExecution(work, task, CLI_WORKERS[member['engine']])
@@ -426,7 +432,8 @@ async def _execute_cli_general(root, task, work, role, member, check, approval_s
                                            on_snapshot=execution.publish,
                                            # 原会话正忙时开的临时会话：带上之前几件事，但一轮一清，不存
                                            session=session if session is None or session.keep else None,
-                                           context_tokens=CONTEXT_TOKENS)
+                                           context_tokens=CONTEXT_TOKENS,
+                                           **({'personal_codex': True} if personal_codex else {}))
             if not result.lost_session or attempt:
                 break
             sessions.forget(session)               # 会话记录在 Claude Code 那边没了：换个新会话重来一次

@@ -43,6 +43,16 @@ FULL_OPERATIONS = ['read', 'own_data', 'draft', 'write', 'execute', 'interact', 
 FULL_GRANTS = {'operations': FULL_OPERATIONS, 'tools': [], 'sees': [], 'web': True, 'project': False, 'full': True}
 
 
+def personal_codex_role(role: dict) -> bool:
+    """The private Codex agent uses a chat sandbox or a fixed project copy."""
+    if (not str(role.get('id') or '').startswith('personal-codex-')
+            or role.get('builtin') or role.get('engine') != ['codex']):
+        return False
+    template = 'developer' if role.get('project_binding') else 'reviewer'
+    grants = next(item['grants'] for item in _BUILTINS if item['id'] == template)
+    return role.get('grants') == grants
+
+
 def is_full(role: dict) -> bool:
     return (role.get('grants') or {}).get('full') is True
 

@@ -51,12 +51,13 @@ def _conversations(root: str):
     return StaffConversations(root)
 
 
-def send(root: str, member_id: str, body: str, client_id: Optional[str]) -> Dict[str, Any]:
+def send(root: str, member_id: str, body: str, client_id: Optional[str], *, local_owner: bool = False) -> Dict[str, Any]:
     """调用方已核对过主人证明。岗位、实例或额度不符时 StaffConversations 抛 ValueError，原样交给路由。"""
-    return views.member_owner_message(root, member_id, send_task(root, member_id, body), client_id)
+    return views.member_owner_message(root, member_id, send_task(root, member_id, body, owner_chat=local_owner), client_id)
 
 
-def send_task(root: str, member_id: str, body: str, via: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def send_task(root: str, member_id: str, body: str, via: Optional[Dict[str, Any]] = None, *,
+              owner_chat: bool = False) -> Dict[str, Any]:
     """所有者交给专员一件事，返回任务。via：经哪个 AI 应用发来（/mcp 认出所有者的连接时）。岗位、实例或额度不符时 StaffConversations 抛 ValueError，原样交给路由。"""
     from src.workflow.staff.owner_confirmation import owner_route
     conversations = _conversations(root)
@@ -67,7 +68,8 @@ def send_task(root: str, member_id: str, body: str, via: Optional[Dict[str, Any]
         result = conversations.submit(member_id, {
             "request_id": uuid.uuid4().hex, "prompt": body, "acceptance": [], "delivery": "notify",
             "member_revision": current["member"]["revision"], "role_revision": current["role"]["revision"],
-            "instance": current["instance"], "identity_digest": current["identity_digest"]}, via=via)
+            "instance": current["instance"], "identity_digest": current["identity_digest"]},
+            via=via, owner_chat=owner_chat)
     return result["task"]
 
 

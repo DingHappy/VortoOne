@@ -183,7 +183,8 @@ async def execute_development(work, child, dispatch, engine, project, tainted, *
         if check is not None:
             check()
         base = _previous_branch(child) or (continue_from if number == 1 else "")
-        path = await asyncio.to_thread(team_delivery.prepare, repo_root, child.id, number, base)
+        path = await asyncio.to_thread(team_delivery.prepare, repo_root, child.id, number, base,
+                                       **({"run_hooks": False} if engine == "codex" else {}))
         prompt = lead + external_developer_prompt(child, work)
         if continue_from and number == 1 and base == continue_from:
             prompt = (lead + f"【副本里已经放上你上一件交回的改动（分支 {continue_from}），在它的基础上接着改】\n"
@@ -204,7 +205,8 @@ async def execute_development(work, child, dispatch, engine, project, tainted, *
             return work.finish(child.id, number, str(result.text or ""), tainted=tainted,
                                error=f"{team_engines.ENGINE_LABELS.get(engine, engine)}：{result.error}")
         delivery = await asyncio.to_thread(team_delivery.finish_round, repo_root, path, child_id=child.id,
-                                           number=number, objective=child.prompt, run_tests=run_tests)
+                                           number=number, objective=child.prompt, run_tests=run_tests,
+                                           **({"verify": False} if engine == "codex" else {}))
         if continue_from and number == 1 and base == continue_from and delivery.get("branch"):
             delivery["continues"] = continue_from
         record_delivery(delivery)
@@ -219,7 +221,8 @@ async def execute_development(work, child, dispatch, engine, project, tainted, *
         return work.finish(child.id, number, "", error=f"{type(error).__name__}: {str(error)[:300]}", tainted=tainted)
     finally:
         if path is not None:
-            await asyncio.to_thread(team_delivery.cleanup, repo_root, path)
+            await asyncio.to_thread(team_delivery.cleanup, repo_root, path,
+                                    **({"personal": True} if engine == "codex" else {}))
 
 
 def external_developer_prompt(child, work):

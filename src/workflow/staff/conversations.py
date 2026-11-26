@@ -134,7 +134,7 @@ class StaffConversations:
                 'instance': self.instance, 'approval_source': 'owner_role_conversation'}, durable=True):
             raise OSError('主人操作审计未能保存，未放行')
 
-    def submit(self, member_id, body, *, via=None):
+    def submit(self, member_id, body, *, via=None, owner_chat=False):
         require_owner_route(self.root)
         self._instance(body['instance'])
         self._request(body['request_id'])
@@ -143,6 +143,11 @@ class StaffConversations:
             args = {key: deepcopy(body[key]) for key in ('prompt', 'acceptance', 'delivery')}
             args['member'] = member_id
             member, role = service.assignment(args)
+            if member['engine'] == 'codex':
+                from src.workflow.staff.initiators import PERSONAL_CODEX_PRIVATE, require_personal_codex_owner
+                if owner_chat is not True or via is not None:
+                    raise ValueError(PERSONAL_CODEX_PRIVATE)
+                require_personal_codex_owner(self.root, role)
             if (member['revision'] != body['member_revision']
                     or role['revision'] != body['role_revision']
                     or body['identity_digest'] != digest({'member': member, 'role': role})):
@@ -162,7 +167,7 @@ class StaffConversations:
                     raise ValueError('该请求标识已有其它内容，未重复派发')
                 return {'task': self._view(existing), 'replayed': True}
             self._audit('主人交给角色处理任务', task_id, digest(args))
-            task = service.assign(owner, args, expected=(member, role), task_id=task_id, via=via)
+            task = service.assign(owner, args, expected=(member, role), task_id=task_id, via=via, owner_chat=owner_chat)
             return {'task': self._view(task), 'replayed': False}
 
     def act(self, member_id, task_id, body):

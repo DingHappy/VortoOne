@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from copy import deepcopy
+import os
 
 from src.agents import identity_groups as rules
 from src.agents.principal import ALLOWABLE, MEMBER, Grants, Principal, effective_grants, member_initiator_grants
@@ -20,6 +21,44 @@ from src.agents.principal import ALLOWABLE, MEMBER, Grants, Principal, effective
 
 class MemberAccessChanged(ValueError):
     pass
+
+
+PERSONAL_CODEX_PRIVATE = '个人 Codex 只接受所有者在私聊里发来的任务'
+
+
+def personal_codex_owner_binding(root) -> dict:
+    """Bind queued work to the authenticated home and its current owner trust."""
+    from src.workflow.home_identity import HomeIdentityError, ensure_home_identity
+
+    try:
+        identity = ensure_home_identity(root)
+    except (HomeIdentityError, OSError) as error:
+        raise ValueError('无法核对个人 Codex 的所有者身份') from error
+    return {'home_instance_id': identity['home_instance_id'], 'owner_subject': identity['owner_subject'],
+            'trust_epoch': identity['trust_epoch'], 'os_uid': getattr(os, 'geteuid', lambda: -1)()}
+
+
+def require_personal_codex_owner(root, role) -> dict:
+    binding = personal_codex_owner_binding(root)
+    if binding != role.get('personal_codex_owner'):
+        raise MemberAccessChanged('个人 Codex 的所有者或执行账号已变化，请重新创建智能体')
+    return binding
+
+
+def require_personal_codex_dispatch(root, task, staff_member, role) -> None:
+    """The private-chat admission must still be valid when queued work starts."""
+    if staff_member.get('engine') != 'codex':
+        return
+    from src.gateway.main_conversation import main_chat_key
+
+    dispatch = task.collaboration.get('dispatch') or {}
+    binding = dispatch.get('personal_codex_owner')
+    if (dispatch.get('source') != 'staff' or dispatch.get('member') != staff_member['id']
+            or dispatch.get('delivery') != 'notify' or task.collaboration.get('round') != 1
+            or any(key in dispatch for key in ('initiator', 'via', 'channel', 'routine', 'mission', 'notes', 'materials'))
+            or task.owner_session != main_chat_key(root)
+            or binding != role.get('personal_codex_owner') or binding != personal_codex_owner_binding(root)):
+        raise MemberAccessChanged(PERSONAL_CODEX_PRIVATE)
 
 
 def record(member_id: str) -> dict:
@@ -51,6 +90,8 @@ def level_on(root, staff_member_id: str, principal: Principal) -> str:
 def plan_allows(root, staff_member: dict) -> bool:
     """Personal CLI subscriptions are shared only when the owner opted in."""
     from src.workflow.staff.roles import CLI_ENGINES
+    if staff_member.get('engine') == 'codex':
+        return False
     if staff_member.get('engine') not in CLI_ENGINES:
         return True
     from src.workflow.members.registry import MemberRegistry
@@ -68,6 +109,8 @@ def member_authority(root, role, staff_member, principal, *, scheduled=False):
     from src.workflow.members.registry import MemberRegistry
     from src.workflow.staff.roles import CLI_ENGINES
 
+    if staff_member.get('engine') == 'codex':
+        return 'none', False, frozenset()
     try:
         level, delegated, auto_approve = MemberRegistry(root).member_execution_policy(
             staff_member['id'], principal, role_version(role), requires_shared_plan=staff_member['engine'] in CLI_ENGINES)

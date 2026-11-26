@@ -6841,6 +6841,22 @@
       }
     }
   },
+  "personalCodex": {
+    "title": "使用已登录的 Codex",
+    "check": "检查 Codex 连接",
+    "notReady": "请检查工作区电脑上的 Codex 连接。",
+    "description": "只有你能使用这个智能体。它在运行此工作区的电脑上执行。",
+    "project": "已登记项目",
+    "chatOnly": "仅聊天",
+    "projectUnavailable": "该项目已取消登记。请选择其他项目或「仅聊天」。",
+    "create": "创建个人智能体",
+    "status": {
+      "ready": "已就绪，将使用你自己的 ChatGPT 订阅。",
+      "missing": "请先在运行此工作区的电脑上安装官方 Codex CLI，再重试。",
+      "signed_out": "请在这台电脑上运行 codex login，并用你的 ChatGPT 账号登录。",
+      "unsupported": "个人 Codex 需要在 Mac 本机工作区运行，并使用支持项目隔离的官方 Codex CLI。"
+    }
+  },
   "newAgentCard": {
     "title": "新智能体",
     "lead": "在左边选，在右边调整。之后都可以改。",

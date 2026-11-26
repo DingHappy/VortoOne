@@ -886,6 +886,8 @@ export interface Agent {
   appearance?: AgentLookInput;
   /** Who thinks for it (ADR 0032): the brain, a computer brain's model label, its computer (owner and admins). */
   brain?: AgentBrainLine;
+  /** Uses the owner's existing official Codex sign-in on the workspace service computer. */
+  personalCodex?: boolean;
   /** A built-in agent the product ships (ADR 0137): `right_hand`, the team's right hand. Null or absent for the others. */
   builtin?: "right_hand" | null;
   /** Responde a (ADR 0148 addendum): the agent it reports to; null or absent = its owner, else its setor's lead. */
@@ -1071,6 +1073,17 @@ export interface AgentLookInput {
   color?: string;
   eyes?: string;
   accessory?: string;
+}
+
+export interface PersonalCodexStatus {
+  status: "ready" | "missing" | "signed_out" | "unsupported";
+  projects: string[];
+}
+
+export interface PersonalCodexAgentInput {
+  name: string;
+  handle: string;
+  project?: string;
 }
 
 export interface AgentInput {

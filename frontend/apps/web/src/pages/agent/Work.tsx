@@ -271,9 +271,9 @@ export function WorkCard({
             icon={<Icon name="plug" size={16} />}
             label={t("agentPage.work.cell.brain")}
             value={t("noAi.chip")}
-            sub={t("connectAi.title.any")}
+            sub={t(agent.personalCodex ? "personalCodex.check" : "connectAi.title.any")}
             muted
-            openLabel={t("connectAi.title.any")}
+            openLabel={t(agent.personalCodex ? "personalCodex.check" : "connectAi.title.any")}
             onOpen={connect ? () => connect.open({ agentId: agent.id }) : undefined}
           />
         ) : (

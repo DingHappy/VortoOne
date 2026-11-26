@@ -54,6 +54,7 @@ import { HaveList, HaveRow, sortHave } from "@/components/arrival/ConnectHave";
 import { TeamScene, useDawn } from "@/components/arrival/TeamScene";
 import { useConnectAi } from "@/components/ConnectAi";
 import { ToolOffWayOut } from "@/components/devices/ToolOneClick";
+import { PersonalCodexConnectionDialog } from "@/components/new-agent/PersonalCodexDialog";
 import { useOrg } from "@/components/org-context";
 import { useWidenAsk } from "@/components/ReachLines";
 import { ToolsOffHereNote, useIsThisMac } from "@/components/ThisMac";
@@ -121,6 +122,8 @@ interface MoreDraft extends Advanced {
  */
 export function BrainDialog({ onClose, at }: { onClose: () => void; at?: BrainScreen }) {
   const work = useWork();
+  const { agent } = useAgentEdit();
+  if (agent.personalCodex) return <PersonalCodexConnectionDialog onClose={onClose} />;
   // Every screen starts from what is saved: the dialog mounts once it is loaded.
   if (!work.brain.data || !work.computer.data) return null;
   return <BrainFlow view={work.brain.data} onClose={onClose} at={at} />;

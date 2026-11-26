@@ -259,6 +259,8 @@ import type {
   PendingReturn,
   PeopleUsage,
   Person,
+  PersonalCodexAgentInput,
+  PersonalCodexStatus,
   PersonalTokenInput,
   PersonLimits,
   PersonUsage,
@@ -743,6 +745,8 @@ export interface ApiClient {
       input: { agentId: string; fromChannelId: string | null; toChannelId: string; reason: string },
     ): Promise<{ channelId: string; messageId: string; rightHandId: string }>;
     create(orgId: string, input: AgentInput): Promise<Agent>;
+    personalCodexStatus(orgId: string): Promise<PersonalCodexStatus>;
+    createPersonalCodex(orgId: string, input: PersonalCodexAgentInput): Promise<Agent>;
     /** An agent's proposal of a new agent, by its card's message (ADR 0081). */
     proposal(orgId: string, messageId: string): Promise<AgentProposal>;
     /**

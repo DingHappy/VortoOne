@@ -41,6 +41,10 @@ import os
 import re
 import shutil
 import signal
+import subprocess
+import sys
+import tempfile
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -545,19 +549,8 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
-async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system: str = "",
-                     on_event: Optional[Callable[[WorkerEvent], Any]] = None,
-                     timeout: Optional[int] = None, execution_ref: ExecutionRef | None = None,
-                     on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None,
-                     commands: bool = True, model: str = "",
-                     only_tools: Optional[tuple[str, ...]] = None,
-                     session: Optional[tuple[str, bool]] = None,
-                     context_tokens: Optional[int] = None) -> WorkerRun:
-    """跑一次外部 CLI，逐行解析 JSONL 事件。失败如实写进 `WorkerRun.error`，不抛。
-
-    model 给了就覆盖个人配置里的模型（登记在 agent 上的那个）；commands、session 见 `build_argv`。
-    context_tokens（只对 Claude）：读到这么多就由 Claude Code 自己压缩（CLAUDE_CODE_AUTO_COMPACT_WINDOW），
-    盖过个人配置里的同名设置。"""
+def _worker_run(worker: str, execution_ref: ExecutionRef | None,
+                on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]]) -> tuple[WorkerRun, Callable[[], None]]:
     run = WorkerRun(worker)
     if execution_ref is not None:
         if not isinstance(execution_ref, ExecutionRef) or execution_ref.backend_id != worker or execution_ref.session_id or execution_ref.turn_id:
@@ -573,6 +566,23 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
                 logger.debug("外部执行者快照回调出错", exc_info=True)
 
     publish()
+    return run, publish
+
+
+async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system: str = "",
+                     on_event: Optional[Callable[[WorkerEvent], Any]] = None,
+                     timeout: Optional[int] = None, execution_ref: ExecutionRef | None = None,
+                     on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None,
+                     commands: bool = True, model: str = "",
+                     only_tools: Optional[tuple[str, ...]] = None,
+                     session: Optional[tuple[str, bool]] = None,
+                     context_tokens: Optional[int] = None) -> WorkerRun:
+    """跑一次外部 CLI，逐行解析 JSONL 事件。失败如实写进 `WorkerRun.error`，不抛。
+
+    model 给了就覆盖个人配置里的模型（登记在 agent 上的那个）；commands、session 见 `build_argv`。
+    context_tokens（只对 Claude）：读到这么多就由 Claude Code 自己压缩（CLAUDE_CODE_AUTO_COMPACT_WINDOW），
+    盖过个人配置里的同名设置。"""
+    run, publish = _worker_run(worker, execution_ref, on_snapshot)
     binary = worker_binary(worker)
     if not binary:
         run.error = f"找不到 {worker} 命令：请先安装并登录，或设置 VORTOONE_{worker.upper()}_BIN"
@@ -597,15 +607,26 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
         run.error, run.failure_code = str(error), "invalid_request"
         publish()
         return run
+    return await _run_worker_process(run, argv, {**worker_env(), **extra_env}, prompt, cwd,
+                                     system=system, publish=publish, timeout=timeout, on_event=on_event)
+
+
+async def _run_worker_process(run: WorkerRun, argv: list[str], env: dict[str, str], prompt: str,
+                              cwd: str, *, system: str, publish: Callable[[], None], timeout: Optional[int],
+                              on_event: Optional[Callable[[WorkerEvent], Any]],
+                              private_diagnostics: bool = False) -> WorkerRun:
+    worker = run.worker
     parse = _PARSERS[worker]
     proc = await asyncio.create_subprocess_exec(
-        *argv, cwd=cwd, env=_env_for(binary, {**worker_env(), **extra_env}), stdin=asyncio.subprocess.PIPE,
+        *argv, cwd=cwd, env=_env_for(argv[0], env), stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         start_new_session=True, limit=16 * 1024 * 1024)
     run.started = True
     run.observed_at = time.time()
     publish()
     stderr_chunks: list[bytes] = []
+    pending_codex_error: Optional[WorkerEvent] = None
+    codex_turn_completed = False
 
     async def _drain_stderr():
         assert proc.stderr is not None
@@ -615,6 +636,7 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
                 stderr_chunks.pop(0)
 
     async def _read_stdout():
+        nonlocal pending_codex_error, codex_turn_completed
         assert proc.stdout is not None
         while line := await proc.stdout.readline():
             try:
@@ -623,7 +645,20 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
                 continue                       # 非 JSON 行（横幅/日志）不算事件
             if not isinstance(obj, dict):
                 continue
+            kind = obj.get("type")
+            if private_diagnostics and kind == "turn.completed":
+                codex_turn_completed = True
             for event in parse(obj):
+                if private_diagnostics:
+                    if event.kind == "error":
+                        event = _personal_codex_error(event.text)
+                        if kind != "turn.failed":
+                            # The CLI emits retry notices as error events before a successful response.
+                            pending_codex_error = event
+                            continue
+                    elif event.kind in ("tool", "command"):
+                        event = WorkerEvent(event.kind, "", {k: v for k, v in event.data.items()
+                                                            if k in ("network", "exit_code")})
                 fold_event(run, event)
                 publish()
                 if on_event is not None:
@@ -644,9 +679,12 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
 
     stderr_task = asyncio.ensure_future(_drain_stderr())
     stdin_task = asyncio.ensure_future(_feed_stdin())
+    async def _read_and_wait() -> int:
+        await _read_stdout()
+        return await proc.wait()
+
     try:
-        await asyncio.wait_for(_read_stdout(), timeout or worker_timeout())
-        run.exit_code = await proc.wait()
+        run.exit_code = await asyncio.wait_for(_read_and_wait(), timeout or worker_timeout())
     except asyncio.TimeoutError:
         _kill_group(proc)
         await proc.wait()
@@ -658,6 +696,12 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
         run.error, run.failure_code = "已请求取消本机 CLI", "cancel_requested"
         _kill_group(proc)
         raise
+    except OSError:
+        if not private_diagnostics:
+            raise
+        _kill_group(proc)
+        run.exit_code = await proc.wait()
+        run.error, run.failure_code = "本机 Codex 运行中断", "process_io"
     finally:
         if proc.returncode is None:
             _kill_group(proc)
@@ -670,15 +714,205 @@ async def run_worker(worker: str, prompt: str, cwd: str, *, write: bool, system:
             run.exit_code = proc.returncode
             run.observed_at = time.time()
             publish()
+    if private_diagnostics and not run.error and (run.exit_code != 0 or not codex_turn_completed):
+        if pending_codex_error is not None:
+            fold_event(run, pending_codex_error)
+        elif run.exit_code == 0:
+            run.error = "本机 Codex 没有完成这一轮"
+        run.failure_code = "process_exit" if run.exit_code != 0 else "incomplete_turn"
     if not run.error and run.exit_code != 0:
         tail = b"".join(stderr_chunks).decode("utf-8", "replace").strip()[-_TAIL:]
-        run.error = f"{worker} 退出码 {run.exit_code}" + (f"：{tail}" if tail else "")
+        if private_diagnostics:
+            fold_event(run, _personal_codex_error(tail))
+        else:
+            run.error = f"{worker} 退出码 {run.exit_code}" + (f"：{tail}" if tail else "")
         run.failure_code = "process_exit"
     run.observed_at = time.time()
     publish()
     logger.info("外部执行者 %s 结束：exit=%s session=%s cost=%s error=%s",
                 worker, run.exit_code, run.session_id, run.cost_usd, run.error[:200])
     return run
+
+
+_PERSONAL_CODEX_VERSION = re.compile(r"codex-cli 0\.(\d+)\.\d+")
+_PERSONAL_CODEX_PROFILE = "vortoone_personal_project"
+_PERSONAL_CODEX_PROBE_TIMEOUT = 8
+_PERSONAL_CODEX_STATUS_LOCK = threading.Lock()
+_personal_codex_cached_status: tuple[tuple[str, str], float, str] | None = None
+_PERSONAL_CODEX_ERRORS = {
+    "missing": "这台 Mac 上还没有安装官方 Codex CLI",
+    "signed_out": "请在这台 Mac 的官方 Codex 中用 ChatGPT 账号登录",
+    "unsupported": "这台电脑无法验证 Codex 的本机项目隔离，请更新官方 Codex CLI",
+}
+
+
+def _personal_codex_env(home: Path) -> dict[str, str]:
+    # Only the official client gets its authentication namespace. No inherited API keys,
+    # credential or endpoint overrides, proxy settings, or language-runtime injection.
+    env = {key: os.environ[key] for key in ("HOME", "LANG", "LC_ALL", "LOGNAME", "USER") if key in os.environ}
+    return {**env, "PATH": os.defpath, "CODEX_HOME": str(home)}
+
+
+def _personal_codex_binary() -> str | None:
+    binary = worker_binary("codex")
+    return binary if binary and os.path.isabs(binary) else None
+
+
+def _personal_codex_check(argv: list[str], cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
+    with subprocess.Popen(argv, cwd=cwd, env=_env_for(argv[0], env), stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=_PERSONAL_CODEX_PROBE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            proc.wait()
+            raise
+    return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+
+
+def _personal_codex_login(binary: str, cwd: Path, home: Path) -> str:
+    env = _personal_codex_env(home)
+    try:
+        version = _personal_codex_check([binary, "--version"], cwd, env)
+        match = _PERSONAL_CODEX_VERSION.fullmatch(version.stdout.decode("ascii", "replace").strip())
+        if version.returncode != 0 or not match or int(match[1]) < 172:
+            return "unsupported"
+        # Match the official status line exactly: API keys and access tokens can also exit 0.
+        result = _personal_codex_check([binary, "login", "-c", 'cli_auth_credentials_store="auto"', "status"], cwd, env)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unsupported"
+    lines = (result.stdout + b"\n" + result.stderr).splitlines()
+    return "ready" if result.returncode == 0 and b"Logged in using ChatGPT" in lines else "signed_out"
+
+
+def personal_codex_status() -> str:
+    """Report local CLI/Login availability without revealing diagnostics or making a model request."""
+    if sys.platform != "darwin" or worker_home() is not None:
+        return "unsupported"
+    binary = _personal_codex_binary()
+    if binary is None:
+        return "missing"
+    home = codex_home().expanduser().resolve()
+    key = binary, str(home)
+    global _personal_codex_cached_status
+    with _PERSONAL_CODEX_STATUS_LOCK:
+        cached = _personal_codex_cached_status
+        if cached and cached[0] == key and time.monotonic() < cached[1]:
+            return cached[2]
+        status = _personal_codex_login(binary, Path("/"), home)
+        if status == "ready":
+            try:
+                with tempfile.TemporaryDirectory(prefix="vortoone-codex-check-") as folder:
+                    cwd = Path(folder).resolve()
+                    config = _personal_codex_permissions(cwd, home, True)
+                    if not _personal_codex_isolated(binary, cwd, config, True):
+                        status = "unsupported"
+            except (OSError, RuntimeError):
+                status = "unsupported"
+        _personal_codex_cached_status = (key, time.monotonic() + 5, status)
+        return status
+
+
+def _personal_codex_permissions(cwd: Path, home: Path, write: bool) -> list[str]:
+    scope = json.dumps(str(cwd), ensure_ascii=False)
+    private = json.dumps(str(home), ensure_ascii=False)
+    git_metadata = json.dumps(str(cwd / ".git"), ensure_ascii=False)
+    access = "write" if write else "read"
+    filesystem = f'{{":minimal"="read",{scope}="{access}",{git_metadata}="read",{private}="deny"}}'
+    return ["-c", f'permissions.{_PERSONAL_CODEX_PROFILE}={{filesystem={filesystem},network={{enabled=false}}}}',
+            "-c", f'projects.{scope}.trust_level="untrusted"',
+            "-c", f'default_permissions="{_PERSONAL_CODEX_PROFILE}"']
+
+
+def _personal_codex_isolated(binary: str, cwd: Path, config: list[str], write: bool) -> bool:
+    # Same restricted profile as the real run, with an empty auth namespace. Check a
+    # synthetic file outside the checkout (including through a link), never user files.
+    try:
+        with tempfile.TemporaryDirectory(prefix="vortoone-codex-private-") as outside, \
+             tempfile.TemporaryDirectory(prefix="vortoone-codex-probe-", dir=cwd) as inside:
+            outside_dir = Path(outside).resolve()
+            visible, hidden, alias, target = (Path(inside) / "visible", outside_dir / "hidden",
+                                                Path(inside) / "link", Path(inside) / "write")
+            visible.write_text("vortoone\n", encoding="ascii")
+            hidden.write_text("outside\n", encoding="ascii")
+            alias.symlink_to(hidden)
+            check = ('set -eu; cd "$1"; test "$(/bin/cat "$2")" = vortoone; '
+                     '! /bin/cat "$3" >/dev/null 2>&1 && ! /bin/cat "$4" >/dev/null 2>&1 || exit 5; '
+                     'if [ "$6" = write ]; then printf ok >"$5"; '
+                     'else ( ! (printf ok >"$5") 2>/dev/null ) || exit 6; fi')
+            result = _personal_codex_check(
+                [binary, "sandbox", "--permission-profile", _PERSONAL_CODEX_PROFILE, "-C", str(cwd), *config,
+                 "--", "/bin/sh", "-c", check, "vortoone", str(cwd), str(visible), str(hidden),
+                 str(alias), str(target), "write" if write else "read"],
+                cwd, _personal_codex_env(outside_dir))
+            return result.returncode == 0 and (target.is_file() == write)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _personal_codex_error(text: str) -> WorkerEvent:
+    # Auth error and command output are not part of this agent's result or logs.
+    message = text.lower()
+    if any(signal in message for signal in ("usage limit", "rate limit", "quota", "429")):
+        return WorkerEvent("error", "Codex 的 ChatGPT 用量已达限制", {"rate_limited": True})
+    if any(signal in message for signal in ("401", "unauthorized", "not logged in", "authentication", "login required")):
+        return WorkerEvent("error", "Codex 的 ChatGPT 登录已失效，请在官方 Codex 检查账号")
+    return WorkerEvent("error", "本机 Codex 执行失败")
+
+
+async def run_personal_codex(prompt: str, cwd: str, *, write: bool, system: str = "", model: str = "",
+                             timeout: Optional[int] = None, execution_ref: ExecutionRef | None = None,
+                             on_snapshot: Optional[Callable[[ExecutionSnapshot], Any]] = None,
+                             on_event: Optional[Callable[[WorkerEvent], Any]] = None) -> WorkerRun:
+    """Run official Codex once in a caller-authorized fresh checkout or empty chat directory."""
+    run, publish = _worker_run("codex", execution_ref, on_snapshot)
+
+    def refused(status: str, code: str = "unavailable") -> WorkerRun:
+        run.error, run.failure_code = _PERSONAL_CODEX_ERRORS[status], code
+        publish()
+        return run
+
+    if sys.platform != "darwin" or worker_home() is not None:
+        return refused("unsupported")
+    binary = _personal_codex_binary()
+    if binary is None:
+        return refused("missing")
+    try:
+        workdir = Path(cwd).resolve(strict=True)
+        home = codex_home().expanduser().resolve()
+        model_flags = model_args("codex", model)
+        if not workdir.is_dir() or workdir.is_relative_to(home) or home.is_relative_to(workdir):
+            raise ValueError("工作目录不得包含 Codex 登录目录")
+    except (ValueError, OSError, RuntimeError):
+        run.error, run.failure_code = "本机 Codex 的工作目录或模型无效", "invalid_request"
+        publish()
+        return run
+    config = _personal_codex_permissions(workdir, home, write)
+    if not await asyncio.to_thread(_personal_codex_isolated, binary, workdir, config, write):
+        return refused("unsupported")
+    status = await asyncio.to_thread(_personal_codex_login, binary, Path("/"), home)
+    if status != "ready":
+        return refused(status)
+    settings = (
+        'model_provider="openai"', 'forced_login_method="chatgpt"', 'cli_auth_credentials_store="auto"',
+        'approval_policy="never"', 'allow_login_shell=false', 'shell_environment_policy.inherit="none"',
+        'web_search="disabled"', 'mcp_servers={}', 'agents.enabled=false', 'project_doc_max_bytes=0',
+        'features.hooks=false', 'features.plugins=false', 'features.apps=false', 'features.memories=false',
+        'features.shell_snapshot=false', 'features.shell_snapshot_v2=false', 'features.skip_host_skill_discovery=true',
+        'check_for_update_on_startup=false', 'analytics.enabled=false', 'features.system_proxy_fallback=false',
+    )
+    # Ignore personal model/auth overrides; the official client alone handles its existing ChatGPT credentials.
+    argv = [binary, "exec", "--ignore-user-config", "--ignore-rules", "--strict-config", "--ephemeral", "--json",
+            "--skip-git-repo-check", "-C", str(workdir), *config, *model_flags]
+    for setting in settings:
+        argv.extend(("-c", setting))
+    argv.append("-")
+    try:
+        return await _run_worker_process(run, argv, _personal_codex_env(home), prompt, str(workdir),
+                                         system=system, publish=publish, timeout=timeout, on_event=on_event,
+                                         private_diagnostics=True)
+    except OSError:
+        return refused("unsupported")
 
 
 def describe_event(worker: str, event: WorkerEvent) -> str:
