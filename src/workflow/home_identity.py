@@ -280,11 +280,14 @@ def prepare_replaced_home(staging_state, reason: str) -> dict:
     value["trust_epoch"] = uuid.uuid4().hex
     _save_json(state / IDENTITY_DIRECTORY / "identity.json", value)
     # 恢复/搬家要求重新配对，旧派发不能在新信任代次续跑。
-    for name in ("connected-computers", "computer-file-intents"):
+    for name in ("connected-computers", "computer-file-intents", "computer-job-intents"):
         computer_directory = state / name
         if computer_directory.is_symlink():
             raise HomeIdentityError("电脑状态目录不可用")
         if computer_directory.exists():
             import shutil
-            shutil.rmtree(computer_directory)
+            try:
+                shutil.rmtree(computer_directory)
+            except OSError as error:
+                raise HomeIdentityError("无法清理旧的电脑状态") from error
     return dict(value)

@@ -260,6 +260,7 @@ _STATE_ENTRIES = [
     "home-identity/",          # stable local identity and computer trust epoch
     "computer-outbox/",        # files explicitly placed in the home outgoing folder
     "computer-file-intents/",  # durable home-side receipts, without file contents
+    "computer-job-intents/",   # owner-session dispatch records and fixed fixture results
     "connected-computers/",    # hashed computer grants
     "isolated_deliveries/",
     "runtime.lock",

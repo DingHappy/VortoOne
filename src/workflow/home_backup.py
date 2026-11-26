@@ -32,7 +32,7 @@ PREFIX = "vortoone-backup-"
 KEEP_DEFAULT = 7
 # .vortoone/ 下不进备份的顶层项
 NOT_DATA = frozenset({"runtime.lock", "worktrees", "worktree_bindings.json", "isolated_deliveries", "shadow.git",
-                      "logs", "moved.json", "computer-file-intents"})
+                      "logs", "moved.json", "computer-file-intents", "computer-job-intents"})
 
 
 class BackupError(ValueError):
@@ -217,7 +217,7 @@ def _restore(root: str, archive_path: str) -> Dict[str, Any]:
         shutil.rmtree(staging, ignore_errors=True)
     if aside is not None:
         # 不进备份的那几样（日志里有所有者的通知记录、git 工作副本）原样接着用，不随恢复丢掉
-        for name in sorted(NOT_DATA - {"runtime.lock", "moved.json"}):
+        for name in sorted(NOT_DATA - {"runtime.lock", "moved.json", "computer-job-intents"}):
             if (aside / name).exists() and not (state / name).exists():
                 (aside / name).rename(state / name)
     return {"restored": str(archive_path), "kept_aside": str(aside) if aside else None,

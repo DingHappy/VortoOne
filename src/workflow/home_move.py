@@ -36,7 +36,8 @@ MAX_FILES = 500_000
 # .vortoone/ 下不带走的顶层项
 LEFT_BEHIND = frozenset({
     "runtime.lock", "worktrees", "worktree_bindings.json", "isolated_deliveries", "shadow.git", "logs",
-    "ai_apps", "mobile-devices", "connected-computers", "computer-file-intents", "im-pairings", "im-bots", MARKER,
+    "ai_apps", "mobile-devices", "connected-computers", "computer-file-intents", "computer-job-intents",
+    "im-pairings", "im-bots", MARKER,
 })
 _DATA_ROOTS = ("sessions.db", "web_sessions", "staff", "members", "tasks", "memory", "main_chat.json", "connected-computers", desktop_setup.FILE)
 
@@ -203,7 +204,7 @@ def _import_home(root: str, package: str, *, replace: bool) -> Dict[str, Any]:
             # 原来已有、但没数据的状态目录（只有锁和 .gitignore 之类）：并进来，不丢它的锁文件
             if aside is not None and not had_data:
                 for leftover in aside.iterdir():
-                    if not (staging / leftover.name).exists():
+                    if leftover.name != "computer-job-intents" and not (staging / leftover.name).exists():
                         leftover.rename(staging / leftover.name)
             staging.rename(state)
         except Exception:

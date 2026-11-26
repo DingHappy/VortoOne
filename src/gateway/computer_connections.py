@@ -13,7 +13,8 @@ from starlette.websockets import WebSocketDisconnect
 from src.gateway.computer_file_intents import FileIntentUnavailable, HomeFileIntents
 from src.gateway.computer_file_wire import bounded_frame, object_fields, receipt_value
 from src.gateway.computer_protocol import (
-    FILES_PROTOCOL, PROTOCOL_MAX, PROTOCOL_MIN, binding_fields, decode_frame, identifier, validate_hello, welcome,
+    FILES_PROTOCOL, JOB_FIXTURE_PROTOCOL, PROTOCOL_MAX, PROTOCOL_MIN, binding_fields, decode_frame, identifier,
+    validate_hello, welcome,
 )
 
 REVOKE_ACK_SECONDS = 2.0
@@ -53,6 +54,7 @@ class Connection:
     store: Any = None
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     pending_file: tuple[str, asyncio.Future] | None = None
+    pending_job: tuple[str, asyncio.Future] | None = None
 
     async def send(self, frame: dict) -> None:
         async with self.send_lock:
@@ -64,30 +66,37 @@ class Connection:
                 and not self.finished and not self.revoking and connections.current(self))
 
     async def file_request(self, method: str, payload: dict, *, timeout: float = FILE_REQUEST_SECONDS) -> dict:
-        if self.protocol < FILES_PROTOCOL or self.loop is not asyncio.get_running_loop() or self.pending_file is not None:
-            raise FileConnectionUnavailable("电脑暂不可用或正在处理文件")
+        return await self._request("file", FILES_PROTOCOL, method, payload, timeout)
+
+    async def job_request(self, method: str, payload: dict) -> dict:
+        return await self._request("job", JOB_FIXTURE_PROTOCOL, method, payload, FILE_REQUEST_SECONDS)
+
+    async def _request(self, kind: str, minimum: int, method: str, payload: dict, timeout: float) -> dict:
+        slot, label = ("pending_file", "文件") if kind == "file" else ("pending_job", "任务")
+        if self.protocol < minimum or self.loop is not asyncio.get_running_loop() or getattr(self, slot) is not None:
+            raise FileConnectionUnavailable(f"电脑暂不可用或正在处理{label}")
         request_id = uuid.uuid4().hex
         reply = self.loop.create_future()
-        self.pending_file = (request_id, reply)
+        setattr(self, slot, (request_id, reply))
         try:
             async def dispatch():
                 async with self.send_lock:
                     if not await self.valid():
                         raise FileConnectionUnavailable("配对或连接已变化")
-                    frame = {"type": "file_request", "generation": self.generation, "binding": binding_fields(self.binding),
+                    frame = {"type": f"{kind}_request", "generation": self.generation, "binding": binding_fields(self.binding),
                              "request_id": request_id, "method": method, "payload": payload}
                     await self.socket.send_json(bounded_frame(frame))
                 return await reply
             result = await asyncio.wait_for(dispatch(), timeout)
             if result is None or not await self.valid():
-                raise FileConnectionUnavailable("文件应答无法核对")
+                raise FileConnectionUnavailable(f"{label}应答无法核对")
             return result
         except FileConnectionUnavailable:
             raise
         except (OSError, RuntimeError, WebSocketDisconnect, asyncio.TimeoutError) as error:
-            raise FileConnectionUnavailable("电脑未确认文件请求的结果") from error
+            raise FileConnectionUnavailable(f"电脑未确认{label}请求的结果") from error
         finally:
-            self.pending_file = None
+            setattr(self, slot, None)
             reply.cancel()
 
     async def receipt(self, value: dict) -> bool:
@@ -166,9 +175,9 @@ class Connections:
             if self._current.get(key) is connection:
                 self._current.pop(key, None)
         connection.finished = True
-        pending = connection.pending_file
-        if pending is not None and not pending[1].done():
-            pending[1].set_result(None)
+        for pending in (connection.pending_file, connection.pending_job):
+            if pending is not None and not pending[1].done():
+                pending[1].set_result(None)
 
     def revoked(self, root: str, connector_id: str, *, credential_epoch: str) -> None:
         with self._lock:
@@ -217,7 +226,7 @@ connections = Connections()
 
 
 async def serve(socket, root: str, store, binding: dict, *, protocol_ceiling: int = PROTOCOL_MAX) -> None:
-    """Only liveness and validated v2 file responses are accepted from computers."""
+    """Accept liveness and negotiated request replies from the authenticated worker."""
     connection = None
     try:
         hello = await _frame(socket, HELLO_SECONDS)
@@ -255,13 +264,16 @@ async def serve(socket, root: str, store, binding: dict, *, protocol_ceiling: in
                 connections._schedule(connection)
                 continue
             last_received = time.monotonic()
-            if selected >= FILES_PROTOCOL and frame.get("type") == "file_reply":
+            kind = frame.get("type")
+            file_reply = selected >= FILES_PROTOCOL and kind == "file_reply"
+            job_reply = selected >= JOB_FIXTURE_PROTOCOL and kind == "job_reply"
+            if file_reply or job_reply:
                 object_fields(frame, ("type", "generation", "request_id", "ok", "result"))
                 request_id = identifier(frame["request_id"])
                 if (type(frame["ok"]) is not bool or not isinstance(frame["result"], dict)
                         or (not frame["ok"] and frame["result"])):
-                    raise ValueError("invalid file response")
-                pending = connection.pending_file
+                    raise ValueError("invalid computer response")
+                pending = connection.pending_file if file_reply else connection.pending_job
                 if pending and pending[0] == request_id and not pending[1].done():
                     pending[1].set_result(frame["result"] if frame["ok"] else None)
                 continue

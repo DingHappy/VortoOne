@@ -18,6 +18,7 @@ def _home(root: Path) -> Path:
         # 不带的
         "mobile-devices/keys.json": "device-secret", "ai_apps/state.json": "tokens", "im-bots/telegram.json": "bot",
         "runtime.lock": "", "worktrees/team-x/file": "x", "logs/server.log": "log", "channel.lock": "",
+        "computer-job-intents/intents.sqlite3": "previous fixture receipt",
     }.items():
         path = state / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -37,9 +38,11 @@ def test_the_package_carries_the_home_and_leaves_secrets_behind(tmp_path):
     names = _names(tmp_path / "move.tar.gz")
     assert "manifest.json" in names and ".vortoone/web_sessions/sid-1.json" in names
     assert ".vortoone/members/accounts.json" in names and ".vortoone/sessions.db" in names
-    for left in ("mobile-devices", "ai_apps", "im-bots", "runtime.lock", "worktrees", "logs", "channel.lock", "link"):
+    for left in ("mobile-devices", "ai_apps", "im-bots", "runtime.lock", "worktrees", "logs", "channel.lock", "link",
+                 "computer-job-intents"):
         assert not any(left in name for name in names), left
-    assert {"mobile-devices", "ai_apps", "im-bots", "runtime.lock", "worktrees", "logs"} <= set(result["left_behind"])
+    assert {"mobile-devices", "ai_apps", "im-bots", "runtime.lock", "worktrees", "logs",
+            "computer-job-intents"} <= set(result["left_behind"])
     assert M.moved(str(tmp_path / "old")) is None            # 只导出不搬走：旧的家照常
 
 
@@ -59,14 +62,17 @@ def test_moving_out_stops_the_old_home_and_keeps_its_data(tmp_path):
 def test_a_round_trip_into_an_empty_home(tmp_path):
     _home(tmp_path / "old")
     M.export_home(str(tmp_path / "old"), str(tmp_path / "move.tar.gz"), moving=True)
-    (tmp_path / "new" / ".vortoone").mkdir(parents=True)
-    (tmp_path / "new" / ".vortoone" / "runtime.lock").write_text("")          # 新家刚起过一次：只有锁
-    result = M.import_home(str(tmp_path / "new"), str(tmp_path / "move.tar.gz"))
     new = tmp_path / "new" / ".vortoone"
+    (new / "computer-job-intents").mkdir(parents=True)
+    (new / "computer-job-intents/intents.sqlite3").write_text("stale receipt")
+    (new / "runtime.lock").write_text("")
+    result = M.import_home(str(tmp_path / "new"), str(tmp_path / "move.tar.gz"))
     assert result["replaced"] is False and result["files"] >= 7
     assert json.loads((new / "web_sessions" / "sid-1.json").read_text())["transcript"] == ["你好"]
     assert (new / "members" / "accounts.json").read_text() == '{"pw": "scrypt-hash"}'
     assert not (new / "mobile-devices").exists() and not (new / M.MARKER).exists()
+    assert not (new / "computer-job-intents").exists()
+    assert (Path(result["kept_aside"]) / "computer-job-intents/intents.sqlite3").read_text() == "stale receipt"
     assert (new / "runtime.lock").exists()                                    # 新家自己的锁还在
     assert M.moved(str(tmp_path / "new")) is None
 
@@ -117,10 +123,12 @@ def test_a_package_cannot_write_outside_or_smuggle_links(tmp_path, name, kind):
 
 def test_things_that_belong_to_the_old_computer_are_not_unpacked(tmp_path):
     package = _package(tmp_path / "p.tar.gz", [(".vortoone/mobile-devices/keys.json", "file"),
-                                               (".vortoone/moved.json", "file"), (".vortoone/audit.log", "file")])
+                                               (".vortoone/moved.json", "file"), (".vortoone/audit.log", "file"),
+                                               (".vortoone/computer-job-intents/intents.sqlite3", "file")])
     M.import_home(str(tmp_path / "new"), str(package))
     new = tmp_path / "new" / ".vortoone"
     assert (new / "audit.log").exists() and not (new / "mobile-devices").exists() and not (new / "moved.json").exists()
+    assert not (new / "computer-job-intents").exists()
 
 
 def test_other_files_and_versions_are_refused(tmp_path):
