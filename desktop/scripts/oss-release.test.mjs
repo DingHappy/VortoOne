@@ -1,13 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  BUCKET, PREFIX, releaseUploads, requirePublicStable, stableMirrorCandidate, stableReleaseCandidate, stageRelease, stringToSign,
+  BUCKET, PREFIX, releaseUploads, requirePublicStable, signPortableInstallers,
+  stableMirrorCandidate, stableReleaseCandidate, stageRelease, stringToSign,
 } from "./oss-release.mjs";
-import { GITHUB_LATEST, MIRROR_BASE, REPO, dmgAssetName, mirrorAssetBase, updaterAssetName, updaterManifest } from "./updater-release.mjs";
+import {
+  GITHUB_LATEST, MIRROR_BASE, PLATFORM, REPO, dmgAssetName, githubAssetBase, mirrorAssetBase, updaterAssetName, updaterManifest,
+} from "./updater-release.mjs";
 
 test("uploads go to the bucket and folder the app downloads from", () => {
   assert.equal(`https://${BUCKET}.oss-cn-hangzhou.aliyuncs.com/${PREFIX}`, MIRROR_BASE);
@@ -30,17 +33,37 @@ test("each release goes into its own v<version>/ folder: update archive and DMG"
   ]);
 });
 
+function fixtureSigningKey() {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const rawKey = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
+  const keyId = Buffer.from("test-key");
+  const publicKeyLine = Buffer.concat([Buffer.from("Ed"), keyId, rawKey]).toString("base64");
+  const pubkey = Buffer.from(`untrusted comment: test public key\n${publicKeyLine}\n`).toString("base64");
+  const signBytes = (bytes, version) => {
+    const comment = `timestamp:1\tversion:${version}`;
+    const prehash = createHash("blake2b512").update(bytes).digest();
+    const signature = sign(null, prehash, privateKey);
+    const signatureLine = Buffer.concat([Buffer.from("ED"), keyId, signature]).toString("base64");
+    const globalSignature = sign(null, Buffer.concat([signature, Buffer.from(comment)]), privateKey);
+    const signatureText = `untrusted comment: test signature\n${signatureLine}\ntrusted comment: ${comment}\n${globalSignature.toString("base64")}\n`;
+    return Buffer.from(signatureText).toString("base64");
+  };
+  return { pubkey, signBytes };
+}
+
 function stableFixture(t, bundle = mkdtempSync(join(tmpdir(), "vorto-oss-release-"))) {
   mkdirSync(bundle, { recursive: true });
   t.after(() => rmSync(bundle, { recursive: true, force: true }));
-  const config = { version: "0.3.0", identifier: "com.vorto.vortoone" };
+  const { pubkey, signBytes } = fixtureSigningKey();
+  const config = { version: "0.3.0", identifier: "com.vorto.vortoone", plugins: { updater: { pubkey } } };
   const { version } = config;
   const archive = updaterAssetName(version);
   const installer = dmgAssetName(version);
-  const fields = { version, notes: "Fresh install", pubDate: "2026-11-23T10:00:00Z", signature: "fixture-signature" };
+  const archiveBytes = "fixture updater";
+  const fields = { version, notes: "Fresh install", pubDate: "2026-11-23T10:00:00Z", signature: signBytes(archiveBytes, version) };
   const github = JSON.stringify(updaterManifest(fields));
   const mirror = updaterManifest({ ...fields, base: mirrorAssetBase(version) });
-  const files = { [installer]: "fixture installer", [archive]: "fixture updater",
+  const files = { [installer]: "fixture installer", [archive]: archiveBytes,
     [`${archive}.sig`]: fields.signature, "latest.json": github };
   const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
   for (const [name, bytes] of Object.entries(files)) writeFileSync(join(bundle, name), bytes);
@@ -55,7 +78,7 @@ function stableFixture(t, bundle = mkdtempSync(join(tmpdir(), "vorto-oss-release
   writeFileSync(join(bundle, "desktop-release.json"), JSON.stringify(evidence));
   mkdirSync(join(bundle, "oss"));
   writeFileSync(join(bundle, "oss", "latest.json"), JSON.stringify(mirror));
-  return { archive, bundle, config, evidence, installer, mirror };
+  return { archive, bundle, config, evidence, installer, mirror, signBytes };
 }
 
 test("reads the stable flat artifact layout and rejects altered bytes or mismatched mirrors", (t) => {
@@ -138,19 +161,37 @@ function threePlatformFixture(t) {
   };
   const windows = write("windows-x64", ".exe", "x86_64-pc-windows-msvc");
   const ubuntu = write("ubuntu-amd64", ".deb", "x86_64-unknown-linux-gnu");
-  return { ...mac, root, write, windows, ubuntu };
+  const signFixture = (path, version) => {
+    writeFileSync(`${path}.sig`, mac.signBytes(readFileSync(path), version));
+  };
+  return { ...mac, root, write, windows, ubuntu, signFixture };
 }
 
 test("a stable release carries all three platforms and one checksum file, uploaded before the manifest", (t) => {
-  const { archive, config, installer, root, windows, ubuntu } = threePlatformFixture(t);
+  const { archive, config, installer, mirror, root, windows, ubuntu, signFixture } = threePlatformFixture(t);
+  signPortableInstallers(root, config, signFixture);
   const candidate = stableReleaseCandidate(root, config);
   const folder = `${PREFIX}/v${config.version}`;
   assert.deepEqual(candidate.uploads.map(({ key }) => key), [
-    `${folder}/${archive}`, `${folder}/${installer}`, `${folder}/${windows}`, `${folder}/${ubuntu}`, `${folder}/SHA256SUMS`,
+    `${folder}/${archive}`, `${folder}/${installer}`, `${folder}/${windows}`, `${folder}/${windows}.sig`,
+    `${folder}/${ubuntu}`, `${folder}/${ubuntu}.sig`, `${folder}/SHA256SUMS`,
   ]);
+  const github = JSON.parse(candidate.assets["latest.json"].bytes);
+  const oss = JSON.parse(candidate.manifest);
+  assert.deepEqual(github.mirrors, mirror.mirrors);
+  assert.deepEqual(oss.mirrors, mirror.mirrors);
+  assert.deepEqual(oss.platforms[PLATFORM], mirror.platforms[PLATFORM]);
+  assert.deepEqual(github.platforms[PLATFORM], {
+    signature: mirror.platforms[PLATFORM].signature, url: `${githubAssetBase(config.version)}/${archive}`,
+  });
+  for (const [target, name] of [["windows-x86_64-nsis", windows], ["linux-x86_64-deb", ubuntu]]) {
+    const signature = candidate.assets[`${name}.sig`].bytes.toString("utf8");
+    assert.deepEqual(github.platforms[target], { signature, url: `${githubAssetBase(config.version)}/${name}` });
+    assert.deepEqual(oss.platforms[target], { signature, url: `${mirrorAssetBase(config.version)}/${name}` });
+  }
   const sums = candidate.assets.SHA256SUMS.bytes.toString("utf8").trimEnd().split("\n");
   assert.deepEqual(sums.map((line) => line.split("  ")[1]).sort(),
-    [installer, archive, `${archive}.sig`, "latest.json", windows, ubuntu].sort());
+    [installer, archive, `${archive}.sig`, "latest.json", windows, `${windows}.sig`, ubuntu, `${ubuntu}.sig`].sort());
   for (const line of sums) {
     const [hash, name] = line.split("  ");
     assert.equal(hash, candidate.assets[name].sha256);
@@ -158,10 +199,51 @@ test("a stable release carries all three platforms and one checksum file, upload
 
   const stage = join(root, "release");
   const staged = stageRelease(candidate, stage);
-  assert.equal(staged.length, 7);
+  assert.equal(staged.length, 9);
   assert.deepEqual(readdirSync(stage).sort(), Object.keys(candidate.assets).sort());
   assert.equal(readFileSync(join(stage, windows), "utf8"), "fixture windows-x64");
   assert.throws(() => stageRelease(candidate, stage), /不是空目录/);
+});
+
+test("portable signing verifies both signed versions before saving and keeps valid sidecars on retry", (t) => {
+  const { config, root, windows, ubuntu, signFixture } = threePlatformFixture(t);
+  const windowsSignature = join(root, "windows-x64", `${windows}.sig`);
+  const ubuntuSignature = join(root, "ubuntu-amd64", `${ubuntu}.sig`);
+  assert.throws(() => stableReleaseCandidate(root, config), /windows-x64.*--sign-portable/);
+  assert.throws(() => signPortableInstallers(root, config, (path, version) => {
+    signFixture(path, path.endsWith(".exe") ? version : "0.2.9");
+  }), /ubuntu-amd64.*未绑定到版本/);
+  assert.equal(existsSync(windowsSignature), false);
+  assert.equal(existsSync(ubuntuSignature), false);
+  const paths = signPortableInstallers(root, config, signFixture);
+  assert.deepEqual(paths, [windowsSignature, ubuntuSignature]);
+  const beforeRetry = paths.map((path) => readFileSync(path));
+  assert.deepEqual(signPortableInstallers(root, config, () => assert.fail("valid signature replaced")), paths);
+  assert.deepEqual(paths.map((path) => readFileSync(path)), beforeRetry);
+
+  writeFileSync(windowsSignature, readFileSync(ubuntuSignature));
+  assert.throws(() => stableReleaseCandidate(root, config), /windows-x64.*签名与安装包或受信注释不匹配/);
+  assert.throws(() => signPortableInstallers(root, config, () => assert.fail("invalid sidecar silently replaced")),
+    /windows-x64.*签名与安装包或受信注释不匹配/);
+});
+
+test("gates reject a label edited after signing and a signature for the wrong public key", (t) => {
+  const { config, root, signFixture, windows } = threePlatformFixture(t);
+  const installer = join(root, "windows-x64", windows);
+  signPortableInstallers(root, config, signFixture);
+  const wrongKey = fixtureSigningKey();
+  const configWithWrongKey = { ...config, plugins: { updater: { pubkey: wrongKey.pubkey } } };
+  assert.throws(() => stableReleaseCandidate(root, configWithWrongKey), /macOS.*签名与安装包或受信注释不匹配/);
+  assert.throws(() => signPortableInstallers(root, configWithWrongKey, () => assert.fail("signed with invalid macOS evidence")),
+    /macOS.*签名与安装包或受信注释不匹配/);
+  writeFileSync(`${installer}.sig`, wrongKey.signBytes(readFileSync(installer), config.version));
+  assert.throws(() => stableReleaseCandidate(root, config), /windows-x64.*签名与安装包或受信注释不匹配/);
+  signFixture(installer, "0.2.9");
+  writeFileSync(`${installer}.sig`, Buffer.from(
+    Buffer.from(readFileSync(`${installer}.sig`, "utf8"), "base64").toString("utf8")
+      .replace("version:0.2.9", `version:${config.version}`),
+  ).toString("base64"));
+  assert.throws(() => stableReleaseCandidate(root, config), /windows-x64.*签名与安装包或受信注释不匹配/);
 });
 
 test("Windows and Ubuntu installers must be the same version and commit as macOS, with intact bytes", (t) => {

@@ -6,18 +6,23 @@
 
 | | 只用 Desktop（本文） | Desktop + 常驻电脑 |
 |---|---|---|
-| 需要什么 | 一台 Mac | 再加一台一直开着的机器（云主机、NAS、家里的服务器，或让这台 Mac 兼任） |
+| 需要什么 | 一台支持的 Mac、Windows 或 Ubuntu 电脑 | 再加一台一直开着的机器（云主机、NAS、家里的服务器，或让这台电脑兼任） |
 | 能做什么 | 对话、读写代码、隔离开发流水线（worktree → 自测 → 基线对比 → 落分支 → 开 PR）、后台任务、插件（MCP / 技能 / 精选目录）、浏览器操控、个人资料与记忆 | 以上全部，外加定时任务、早晚报、推送到手机、从手机派活、小智语音 |
-| 什么时候在工作 | **App 开着、Mac 醒着时** | 常驻那台一直在跑，合上笔记本也照常 |
+| 什么时候在工作 | **App 开着、电脑醒着时** | 常驻那台一直在跑，合上笔记本也照常 |
 
 先只用 Desktop 是完整可用的：核心的开发流水线不打折扣。等你发现「我想让它在我不在的时候也干活」，再看文末的常驻部分。
 
 ## 1. 获取 App
 
-到 [GitHub Releases](https://github.com/DingHappy/VortoCode/releases/latest) 下载 `VortoOne_<版本>_aarch64.dmg`，打开后把 VortoOne 拖进「应用程序」。安装包经过 Apple 签名与公证，双击即可打开。
+从正式发布页下载与你的系统匹配的安装包。[GitHub Releases](https://github.com/DingHappy/VortoOne/releases/latest)
 
-- 目前**只支持 Apple 芯片（M 系列）的 Mac**，macOS 11 及以上。
-- 升级：下载新版 DMG 拖进去替换，⌘Q 退出后重新打开。App 每天最多检查一次新版本，有新版时左下角会提示。
+| 系统 | 安装方式 |
+|---|---|
+| Apple 芯片 Mac，macOS 13 及以上 | 打开 `VortoOne_<版本>_aarch64.dmg`，把 VortoOne 拖进「应用程序」。 |
+| Windows x64 | 打开 `VortoOne_<版本>_windows-x64.exe`。 |
+| Ubuntu 24.04 amd64 | 在下载目录运行 `sudo apt install ./VortoOne_<版本>_ubuntu-amd64.deb`。 |
+
+正式版可从「工作区 → 检查更新…」手动检查。Windows 和 Ubuntu 从支持应用内更新的版本起也会在启动时检查，发现新版时由你确认安装。已安装 0.3.2 或更早版本的 Windows、Ubuntu 用户，需要先手动覆盖安装一次。工作区数据与安装程序分开存放。
 
 <details><summary>从源码构建（开发者）</summary>
 

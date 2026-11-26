@@ -1,6 +1,6 @@
 {
   "productName": "VortoOne",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "identifier": "com.vorto.vortoone",
   "mainBinaryName": "vortoone",
   "build": {
@@ -15,6 +15,11 @@
     }
   },
   "bundle": {
+    "linux": {
+      "deb": {
+        "depends": ["pkexec"]
+      }
+    },
     "macOS": {
       "infoPlist": "Info.stable.plist",
       "signingIdentity": null

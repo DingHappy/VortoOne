@@ -9,6 +9,7 @@
 // 用法：node scripts/updater-release.mjs [更新说明文件]
 import "./env-names.mjs";
 import { execFileSync } from "node:child_process";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -40,33 +41,97 @@ export function updaterAssetName(version) {
   return `VortoOne_${version}_aarch64.app.tar.gz`;
 }
 
-/** latest.json：只有一个平台；下载地址默认指向本仓库这一版的 Release 附件，镜像那份传 base: mirrorAssetBase(version)。 */
-export function updaterManifest({ version, notes = "", pubDate, signature, base }) {
+export const PORTABLE_PLATFORMS = [
+  {
+    platform: "windows-x64", target: "windows-x86_64-nsis", extension: ".exe",
+    type: "application/vnd.microsoft.portable-executable", triple: "x86_64-pc-windows-msvc",
+  },
+  {
+    platform: "ubuntu-amd64", target: "linux-x86_64-deb", extension: ".deb",
+    type: "application/vnd.debian.binary-package", triple: "x86_64-unknown-linux-gnu",
+  },
+];
+
+export function portableAssetName(version, platform, extension) {
+  return `VortoOne_${version}_${platform}${extension}`;
+}
+
+/** latest.json 的下载地址默认指向 GitHub，OSS 镜像传 base: mirrorAssetBase(version)。 */
+export function updaterManifest({ version, notes = "", pubDate, signature, base, portableSignatures }) {
   if (!/^\d+\.\d+\.\d+$/.test(String(version))) throw new Error(`版本号不对：${version}`);
   if (!String(signature || "").trim()) throw new Error("更新包签名是空的");
   if (Number.isNaN(Date.parse(pubDate))) throw new Error(`发布时间不对：${pubDate}`);
+  const assetBase = base || githubAssetBase(version);
+  const platforms = {
+    [PLATFORM]: { signature: String(signature).trim(), url: `${assetBase}/${updaterAssetName(version)}` },
+  };
+  if (portableSignatures) {
+    for (const { platform, target, extension } of PORTABLE_PLATFORMS) {
+      const signature = portableSignatures[platform]?.trim();
+      if (!signature) throw new Error(`${platform} 的更新包签名是空的`);
+      platforms[target] = { signature, url: `${assetBase}/${portableAssetName(version, platform, extension)}` };
+    }
+  }
   return {
     version,
     notes: String(notes).trim(),
     pub_date: pubDate,
     // 同一个包的所有下载地址：App（0.2.56 起）开头同时从这些地址下，几秒后留下快的那个。旧版只认 platforms 里的 url。
     mirrors: [mirrorAssetBase(version), githubAssetBase(version)].map((root) => `${root}/${updaterAssetName(version)}`),
-    platforms: {
-      [PLATFORM]: {
-        signature: String(signature).trim(),
-        url: `${base || githubAssetBase(version)}/${updaterAssetName(version)}`,
-      },
-    },
+    platforms,
   };
 }
 
-export function releaseUpdater({ app, out, version, notes, sign }) {
+export function updaterSigningKey() {
   // 状态目录改名前（ADR-018 批次 C）私钥在 ~/.vortocode；还没搬的机器上读旧位置
   const key = process.env.VORTOONE_UPDATER_KEY
     || [".vortoone", ".vortocode"].map((dir) => join(homedir(), dir, "updater.key")).find((path) => existsSync(path))
     || join(homedir(), ".vortoone", "updater.key");
-  if (!existsSync(app)) throw new Error(`没有找到构建好的 App：${app}`);
   if (!existsSync(key)) throw new Error(`没有找到更新签名私钥：${key}`);
+  return key;
+}
+
+function decodeBase64(value, label) {
+  if (typeof value !== "string") throw new Error(`缺少 ${label}`);
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length === 0 || bytes.toString("base64") !== value) throw new Error(`${label} 不是有效的 Base64`);
+  return bytes;
+}
+
+/** Verify the prehashed Minisign format emitted by the pinned Tauri signer. */
+export function verifyUpdaterSignature(bytes, signature, pubkey, version) {
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const [, keyLine] = decoder.decode(decodeBase64(pubkey, "更新公钥")).split(/\r?\n/);
+  const rawKey = decodeBase64(keyLine, "Minisign 公钥");
+  const [, signatureLine, commentLine, globalLine] =
+    decoder.decode(decodeBase64(signature, "更新签名")).split(/\r?\n/);
+  const rawSignature = decodeBase64(signatureLine, "Minisign 签名");
+  const globalSignature = decodeBase64(globalLine, "Minisign 附加签名");
+  const commentPrefix = "trusted comment: ";
+  if (rawKey.length !== 42 || rawKey.toString("ascii", 0, 2) !== "Ed"
+    || rawSignature.length !== 74 || rawSignature.toString("ascii", 0, 2) !== "ED"
+    || !rawSignature.subarray(2, 10).equals(rawKey.subarray(2, 10))
+    || globalSignature.length !== 64 || !commentLine?.startsWith(commentPrefix)) {
+    throw new Error("更新签名格式或公钥标识不匹配");
+  }
+  const comment = commentLine.slice(commentPrefix.length);
+  const detached = rawSignature.subarray(10);
+  // Ed25519 SubjectPublicKeyInfo prefix for the 32-byte raw Minisign public key.
+  const der = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rawKey.subarray(10)]);
+  const key = createPublicKey({ key: der, format: "der", type: "spki" });
+  const prehash = createHash("blake2b512").update(bytes).digest();
+  if (!verify(null, prehash, key, detached)
+    || !verify(null, Buffer.concat([detached, Buffer.from(comment)]), key, globalSignature)) {
+    throw new Error("更新签名与安装包或受信注释不匹配");
+  }
+  if (comment.split("\t").find((field) => field.startsWith("version:")) !== `version:${version}`) {
+    throw new Error(`更新签名未绑定到版本 ${version}`);
+  }
+}
+
+export function releaseUpdater({ app, out, version, notes, sign }) {
+  if (!existsSync(app)) throw new Error(`没有找到构建好的 App：${app}`);
+  const key = updaterSigningKey();
   const built = execFileSync("plutil", ["-extract", "CFBundleShortVersionString", "raw", join(app, "Contents", "Info.plist")],
     { encoding: "utf8" }).trim();
   if (built !== version) throw new Error(`App 是 ${built}，配置是 ${version}：先重新构建`);

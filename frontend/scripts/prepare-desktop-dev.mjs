@@ -55,8 +55,7 @@ const info = {
   commit,
   data: stableChannel ? "bundled Python backend with local persistent data"
     : "bundled Python backend with local persistent data; separate preview fixtures",
-  updates: stableChannel ? (process.platform === "darwin" ? "signed-macos" : "manual-stable")
-    : "manual-development-draft",
+  updates: stableChannel ? "signed-native" : "manual-development-draft",
   stable: {
     version: stableChannel ? config.version : previous.version,
     url: "https://github.com/DingHappy/VortoOne/releases/latest",

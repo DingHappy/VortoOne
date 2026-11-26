@@ -92,7 +92,16 @@ Dev7 成品来自提交 [`28d5e294`](https://github.com/DingHappy/VortoOne/commi
 
 - Windows x64 和 Ubuntu 24.04 amd64 通过「VortoOne stable installer checks」生成 NSIS 与 DEB。两者都从固定的目标平台 CPython 归档构建，在对应平台安装并验证独立后端。
 - Apple Silicon Mac 从已合入 main 的干净提交运行 `node frontend/scripts/bundle-desktop-stable-macos.mjs <发布说明文件>`，生成 Developer ID 签名、公证的 DMG 和签名更新包。
-- 正式发布包使用 `com.vorto.vortoone`，并保留 Mac 更新公钥。验收通过后核对三平台来源提交一致，再上传安装包、校验和、Mac 更新包及更新清单。GitHub 发布可读取后，再切换 OSS 的更新清单。
-- 发版顺序：版本号 PR 合入 main 后，在 main 上手动触发「VortoOne stable installer checks」，同一个提交上在 Mac 运行上面的打包脚本。把 CI 的 `VortoOne-Stable-windows-x64`、`VortoOne-Stable-ubuntu-amd64` 两个产物解压到 `apps/desktop-dev/src-tauri/target/release/channel/stable/` 下同名平台目录（`windows-x64/`、`ubuntu-amd64/`）。
-- `node desktop/scripts/oss-release.mjs --stable --stage <空目录>` 核对三平台是同一版、同一提交、字节与构建证据一致，把 GitHub 发布要传的七个附件（含三平台总的 `SHA256SUMS`）放进那个目录；用它们创建 GitHub 发布。
-- 发布成为最新版本后运行 `node desktop/scripts/oss-release.mjs --stable`：先把 Mac 更新包、DMG、Windows 与 Ubuntu 安装包和 `SHA256SUMS` 传到 OSS 的 `vortoone/desktop/v<版本>/` 并逐个取回核对，最后才换 `latest.json`。0.3.0 的 Windows、Ubuntu 安装包只在 GitHub 上。
+
+### 正式版更新
+
+Windows 和 Ubuntu 的正式版会在启动时检查更新，也可从「工作区 → 检查更新…」手动检查。有新版时先询问是否安装。App 校验安装包和版本的签名，Ubuntu 还会请求系统管理员授权。首次支持此功能的版本需要从旧版手动覆盖安装一次。
+
+三平台使用 `com.vorto.vortoone` 和现有正式版更新公钥。每次发布按以下顺序操作。
+
+1. 版本号 PR 合入 main 后触发「VortoOne stable installer checks」。在同一个提交上构建正式 Mac 包。把 CI 的 `VortoOne-Stable-windows-x64` 和 `VortoOne-Stable-ubuntu-amd64` 产物解压到 `frontend/apps/desktop-dev/src-tauri/target/release/channel/stable/` 下对应的 `windows-x64/`、`ubuntu-amd64/` 目录。
+2. 在持有正式更新签名密钥的机器运行 `node desktop/scripts/oss-release.mjs --stable --sign-portable`，为已核对版本、构建提交和 SHA-256 的 EXE 与 DEB 生成签名。
+3. 运行 `node desktop/scripts/oss-release.mjs --stable --stage <空目录>`。脚本核对三平台的版本、提交和更新签名，生成 GitHub 发布的九个附件，其中包括三平台共用的 `latest.json` 和 `SHA256SUMS`。
+4. GitHub 发布成为最新公开稳定版后，运行 `node desktop/scripts/oss-release.mjs --stable`。脚本上传各平台的安装包、更新文件和校验和，逐个取回校验后再切换 OSS 的 `latest.json`。
+
+发布前在 Windows x64 和 Ubuntu 24.04 amd64 上验证应用内升级。首次发布此功能时，在隔离更新源中使用两个版本递增的测试构建。确认启动和菜单都能发现新版，同意后能安装并重新打开，原有工作区、聊天和模型配置可继续使用。分别验证取消授权、签名篡改和安装包篡改都会停止安装，原版本仍可打开。

@@ -739,6 +739,11 @@ pub fn accepted_pair_link(raw: &str) -> Option<(String, String)> {
 }
 
 impl ShellState {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    pub fn is_installing_local_service(&self) -> bool {
+        self.installing.load(Ordering::Acquire)
+    }
+
     /// 「连接的电脑」窗口来取配对链接（取走就没了）。
     pub fn take_pair_link(&self) -> Option<(String, String)> {
         self.pair_link.lock().ok().and_then(|mut slot| slot.take())
