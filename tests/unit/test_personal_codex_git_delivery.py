@@ -11,7 +11,7 @@ def _git(project, *args):
 
 
 @pytest.fixture
-def project(tmp_path):
+def project(tmp_path, isolated_personal_codex_git):
     _git(tmp_path, 'init', '-q')
     _git(tmp_path, 'config', 'user.name', 'Fixture')
     _git(tmp_path, 'config', 'user.email', 'fixture@example.invalid')
@@ -30,6 +30,14 @@ def test_personal_checkout_refuses_a_configured_helper_before_creating_worktree(
         team_delivery.prepare(str(project), 'task-codex', 1, run_hooks=False)
     assert _git(project, 'worktree', 'list', '--porcelain') == initial
     assert _git(project, 'config', '--get', helper) == '/bin/cat'
+
+
+def test_personal_checkout_refuses_globally_configured_lfs(project, isolated_personal_codex_git):
+    isolated_personal_codex_git.write_text('[filter "lfs"]\n\tprocess = git-lfs filter-process\n')
+    initial = _git(project, 'worktree', 'list', '--porcelain')
+    with pytest.raises(ValueError, match='外部 Git 助手'):
+        team_delivery.prepare(str(project), 'task-codex', 1, run_hooks=False)
+    assert _git(project, 'worktree', 'list', '--porcelain') == initial
 
 
 def test_personal_delivery_rechecks_helper_config_before_staging(project):

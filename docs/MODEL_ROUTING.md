@@ -215,6 +215,7 @@ VORTOONE_EXTERNAL_WORKER_TIMEOUT=1800      # 单次运行秒数，超时终止�
 
 - 只有当前工作区所有者可以从它的私聊发起任务。登记绑定家的身份、所有者和当前系统用户。每轮重新核对授权和本机 Codex 状态。
 - Codex 直接管理原有登录态。VortoOne 用官方 Codex 识别 ChatGPT 登录。未登录、额度耗尽或隔离检查失败时，原对话会给出原因。
+- 固定项目交付要求 Git 环境未配置会执行外部程序的过滤器或合并驱动。全局启用 Git LFS 也会触发这项检查，仍可建立纯聊天的个人 Codex 智能体。
 - Codex 进程在工作区服务所在的 Mac 上运行。Ubuntu 后端通过已配对电脑调用 Mac 上的 Codex，需要另接设备执行链路。
 
 ### 通用 agent 用 Claude Code（简单版）

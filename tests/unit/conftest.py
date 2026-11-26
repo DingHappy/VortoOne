@@ -1,5 +1,32 @@
-"""Opt-in MCP permission probes using the real manager and a synthetic transport."""
+"""Shared opt-in unit test fixtures."""
+import os
+import shlex
+import shutil
+
 import pytest
+
+
+@pytest.fixture
+def isolated_personal_codex_git(tmp_path_factory, monkeypatch):
+    """Keep the host's Git configuration out of temporary-repository tests."""
+    git = shutil.which("git")
+    assert git is not None
+    directory = tmp_path_factory.mktemp("personal-codex-git")
+    global_config = directory / "gitconfig"
+    global_config.touch()
+    wrapper = directory / "git"
+    # personal_git strips inherited GIT_* variables, so set these inside the wrapper.
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        "unset GIT_CONFIG GIT_CONFIG_PARAMETERS\n"
+        f"export GIT_CONFIG_GLOBAL={shlex.quote(str(global_config))}\n"
+        "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0\n"
+        f'exec {shlex.quote(git)} "$@"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o700)
+    monkeypatch.setenv("PATH", str(directory), prepend=os.pathsep)
+    return global_config
 
 
 @pytest.fixture

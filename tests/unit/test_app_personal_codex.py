@@ -79,6 +79,7 @@ def test_remote_owner_cannot_connect_the_hosts_codex_login(home, local_client, m
     assert local_client.post(path, headers=relayed, json={"name": "Codex", "handle": "remote"}).status_code == 403
 
 
+@pytest.mark.usefixtures("isolated_personal_codex_git")
 async def test_personal_codex_touches_only_the_approved_project_copy(home, local_client, monkeypatch, tmp_path):
     import json
     import subprocess
