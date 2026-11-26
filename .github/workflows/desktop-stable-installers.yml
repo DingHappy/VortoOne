@@ -9,12 +9,27 @@ on:
       - "frontend/scripts/**"
       - "desktop/managed-python-sources.json"
       - "desktop/scripts/managed-python*.mjs"
+      - "desktop/scripts/oss-release*.mjs"
+      - "desktop/scripts/updater-release*.mjs"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  release-manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Check stable updater signatures and manifests
+        run: node --test desktop/scripts/updater-release.test.mjs desktop/scripts/oss-release.test.mjs
+
   portable:
     uses: ./.github/workflows/desktop-dev-installers.yml
     with:

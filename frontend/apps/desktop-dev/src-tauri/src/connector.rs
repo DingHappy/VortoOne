@@ -711,9 +711,16 @@ impl ConnectorManager {
                 if let Some(mut process) = slot.process.take() {
                     let _ = process.stop();
                 }
-                slot.state = "disconnected".into();
+                if slot.state != "replaced" {
+                    slot.state = "disconnected".into();
+                }
             }
         }
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    pub fn reopen_after_failed_update(&self) {
+        self.closing.store(false, Ordering::Release);
     }
 }
 

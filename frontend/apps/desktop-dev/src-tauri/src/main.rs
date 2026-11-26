@@ -7,7 +7,9 @@ mod shell;
 mod model_settings;
 mod connector;
 mod connector_secrets;
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
+mod deb_update;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod stable_update;
 
 use tauri::{
@@ -148,10 +150,12 @@ fn live_window_capability_for(origin: &str, id: &str) -> tauri::ipc::CapabilityB
 /// 优先启动随包后端；源码模式只供未打包运行时的开发环境使用。
 /// 在后台线程里跑：后端冷启动要几秒到几十秒，不能卡住界面。
 fn connect(app: tauri::AppHandle) {
+    start_backend(app, true);
+}
+
+fn start_backend(app: tauri::AppHandle, open_workspace: bool) {
     std::thread::spawn(move || {
-        let gate = app.state::<ConnectionGate>();
-        let Ok(_guard) = gate.0.lock() else { return; };
-        if let Err(error) = connect_now(&app) {
+        if let Err(error) = start_backend_now(&app, open_workspace) {
             eprintln!("连接后端失败: {error}");
             let message = format!("{} · 没有连上后端：{error}", app.package_info().name);
             if let Some(window) = app.get_webview_window("main") {
@@ -162,6 +166,12 @@ fn connect(app: tauri::AppHandle) {
 }
 
 fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
+    start_backend_now(app, true)
+}
+
+fn start_backend_now(app: &tauri::AppHandle, open_workspace: bool) -> Result<(), String> {
+    let gate = app.state::<ConnectionGate>();
+    let _guard = gate.0.lock().map_err(|_| "本机服务状态不可用，请稍后重试。")?;
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
@@ -197,6 +207,10 @@ fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
         return Err(error);
     }
     app.state::<backend::Backend>().install(child, native)?;
+    if !open_workspace {
+        connector::resume(app.clone());
+        return Ok(());
+    }
     let outcome = (|| {
         let url: tauri::Url = backend::sign_in_url(port, &token)?.parse().map_err(|_| "登录地址无效".to_string())?;
         app.add_capability(live_window_capability(port)).map_err(|e| e.to_string())?;
@@ -354,6 +368,11 @@ fn open_consent(app: &tauri::AppHandle, port: u16, id: &str) {
 fn main() {
     let context = tauri::generate_context!();
     if std::env::args_os().any(|arg| arg == "--check-standalone") {
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        if is_stable_channel(context.config()) && !stable_update::supported() {
+            eprintln!("安装验收失败：正式版安装包缺少更新组件所需的安装类型。");
+            std::process::exit(1);
+        }
         let result = tauri::utils::platform::resource_dir(context.package_info(), &tauri::utils::Env::default())
             .map_err(|error| error.to_string())
             .and_then(|resources| backend::verify_standalone(&resources, &context.package_info().version.to_string()));
@@ -364,8 +383,8 @@ fn main() {
         return;
     }
     let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
-    #[cfg(target_os = "macos")]
-    let builder = if is_stable_channel(context.config()) {
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    let builder = if is_stable_channel(context.config()) && stable_update::supported() {
         builder
             .manage(stable_update::UpdateGate::default())
             .plugin(tauri_plugin_updater::Builder::new().build())
@@ -433,8 +452,8 @@ fn main() {
             }
             product_menu = product_menu.separator().text("versions", "版本管理");
             if stable {
-                #[cfg(target_os = "macos")]
-                {
+                #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+                if stable_update::supported() {
                     product_menu = product_menu.text("check-update", "检查更新…");
                 }
                 product_menu = product_menu.text("stable", "下载最新版本…");
@@ -475,13 +494,17 @@ fn main() {
                 }
                 places::Opening::Welcome => shell::open_window(app.handle(), "welcome").map_err(std::io::Error::other)?,
             }
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            if stable && stable_update::supported() {
+                stable_update::check(app.handle().clone(), false);
+            }
             Ok(())
         })
         .on_menu_event(|app, event| {
             let result = match event.id().as_ref() {
-                #[cfg(target_os = "macos")]
-                "check-update" if is_stable_channel(app.config()) => {
-                    stable_update::check(app.clone());
+                #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+                "check-update" if is_stable_channel(app.config()) && stable_update::supported() => {
+                    stable_update::check(app.clone(), true);
                     return;
                 }
                 "connect" => {

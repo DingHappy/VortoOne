@@ -7,16 +7,19 @@
 // 用法：node scripts/oss-release.mjs
 // 新桌面正式版：Mac 产物在 channel/stable/macos-arm64/，「VortoOne stable installer checks」的 Windows、Ubuntu 产物解压到
 //   channel/stable/windows-x64/ 与 channel/stable/ubuntu-amd64/。三个平台必须来自同一个提交。
+//   node desktop/scripts/oss-release.mjs --stable --sign-portable  在发版机上为已核对的两个安装包补更新签名
 //   node desktop/scripts/oss-release.mjs --stable --stage <空目录>  核对三平台，把 GitHub 发布要传的全部附件（含总校验和）放进去
 //   在 GitHub 发布并成为最新版本后：node desktop/scripts/oss-release.mjs --stable  传三平台安装包、校验和，最后传清单
 import { execFileSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import {
-  GITHUB_LATEST, MIRROR_BASE, REPO, dmgAssetName, mirrorAssetBase, updaterAssetName, updaterManifest,
+  GITHUB_LATEST, MIRROR_BASE, PORTABLE_PLATFORMS, REPO, dmgAssetName, mirrorAssetBase, portableAssetName,
+  updaterAssetName, updaterManifest, updaterSigningKey, verifyUpdaterSignature,
 } from "./updater-release.mjs";
 
 export const KEYCHAIN_SERVICE = "vortoone-oss-upload";
@@ -75,7 +78,7 @@ export function releaseUploads(version, bundle, { flat = false } = {}) {
   ];
 }
 
-export function stableMirrorCandidate(bundle, { version, identifier }) {
+export function stableMirrorCandidate(bundle, { version, identifier, plugins }) {
   if (!/^\d+\.\d+\.\d+$/.test(version) || identifier !== "com.vorto.vortoone") {
     throw new Error("新版 OSS 发布需要正式版应用配置");
   }
@@ -109,23 +112,22 @@ export function stableMirrorCandidate(bundle, { version, identifier }) {
     || !isDeepStrictEqual(JSON.parse(manifest.toString("utf8")), updaterManifest({ ...fields, base: mirrorAssetBase(version) }))) {
     throw new Error("GitHub 与 OSS 更新清单必须使用同一版已签名的更新包");
   }
+  try {
+    verifyUpdaterSignature(assets[archive].bytes, fields.signature.trim(), plugins?.updater?.pubkey, version);
+  } catch (error) {
+    throw new Error(`macOS 的更新包签名不可用：${error.message}`, { cause: error });
+  }
   const uploads = releaseUploads(version, bundle, { flat: true }).map(([local, key, type]) => (
     { key, type, bytes: assets[basename(local)].bytes }
   ));
   return { version, commit: evidence.commit, assets, uploads, manifest };
 }
 
-/** Windows / Ubuntu 正式版安装包：[平台, 扩展名, Content-Type, 运行时目标]。 */
-export const PORTABLE_PLATFORMS = [
-  ["windows-x64", ".exe", "application/vnd.microsoft.portable-executable", "x86_64-pc-windows-msvc"],
-  ["ubuntu-amd64", ".deb", "application/vnd.debian.binary-package", "x86_64-unknown-linux-gnu"],
-];
-
 /** 读 CI 构建的 Windows、Ubuntu 正式版产物，核对它们与 macOS 是同一版、同一个提交。 */
 export function portableInstallers(root, { version, identifier, commit }) {
-  return PORTABLE_PLATFORMS.map(([platform, extension, type, triple]) => {
+  return PORTABLE_PLATFORMS.map(({ platform, extension, type, triple }) => {
     const dir = join(root, platform);
-    const name = `VortoOne_${version}_${platform}${extension}`;
+    const name = portableAssetName(version, platform, extension);
     let evidence;
     try {
       evidence = JSON.parse(readFileSync(join(dir, "desktop-release.json"), "utf8"));
@@ -144,25 +146,75 @@ export function portableInstallers(root, { version, identifier, commit }) {
     if (sha256(bytes) !== evidence.sha256 || sums !== `${evidence.sha256}  ${name}`) {
       throw new Error(`${platform} 安装包的 SHA-256 与构建证据不一致`);
     }
-    return { name, type, bytes };
+    return { platform, name, type, bytes, signaturePath: join(dir, `${name}.sig`) };
   });
+}
+
+function readPortableSignature(path, installer, config) {
+  try {
+    const signature = readFileSync(path);
+    verifyUpdaterSignature(installer.bytes, signature.toString("utf8").trim(), config.plugins.updater.pubkey, config.version);
+    return signature;
+  } catch (error) {
+    const detail = error.code === "ENOENT" ? "请先运行 --stable --sign-portable" : error.message;
+    throw new Error(`${installer.platform} 的更新包签名不可用：${detail}`, { cause: error });
+  }
+}
+
+/** 对核对过的安装包快照签名；重复运行时保留已经核对的签名字节。 */
+export function signPortableInstallers(root, config, sign) {
+  const mac = stableMirrorCandidate(join(root, "macos-arm64"), config);
+  const portable = portableInstallers(root, { ...config, commit: mac.commit });
+  const unsigned = portable.filter((installer) => {
+    if (!existsSync(installer.signaturePath)) return true;
+    readPortableSignature(installer.signaturePath, installer, config);
+    return false;
+  });
+  if (unsigned.length) {
+    const scratch = mkdtempSync(join(tmpdir(), "vortoone-updater-signing-"));
+    try {
+      const signatures = unsigned.map((installer) => {
+        const snapshot = join(scratch, installer.name);
+        writeFileSync(snapshot, installer.bytes, { flag: "wx" });
+        sign(snapshot, config.version);
+        return readPortableSignature(`${snapshot}.sig`, installer, config);
+      });
+      unsigned.forEach(({ signaturePath }, index) => writeFileSync(signaturePath, signatures[index], { flag: "wx" }));
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+  return portable.map(({ signaturePath }) => signaturePath);
 }
 
 /** 三个平台的正式版：GitHub 发布的全部附件（含总校验和）和镜像要传的对象。 */
 export function stableReleaseCandidate(root, config) {
   const mac = stableMirrorCandidate(join(root, "macos-arm64"), config);
   const portable = portableInstallers(root, { ...config, commit: mac.commit });
+  const portableSignatures = {};
   const assets = { ...mac.assets };
-  for (const { name, bytes } of portable) assets[name] = { bytes, sha256: sha256(bytes) };
+  const folder = `${PREFIX}/v${mac.version}`;
+  const uploads = [...mac.uploads];
+  for (const installer of portable) {
+    const { platform, name, type, bytes, signaturePath } = installer;
+    const signature = readPortableSignature(signaturePath, installer, config);
+    portableSignatures[platform] = signature.toString("utf8");
+    assets[name] = { bytes, sha256: sha256(bytes) };
+    assets[`${name}.sig`] = { bytes: signature, sha256: sha256(signature) };
+    uploads.push({ key: `${folder}/${name}`, type, bytes },
+      { key: `${folder}/${name}.sig`, type: "text/plain; charset=utf-8", bytes: signature });
+  }
+  const { notes, pub_date: pubDate } = JSON.parse(mac.assets["latest.json"].bytes.toString("utf8"));
+  const fields = { version: mac.version, notes, pubDate, portableSignatures,
+    signature: mac.assets[`${updaterAssetName(mac.version)}.sig`].bytes.toString("utf8") };
+  const githubManifest = Buffer.from(`${JSON.stringify(updaterManifest(fields), null, 2)}\n`);
+  assets["latest.json"] = { bytes: githubManifest, sha256: sha256(githubManifest) };
+  const mirrorManifest = updaterManifest({ ...fields, base: mirrorAssetBase(mac.version) });
+  const manifest = Buffer.from(`${JSON.stringify(mirrorManifest, null, 2)}\n`);
   const sums = Buffer.from(Object.entries(assets).map(([name, asset]) => `${asset.sha256}  ${name}\n`).join(""));
   assets.SHA256SUMS = { bytes: sums, sha256: sha256(sums) };
-  const folder = `${PREFIX}/v${mac.version}`;
-  const uploads = [
-    ...mac.uploads,
-    ...portable.map(({ name, type, bytes }) => ({ key: `${folder}/${name}`, type, bytes })),
-    { key: `${folder}/SHA256SUMS`, type: "text/plain; charset=utf-8", bytes: sums },
-  ];
-  return { ...mac, assets, uploads };
+  uploads.push({ key: `${folder}/SHA256SUMS`, type: "text/plain; charset=utf-8", bytes: sums });
+  return { ...mac, assets, uploads, manifest };
 }
 
 /** 把 GitHub 发布要传的附件写进一个空目录。 */
@@ -230,10 +282,25 @@ async function main() {
   const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
   const args = process.argv.slice(2);
   const staging = args.length === 3 && args[1] === "--stage";
-  if (args[0] === "--stable" && (args.length === 1 || staging)) {
-    const tauri = join(desktop, "..", "frontend", "apps", "desktop-dev", "src-tauri");
+  const signing = args.length === 2 && args[1] === "--sign-portable";
+  if (args[0] === "--stable" && (args.length === 1 || staging || signing)) {
+    const frontend = join(desktop, "..", "frontend");
+    const app = join(frontend, "apps", "desktop-dev");
+    const tauri = join(app, "src-tauri");
     const config = JSON.parse(readFileSync(join(tauri, "tauri.stable.conf.json"), "utf8"));
-    const candidate = stableReleaseCandidate(join(tauri, "target", "release", "channel", "stable"), config);
+    const root = join(tauri, "target", "release", "channel", "stable");
+    if (signing) {
+      const cli = join(frontend, "node_modules", "@tauri-apps", "cli", "tauri.js");
+      if (!existsSync(cli)) throw new Error("没有找到新版桌面的 Tauri CLI：先在 frontend 目录安装锁定依赖");
+      const paths = signPortableInstallers(root, config, (installer, version) => {
+        execFileSync(process.execPath, [
+          cli, "signer", "sign", "--app-version", version, "--private-key-path", updaterSigningKey(), "--password", "", installer,
+        ], { cwd: app, stdio: ["ignore", "ignore", "inherit"] });
+      });
+      console.log(paths.join("\n"));
+      return;
+    }
+    const candidate = stableReleaseCandidate(root, config);
     if (staging) {
       for (const path of stageRelease(candidate, args[2])) console.log(path);
       console.log(`三个平台来自 ${candidate.commit}；在 GitHub 发布 v${candidate.version} 并成为最新版本后再运行 --stable`);
@@ -243,7 +310,7 @@ async function main() {
     await publishMirror(candidate, () => requirePublicStable(candidate));
     return;
   }
-  if (args.length) throw new Error("用法：node desktop/scripts/oss-release.mjs [--stable [--stage <空目录>]]");
+  if (args.length) throw new Error("用法：node desktop/scripts/oss-release.mjs [--stable [--sign-portable | --stage <空目录>]]");
   const version = JSON.parse(readFileSync(join(desktop, "src-tauri", "tauri.conf.json"), "utf8")).version;
   const bundle = join(desktop, "src-tauri", "target", "release", "bundle");
   const uploads = releaseUploads(version, bundle);
@@ -266,7 +333,7 @@ async function main() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((error) => {
-    console.error(`上传 OSS 镜像失败：${error instanceof Error ? error.message : error}`);
+    console.error(`桌面更新发布失败：${error instanceof Error ? error.message : error}`);
     process.exit(1);
   });
 }
