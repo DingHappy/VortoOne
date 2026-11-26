@@ -46,6 +46,21 @@ def test_a_backup_carries_data_and_credentials_but_not_locks_or_worktrees(tmp_pa
     assert oct((tmp_path / "backups").stat().st_mode & 0o777) == "0o700"
 
 
+def test_backup_and_restore_keep_fixture_intents_out_of_the_active_home(tmp_path):
+    state = _home(tmp_path)
+    relative = "computer-job-intents/intents.sqlite3"
+    pending = state / relative
+    pending.parent.mkdir()
+    pending.write_text("previous fixture receipt")
+    saved = B.backup(str(tmp_path), str(tmp_path / "backups"))["path"]
+    assert f".vortoone/{relative}" not in _names(saved)
+
+    old_archive = _package(tmp_path / "older.tar.gz", f".vortoone/{relative}")
+    result = B.restore(str(tmp_path), str(old_archive))
+    assert not pending.parent.exists()
+    assert (Path(result["kept_aside"]) / relative).read_text() == "previous fixture receipt"
+
+
 def test_only_the_newest_are_kept(tmp_path, monkeypatch):
     _home(tmp_path)
     stamps = iter(f"20261117T0000{n:02d}Z" for n in range(10))

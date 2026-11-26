@@ -22,7 +22,8 @@ from src.gateway.computer_browser_source import START, STOP, BrowserPreviewSourc
 from src.gateway.computer_desktop_source import HELPER_NAME, START as DESKTOP_START, STOP as DESKTOP_STOP, DesktopPreviewSource
 from src.gateway.computer_preview_source import PreviewSource
 from src.gateway.computer_protocol import (
-    BINDING_FIELDS, DELIVERY_PROTOCOL, FEATURES, FILES_PROTOCOL, MAX_FRAME_BYTES, PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PROTOCOL,
+    BINDING_FIELDS, DELIVERY_PROTOCOL, FEATURES, FILES_PROTOCOL, JOB_FIXTURE_PROTOCOL, MAX_FRAME_BYTES,
+    PROTOCOL_MAX, PROTOCOL_MIN, TRANSFER_PROTOCOL,
     ComputerProtocolError, binding_fields, control_frame, decode_frame, hello,
     identifier, origin_url, validate_welcome,
 )
@@ -30,6 +31,8 @@ from src.gateway.computer_file_process import FileProcessUnavailable, run_file_a
 from src.gateway.computer_file_paths import FileDenied
 from src.gateway.computer_file_store import ComputerFiles, FileAction, FileStateUnavailable
 from src.gateway.computer_file_wire import digest_value, file_reply, native_file_preflight, native_file_request, object_fields
+from src.gateway.computer_job_wire import job_reply, native_job_request
+from src.gateway.computer_job_worker import FixtureWorker
 from src.gateway.computer_transfer_receiver import native_delivery
 from src.gateway.computer_transfer_sender import native_transfer
 from src.utils.home_maintenance import HomeMaintenanceError
@@ -43,6 +46,10 @@ _CONTROL_CLOSE_SECONDS = 1.0
 
 class ConnectorFailure(RuntimeError):
     pass
+
+
+def _job_fixture_available() -> bool:
+    return sys.platform == "linux" and not getattr(sys, "frozen", False)
 
 
 def _tls_context() -> ssl.SSLContext:
@@ -92,12 +99,15 @@ def configuration(value: dict) -> dict:
         if not isinstance(value.get("code"), str) or not re.fullmatch(r"[A-Z2-7]{12}", value["code"]):
             raise ConnectorFailure("invalid pairing code")
     elif operation == "connect":
-        local_options = {"file_access", "browser_preview", "desktop_capture"}
+        local_options = {"file_access", "browser_preview", "desktop_capture", "job_fixture"}
         allowed = common | set(BINDING_FIELDS) | {"token"} | local_options
         required = allowed - {"allow_loopback_http"} - local_options
         binding_fields(value)
         if type(value.get("file_access", False)) is not bool:
             raise ConnectorFailure("invalid file access configuration")
+        fixture = value.get("job_fixture", False)
+        if type(fixture) is not bool or fixture and (not value.get("file_access") or not _job_fixture_available()):
+            raise ConnectorFailure("invalid fixture job configuration")
         if type(value.get("browser_preview", False)) is not bool:
             raise ConnectorFailure("invalid browser preview configuration")
         if "desktop_capture" in value:
@@ -232,14 +242,15 @@ class _FileWork:
 
 async def _control(ws, session, config: dict, emit: Callable[[dict], None],
                    revocation_persisted: asyncio.Event, file_work: _FileWork,
-                   disconnected: asyncio.Event, previews: tuple[PreviewSource, ...], stop: asyncio.Event) -> bool:
+                   disconnected: asyncio.Event, previews: tuple[PreviewSource, ...], stop: asyncio.Event,
+                   job_work: FixtureWorker | None = None) -> bool:
     files = config.get("file_access", False)
-    await ws.send_json(hello(config, deliveries=files))
+    await ws.send_json(hello(config, deliveries=files, job_fixture=job_work is not None))
     message = await ws.receive(timeout=15)
     if message.type != aiohttp.WSMsgType.TEXT:
         raise ComputerProtocolError("computer handshake refused")
     frame = decode_frame(message.data)
-    generation = validate_welcome(frame, config, deliveries=files)
+    generation = validate_welcome(frame, config, deliveries=files, job_fixture=job_work is not None)
     selected = frame["protocol"]
     if stop.is_set():
         return False
@@ -278,6 +289,11 @@ async def _control(ws, session, config: dict, emit: Callable[[dict], None],
         if message.type != aiohttp.WSMsgType.TEXT:
             raise ComputerProtocolError("invalid computer control frame")
         frame = decode_frame(message.data)
+        if job_work is not None and selected >= JOB_FIXTURE_PROTOCOL and frame.get("type") == "job_request":
+            request_id, method, payload = native_job_request(frame, generation, config)
+            result = await job_work.request(method, payload)
+            await ws.send_json(job_reply(request_id, generation, result))
+            continue
         if store is not None and frame.get("type") == "file_request":
             request = native_file_request(frame, generation, config, transfers=selected >= TRANSFER_PROTOCOL,
                                           deliveries=selected >= DELIVERY_PROTOCOL)
@@ -300,6 +316,8 @@ async def _control(ws, session, config: dict, emit: Callable[[dict], None],
             if (reason, frame["credentialRevoked"]) not in {("authorization_revoked", True), ("connection_replaced", False)}:
                 raise ComputerProtocolError("invalid computer revocation")
             disconnected.set()
+            if job_work is not None:
+                job_work.request_stop()
             if previews:
                 await asyncio.gather(*(preview.disconnect() for preview in previews))
             if frame["credentialRevoked"]:
@@ -340,6 +358,7 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                   jitter: Callable[[float, float], float] = random.uniform) -> None:
     delay = 1.0
     file_work = _FileWork(stop, config, session)
+    job_work = FixtureWorker(Path.cwd() / "job-fixture", config) if config.get("job_fixture") else None
     previews = tuple(preview for preview in (browser_preview, desktop_preview) if preview is not None)
     ws_timeout = getattr(aiohttp, "ClientWSTimeout", None)
     close_timeout = ws_timeout(ws_close=_CONTROL_CLOSE_SECONDS) if ws_timeout else _CONTROL_CLOSE_SECONDS
@@ -354,7 +373,7 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                     disconnected = asyncio.Event()
                     try:
                         if await _control(ws, session, config, emit, revocation_persisted, file_work,
-                                          disconnected, previews, stop):
+                                          disconnected, previews, stop, job_work):
                             return
                         delay = 1.0
                     finally:
@@ -378,7 +397,15 @@ async def connect(session, config: dict, emit: Callable[[dict], None], stop: asy
                 return
             delay = min(60.0, delay * 2)
     finally:
-        await file_work.close()
+        if job_work is None:
+            await file_work.close()
+        else:
+            cleanup = asyncio.gather(file_work.close(), job_work.close())
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
+                raise
 
 
 async def run(config: dict, emit: Callable[[dict], None], stop: asyncio.Event | None = None,

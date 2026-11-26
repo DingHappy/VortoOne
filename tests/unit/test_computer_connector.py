@@ -646,14 +646,23 @@ def tls_material(directory):
     now = datetime.now(timezone.utc)
     key = ec.generate_private_key(ec.SECP256R1())
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'computer-test-ca')])
+    ca_key_id = x509.SubjectKeyIdentifier.from_public_key(key.public_key())
+    ca_usage = x509.KeyUsage(
+        digital_signature=False, content_commitment=False, key_encipherment=False,
+        data_encipherment=False, key_agreement=False, key_cert_sign=True,
+        crl_sign=False, encipher_only=False, decipher_only=False,
+    )
     ca = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key())
           .serial_number(x509.random_serial_number()).not_valid_before(now - timedelta(days=1))
           .not_valid_after(now + timedelta(days=1)).add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+          .add_extension(ca_usage, critical=True)
+          .add_extension(ca_key_id, critical=False)
           .sign(key, hashes.SHA256()))
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, '127.0.0.1')]))
             .issuer_name(subject).public_key(leaf_key.public_key()).serial_number(x509.random_serial_number())
             .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .add_extension(x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(ca_key_id), critical=False)
             .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address('127.0.0.1'))]), critical=False)
             .sign(key, hashes.SHA256()))
     ca_file = directory / 'ca.pem'
@@ -791,8 +800,10 @@ async def test_actual_worker_persists_revocation_before_ack_and_exits_with_stdin
     assert not list(user_home.iterdir())
 
 
-@pytest.mark.parametrize("file_access", [False, True], ids=["control-v1", "file-process-v4"])
-async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tmp_path, monkeypatch, file_access):
+@pytest.mark.parametrize("file_access,job_fixture", [(False, False), (True, False), (True, True)],
+                         ids=["control-v1", "file-process-v4", "fixed-fixture-v5"])
+async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(
+        tmp_path, monkeypatch, file_access, job_fixture):
     """Cover the real mounted auth/routes, not just the transport test adapter."""
     import uvicorn
     from src.web import app_views
@@ -835,7 +846,10 @@ async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tm
             pairs = []
             await worker.run(config(origin, 'pair', home_instance_id=pairing['home_instance_id'], code=pairing['code']), pairs.append)
             grant = {key: value for key, value in pairs[0].items() if key != 'type'}
-            worker_task = asyncio.create_task(worker.run(config(origin, **grant, file_access=file_access), emit, stop, persisted))
+            if job_fixture:
+                monkeypatch.setattr(worker, "_job_fixture_available", lambda: True)
+            worker_task = asyncio.create_task(worker.run(
+                config(origin, **grant, file_access=file_access, job_fixture=job_fixture), emit, stop, persisted))
             await event_before(connected)
             async with owner.get(origin + base + '/machines') as response:
                 machines = (await response.json())['machines']
@@ -870,6 +884,51 @@ async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tm
                 assert receipt["status"] == "created" and await connection.receipt(receipt)
                 assert (folder / action.path).read_text() == action.content
                 assert intents.status(action.action_id, account) == "created"
+            if job_fixture:
+                from src.gateway import computer_job_fixture
+                from src.gateway.computer_job_contract import FIXTURE_JOB, JobAction
+                from src.gateway.computer_job_intents import HomeJobIntents
+                from src.gateway.computer_job_wire import job_policy_value, job_reference, job_result_value
+                from src.gateway.computer_protocol import JOB_FIXTURE_PROTOCOL, binding_fields
+                from src.sandbox.connected_command import FixtureRun
+
+                release = asyncio.Event()
+                calls = []
+
+                async def fixed_runner(*, deadline, cancel):
+                    calls.append(deadline)
+                    await release.wait()
+                    assert not cancel.is_set()
+                    return FixtureRun("succeeded", 0, "fixture passed", b"<testsuite/>")
+
+                monkeypatch.setattr(computer_job_fixture, "run_fixture", fixed_runner)
+                assert connection.protocol == JOB_FIXTURE_PROTOCOL
+                policy = job_policy_value(await connection.job_request("policy", {}))
+                job = JobAction(uuid.uuid4().hex, FIXTURE_JOB.job_id, policy["policy_revision"],
+                                FIXTURE_JOB.version, FIXTURE_JOB.input_digest, int(time.time()) + 60,
+                                **binding_fields(grant), session_id="session", turn_id="turn", call_id="call")
+                jobs = HomeJobIntents(root)
+                jobs.record(grant, job)
+                accepted = job_result_value(await connection.job_request("start", asdict(job)), job)
+                assert accepted["status"] == "accepted" and jobs.accept(grant, job, accepted)
+                connected.clear()
+                await connection.socket.close(code=1001)
+                await asyncio.wait_for(connected.wait(), 5)
+                replacement = connections.file_connection(root, grant["connector_id"], account)
+                assert replacement is not None and replacement.generation != connection.generation
+                once = job_result_value(await replacement.job_request("start", asdict(job)), job)
+                assert once["status"] == "started" and len(calls) == 1
+                release.set()
+                async def final_receipt():
+                    while True:
+                        result = job_result_value(await replacement.job_request("status", job_reference(job)), job)
+                        if result["status"] == "succeeded":
+                            return result
+                        await asyncio.sleep(0.01)
+                report = await asyncio.wait_for(final_receipt(), 3)
+                assert jobs.accept(grant, job, report)
+                assert jobs.get(job.action_id, account, "session").result["report"]["text"] == "<testsuite/>"
+                assert len(calls) == 1
             async with owner.delete(origin + base + '/machines/' + grant['connector_id']) as response:
                 assert response.status == 204
             await event_before(revoked)
@@ -878,7 +937,10 @@ async def test_actual_fastapi_routes_and_worker_interoperate_on_real_loopback(tm
             await finished(worker_task)
             async with owner.get(origin + base + '/machines') as response:
                 assert (await response.json())['machines'] == []
-        assert [frame['state'] for frame in events] == ['connecting', 'online', 'revoked']
+        expected = ['connecting', 'online']
+        if job_fixture:
+            expected += ['disconnected', 'connecting', 'online']
+        assert [frame['state'] for frame in events] == expected + ['revoked']
     finally:
         stop.set()
         if worker_task is not None:
@@ -911,8 +973,11 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     from src.gateway.computer_file_intents import HomeFileIntents
     from src.gateway.computer_file_store import ComputerFiles
     from src.gateway.computer_home_delivery import OUTBOX
+    from src.gateway import computer_job_fixture
+    from src.gateway.computer_job_contract import FIXTURE_JOB
     from src.gateway.computer_protocol import TRANSFER_PATH
     from src.gateway.computer_transfers import ComputerTransfers
+    from src.sandbox.connected_command import FixtureRun
     from src.utils.state_dir import state_dir
     from src.web import app_views
     from src.web.app_bridge import MainChatBridge, existing_bridge
@@ -927,6 +992,15 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
     monkeypatch.setenv("VORTOONE_TURN_DIGEST", "0")
     monkeypatch.setenv("VORTOONE_WORKSPACE_SCOPE", "general")
     inline_file_actions(monkeypatch)
+    monkeypatch.setattr(worker, "_job_fixture_available", lambda: True)
+    fixture_starts = []
+
+    async def fixed_runner(*, deadline, cancel):
+        fixture_starts.append(deadline)
+        assert not cancel.is_set()
+        return FixtureRun("succeeded", 0, "fixture passed", b"<testsuite/>")
+
+    monkeypatch.setattr(computer_job_fixture, "run_fixture", fixed_runner)
     store = ConnectedComputers(root)
     pairing = store.create_pairing(legacy_confirmed=True)
     grant = store.pair(pairing["code"], BINDING["connector_id"], "测试电脑")
@@ -945,6 +1019,8 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
         "撤权后写入": ("connected_computer_create", {**args, "path": "revoked.txt", "text": "不可写入"}),
         "断线后补报": ("connected_computer_create", {**args, "path": "durable.txt", "text": "只写一次\n"}),
         "清单": ("connected_computer_folders", {"computer_id": grant["connector_id"]}),
+        "运行隔离验证": ("connected_computer_job_start", {"computer_id": grant["connector_id"],
+                                                        "job_id": FIXTURE_JOB.job_id}),
     }
     binary = folder / "manual.bin"
     binary_bytes = bytes(range(256)) * 4096
@@ -1060,7 +1136,8 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
 
     try:
         await until(lambda: server.started)
-        worker_task = asyncio.create_task(worker.run(config(origin, file_access=True, **grant), emit, stop))
+        worker_task = asyncio.create_task(worker.run(
+            config(origin, file_access=True, job_fixture=True, **grant), emit, stop))
         await event_before(online)
         account = store.identity()
         assert connections.file_connection(root, grant["connector_id"], account)
@@ -1273,6 +1350,21 @@ async def test_file_actions_use_main_chat_approval_and_recover_lost_receipts(tmp
                 assert outcome.status == ("succeeded" if should_create else "blocked")
                 assert home_intents.status(action["action_id"], account) == ("created" if should_create else "blocked")
                 assert (folder / filename).exists() == should_create
+
+            await send("运行隔离验证")
+            await decide(await card_for("授权执行本回合"))
+            fixture_card = await card_for(FIXTURE_JOB.name)
+            assert fixture_starts == [] and fixture_card["scope_options"] == ["once"]
+            assert FIXTURE_JOB.version in fixture_card["text"] and FIXTURE_JOB.input_digest in fixture_card["text"]
+            await decide(fixture_card)
+            launched = await asyncio.wait_for(outcomes.get(), 3)
+            assert launched.status == "succeeded"
+            job_id = re.search(r"[a-f0-9]{32}", launched.text).group()
+            operations["查看隔离结果"] = ("connected_computer_job_status", {"action_id": job_id})
+            await send("查看隔离结果")
+            report = await asyncio.wait_for(outcomes.get(), 3)
+            assert "执行通过" in report.text and "<testsuite/>" in report.text
+            assert len(fixture_starts) == 1
     finally:
         stop.set()
         if worker_task is not None:

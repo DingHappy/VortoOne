@@ -52,6 +52,9 @@ def test_old_raw_backup_cannot_revive_revoked_token_and_preserves_home_extras(tm
     (home / "研究/笔记-🧠.md").write_text("备份中的用户资料")
     (data / "owner-key").write_text("old app owner key")
     (data / "model.env").write_text("old app model settings")
+    job_intents = state_dir(home) / "computer-job-intents"
+    job_intents.mkdir()
+    (job_intents / "intents.sqlite3").write_text("previous fixture receipt")
     if legacy_migration:
         state_dir(home).rename(home / ".vortocode")
         store = ConnectedComputers(str(home))
@@ -71,6 +74,7 @@ def test_old_raw_backup_cannot_revive_revoked_token_and_preserves_home_extras(tm
     with pytest.raises(ComputerDenied):
         ConnectedComputers(str(home)).authenticate(granted["token"])
     assert ConnectedComputers(str(home)).list() == []
+    assert not (state_dir(home) / "computer-job-intents").exists()
     assert home.stat().st_ino == home_inode and (home / MAINTENANCE_FILE).stat().st_ino == lock_inode
     assert (home / "研究/笔记-🧠.md").read_text() == "当前用户资料保持"
     recovered = list(data.glob("recovered-extras-*"))
@@ -182,10 +186,13 @@ def test_missing_state_and_quota_excess_do_not_create_a_new_legacy_home(tmp_path
     assert not data.exists()
 
 
-@pytest.mark.parametrize("failure", ["hook", "publish"])
+@pytest.mark.parametrize("failure", ["hook", "purge", "publish"])
 def test_hook_or_publish_failure_preserves_original_state(tmp_path, monkeypatch, failure):
     data = tmp_path / "app-data"
     home, store, granted = _claimed(data)
+    job_intents = state_dir(home) / "computer-job-intents"
+    job_intents.mkdir()
+    (job_intents / "intents.sqlite3").write_text("previous fixture receipt")
     archive = _raw(data, tmp_path / "vortoone-old.tar.gz")
     store.revoke(granted["connector_id"])
     identity = ensure_home_identity(home)
@@ -195,6 +202,13 @@ def test_hook_or_publish_failure_preserves_original_state(tmp_path, monkeypatch,
         def fail(*args):
             raise HomeIdentityError("injected identity failure")
         monkeypatch.setattr(module, "prepare_replaced_home", fail)
+    elif failure == "purge":
+        rmtree = module.shutil.rmtree
+        def fail(path, *args, **kwargs):
+            if Path(path).name == "computer-job-intents":
+                raise OSError("injected job-intent purge failure")
+            return rmtree(path, *args, **kwargs)
+        monkeypatch.setattr(module.shutil, "rmtree", fail)
     else:
         rename = Path.rename
         def fail(source, destination):
@@ -205,6 +219,7 @@ def test_hook_or_publish_failure_preserves_original_state(tmp_path, monkeypatch,
     with pytest.raises(module.DesktopRestoreError):
         module.restore_desktop(data, archive)
     assert ensure_home_identity(home) == identity
+    assert (job_intents / "intents.sqlite3").read_text() == "previous fixture receipt"
     assert (home / MAINTENANCE_FILE).stat().st_ino == lock_inode
     with pytest.raises(ComputerDenied):
         store.authenticate(granted["token"])

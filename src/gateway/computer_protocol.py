@@ -15,7 +15,8 @@ PROTOCOL_MIN = 1
 FILES_PROTOCOL = 2
 TRANSFER_PROTOCOL = 3
 DELIVERY_PROTOCOL = 4
-PROTOCOL_MAX = DELIVERY_PROTOCOL
+JOB_FIXTURE_PROTOCOL = 5
+PROTOCOL_MAX = JOB_FIXTURE_PROTOCOL
 FEATURES = ("control-only",)
 CAPABILITIES = {key: False for key in ("read", "write", "command", "browser", "codex")}
 BINDING_FIELDS = ("home_instance_id", "connector_id", "paired_principal_id", "credential_epoch", "trust_epoch")
@@ -82,8 +83,9 @@ def binding_fields(binding: dict) -> dict:
     return {key: identifier(binding.get(key)) for key in BINDING_FIELDS}
 
 
-def hello(binding: dict, *, files: bool = False, transfers: bool = False, deliveries: bool = False) -> dict:
-    maximum = _enabled_protocol(files, transfers, deliveries)
+def hello(binding: dict, *, files: bool = False, transfers: bool = False, deliveries: bool = False,
+          job_fixture: bool = False) -> dict:
+    maximum = _enabled_protocol(files, transfers, deliveries, job_fixture)
     return {"type": "hello", **binding_fields(binding), "protocol_min": PROTOCOL_MIN,
             "protocol_max": maximum, "features": list(FEATURES)}
 
@@ -105,7 +107,11 @@ def welcome(binding: dict, generation: str, protocol: int = PROTOCOL_MIN) -> dic
             "protocol": protocol, "features": list(FEATURES), "capabilities": dict(CAPABILITIES), "folders": []}
 
 
-def _enabled_protocol(files: bool, transfers: bool, deliveries: bool) -> int:
+def _enabled_protocol(files: bool, transfers: bool, deliveries: bool, job_fixture: bool) -> int:
+    if job_fixture:
+        if not deliveries:
+            raise ComputerProtocolError("fixture jobs require file protocol support")
+        return JOB_FIXTURE_PROTOCOL
     if deliveries:
         return DELIVERY_PROTOCOL
     if transfers:
@@ -114,11 +120,11 @@ def _enabled_protocol(files: bool, transfers: bool, deliveries: bool) -> int:
 
 
 def validate_welcome(frame: dict, binding: dict, *, files: bool = False, transfers: bool = False,
-                     deliveries: bool = False) -> str:
+                     deliveries: bool = False, job_fixture: bool = False) -> str:
     generation = identifier(frame.get("generation"))
     capabilities = frame.get("capabilities")
     protocol = frame.get("protocol")
-    maximum = _enabled_protocol(files, transfers, deliveries)
+    maximum = _enabled_protocol(files, transfers, deliveries, job_fixture)
     if (type(protocol) is not int or not PROTOCOL_MIN <= protocol <= maximum
             or not isinstance(capabilities, dict)
             or set(capabilities) != set(CAPABILITIES)
