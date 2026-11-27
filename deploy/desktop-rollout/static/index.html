@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>VortoOne · 灰度更新</title>
+  <link rel="stylesheet" href="/admin/releases/style.css">
+  <script type="module" src="/admin/releases/app.js"></script>
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <div>
+        <p class="brand">VortoOne</p>
+        <h1>灰度更新</h1>
+      </div>
+      <button id="logout" class="secondary" type="button" hidden>退出登录</button>
+    </header>
+
+    <p id="notice" class="notice" role="status" aria-atomic="true" hidden></p>
+
+    <section id="login" class="panel login" aria-labelledby="login-title" hidden>
+      <h2 id="login-title">管理员登录</h2>
+      <form id="login-form">
+        <label for="password">管理密码</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button type="submit">登录</button>
+      </form>
+    </section>
+
+    <div id="dashboard" hidden>
+      <section class="panel" aria-labelledby="device-title">
+        <div class="section-header">
+          <h2 id="device-title">设备</h2>
+          <div class="actions">
+            <button id="refresh" class="secondary" type="button">刷新</button>
+            <button id="enrollment" class="secondary" type="button">生成登记码</button>
+            <button id="begin-assignment" type="button" aria-expanded="false" aria-controls="assignment">分配版本</button>
+          </div>
+        </div>
+        <div id="enrollment-details" class="enrollment" aria-labelledby="code-label" hidden>
+          <label id="code-label" for="enrollment-code">一次性登记码</label>
+          <div class="actions">
+            <input id="enrollment-code" readonly spellcheck="false">
+            <button id="copy-code" class="secondary" type="button">复制</button>
+          </div>
+          <p id="expiry" class="muted"></p>
+          <p>在要登记的电脑上打开 VortoOne「版本管理 → 灰度更新」，填入登记码。</p>
+        </div>
+        <form id="assignment" class="enrollment" aria-labelledby="assignment-label" hidden>
+          <label id="assignment-label" for="target-version">选择要分配的版本</label>
+          <select id="target-version" required></select>
+          <p id="selection-status" role="status">选择版本后勾选设备。</p>
+          <div class="actions">
+            <button id="apply-assignment" type="submit" disabled>应用分配</button>
+            <button id="cancel-assignment" class="secondary" type="button">取消</button>
+          </div>
+        </form>
+        <ul id="devices" class="list" aria-label="灰度设备"></ul>
+        <p id="no-devices" class="empty" hidden>还没有已登记的设备。</p>
+      </section>
+
+      <section class="panel" aria-labelledby="release-title">
+        <div class="section-header">
+          <h2 id="release-title">灰度版本</h2>
+        </div>
+        <ul id="releases" class="list" aria-label="灰度版本"></ul>
+        <p id="no-releases" class="empty" hidden>还没有可分配的灰度版本。</p>
+      </section>
+    </div>
+    <noscript>请启用 JavaScript 后管理灰度更新。</noscript>
+  </main>
+</body>
+</html>
