@@ -49,6 +49,18 @@ pub struct EnrollInput {
     name: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnrollError {
+    AlreadyEnrolled,
+    InvalidInput,
+    CodeRejected,
+    Network,
+    LocalCredential,
+    Busy,
+    Unavailable,
+}
+
 #[derive(Deserialize)]
 struct EnrollReply {
     token: String,
@@ -360,13 +372,13 @@ pub async fn gray_update_enroll(
     window: WebviewWindow,
     app: AppHandle,
     input: EnrollInput,
-) -> Result<GrayStatus, &'static str> {
-    check_window(&window, ENROLLMENT)?;
-    require_supported(&app)?;
-    let _guard = crate::stable_update::begin(&app)?;
-    let path = record_path(&app)?;
-    if record_exists(&path)? {
-        return Err("这台设备已登记，请先退出当前灰度。");
+) -> Result<GrayStatus, EnrollError> {
+    check_window(&window, ENROLLMENT).map_err(|_| EnrollError::Unavailable)?;
+    require_supported(&app).map_err(|_| EnrollError::Unavailable)?;
+    let _guard = crate::stable_update::begin(&app).map_err(|_| EnrollError::Busy)?;
+    let path = record_path(&app).map_err(|_| EnrollError::LocalCredential)?;
+    if record_exists(&path).map_err(|_| EnrollError::LocalCredential)? {
+        return Err(EnrollError::AlreadyEnrolled);
     }
     let code = input.code.trim();
     let name = input.name.trim();
@@ -375,9 +387,9 @@ pub async fn gray_update_enroll(
         || !(1..=64).contains(&name.chars().count())
         || name.chars().any(char::is_control)
     {
-        return Err("请填写有效的登记码和设备名称。");
+        return Err(EnrollError::InvalidInput);
     }
-    let client = private_client()?;
+    let client = private_client().map_err(|_| EnrollError::Network)?;
     let response = client
         .post(format!("{API}/enroll"))
         .timeout(Duration::from_secs(20))
@@ -387,25 +399,48 @@ pub async fn gray_update_enroll(
         }))
         .send()
         .await
-        .map_err(|_| POLICY_ERROR)?;
-    if !matches!(response.status(), StatusCode::OK | StatusCode::CREATED) {
-        return Err("无法登记设备，请核对登记码或联系发布管理员。");
+        .map_err(|_| EnrollError::Network)?;
+    match response.status() {
+        StatusCode::OK | StatusCode::CREATED => {}
+        StatusCode::UNAUTHORIZED => return Err(EnrollError::CodeRejected),
+        StatusCode::UNPROCESSABLE_ENTITY => return Err(EnrollError::InvalidInput),
+        StatusCode::TOO_MANY_REQUESTS => return Err(EnrollError::Busy),
+        _ => return Err(EnrollError::Unavailable),
     }
-    let bytes = response_bytes(response, MAX_JSON, POLICY_ERROR).await?;
-    let reply: EnrollReply = serde_json::from_slice(&bytes).map_err(|_| POLICY_ERROR)?;
+    let bytes = response_bytes(response, MAX_JSON, POLICY_ERROR)
+        .await
+        .map_err(|_| EnrollError::Unavailable)?;
+    let reply: EnrollReply =
+        serde_json::from_slice(&bytes).map_err(|_| EnrollError::Unavailable)?;
     if !url_safe(&reply.token, 32..=256) {
-        return Err(POLICY_ERROR);
+        return Err(EnrollError::Unavailable);
     }
-    if let Err(error) = save_token(&path, &reply.token) {
+    if save_token(&path, &reply.token).is_err() {
         let _ = Managed {
             client,
             token: reply.token,
         }
         .leave()
         .await;
-        return Err(error);
+        return Err(EnrollError::LocalCredential);
     }
-    status(&app)
+    status(&app).map_err(|_| EnrollError::LocalCredential)
+}
+
+#[tauri::command]
+pub async fn gray_update_open_versions(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<(), &'static str> {
+    check_window(&window, ENROLLMENT)?;
+    if !status(&app)?.enrolled {
+        return Err("这台设备尚未登记。");
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::show_versions(&app).map_err(|_| "无法打开版本管理。")
+    })
+    .await
+    .map_err(|_| "无法打开版本管理。")?
 }
 
 #[tauri::command]
@@ -655,6 +690,21 @@ fn dpapi(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gray_enrollment_errors_have_fixed_safe_codes() {
+        for (error, code) in [
+            (EnrollError::AlreadyEnrolled, "already_enrolled"),
+            (EnrollError::InvalidInput, "invalid_input"),
+            (EnrollError::CodeRejected, "code_rejected"),
+            (EnrollError::Network, "network"),
+            (EnrollError::LocalCredential, "local_credential"),
+            (EnrollError::Busy, "busy"),
+            (EnrollError::Unavailable, "unavailable"),
+        ] {
+            assert_eq!(serde_json::to_value(error).unwrap(), code);
+        }
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

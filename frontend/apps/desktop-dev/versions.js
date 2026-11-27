@@ -9,7 +9,7 @@ function mountEnrolledControls() {
       <h2 id="gray-title">灰度更新</h2>
       <p>此电脑已登记。</p>
       <div class="row"><button id="gray-check" type="button">检查更新</button><button id="gray-leave" type="button" class="secondary">退出灰度</button></div>
-      <p class="status error" role="status" aria-atomic="true"></p>
+      <p class="status" role="status" aria-atomic="true"></p>
     </section>
     <dialog aria-labelledby="gray-leave-title">
       <h2 id="gray-leave-title">退出此电脑的灰度更新？</h2>
@@ -22,17 +22,20 @@ function mountEnrolledControls() {
   const check = container.querySelector("#gray-check");
   const confirmation = container.querySelector("dialog");
 
-  async function run(command, failure) {
+  async function run(command, pending, failure) {
     if (busy) return;
     busy = leave.disabled = check.disabled = true;
-    status.textContent = "";
+    status.classList.remove("error");
+    status.textContent = pending;
     try {
       const result = await tauri.invoke(command);
+      status.textContent = "";
       if (command === "gray_update_leave" && !result.enrolled) {
         container.replaceChildren();
         document.getElementById("version-title").focus();
       }
     } catch {
+      status.classList.add("error");
       status.textContent = failure;
     } finally {
       busy = leave.disabled = check.disabled = false;
@@ -40,7 +43,7 @@ function mountEnrolledControls() {
   }
 
   check.addEventListener("click", async () => {
-    await run("gray_update_check", "无法检查更新，请稍后再试。");
+    await run("gray_update_check", "正在检查更新…", "无法检查更新，请稍后再试。");
     check.focus();
   });
   leave.addEventListener("click", () => {
@@ -49,7 +52,7 @@ function mountEnrolledControls() {
   });
   confirmation.addEventListener("close", async () => {
     if (confirmation.returnValue !== "leave") return;
-    await run("gray_update_leave", "无法退出灰度更新，请稍后再试。");
+    await run("gray_update_leave", "正在退出灰度更新…", "无法退出灰度更新，请稍后再试。");
     if (leave.isConnected) leave.focus();
   });
 }

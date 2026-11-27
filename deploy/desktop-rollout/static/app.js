@@ -33,6 +33,7 @@ let busy = false;
 let expiryTimer;
 let devices = [];
 let releases = [];
+let assignmentDeviceId = null;
 
 function node(tag, text = "", className = "") {
   const item = document.createElement(tag);
@@ -62,6 +63,8 @@ function formattedDate(iso) {
 function clearCode() {
   clearTimeout(expiryTimer);
   codeInput.value = "";
+  element("invite-instructions").value = "";
+  element("invite-instructions").hidden = true;
   element("expiry").textContent = "";
   element("copy-code").disabled = false;
   element("enrollment-details").hidden = true;
@@ -126,38 +129,102 @@ function fact(label, value, className) {
   return entry;
 }
 
+function releaseBlock(device, release) {
+  if (release.paused) return "已暂停";
+  if (!release.platforms.includes(device.platform)) return "没有适用的平台安装包";
+  const candidate = release.version.split(".").map(Number);
+  const current = device.current_version.split(".").map(Number);
+  const firstDifference = candidate.findIndex((part, i) => part !== current[i]);
+  if (firstDifference === -1 || candidate[firstDifference] < current[firstDifference]) return "不高于当前版本";
+  return device.target_version === release.version ? "已分配此版本" : "";
+}
+
+function assignmentDevices() {
+  return devices.filter((device) => device.active && (!assignmentDeviceId || device.id === assignmentDeviceId));
+}
+
+function renderAssignmentChoices() {
+  const scopedDevice = devices.find((device) => device.id === assignmentDeviceId);
+  const candidates = assignmentDevices();
+  const previousTarget = targetVersion.value;
+  const options = [new Option("请选择版本", "")];
+  if (candidates.some((device) => device.target_version !== null)) {
+    options.push(new Option("取消现有分配", cancelVersion));
+  }
+  for (const release of releases) {
+    let reason = "";
+    if (scopedDevice) reason = releaseBlock(scopedDevice, release);
+    else if (release.paused) reason = "已暂停";
+    else if (!candidates.some((device) => !releaseBlock(device, release))) reason = "没有可分配的设备";
+    const option = new Option(reason ? release.version + " · " + reason : release.version, release.version);
+    option.disabled = Boolean(reason) || !candidates.length;
+    options.push(option);
+  }
+  element("assignment-label").textContent = scopedDevice
+    ? "为「" + scopedDevice.name + "」选择版本" : "为多台设备选择版本";
+  targetVersion.replaceChildren(...options);
+  targetVersion.value = options.some((option) => option.value === previousTarget && !option.disabled) ? previousTarget : "";
+}
+
 function syncSelection() {
   const version = targetVersion.value === cancelVersion ? null : targetVersion.value;
-  const platforms = releases.find((release) => release.version === version && !release.paused)?.platforms ?? [];
-  const eligible = new Set(devices.filter((device) =>
-    device.active && device.target_version !== version && (version === null || platforms.includes(device.platform)),
-  ).map((device) => device.id));
+  const release = releases.find((candidate) => candidate.version === version);
+  const deviceBlocks = new Map(assignmentDevices().map((device) => [
+    device.id,
+    version === null ? (device.target_version === null ? "当前没有分配" : "")
+      : release ? releaseBlock(device, release) : "请选择版本",
+  ]));
+  const eligible = new Set([...deviceBlocks].filter(([, reason]) => !reason).map(([id]) => id));
   for (const id of selectedDevices) {
     if (!eligible.has(id)) selectedDevices.delete(id);
   }
+  if (assignmentDeviceId && eligible.has(assignmentDeviceId)) selectedDevices.add(assignmentDeviceId);
+  const bulkMode = !assignment.hidden && !assignmentDeviceId;
   for (const input of element("devices").querySelectorAll("input[type='checkbox']")) {
     const selected = selectedDevices.has(input.value);
-    input.closest("label").hidden = assignment.hidden;
+    const reason = deviceBlocks.get(input.value) || "";
+    const description = element("assignment-reason-" + input.value);
+    input.closest("label").hidden = !bulkMode;
     input.checked = selected;
     input.disabled = !eligible.has(input.value) || (!selected && selectedDevices.size >= selectionLimit);
+    description.textContent = reason;
+    description.hidden = !(bulkMode && version !== "" && reason);
+  }
+  beginAssignment.setAttribute("aria-expanded", String(bulkMode));
+  for (const button of element("devices").querySelectorAll("[data-assignment-device]")) {
+    button.setAttribute("aria-expanded", String(!assignment.hidden && assignmentDeviceId === button.dataset.assignmentDevice));
   }
   applyAssignment.disabled = !selectedDevices.size;
+  applyAssignment.textContent = version === null ? "取消分配" : "应用分配";
+  let message = "";
+  if (assignmentDeviceId) {
+    if (!deviceBlocks.has(assignmentDeviceId)) message = "这台设备已不可用，请刷新后重试。";
+    else if (!targetVersion.value) {
+      const hasChoice = Array.from(targetVersion.options).some((option) => option.value && !option.disabled);
+      message = hasChoice ? "选择后确认分配。" : "这台设备暂无可分配的版本。";
+    }
+  } else if (!targetVersion.value) message = "选择版本后勾选设备。";
+  else if (!eligible.size) message = "没有可应用此分配的设备。";
+  else if (selectedDevices.size === selectionLimit) message = "已选 50 台设备，已达单次上限。";
+  else if (selectedDevices.size) message = "已选择 " + selectedDevices.size + " 台设备。";
+  else message = "勾选要应用此分配的设备。";
   const description = element("selection-status");
-  if (!targetVersion.value) description.textContent = "选择版本后勾选设备。";
-  else if (!eligible.size) description.textContent = "没有可应用此分配的设备。";
-  else if (selectedDevices.size === selectionLimit) description.textContent = "已选 50 台设备，已达单次上限。";
-  else if (selectedDevices.size) description.textContent = "已选择 " + selectedDevices.size + " 台设备。";
-  else description.textContent = "勾选要应用此分配的设备。";
+  description.textContent = message;
+  description.hidden = !message;
 }
 
-function showAssignment(show) {
+function showAssignment(show, deviceId = null) {
   assignment.hidden = !show;
-  beginAssignment.setAttribute("aria-expanded", String(show));
-  if (!show) {
-    targetVersion.value = "";
-    selectedDevices.clear();
-  }
+  assignmentDeviceId = show ? deviceId : null;
+  targetVersion.value = "";
+  selectedDevices.clear();
+  renderAssignmentChoices();
   syncSelection();
+}
+
+function restoreAssignmentFocus(deviceId) {
+  const trigger = deviceId ? element("assign-device-" + deviceId) : beginAssignment;
+  (trigger && !trigger.disabled ? trigger : element("refresh")).focus();
 }
 
 function makeDevice(device) {
@@ -170,6 +237,7 @@ function makeDevice(device) {
     check.type = "checkbox";
     check.value = device.id;
     check.setAttribute("aria-label", "选择设备 " + device.name);
+    check.setAttribute("aria-describedby", "assignment-reason-" + device.id);
     check.addEventListener("change", () => {
       if (check.checked) selectedDevices.add(device.id);
       else selectedDevices.delete(device.id);
@@ -193,6 +261,19 @@ function makeDevice(device) {
   );
   row.append(head, facts);
   if (device.active) {
+    const reason = node("p", "", "muted");
+    reason.id = "assignment-reason-" + device.id;
+    reason.hidden = true;
+    row.append(reason);
+    const assign = action(device.target_version ? "更改分配" : "分配版本", "secondary", () => {
+      if (busy) return;
+      showAssignment(assignment.hidden || assignmentDeviceId !== device.id, device.id);
+      if (!assignment.hidden) targetVersion.focus();
+    });
+    assign.id = "assign-device-" + device.id;
+    assign.dataset.assignmentDevice = device.id;
+    assign.setAttribute("aria-label", assign.textContent + " " + device.name);
+    assign.setAttribute("aria-controls", "assignment");
     const remove = action("撤销设备", "danger", () => {
       if (busy || !window.confirm("撤销「" + device.name + "」的灰度资格？它将停止接收灰度更新，已安装的版本会保留。")) return;
       void run(remove, async () => {
@@ -201,7 +282,7 @@ function makeDevice(device) {
       }, "无法撤销设备，请稍后再试。");
     });
     remove.setAttribute("aria-label", "撤销设备 " + device.name);
-    controls.append(remove);
+    controls.append(assign, remove);
   }
   return row;
 }
@@ -230,11 +311,7 @@ async function loadState() {
   const next = await request("/state");
   devices = next.devices;
   releases = next.releases;
-  const previousTarget = targetVersion.value;
-  targetVersion.replaceChildren(new Option("请选择版本", ""), new Option("取消分配", cancelVersion),
-    ...releases.filter((release) => !release.paused).map((release) => new Option(release.version, release.version)));
-  targetVersion.value = Array.from(targetVersion.options).some((option) => option.value === previousTarget)
-    ? previousTarget : "";
+  renderAssignmentChoices();
   beginAssignment.disabled = !devices.some((device) => device.active);
   const orderedDevices = [...devices].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "zh-CN"));
   element("devices").replaceChildren(...orderedDevices.map(makeDevice));
@@ -269,14 +346,15 @@ element("refresh").addEventListener("click", (event) => {
 
 beginAssignment.addEventListener("click", () => {
   if (busy) return;
-  showAssignment(assignment.hidden);
+  showAssignment(assignment.hidden || Boolean(assignmentDeviceId));
   if (!assignment.hidden) targetVersion.focus();
 });
 
 element("cancel-assignment").addEventListener("click", () => {
   if (busy) return;
+  const deviceId = assignmentDeviceId;
   showAssignment(false);
-  beginAssignment.focus();
+  restoreAssignmentFocus(deviceId);
 });
 
 targetVersion.addEventListener("change", syncSelection);
@@ -286,12 +364,15 @@ assignment.addEventListener("submit", async (event) => {
   if (!targetVersion.value || !selectedDevices.size) return;
   const version = targetVersion.value === cancelVersion ? null : targetVersion.value;
   const device_ids = Array.from(selectedDevices);
+  const deviceId = assignmentDeviceId;
+  const device = devices.find((candidate) => candidate.id === deviceId);
+  const recipient = device ? "「" + device.name + "」" : device_ids.length + " 台设备";
   await run(applyAssignment, async () => {
     await request("/assignments", "PUT", { device_ids, version });
     showAssignment(false);
-    await refreshAfterChange(version === null ? "已取消所选设备的分配。" : "已为所选设备分配版本。",
-      beginAssignment.id, element("refresh"));
-    beginAssignment.focus();
+    await refreshAfterChange(version === null ? "已取消 " + recipient + " 的版本分配。" : "已为 " + recipient + " 分配 " + version + "。",
+      deviceId ? "assign-device-" + deviceId : beginAssignment.id, element("refresh"));
+    restoreAssignmentFocus(deviceId);
   }, "无法保存版本分配，请稍后再试。");
   syncSelection();
 });
@@ -302,7 +383,7 @@ element("enrollment").addEventListener("click", (event) => {
     clearCode();
     element("enrollment-details").hidden = false;
     codeInput.value = code;
-    element("expiry").textContent = "有效期至 " + formattedDate(expires_at);
+    element("expiry").textContent = "可用一次，有效期至 " + formattedDate(expires_at);
     expiryTimer = setTimeout(() => {
       codeInput.value = "";
       element("copy-code").disabled = true;
@@ -322,6 +403,30 @@ element("copy-code").addEventListener("click", async () => {
     codeInput.focus();
     codeInput.select();
     showNotice("请从已选中的输入框复制登记码。");
+  }
+});
+
+element("copy-invite-instructions").addEventListener("click", async () => {
+  const link = element("open-mac-enrollment").getAttribute("href");
+  const text = [
+    "请在要加入灰度的设备上登记 VortoOne。",
+    "Mac 0.3.6 或更新版本可以打开 " + link,
+    "如果链接无法点击，请将下面一行复制到 Mac 的「终端」运行。",
+    "open '" + link + "'",
+    "如果你用的是 0.3.5，请打开「版本管理」登记。支持私密登记的 Windows 或 Ubuntu 版，在「版本管理」里按 Ctrl+Alt+Shift+U。",
+    "输入设备名称和我另发的一次性登记码。登记后，请告诉我你填写的设备名称。",
+  ].join("\n");
+  const fallback = element("invite-instructions");
+  try {
+    await navigator.clipboard.writeText(text);
+    fallback.hidden = true;
+    showNotice("已复制登记说明。");
+  } catch {
+    fallback.value = text;
+    fallback.hidden = false;
+    fallback.focus();
+    fallback.select();
+    showNotice("请复制已选中的登记说明。");
   }
 });
 
