@@ -18,14 +18,21 @@ LEGACY_FILE = ".vortoone-desktop-setup.json"
 MAX_NAME = 80
 _MAX_BYTES = 8192
 _STEPS = {
-    "team": ("purpose", "name", "business", "about", "team", "model", "invite", "done"),
-    "personal": ("purpose", "about", "team", "model", "done"),
+    "team": ("purpose", "name", "model", "presets", "done"),
+    "personal": ("purpose", "model", "presets", "done"),
 }
-_INPUTS = {"purpose": "mode", "name": "name", "business": "context", "about": "workArea"}
+_LEGACY_STEPS = {
+    "team": {"business", "about", "team", "invite"},
+    "personal": {"about", "team"},
+}
 
 
 class SetupChanged(Exception):
     """Another window has already answered this step."""
+
+
+class ModelRequired(Exception):
+    """Setup can only choose presets with a configured model."""
 
 
 def enabled() -> bool:
@@ -46,15 +53,17 @@ def _read(path: Path) -> dict | None:
     state = json.loads(raw)
     if not isinstance(state, dict):
         raise ValueError("本机引导文件无效")
-    allowed = {"step", "mode", "name", "context", "workArea", "ownerDisplayName"}
-    if set(state) - allowed or not all(isinstance(value, str) for value in state.values()):
+    allowed = {"step", "mode", "name", "context", "workArea", "ownerDisplayName", "modelDeferred"}
+    if set(state) - allowed or not all(isinstance(value, str) for key, value in state.items() if key != "modelDeferred"):
         raise ValueError("本机引导数据无效")
     if state == {"step": "inactive"}:
         return state
     step, mode = state.get("step"), state.get("mode")
+    if "modelDeferred" in state and (state["modelDeferred"] is not True or step != "done"):
+        raise ValueError("本机引导的模型状态无效")
     if step == "purpose" and mode is None:
         return state
-    if mode not in _STEPS or step not in _STEPS[mode][1:]:
+    if mode not in _STEPS or (step not in _STEPS[mode][1:] and step not in _LEGACY_STEPS[mode]):
         raise ValueError("本机引导进度无效")
     return state
 
@@ -64,6 +73,18 @@ def read(root: str) -> dict | None:
     if state is None:
         state = _read(Path(root) / LEGACY_FILE)
     return None if state == {"step": "inactive"} else state
+
+
+def current_step(state: dict, model_configured: bool) -> str:
+    """Project older, unfinished markers onto the current flow without writing them."""
+    step = state["step"]
+    if step in {"purpose", "done"}:
+        return step
+    if step == "business" or (state.get("mode") == "team" and not state.get("name", "").strip()):
+        return "name"
+    if step in {"about", "team", "invite"} or (step == "presets" and not model_configured):
+        return "model"
+    return step
 
 
 def _write(path: Path, state: dict) -> None:
@@ -88,7 +109,7 @@ def _write(path: Path, state: dict) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def advance(root: str, step: str, answer: dict[str, str], validate_answer) -> dict | None:
+def advance(root: str, step: str, answer: dict[str, str], model_configured, *, skip_model: bool = False) -> dict | None:
     if read(root) is None:
         return None
     state_home = state_dir(root)
@@ -96,22 +117,33 @@ def advance(root: str, step: str, answer: dict[str, str], validate_answer) -> di
         state = read(root)
         if state is None:
             return None
-        if step != state["step"]:
+        configured = model_configured()
+        retesting = step == "model" and not skip_model and state.get("modelDeferred") is True
+        if step != current_step(state, configured) and not retesting:
             raise SetupChanged
-        field = _INPUTS.get(step)
-        if field is None:
-            if answer:
-                raise ValueError("此步骤无需填写额外信息")
-        else:
-            value = answer.get(field, "").strip()
-            if set(answer) != {field} or not value or any(ord(char) < 32 and char not in "\n\t" for char in value):
-                raise ValueError("请填写当前步骤所需的信息")
-            if step == "purpose" and value not in _STEPS:
+        if skip_model and step != "model":
+            raise ValueError("只能在连接模型时选择稍后设置")
+        if step == "purpose":
+            if set(answer) != {"mode"} or answer["mode"] not in _STEPS:
                 raise ValueError("请选择工作区用途")
-            validate_answer(field, value)
-            state[field] = value
-        steps = _STEPS[state["mode"]]
-        state["step"] = steps[steps.index(step) + 1]
+            state["mode"] = answer["mode"]
+        elif step == "name":
+            values = {key: value.strip() for key, value in answer.items()}
+            if (not values.get("name") or set(values) - {"name", "context"}
+                    or any(ord(char) < 32 and char not in "\n\t" for value in values.values() for char in value)):
+                raise ValueError("请填写工作区名称")
+            state.update(values)
+        elif answer:
+            raise ValueError("此步骤无需填写额外信息")
+        if step == "model" and not skip_model and not configured:
+            raise ModelRequired
+        if skip_model:
+            state.update(step="done", modelDeferred=True)
+        elif retesting:
+            del state["modelDeferred"]
+        else:
+            steps = _STEPS[state["mode"]]
+            state["step"] = steps[steps.index(step) + 1]
         _write(state_home / FILE, state)
         return state
 

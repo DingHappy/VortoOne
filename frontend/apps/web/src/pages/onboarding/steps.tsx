@@ -48,25 +48,34 @@ export function useTemplate(orgId: string | null, business: BusinessType | null,
  * Step 2, "O que a Acme faz?": the business types to tap and one optional sentence, saved together as the workspace's
  * context, which every agent reads. "Outra coisa" asks for the sentence.
  */
+export interface BusinessDraft {
+  kind: BusinessType | null;
+  line: string;
+}
+
 export function BusinessStep({
   orgId,
   context,
   business,
+  draft,
+  onDraftChange,
   onDone,
 }: {
   orgId: string;
   context: string;
   business: BusinessType | null;
+  draft: BusinessDraft | null;
+  onDraftChange: (draft: BusinessDraft) => void;
   onDone: (business: BusinessType | null) => void;
 }) {
   const { t } = useTranslation();
   const api = useApi();
   const qc = useQueryClient();
-  const [kind, setKind] = useState<BusinessType | null>(business);
-  const [line, setLine] = useState(() => aboutOf(t, context).line);
+  const { kind, line } = draft ?? { kind: business, line: aboutOf(t, context).line };
   const other = kind === "other";
   const text = aboutContext(t, kind, line);
   const save = useMutation({
+    mutationKey: keys.settings(orgId),
     mutationFn: () => api.orgs.updateSettings(orgId, { context: text }),
     onSuccess: (settings) => {
       qc.setQueryData(keys.settings(orgId), settings);
@@ -84,7 +93,7 @@ export function BusinessStep({
                 type="button"
                 className="tp-chip"
                 aria-pressed={b === kind}
-                onClick={() => setKind(b === kind ? null : b)}
+                onClick={() => onDraftChange({ kind: b === kind ? null : b, line })}
               >
                 <Icon name={BUSINESS_ICONS[b]} size={14} />
                 <span>{t(`teamPlan.business.${b}`)}</span>
@@ -103,7 +112,7 @@ export function BusinessStep({
               rows={1}
               autoGrow
               value={line}
-              onChange={(e) => setLine(e.target.value)}
+              onChange={(e) => onDraftChange({ kind, line: e.target.value })}
               maxLength={500}
               required={other}
             />

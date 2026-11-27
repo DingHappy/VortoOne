@@ -210,8 +210,15 @@ pub fn desktop_setup_at_model(home: &Path) -> bool {
         || data.len() as u64 > MAX_SETUP_BYTES {
         return false;
     }
-    serde_json::from_slice::<serde_json::Value>(&data)
-        .is_ok_and(|value| value.get("step").and_then(|step| step.as_str()) == Some("model"))
+    serde_json::from_slice::<serde_json::Value>(&data).is_ok_and(|value| {
+        let step = value.get("step").and_then(|step| step.as_str());
+        match value.get("mode").and_then(|mode| mode.as_str()) {
+            Some("personal") => matches!(step, Some("model" | "presets" | "about" | "team")),
+            Some("team") if value.get("name").and_then(|name| name.as_str()).is_some_and(|name| !name.trim().is_empty()) =>
+                matches!(step, Some("model" | "presets" | "about" | "team" | "invite")),
+            _ => false,
+        }
+    })
 }
 
 impl LocalState {
@@ -394,11 +401,21 @@ mod tests {
         let setup: serde_json::Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
         assert_eq!(setup, serde_json::json!({"step": "purpose", "ownerDisplayName": "新安装的所有者"}));
         assert!(!desktop_setup_at_model(&home));
-        fs::write(&marker, r#"{"step":"model","mode":"team"}"#).unwrap();
+        fs::write(&marker, r#"{"step":"model","mode":"team","name":"团队"}"#).unwrap();
         prepare_local_home(&fresh, true, Some("不能覆盖")).unwrap();
-        assert_eq!(fs::read_to_string(&marker).unwrap(), r#"{"step":"model","mode":"team"}"#);
+        assert_eq!(fs::read_to_string(&marker).unwrap(), r#"{"step":"model","mode":"team","name":"团队"}"#);
         assert!(desktop_setup_at_model(&home));
         fs::write(&marker, r#"{"step":"done","mode":"team"}"#).unwrap();
+        assert!(!desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"about","mode":"team","name":"团队"}"#).unwrap();
+        assert!(desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"invite","mode":"team","name":"团队"}"#).unwrap();
+        assert!(desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"team","mode":"personal"}"#).unwrap();
+        assert!(desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"presets","mode":"personal"}"#).unwrap();
+        assert!(desktop_setup_at_model(&home));
+        fs::write(&marker, r#"{"step":"model","mode":"team"}"#).unwrap();
         assert!(!desktop_setup_at_model(&home));
 
         let old = temp("existing-setup");

@@ -929,6 +929,7 @@ export const ptBR = {
   },
   onboarding: {
     desktopSetup: {
+      modelTestFailed: "O modelo não respondeu ao teste. Confira o endpoint, o ID do modelo e a chave de API e tente de novo.",
       businessHint: "Descreva para que você vai usar seu workspace.",
       agentsHint: "Estes agentes já estão no seu workspace. Você pode adicionar mais depois da configuração.",
       modelTitle: "Configurar um modelo",
@@ -986,7 +987,7 @@ export const ptBR = {
       },
       stepOf: "Passo {{n}} de {{total}}",
       lodi: {
-        name: "Oi, {{first}}. Eu sou o {{name}}. Vou montar o time com você em uns dois minutos.",
+        name: "Oi, {{first}}. Eu sou o {{name}}. Vou ajudar você a configurar seu workspace.",
         name_female: "Oi, {{first}}. Eu sou a {{name}}. Vou montar o time com você em uns dois minutos.",
         business: "Com isso eu já sei quem chamar para o time.",
         team: "Esse é o time que eu montaria. Você muda tudo depois.",
@@ -1005,7 +1006,7 @@ export const ptBR = {
         found: "Achei o seu time. Confere se está todo mundo aqui.",
         foundPersonal: "Achei os seus agentes. Confere se estão todos aqui.",
         ai: "Última etapa. Escolha a IA que você já usa e o time acorda.",
-        aiPersonal: "Última etapa. Escolha a IA que você já usa e eu acordo.",
+        aiPersonal: "Conecte a IA que você usa para eu começar a ajudar.",
         aiThen: "Escolha a IA que você já usa e o time acorda. Depois, falta só chamar as pessoas.",
         aiThenAlone: "Escolha a IA que você já usa e eu acordo. Depois, falta só chamar as pessoas.",
         connected: "Agora sim. Me chama no workspace que eu mostro o resto.",
@@ -1117,7 +1118,22 @@ export const ptBR = {
         titlePersonal: "Conecte uma IA para os seus agentes pensarem",
         titleAlone: "Conecte uma IA para o {{name}} pensar",
         titleAlone_female: "Conecte uma IA para a {{name}} pensar",
+        lead: "Use uma chave de API ou escolha uma assinatura disponível.",
         later: "Conectar depois",
+        existing: "Seu workspace já tem uma IA conectada.",
+        statusUnavailable: "Não foi possível carregar as opções de conta.",
+        laterHint: "Você pode terminar de conectar a IA no Início. Os agentes poderão responder após a conexão.",
+        model: {
+          title: "Conectar um provedor de modelos",
+          description: "Use um serviço compatível com OpenAI com sua própria chave de API.",
+          provider: "Provedor de modelos",
+          custom: "Endpoint personalizado",
+          id: "ID do modelo",
+          connect: "Testar e conectar",
+          retry: "Tentar ativar de novo",
+          unverified: "Não foi possível verificar o modelo. Confira o ID e tente de novo.",
+          inactive: "O modelo passou no teste, mas o workspace ainda não confirmou a ativação.",
+        },
         doneTitle: "Pronto. O time da {{org}} já pensa.",
         doneTitlePersonal: "Pronto. O {{name}} já pensa.",
         doneTitlePersonal_female: "Pronto. A {{name}} já pensa.",
@@ -1135,6 +1151,11 @@ export const ptBR = {
         awakePersonal: "Os seus agentes acordaram",
         awakeAlone: "O {{name}} acordou",
         awakeAlone_female: "A {{name}} acordou",
+      },
+      presets: {
+        title: "Adicione agentes ao workspace",
+        lead: "Escolha quantos precisar ou comece com seu assistente principal.",
+        say: "Vou adicionar os agentes que você escolher ao workspace.",
       },
       people: {
         title: "Quem trabalha com você?",
@@ -1193,6 +1214,7 @@ export const ptBR = {
     workspace: {
       title: "Como se chama o seu workspace?",
       lead: "É onde o time e os agentes conversam.",
+      contextOptional: "Descrição da equipe (opcional)",
       zone: "Fuso horário: {{zone}}",
       zoneChange: "trocar",
       logoHelp: "PNG com fundo transparente fica melhor. Aparece na barra lateral para todo mundo.",
@@ -1505,6 +1527,15 @@ export const ptBR = {
       title: "Quem pensa",
       failed:
         "Alguns agentes não conseguiram passar a usar a conta do {{brand}} no {{computer}}. Dá para trocar na página de cada um.",
+    },
+    presetPicker: {
+      label: "Agentes prontos opcionais",
+      present: "Já está neste workspace",
+      addSelected: "Adicionar agentes selecionados",
+      create_one: "Criar {{count}} agente e continuar",
+      create_other: "Criar {{count}} agentes e continuar",
+      retry: "Tentar criar os agentes selecionados de novo",
+      skip: "Adicionar depois",
     },
     presets: {
       theo: { name: "Theo", role: "PM", desc: "Organiza tarefas e mantém o roadmap atualizado." },
@@ -3214,6 +3245,8 @@ export const ptBR = {
       org: "Os agentes ainda não têm uma\u00a0IA.",
       orgHint: "Você também pode pedir no chat, como “usar meu plano do Claude”.",
       orgAction: "Conectar uma IA",
+      resumeAction: "Continuar configurando a IA",
+      modelUntested: "Teste o modelo salvo para concluir a configuração da IA.",
     },
     agent: "{{name}} não vai responder porque não tem uma IA\u00a0conectada.",
     /** Its computer has no such CLI installed (`reason: cli_missing`). */

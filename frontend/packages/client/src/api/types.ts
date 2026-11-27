@@ -412,7 +412,7 @@ export interface OrgOnboarding {
   generalChannelId: string;
 }
 
-export type DesktopSetupStep = "purpose" | "name" | "business" | "about" | "team" | "model" | "invite";
+export type DesktopSetupStep = "purpose" | "name" | "model" | "presets";
 
 /** Pending setup of the bundled local workspace, visible to its local owner. */
 export interface DesktopSetup {
@@ -427,6 +427,9 @@ export interface DesktopSetup {
 export interface Me {
   user: User;
   organizations: OrgSummary[];
+  /** This local owner is connected to a bundled Desktop home. */
+  desktopManaged?: boolean;
+  desktopModelDeferred?: boolean;
   desktopSetup?: DesktopSetup;
 }
 

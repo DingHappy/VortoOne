@@ -3,6 +3,9 @@ use std::{collections::HashMap, fs, io::Write, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+// Keep in sync with the bundled runtime's default when OPENAI_API_BASE is empty.
+const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+
 pub fn env_file(config: &Path, data: &Path) -> Option<PathBuf> {
     let saved = data.join("model.env");
     if saved.is_file() { return Some(saved); }
@@ -25,13 +28,43 @@ pub struct ModelView { base_url: String, model: String, has_key: bool }
 #[serde(rename_all = "camelCase")]
 pub struct ModelInput { base_url: String, model: String, api_key: String, clear_key: bool }
 
+fn effective_base<'a>(found: &'a HashMap<String, String>, inherited: Option<&'a str>) -> &'a str {
+    found.get("OPENAI_API_BASE").map(String::as_str).or(inherited)
+        .map(str::trim).filter(|base| !base.is_empty()).unwrap_or(DEFAULT_BASE_URL)
+}
+
 fn view(path: Option<&Path>) -> ModelView {
     let found = values(path);
+    let inherited = std::env::var("OPENAI_API_BASE").ok();
+    let has_key = found.get("OPENAI_API_KEY").is_some_and(|key| !key.trim().is_empty());
     ModelView {
-        base_url: found.get("OPENAI_API_BASE").cloned().unwrap_or_default(),
+        base_url: if has_key { effective_base(&found, inherited.as_deref()).to_owned() } else {
+            found.get("OPENAI_API_BASE").cloned().unwrap_or_default()
+        },
         model: found.get("DEFAULT_MODEL").or_else(|| found.get("VORTOONE_MODEL")).cloned().unwrap_or_default(),
-        has_key: found.get("OPENAI_API_KEY").is_some_and(|key| !key.trim().is_empty()),
+        has_key,
     }
+}
+
+// The URL parser also accepts some malformed spellings. Those may be saved with an
+// explicit key as before, but never cause a stored credential to be reused.
+fn model_key_origin(base: &str) -> Option<String> {
+    let (_, rest) = base.split_once("://")?;
+    let authority = rest.split('/').next()?;
+    let malformed_escape = base.as_bytes().iter().enumerate().any(|(index, byte)| {
+        *byte == b'%' && !base.as_bytes().get(index + 1..index + 3)
+            .is_some_and(|escape| escape.iter().all(u8::is_ascii_hexdigit))
+    });
+    if authority.is_empty() || authority.ends_with(':') || authority.contains(['@', '%'])
+        || base.chars().any(|c| c.is_whitespace() || c.is_control() || c == '\\') || malformed_escape {
+        return None;
+    }
+    let url: tauri::Url = base.parse().ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none()
+        || !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
+    Some(url.origin().ascii_serialization())
 }
 
 fn keyless_loopback(base: &str) -> bool {
@@ -60,9 +93,20 @@ fn save(target: &Path, previous: Option<&Path>, input: ModelInput) -> Result<(),
         return Err("模型地址应使用 http 或 https，并且不包含账号、密码或查询参数。".into());
     }
     let mut found = values(previous);
-    let key = if input.clear_key { String::new() } else if input.api_key.is_empty() {
-        found.get("OPENAI_API_KEY").cloned().unwrap_or_default()
-    } else { input.api_key };
+    let key = if input.clear_key {
+        String::new()
+    } else if input.api_key.trim().is_empty() {
+        let inherited = std::env::var("OPENAI_API_BASE").ok();
+        let previous_origin = model_key_origin(effective_base(&found, inherited.as_deref()));
+        let next_origin = model_key_origin(base);
+        if previous_origin.is_some() && previous_origin == next_origin {
+            found.get("OPENAI_API_KEY").cloned().unwrap_or_default()
+        } else {
+            String::new()
+        }
+    } else {
+        input.api_key
+    };
     let key = if key.trim().is_empty() {
         if !keyless_loopback(base) {
             return Err("请填写 API Key。只有本机回环地址（localhost 或 127.0.0.1）允许留空。".into());
@@ -153,6 +197,46 @@ mod tests {
             model: "example-model".into(), api_key: " ".into(), clear_key: false }).unwrap_err();
         assert!(error.contains("API Key"));
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn blank_key_reuse_is_confined_to_the_effective_service_origin() {
+        let root = std::env::temp_dir().join(format!("vortoone-model-origin-test-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("model.env");
+        let previous = root.join("legacy.env");
+        let old_key = "fixture-old-key";
+        let fresh_key = "fixture-fresh-key";
+        let inherited = Some("https://other.example/v1");
+        assert_eq!(effective_base(&HashMap::new(), None), DEFAULT_BASE_URL);
+        assert_eq!(effective_base(&HashMap::new(), inherited), inherited.unwrap());
+        fs::write(&previous, format!("OPENAI_API_KEY={old_key}\nOPENAI_API_BASE=\n")).unwrap();
+        assert_eq!(view(Some(&previous)).base_url, DEFAULT_BASE_URL);
+        let input = |address: &str, key: &str| ModelInput {
+            base_url: address.into(), model: "fixture-model".into(), api_key: key.into(), clear_key: false,
+        };
+        save(&target, Some(&previous), input("https://API.OPENAI.COM:443/alternate/v1", "")).unwrap();
+        assert!(values(Some(&target))["OPENAI_API_KEY"] == old_key);
+        for changed in ["https://other.example/v1", "http://api.openai.com/v1", "https://api.openai.com:8443/v1"] {
+            let error = save(&target, Some(&target), input(changed, "")).unwrap_err();
+            assert!(error.contains("API Key"));
+            assert!(values(Some(&target))["OPENAI_API_KEY"] == old_key);
+        }
+        save(&target, Some(&target), input("http://127.0.0.1:11434/v1", "")).unwrap();
+        assert!(!view(Some(&target)).has_key);
+        save(&target, Some(&target), input("https://other.example/v1", fresh_key)).unwrap();
+        assert!(values(Some(&target))["OPENAI_API_KEY"] == fresh_key);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn malformed_endpoints_do_not_identify_an_origin_for_key_reuse() {
+        for malformed in ["https:/api.openai.com/v1", "https:///api.openai.com/v1", "https://@api.openai.com/v1",
+            "https://api.openai.com:/v1", "https://api.openai.com/invalid%xx", "https://api.openai.com/v1?",
+            "https://api.openai.com/v1#", "https://api.openai.com/with space"] {
+            assert!(model_key_origin(malformed).is_none(), "{malformed}");
+        }
+        assert_eq!(model_key_origin("https://API.OPENAI.COM:443/v1/encoded%20segment"), model_key_origin(DEFAULT_BASE_URL));
     }
 
     #[test]

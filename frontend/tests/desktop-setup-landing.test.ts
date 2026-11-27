@@ -4,7 +4,7 @@ import { landingFor } from "../packages/client/src/lib/guards";
 import type { Me } from "../packages/client/src/api/types";
 
 const me = {
-  user: { id: "test-owner" },
+  user: { id: "test-owner", canCreateWorkspace: false },
   organizations: [{ id: "local", role: "owner" }],
 } as Me;
 

@@ -265,8 +265,11 @@ export const desktopEn = {
       "Counts such as people, agents, machine sizes, AI tokens used and how much data the agents' browsers send and receive. Never messages, files, names or sites.",
     start: "Start",
     setting: "Getting everything ready",
+    ready: "Your workspace is ready",
+    progress: "{{done}} of {{total}} steps complete",
     /** Under the form, beside a sleeping agent: what closing the app does. */
     rest: "When you close the app, your agents rest. They're back as soon as you open it again.",
+    restMac: "Closing this window keeps VortoOne in the Dock and your agents running. Press ⌘Q to quit.",
     step: {
       database: "Making room for your data",
       databaseNote: "first time only",

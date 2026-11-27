@@ -1,7 +1,11 @@
 import type { Agent, AppNotification, Mission, Routine } from "@vortoone/client";
 import {
+  createRequester,
+  keys,
   useAiStatus,
+  useAuthConfig,
   useChannels,
+  useComputerSetup,
   useDms,
   useMissionList,
   useNotificationAction,
@@ -12,6 +16,8 @@ import {
   useWorkingRuns,
 } from "@vortoone/client";
 import { canTalk, listsAgent } from "@vortoone/client/lib/audience";
+import { computerEdition } from "@vortoone/client/lib/computer";
+import { errorText } from "@vortoone/client/lib/errors";
 import { firstName, relativeTime, timeLeft, upcomingAt } from "@vortoone/client/lib/format";
 import { agentGrammar } from "@vortoone/client/lib/grammar";
 import {
@@ -25,17 +31,22 @@ import {
 import { latestText } from "@vortoone/client/lib/message-body";
 import { waitingParts, waitingText } from "@vortoone/client/lib/missions";
 import { allItems, waitingCardOf, widgetNoticeOf } from "@vortoone/client/lib/notifications";
+import { can } from "@vortoone/client/lib/permissions";
 import { isRightHand } from "@vortoone/client/lib/right-hand";
 import { dayPart } from "@vortoone/client/lib/welcome";
 import { WORKING_POLL_MS, type WorkItem, workByAgent, workingNow } from "@vortoone/client/lib/working";
 import { modeKey } from "@vortoone/client/lib/workspace-mode";
-import { Composer, EmptyState, GroupHeading, Icon, PageHeader, Select } from "@vortoone/ui";
+import { Button, Composer, EmptyState, GroupHeading, Icon, PageHeader, Select } from "@vortoone/ui";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, type RefObject, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";
+import { OnboardingModelDialog } from "@/components/ai/OnboardingModelDialog";
+import { useConnectAi } from "@/components/ConnectAi";
 import { useFirstRun } from "@/components/FirstRun";
 import { useMissionsWaitingYou } from "@/components/missions/MissionWaiting";
+import { NoAiBanner } from "@/components/NoAi";
 import { useNotificationOpener } from "@/components/NotificationOpen";
 import { Face, Headline, SystemFace } from "@/components/NotificationParts";
 import { useOrg } from "@/components/org-context";
@@ -45,6 +56,7 @@ import { useDirectory } from "@/hooks/useDirectory";
 import { useNow } from "@/hooks/useNow";
 import { agentLine, useAgentPresence } from "@/hooks/usePresence";
 import { TYPED_VALUES } from "@/i18n";
+import { desktopMetadata, NATIVE_MODEL_SETTINGS_PATH } from "@/lib/desktop-metadata";
 import { lookOf } from "@/lib/look";
 import "./home.css";
 // Its "Para você" draws the inbox's rows (Face, SystemFace, the calm card).
@@ -57,6 +69,7 @@ import "./notifications.css";
  */
 
 type Dir = ReturnType<typeof useDirectory>;
+const request = createRequester();
 
 export function HomePage() {
   const { t } = useTranslation();
@@ -140,7 +153,12 @@ export function HomePage() {
       )}
 
       {/* Being deleted, the workspace takes no message: the line on top says why. */}
-      {askable.length > 0 && !org.deletion && <AskAgent agents={askable} composer={composer} />}
+      {askable.length > 0 && !org.deletion && (
+        <div className="home-composer">
+          <HomeAiSetup agentIds={askable.map((agent) => agent.id)} />
+          <AskAgent agents={askable} composer={composer} />
+        </div>
+      )}
 
       <HomeMural
         orgId={org.id}
@@ -220,6 +238,60 @@ export function HomePage() {
         </Section>
       )}
     </div>
+  );
+}
+
+function HomeAiSetup({ agentIds }: { agentIds: string[] }) {
+  const { t } = useTranslation();
+  const { org, me } = useOrg();
+  const status = useAiStatus(org.id);
+  const connect = useConnectAi();
+  const qc = useQueryClient();
+  const deferred = me.desktopModelDeferred && org.role === "owner";
+  const auth = useAuthConfig();
+  const setup = useComputerSetup(org.id, deferred || status.data?.any === false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const native = me.desktopManaged && org.role === "owner" && desktopMetadata()?.desktopHomeModelSettings === true;
+  const selfHosted = computerEdition(setup.data, auth.data?.workspaceComputer) === "selfhost";
+  const openModel = native
+    ? () => window.location.assign(NATIVE_MODEL_SETTINGS_PATH)
+    : selfHosted && can(org, "manage_credentials")
+      ? () => setModelOpen(true)
+      : undefined;
+  const testModel = useMutation({
+    meta: { silent: true },
+    mutationFn: async () => {
+      await request("/api/app/desktop-setup", { method: "PATCH", json: { step: "model" } });
+      await qc.refetchQueries({ queryKey: keys.me, exact: true });
+    },
+  });
+  return (
+    <>
+      {deferred ? (
+        <div className="noai-banner ac-actline home-ai-setup">
+          <div>
+            <span className="noai-banner__text ac-iconline" role="status">
+              <Icon name="plug" size={16} />
+              <b>{t(status.data?.apiKey ? "noAi.banner.modelUntested" : "noAi.banner.org")}</b>
+            </span>
+            {testModel.isError && <p className="ac-field__error" role="alert">{errorText(t, testModel.error)}</p>}
+          </div>
+          <div className="home-ai-setup__actions">
+            <Button size="sm" disabled={testModel.isPending} onClick={openModel ?? (() => connect?.open({}))}>
+              {t("noAi.banner.resumeAction")}
+            </Button>
+            {status.data?.apiKey && (
+              <Button size="sm" variant="primary" loading={testModel.isPending} onClick={() => testModel.mutate()}>
+                {t("onboarding.flow.ai.model.connect")}
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <NoAiBanner agentIds={agentIds} resume onConnectWorkspace={openModel} />
+      )}
+      {modelOpen && <OnboardingModelDialog orgId={org.id} onClose={() => setModelOpen(false)} />}
+    </>
   );
 }
 

@@ -50,7 +50,17 @@ import "./no-ai.css";
  * Above the composer: this DM's agent has no AI, or (anywhere with agents) the organization has none, its ⓘ saying
  * it can also be asked for in the chat. Everyone sees it; the dialog says what each person may connect.
  */
-export function NoAiBanner({ agentIds, dmAgentId }: { agentIds: string[]; dmAgentId?: string }) {
+export function NoAiBanner({
+  agentIds,
+  dmAgentId,
+  resume,
+  onConnectWorkspace,
+}: {
+  agentIds: string[];
+  dmAgentId?: string;
+  resume?: boolean;
+  onConnectWorkspace?: () => void;
+}) {
   const { t } = useTranslation();
   const { org, me } = useOrg();
   const dir = useDirectory(org.id);
@@ -59,9 +69,12 @@ export function NoAiBanner({ agentIds, dmAgentId }: { agentIds: string[]; dmAgen
   const held = usePlanHold() !== null;
   // On a billing hold an AI comes after the plan: the agent's card and the hold's banner say so.
   if (!status.data || !connect || held) return null;
-  if (dmAgentId) {
-    if (aiStateOf(status.data, dmAgentId) !== "no_ai") return null;
-    const agent = dir.agentById.get(dmAgentId);
+  // On Home, a specialist with AI can coexist with a main assistant that still needs to be set up.
+  const mainId = resume && status.data.any ? agentIds.find((id) => isRightHand(dir.agentById.get(id))) : undefined;
+  const target = dmAgentId ?? mainId;
+  if (target) {
+    if (aiStateOf(status.data, target) !== "no_ai") return null;
+    const agent = dir.agentById.get(target);
     const name = agent?.name ?? t("channel.unknownAgent");
     return (
       <div className="noai-banner ac-actline" role="status">
@@ -70,19 +83,19 @@ export function NoAiBanner({ agentIds, dmAgentId }: { agentIds: string[]; dmAgen
           <b>
             {agent?.personalCodex
               ? t("personalCodex.notReady")
-              : t(noAiStatusKey(status.data, dmAgentId), agentGrammar(name))}
+              : t(noAiStatusKey(status.data, target), agentGrammar(name))}
           </b>
         </span>
         {mayConnectAi(agent, me.user.id, org) && (
-          <Button size="sm" onClick={() => connect.open({ agentId: dmAgentId, chat: true })}>
-            {t(agent?.personalCodex ? "personalCodex.check" : "noAi.action")}
+          <Button size="sm" onClick={() => connect.open({ agentId: target, chat: !!dmAgentId })}>
+            {t(resume ? "noAi.banner.resumeAction" : agent?.personalCodex ? "personalCodex.check" : "noAi.action")}
           </Button>
         )}
       </div>
     );
   }
   if (status.data.any || agentIds.length === 0) return null;
-  const action = t("noAi.banner.orgAction");
+  const action = t(resume ? "noAi.banner.resumeAction" : "noAi.banner.orgAction");
   // The workspace has no AI at all: Connect for the whole team, whoever is in the channel (ADR 0160, "For the whole
   // team"). Only someone else's agent alone in it opens its own dialog, which says who connects it.
   const lone = agentIds.length === 1 ? dir.agentById.get(agentIds[0] ?? "") : undefined;
@@ -102,7 +115,7 @@ export function NoAiBanner({ agentIds, dmAgentId }: { agentIds: string[]; dmAgen
           <b>{t("noAi.banner.org")}</b>
         )}
       </span>
-      <Button size="sm" onClick={() => connect.open(theirs ? { agentId: lone.id } : {})}>
+      <Button size="sm" onClick={onConnectWorkspace ?? (() => connect.open(theirs ? { agentId: lone.id } : {}))}>
         {action}
       </Button>
     </div>

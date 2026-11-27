@@ -1,0 +1,52 @@
+:root {
+  color-scheme: light dark;
+  font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: light-dark(#f7f8fa, #17181b);
+  --panel: light-dark(#fff, #222429);
+  --text: light-dark(#20222a, #f1f2f6);
+  --muted: light-dark(#575e6c, #b2b7c3);
+  --line: light-dark(#dfe2e9, #40434c);
+  --accent: light-dark(#5549bc, #c0b7ff);
+  --on-accent: light-dark(#fff, #25203c);
+  --red: light-dark(#ae252a, #ffb6b6);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+main { max-width: 720px; margin: 32px auto; padding: 0 28px; }
+h1 { font-size: 28px; }
+h2 { font-size: 17px; margin: 0 0 8px; }
+p { margin: 8px 0; line-height: 1.65; color: var(--muted); }
+section { border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 18px 0; background: var(--panel); }
+dialog { max-width: min(420px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 14px; padding: 20px; background: var(--panel); color: var(--text); }
+dialog::backdrop { background: #0007; }
+dialog .row { justify-content: flex-end; margin-top: 16px; }
+strong { font-size: 20px; }
+details { margin-top: 22px; overflow-wrap: anywhere; }
+summary { cursor: pointer; }
+.row, .fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.row h2 { margin: 0; }
+#gray-updates > .row:first-child { justify-content: space-between; }
+.fields { align-items: end; margin: 12px 0; }
+.fields > div { flex: 1 1 190px; }
+label { display: block; margin-bottom: 6px; font-weight: 650; }
+input, button {
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+}
+input { width: 100%; min-width: 0; }
+button { background: var(--accent); color: var(--on-accent); font-weight: 650; border-color: var(--accent); cursor: pointer; }
+button.secondary { background: var(--panel); color: var(--text); border-color: var(--line); }
+button:disabled, input:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#gray-status:empty { display: none; }
+.error { color: var(--red); }
+@media (max-width: 540px) {
+  main { padding: 0 16px; }
+  section { padding: 16px; }
+}

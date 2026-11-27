@@ -64,7 +64,6 @@ export function OnboardingPreview({
                     {t("sidebarAgents.count", { count: agents.length })}
                   </span>
                 </span>
-                <Icon name="chevronDown" size={16} />
               </span>
             </div>
           </div>
@@ -72,7 +71,6 @@ export function OnboardingPreview({
             <div className="sidebar__group sidebar__section" data-open="true">
               <div className="sidebar__section-head">
                 <span className="sidebar__section-toggle">
-                  <Icon name="chevronDown" size={14} className="sidebar__section-chevron" />
                   <span className="sidebar__label">{t("shell.channels")}</span>
                 </span>
               </div>
@@ -93,7 +91,6 @@ export function OnboardingPreview({
             <div className="sidebar__group sidebar__section" data-open="true">
               <div className="sidebar__section-head">
                 <span className="sidebar__section-toggle">
-                  <Icon name="chevronDown" size={14} className="sidebar__section-chevron" />
                   <span className="sidebar__label">{t("shell.agents")}</span>
                 </span>
               </div>
@@ -129,7 +126,6 @@ export function OnboardingPreview({
                   <span className="sidebar__item-role">{t("presence.online")}</span>
                 </span>
               </span>
-              <Icon name="bell" />
             </div>
           </div>
         </div>

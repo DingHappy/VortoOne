@@ -89,8 +89,8 @@ def _text(value: Any, label: str, limit: int, *, required: bool = True) -> str:
     return value.strip()
 
 
-def _base_url(value: Any) -> str:
-    text = _text(value, "地址", MAX_URL)
+def _base_url(value: Any, limit: int = MAX_URL) -> str:
+    text = _text(value, "地址", limit)
     from urllib.parse import urlsplit
     parsed = urlsplit(text)
     if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password \
@@ -181,22 +181,50 @@ _PROBE_TOOL = {"type": "function", "function": {
     "parameters": {"type": "object", "properties": {"ready": {"type": "boolean"}}, "required": ["ready"]}}}
 
 
-async def check_model(base_url: str, key: str, model: str) -> Dict[str, Any]:
+def desktop_model_probe_target() -> tuple[str, str, str] | None:
+    """Read the active Desktop default as one snapshot, including a keyless local address."""
+    from src.llm import endpoints
+    from src.llm.client import LLMConfig
+    from src.llm.providers import default_chat_ready, keyless_loopback_base
+
+    with endpoints.LOCK:
+        if not default_chat_ready():
+            return None
+        config = LLMConfig()
+        key = os.getenv("OPENAI_API_KEY", "").strip()
+        base = _base_url(config.base_url, limit=2048)
+        model = config.model.strip()
+        if not model:
+            return None
+        if not key:
+            direct = keyless_loopback_base(base)
+            if direct is None:
+                return None
+            base = direct
+        return base, key, model
+
+
+async def check_model(base_url: str, key: str, model: str, *, trust_env: bool = True) -> Dict[str, Any]:
     """一次真的小调用：调了工具 ok，只说话 no_tools，出错 failed（带端点的原话）。agent 靠调工具干活。"""
     import httpx
     body = {"model": model, "max_tokens": 32, "tools": [_PROBE_TOOL],
             "messages": [{"role": "user", "content": "Call report_ready with ready=true."}]}
     try:
-        async with httpx.AsyncClient(timeout=CHECK_TIMEOUT, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=CHECK_TIMEOUT, follow_redirects=False, trust_env=trust_env) as client:
             response = await client.post(f"{base_url}/chat/completions", headers=_headers(key), json=body)
         if response.status_code >= 400:
             detail = response.text[:200].strip()
             return {"model": model, "check": "failed", "error": f"{response.status_code} {detail}".strip()}
         data = response.json()
         message = ((data.get("choices") or [{}])[0] or {}).get("message") or {}
+        if message.get("tool_calls"):
+            return {"model": model, "check": "ok"}
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return {"model": model, "check": "no_tools"}
     except (httpx.HTTPError, ValueError, AttributeError, IndexError, TypeError) as error:
         return {"model": model, "check": "failed", "error": f"调用失败：{type(error).__name__}"}
-    return {"model": model, "check": "ok" if message.get("tool_calls") else "no_tools"}
+    return {"model": model, "check": "failed", "error": "端点未返回模型回复"}
 
 
 # ── 视图 ─────────────────────────────────────────────────────────────────────

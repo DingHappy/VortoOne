@@ -20,6 +20,11 @@ class NameRefused extends Error {
   }
 }
 
+export interface AboutDraft {
+  name: string;
+  area: WorkArea | null;
+}
+
 /**
  * "Agora, sobre você" (ADR 0162, amended 2026-11-12): the person, before the team. Their face large with its two ways
  * in, as Trocar foto offers them (the avatar builder, or a photo of theirs), each saved by its own dialog; their name
@@ -27,15 +32,24 @@ class NameRefused extends Error {
  * (a name refused stays on the step, said under the field) and the area, an area left unpicked as `skipped`; the area's
  * save never holds the onboarding. Once per account: a person who answered it before finds it answered.
  */
-export function YouStep({ me, onDone }: { me: Me; onDone: () => void }) {
+export function YouStep({
+  me,
+  draft,
+  onDraftChange,
+  onDone,
+}: {
+  me: Me;
+  draft: AboutDraft | null;
+  onDraftChange: (draft: AboutDraft) => void;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
   const { org } = useOrg();
   const api = useApi();
   const auth = useAuth();
   const qc = useQueryClient();
   const saved = me.user.workArea ?? null;
-  const [name, setName] = useState(me.user.name);
-  const [area, setArea] = useState<WorkArea | null>(isArea(saved) ? saved : null);
+  const { name, area } = draft ?? { name: me.user.name, area: isArea(saved) ? saved : null };
   const [building, setBuilding] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
@@ -49,6 +63,7 @@ export function YouStep({ me, onDone }: { me: Me; onDone: () => void }) {
     void qc.invalidateQueries({ queryKey: keys.people(org.id) });
   };
   const go = useMutation({
+    mutationKey: keys.me,
     meta: { silent: true },
     mutationFn: async () => {
       const typed = name.trim();
@@ -97,7 +112,7 @@ export function YouStep({ me, onDone }: { me: Me; onDone: () => void }) {
               className="onb__big"
               value={name}
               onChange={(e) => {
-                setName(e.target.value);
+                onDraftChange({ name: e.target.value, area });
                 setRefused(null);
               }}
               autoComplete="name"
@@ -120,7 +135,7 @@ export function YouStep({ me, onDone }: { me: Me; onDone: () => void }) {
                   className="tp-chip"
                   aria-pressed={a === area}
                   // One at a time; pressed again, none: it is optional.
-                  onClick={() => setArea(a === area ? null : a)}
+                  onClick={() => onDraftChange({ name, area: a === area ? null : a })}
                 >
                   <Icon name={AREA_ICONS[a]} size={14} />
                   <span>{t(`onboarding.flow.area.options.${a}`)}</span>
