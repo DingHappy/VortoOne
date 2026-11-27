@@ -889,6 +889,7 @@
   },
   "onboarding": {
     "desktopSetup": {
+      "modelTestFailed": "模型未通过连接测试。请检查服务地址、模型 ID 和 API Key 后重试。",
       "businessHint": "简单介绍一下这个工作区的用途。",
       "agentsHint": "这些智能体已经在工作区里。完成设置后，你可以继续添加。",
       "modelTitle": "配置模型",
@@ -941,7 +942,7 @@
       },
       "stepOf": "第 {{n}} 步，共 {{total}} 步",
       "lodi": {
-        "name": "你好，{{first}}。我是{{name}}。大约两分钟，我们一起把团队组建好。",
+        "name": "你好，{{first}}。我是 {{name}}，我会帮你配置工作区。",
         "business": "有了这些，我就知道该请谁加入团队了。",
         "team": "这是我会组建的团队。之后可以随时修改。",
         "teamMade": "团队已经组好了。准备好了我们就继续。",
@@ -959,7 +960,7 @@
         "found": "找到你的团队了。看看大家是不是都在。",
         "foundPersonal": "找到你的智能体了。看看是不是都在。",
         "ai": "最后一步。选择你已经在用的 AI，团队就会醒来。",
-        "aiPersonal": "最后一步。选择你已经在用的 AI，我就会醒来。",
+        "aiPersonal": "连接你在用的 AI，我就能开始帮你。",
         "aiThen": "选择你已经在用的 AI，团队就会醒来。之后只剩邀请成员了。",
         "aiThenAlone": "选择你已经在用的 AI，我就会醒来。之后只剩邀请成员了。",
         "connected": "好了。在工作区里叫我，我带你看看其余的。",
@@ -1063,8 +1064,23 @@
       },
       "ai": {
         "titlePersonal": "连接一个 AI，让你的智能体开始思考",
+        "lead": "用 API Key 连接模型服务，或选择当前可用的订阅。",
         "titleAlone": "连接一个 AI，让 {{name}} 开始思考",
         "later": "稍后连接",
+        "existing": "此工作区已连接 AI。",
+        "statusUnavailable": "暂时无法读取订阅账号选项。",
+        "laterHint": "之后可从首页继续配置。连接后，智能体就可以回复。",
+        "model": {
+          "title": "连接模型服务",
+          "description": "使用自己的 API Key，连接兼容 OpenAI 的模型服务。",
+          "provider": "模型服务商",
+          "custom": "自定义端点",
+          "id": "模型 ID",
+          "connect": "测试并连接",
+          "retry": "重试启用",
+          "unverified": "模型未通过验证。请核对模型 ID 后重试。",
+          "inactive": "模型已通过测试，工作区暂未确认启用。"
+        },
         "doneTitle": "好了。{{org}} 的团队已经在思考了。",
         "doneTitlePersonal": "好了。{{name}} 已经在思考了。",
         "doneLead": "你的 {{label}} 为所有智能体作答。之后可以逐个更换。",
@@ -1078,6 +1094,11 @@
         "wakePersonal": "只差一个 AI 就能醒来。",
         "awakePersonal": "你的智能体醒了",
         "awakeAlone": "{{name}} 醒了"
+      },
+      "presets": {
+        "title": "添加常用智能体",
+        "lead": "可以多选，也可以先只使用主助理。",
+        "say": "我会把你选中的智能体加到工作区。"
       },
       "people": {
         "title": "谁和你一起工作？",
@@ -1133,6 +1154,7 @@
     "workspace": {
       "title": "你的工作区叫什么名字？",
       "lead": "团队和智能体在这里交流。",
+      "contextOptional": "团队简介（可选）",
       "zone": "时区：{{zone}}",
       "zoneChange": "更改",
       "logoHelp": "透明背景的 PNG 效果最好。它会显示在每个人的侧边栏中。",
@@ -1414,6 +1436,14 @@
     "brain": {
       "title": "思考方式",
       "failed": "有些智能体无法切换到 {{computer}} 上的 {{brand}} 账号。你可以在每个智能体的页面上切换。"
+    },
+    "presetPicker": {
+      "label": "可选的预设智能体",
+      "present": "已在此工作区",
+      "addSelected": "添加所选智能体",
+      "create_other": "创建 {{count}} 个智能体并继续",
+      "retry": "重试创建所选智能体",
+      "skip": "稍后添加"
     },
     "presets": {
       "theo": {
@@ -2977,7 +3007,9 @@
     "banner": {
       "org": "你的智能体还没有 AI。",
       "orgHint": "你也可以直接在聊天中说，比如“用我的 Claude 套餐”。",
-      "orgAction": "连接 AI"
+      "orgAction": "连接 AI",
+      "resumeAction": "继续配置 AI",
+      "modelUntested": "测试已保存的模型，完成 AI 配置。"
     },
     "agent": "{{name}} 不会回复，因为他还没有连接 AI。",
     "agent_female": "{{name}} 不会回复，因为她还没有连接 AI。",

@@ -50,6 +50,22 @@ def advance(browser, step, next_step, **answer):
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.json()["step"] == next_step
+    return response.json()
+
+
+def configured_model(monkeypatch):
+    from src.web import app_credentials
+
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-model")
+    monkeypatch.setenv("OPENAI_API_BASE", "http://localhost:11434/v1")
+    calls = []
+
+    async def probe(base, key, model, *, trust_env):
+        calls.append((base, key, model, trust_env))
+        return {"model": model, "check": "ok"}
+
+    monkeypatch.setattr(app_credentials, "check_model", probe)
+    return calls
 
 
 def test_native_owner_name_is_display_metadata_but_changes_no_credentials(installed):
@@ -63,7 +79,7 @@ def test_native_owner_name_is_display_metadata_but_changes_no_credentials(instal
     assert profile["user"]["name"] == "安装者名字"
     assert profile["user"]["email"] == ""
     assert profile["desktopSetup"] == {"step": "purpose", "modelConfigured": False}
-    advance(owner, "purpose", "about", mode="personal")
+    advance(owner, "purpose", "model", mode="personal")
     assert json.loads(marker.read_text())["ownerDisplayName"] == "安装者名字"
 
     account = OwnerAccount(str(Path.cwd()))
@@ -113,39 +129,43 @@ def test_claimed_account_name_takes_precedence_over_install_display_name(install
     assert json.loads(marker.read_text())["ownerDisplayName"] == "安装者名字"
 
 
-def test_team_guide_restarts_at_model_and_finishes_with_editable_settings(installed):
+def test_team_guide_restarts_at_model_and_finishes_with_editable_settings(installed, monkeypatch):
     spawn, marker = installed
     browser = spawn()
     sign_in(browser)
     initial = browser.get("/api/app/me")
     assert initial.headers["cache-control"] == "no-store"
+    assert initial.json()["user"]["canCreateWorkspace"] is False
+    assert initial.json()["desktopManaged"] is True
     assert initial.json()["desktopSetup"] == {"step": "purpose", "modelConfigured": False}
     agent_name = initial.json()["organizations"][0]["name"]
     org = f"/api/app/organizations/{initial.json()['organizations'][0]['id']}"
     advance(browser, "purpose", "name", mode="team")
-    advance(browser, "name", "business", name="测试工作区")
-    advance(browser, "business", "about", context="一起处理样例数据")
-    advance(browser, "about", "team", workArea="dev")
-    advance(browser, "team", "model")
+    advance(browser, "name", "model", name="测试工作区", context="一起处理样例数据")
     assert json.loads(marker.read_text())["step"] == "model"
 
     # Closing the app and signing in again never counts as answering the model step.
     again = spawn()
     sign_in(again)
     assert again.get("/api/app/me").json()["desktopSetup"] == {
-        "step": "model", "mode": "team", "name": "测试工作区", "context": "一起处理样例数据", "workArea": "dev",
+        "step": "model", "mode": "team", "name": "测试工作区", "context": "一起处理样例数据",
         "modelConfigured": False,
     }
     stale = browser.patch(ROUTE, json={"step": "team"}, headers=ORIGIN)
     assert stale.status_code == 409 and stale.json()["error"]["code"] == "setup_changed"
-    advance(again, "model", "invite")
-    advance(again, "invite", "done")
+    refused = again.patch(ROUTE, json={"step": "model"}, headers=ORIGIN)
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "setup_model_required"
+    calls = configured_model(monkeypatch)
+    advance(again, "model", "presets")
+    assert calls == [("http://127.0.0.1:11434/v1", "", "synthetic-model", False)]
+    assert "rightHandId" not in advance(again, "presets", "done")
 
     final = spawn()
     sign_in(final, "/")
     profile = final.get("/api/app/me").json()
     assert "desktopSetup" not in profile
-    assert profile["user"]["workArea"] == "dev"
+    assert profile["user"]["canCreateWorkspace"] is False
+    assert profile["desktopManaged"] is True
     assert profile["organizations"][0]["mode"] == "team"
     assert profile["organizations"][0]["name"] == "测试工作区"
     assert final.get(f"{org}/agents").json()["agents"][0]["name"] == agent_name
@@ -162,22 +182,146 @@ def test_team_guide_restarts_at_model_and_finishes_with_editable_settings(instal
     assert final.get("/api/app/me").json()["user"]["workArea"] == "ops"
 
 
-def test_personal_guide_and_legacy_progress_never_reset(installed):
+def test_personal_guide_and_legacy_progress_never_reset(installed, monkeypatch):
     spawn, marker = installed
     marker.unlink()
     old = Path(LEGACY_FILE)
-    old.write_text('{"step":"about","mode":"personal"}', encoding="utf-8")
+    old.write_text('{"step":"about","mode":"personal","workArea":"dev"}', encoding="utf-8")
     browser = spawn()
     sign_in(browser)
-    assert browser.get("/api/app/me").json()["desktopSetup"]["step"] == "about"
+    me = browser.get("/api/app/me").json()
+    assert me["desktopSetup"]["step"] == "model"
+    assert me["user"]["workArea"] == "dev"
     invalid = browser.patch(ROUTE, json={"step": "about", "workArea": "made-up"}, headers=ORIGIN)
-    assert invalid.status_code == 400
+    assert invalid.status_code == 409
     assert not marker.exists()
-    advance(browser, "about", "team", workArea="skipped")
-    advance(browser, "team", "model")
-    advance(browser, "model", "done")
+    org = me["organizations"][0]["id"]
+    configured_model(monkeypatch)
+    advance(browser, "model", "presets")
+    done = advance(browser, "presets", "done")
+    agents = browser.get(f"/api/app/organizations/{org}/agents").json()["agents"]
+    assert done["rightHandId"] == agents[0]["id"]
+    assert json.loads(marker.read_text())["workArea"] == "dev"
     assert json.loads(old.read_text())["step"] == "about"
     sign_in(spawn(), "/")
+
+
+@pytest.mark.parametrize(("legacy_step", "expected_step"),
+                         [("business", "name"), ("about", "model"), ("team", "model"), ("invite", "model")])
+def test_unfinished_team_markers_keep_all_answers(installed, legacy_step, expected_step):
+    spawn, marker = installed
+    stored = {"step": legacy_step, "mode": "team", "name": "旧名字", "context": "旧简介",
+              "workArea": "dev", "ownerDisplayName": "所有者"}
+    marker.write_text(json.dumps(stored), encoding="utf-8")
+    browser = spawn()
+    sign_in(browser)
+    profile = browser.get("/api/app/me").json()
+    assert profile["desktopSetup"] == {
+        "step": expected_step, "mode": "team", "name": "旧名字", "context": "旧简介",
+        "workArea": "dev", "modelConfigured": False,
+    }
+    assert profile["user"]["name"] == "所有者"
+    assert json.loads(marker.read_text()) == stored
+    if expected_step == "name":
+        advance(browser, "name", "model", name="改名")
+    advance(browser, "model", "done", skipModel=True)
+    assert json.loads(marker.read_text())["context"] == "旧简介"
+    assert json.loads(marker.read_text())["workArea"] == "dev"
+
+
+def test_personal_model_skip_opens_workspace_without_creating_agents(installed):
+    spawn, marker = installed
+    browser = spawn()
+    sign_in(browser)
+    org = browser.get("/api/app/me").json()["organizations"][0]["id"]
+    agents_url = f"/api/app/organizations/{org}/agents"
+    original = browser.get(agents_url).json()
+    bad = browser.patch(ROUTE, json={"step": "purpose", "mode": "personal", "skipModel": True}, headers=ORIGIN)
+    assert bad.status_code == 400
+    advance(browser, "purpose", "model", mode="personal")
+    assert browser.patch(ROUTE, json={"step": "model", "skipModel": 1}, headers=ORIGIN).status_code == 422
+    done = advance(browser, "model", "done", skipModel=True)
+    assert "rightHandId" not in done and done["modelConfigured"] is False
+    assert browser.get(agents_url).json() == original
+    assert json.loads(marker.read_text()) == {"step": "done", "mode": "personal", "modelDeferred": True}
+    me = browser.get("/api/app/me").json()
+    assert me["desktopManaged"] is True and me["desktopModelDeferred"] is True
+    assert "desktopSetup" not in me
+    refused = browser.patch(ROUTE, json={"step": "model"}, headers=ORIGIN)
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "setup_model_required"
+    assert browser.get("/api/app/me").json()["desktopModelDeferred"] is True
+    sign_in(spawn(), "/")
+
+
+def test_missing_model_cannot_finish_an_unfinished_presets_step(installed):
+    spawn, marker = installed
+    marker.write_text('{"step":"presets","mode":"personal"}', encoding="utf-8")
+    browser = spawn()
+    sign_in(browser)
+    assert browser.get("/api/app/me").json()["desktopSetup"]["step"] == "model"
+    stale = browser.patch(ROUTE, json={"step": "presets"}, headers=ORIGIN)
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "setup_changed"
+    assert json.loads(marker.read_text())["step"] == "presets"
+
+
+def test_failed_model_test_can_be_deferred_and_retried_from_home(installed, monkeypatch):
+    from src.web import app_credentials
+
+    spawn, marker = installed
+    browser = spawn()
+    sign_in(browser)
+    advance(browser, "purpose", "model", mode="personal")
+    exposed_key = "sk-synthetic-test-key"
+    monkeypatch.setenv("DEFAULT_MODEL", "synthetic-model")
+    monkeypatch.setenv("OPENAI_API_BASE", "https://models.example.test/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", exposed_key)
+    calls = []
+
+    async def probe(base, key, model, *, trust_env):
+        calls.append((base, key, model, trust_env))
+        return {"check": "failed", "error": key}
+
+    monkeypatch.setattr(app_credentials, "check_model", probe)
+    refused = browser.patch(ROUTE, json={"step": "model"}, headers=ORIGIN)
+    assert refused.status_code == 502 and refused.json()["error"]["code"] == "setup_model_probe_failed"
+    assert exposed_key not in refused.text and json.loads(marker.read_text())["step"] == "model"
+    assert calls == [("https://models.example.test/v1", exposed_key, "synthetic-model", True)]
+    advance(browser, "model", "done", skipModel=True)
+    assert len(calls) == 1 and browser.get("/api/app/me").json()["desktopModelDeferred"] is True
+    assert browser.patch(ROUTE, json={"step": "model"}).status_code == 403
+    assert len(calls) == 1
+    still_refused = browser.patch(ROUTE, json={"step": "model"}, headers=ORIGIN)
+    assert still_refused.status_code == 502 and browser.get("/api/app/me").json()["desktopModelDeferred"] is True
+
+    monkeypatch.delenv("OPENAI_API_KEY")
+    retry_calls = configured_model(monkeypatch)
+    done = advance(browser, "model", "done")
+    assert done["modelConfigured"] is True and "rightHandId" not in done
+    assert retry_calls == [("http://127.0.0.1:11434/v1", "", "synthetic-model", False)]
+    profile = browser.get("/api/app/me").json()
+    assert "desktopSetup" not in profile and "desktopModelDeferred" not in profile
+    assert json.loads(marker.read_text()) == {"step": "done", "mode": "personal"}
+    duplicate = browser.patch(ROUTE, json={"step": "model"}, headers=ORIGIN)
+    assert duplicate.status_code == 409 and len(retry_calls) == 1
+
+
+def test_probe_result_cannot_advance_using_a_different_saved_model(installed, monkeypatch):
+    from src.web import app_credentials
+
+    spawn, marker = installed
+    browser = spawn()
+    sign_in(browser)
+    advance(browser, "purpose", "model", mode="personal")
+    configured_model(monkeypatch)
+
+    async def changed(base, key, model, *, trust_env):
+        monkeypatch.setenv("DEFAULT_MODEL", "another-model")
+        return {"check": "ok"}
+
+    monkeypatch.setattr(app_credentials, "check_model", changed)
+    refused = browser.patch(ROUTE, json={"step": "model"}, headers=ORIGIN)
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "setup_changed"
+    assert json.loads(marker.read_text())["step"] == "model"
 
 
 def test_other_owner_transports_and_unconfigured_dev_never_receive_the_marker(installed, monkeypatch):
@@ -188,14 +332,16 @@ def test_other_owner_transports_and_unconfigured_dev_never_receive_the_marker(in
         (spawn(), {"X-Forwarded-For": "192.0.2.2"}),
     ):
         sign_in(browser, "/", headers)
-        assert "desktopSetup" not in browser.get("/api/app/me", headers=headers).json()
+        profile = browser.get("/api/app/me", headers=headers).json()
+        assert "desktopSetup" not in profile and "desktopManaged" not in profile
         refused = browser.patch(ROUTE, json={"step": "purpose", "mode": "team"}, headers={**ORIGIN, **headers})
         assert refused.status_code == 404
 
     monkeypatch.delenv("VORTOONE_BUNDLED_DESKTOP")
     developer = spawn()
     sign_in(developer, "/")
-    assert "desktopSetup" not in developer.get("/api/app/me").json()
+    profile = developer.get("/api/app/me").json()
+    assert "desktopSetup" not in profile and "desktopManaged" not in profile
     assert developer.patch(ROUTE, json={"step": "purpose", "mode": "team"}, headers=ORIGIN).status_code == 404
     assert json.loads(marker.read_text()) == {"step": "purpose"}
 
@@ -227,7 +373,8 @@ def test_writes_need_the_owner_browser_cookie_and_same_origin(installed):
     accepted = member.post(f"/api/app/invitations/{piece}/accept", json={}, headers=ORIGIN)
     assert accepted.status_code == 200, accepted.text
     assert member.cookies.get(SESSION_COOKIE) is None
-    assert "desktopSetup" not in member.get("/api/app/me").json()
+    profile = member.get("/api/app/me").json()
+    assert "desktopSetup" not in profile and "desktopManaged" not in profile
     assert member.patch(ROUTE, json=body, headers=ORIGIN).status_code == 403
     assert json.loads(marker.read_text()) == {"step": "purpose"}
 
@@ -237,7 +384,12 @@ def test_existing_workspace_without_a_marker_uses_normal_landing(installed):
     marker.unlink()
     browser = spawn()
     sign_in(browser, "/")
-    assert "desktopSetup" not in browser.get("/api/app/me").json()
+    profile = browser.get("/api/app/me").json()
+    assert "desktopSetup" not in profile and "desktopManaged" not in profile
+    assert profile["user"]["canCreateWorkspace"] is False
+    assert len(profile["organizations"]) == 1 and profile["organizations"][0]["role"] == "owner"
+    refused = browser.post("/api/app/organizations", json={"name": "New workspace"}, headers=ORIGIN)
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "organization.single_home"
     assert browser.patch(ROUTE, json={"step": "purpose", "mode": "team"}, headers=ORIGIN).status_code == 404
     assert not marker.exists()
 
@@ -261,18 +413,17 @@ def test_failed_progress_write_cannot_publish_the_answer(installed, monkeypatch)
     browser = spawn()
     sign_in(browser)
     advance(browser, "purpose", "name", mode="team")
-    advance(browser, "name", "business", name="测试工作区")
 
     def disk_error(*args):
         raise OSError("test disk unavailable")
 
     with monkeypatch.context() as patch:
         patch.setattr(desktop_setup, "_write", disk_error)
-        failed = browser.patch(ROUTE, json={"step": "business", "context": "尚未落盘"}, headers=ORIGIN)
+        failed = browser.patch(ROUTE, json={"step": "name", "name": "测试工作区", "context": "尚未落盘"}, headers=ORIGIN)
     assert failed.status_code == 503
-    assert json.loads(marker.read_text()) == {"step": "business", "mode": "team", "name": "测试工作区"}
+    assert json.loads(marker.read_text()) == {"step": "name", "mode": "team"}
     assert load_home_context(str(marker.parent.parent)) == ""
-    advance(browser, "business", "about", context="成功保存")
+    advance(browser, "name", "model", name="测试工作区", context="成功保存")
     assert load_home_context(str(marker.parent.parent)) == "成功保存"
 
 

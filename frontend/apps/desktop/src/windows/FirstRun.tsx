@@ -20,6 +20,7 @@ import {
   ComputerPortrait,
   Field,
   Icon,
+  type IconName,
   Input,
   PixelSpinner,
   type Place,
@@ -1043,7 +1044,7 @@ function RunHere({
             framed={false}
             state="sleeping"
           />
-          <span>{t("desktop.here.rest")}</span>
+          <span>{t(host.platform === "mac" ? "desktop.here.restMac" : "desktop.here.rest")}</span>
         </p>
         <div className="dk-fr__end">
           <Button type="submit" variant="primary" autoFocus={!view.ask}>
@@ -1065,6 +1066,14 @@ interface Setup {
   activeAt: number;
   end: SetupEnd;
 }
+
+const SETUP_ICONS: Record<SetupStep, IconName> = {
+  database: "database",
+  start: "power",
+  account: "person",
+  computer: "agent",
+  reach: "phone",
+};
 
 /**
  * Setting it up, in the window's middle: this computer, the title, then the steps, the bar and the buttons in one
@@ -1088,7 +1097,9 @@ function HereSetup({
   const states = stepStates(steps, changes);
   // Never every step done and no button: an error with no failed step ends on the step under way.
   const failed = end === "failed" ? failedStep(steps, states) : null;
+  if (failed) states[failed] = "failed";
   const done = steps.filter((s) => states[s] === "done" || states[s] === "warn").length;
+  const progress = t("desktop.here.progress", { done, total: steps.length });
   // Reach's own progress while its step runs: Tailscale's page for HTTPS shows as soon as Tailscale names it.
   const [stage, setStage] = useState<ReachStage | null>(null);
   useEffect(() => host.onLocalReach(setStage), [host]);
@@ -1138,30 +1149,28 @@ function HereSetup({
         )}
       </div>
       <h1 ref={title} className="dk-fr__h1sm" tabIndex={-1}>
-        {t("desktop.here.setting")}
+        {t(end === "done" ? "desktop.here.ready" : "desktop.here.setting")}
       </h1>
       <div className="dk-fr__run">
         <ol className="dk-fr__steps" aria-live="polite">
           {steps.map((step) => {
-            const state = step === failed ? "failed" : states[step];
+            const state = states[step];
             return (
-              <li key={step} className="ac-iconline" data-state={state}>
+              <li key={step} className="ac-iconline" data-state={state} aria-current={state === "active" ? "step" : undefined}>
                 <span className="dk-fr__stepmark" aria-hidden="true">
-                  {state === "active" ? (
-                    <PixelSpinner size={16} color="sky" />
-                  ) : state === "done" ? (
+                  {state === "done" ? (
                     <Icon name="check" size={16} />
                   ) : state === "failed" ? (
                     <Icon name="close" size={16} />
                   ) : state === "warn" ? (
                     <Icon name="alert" size={16} />
                   ) : (
-                    <span className="dk-fr__stepdot" />
+                    <Icon name={SETUP_ICONS[step]} size={16} />
                   )}
                 </span>
                 <span className="dk-fr__steptext">
                   <span className="dk-fr__stepname">
-                    <b className={state === "active" ? "dk-shimmer" : undefined}>{t(`desktop.here.step.${step}`)}</b>
+                    <b>{t(`desktop.here.step.${step}`)}</b>
                     {step === "database" && <small>{t("desktop.here.step.databaseNote")}</small>}
                     {/* The marks are drawn: screen readers hear the state as words. The time is silent. */}
                     {state !== "todo" && (
@@ -1193,15 +1202,19 @@ function HereSetup({
             );
           })}
         </ol>
-        <div
-          className="dk-bar"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={steps.length}
-          aria-valuenow={done}
-          aria-label={t("desktop.here.setting")}
-        >
-          <span style={{ width: `${(done / steps.length) * 100}%` }} />
+        <div className="dk-fr__progress">
+          <div
+            className="dk-fr__segments"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={steps.length}
+            aria-valuenow={done}
+            aria-valuetext={progress}
+            aria-label={t("desktop.here.setting")}
+          >
+            {steps.map((step) => <span key={step} data-state={states[step]} />)}
+          </div>
+          <span className="dk-fr__progresscount" aria-hidden="true">{progress}</span>
         </div>
         <div className="dk-fr__runacts">
           {end === "done" ? (

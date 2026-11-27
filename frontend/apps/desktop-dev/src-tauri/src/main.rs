@@ -10,6 +10,8 @@ mod connector_secrets;
 #[cfg(target_os = "linux")]
 mod deb_update;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+mod gray_update;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod stable_update;
 
 use tauri::{
@@ -112,7 +114,10 @@ const LIVE: &str = "live";
 const SETUP_MODEL_PATH: &str = "/onboarding/native-model-settings";
 
 fn setup_model_navigation(source: &tauri::Url, target: &tauri::Url, live_origin: &str, managed_origin: &str) -> bool {
-    source.path() == "/onboarding"
+    let workspace_home = source.path().strip_prefix("/org/")
+        .and_then(|path| path.split_once('/'))
+        .is_some_and(|(org, page)| !org.is_empty() && page == "home");
+    (source.path() == "/onboarding" || workspace_home)
         && target.path() == SETUP_MODEL_PATH
         && target.query().is_none() && target.fragment().is_none()
         && live_origin == managed_origin
@@ -126,7 +131,7 @@ fn open_setup_model_settings(app: &tauri::AppHandle, target: &tauri::Url) {
     let Ok(source) = live.url() else { return; };
     let Ok(data) = app.path().app_data_dir() else { return; };
     if setup_model_navigation(&source, target, &app.state::<LiveAddress>().origin(), &managed)
-        && places::desktop_setup_at_model(&data.join("home")) {
+        && (source.path() != "/onboarding" || places::desktop_setup_at_model(&data.join("home"))) {
         if let Err(error) = show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0) {
             eprintln!("无法打开模型配置窗口: {error}");
         }
@@ -398,6 +403,16 @@ fn main() {
         .manage(shell::ShellState::default())
         .manage(connector::ConnectorManager::default())
         .invoke_handler(tauri::generate_handler![
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_status,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_enroll,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_leave,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_check,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_open_admin,
             model_settings::model_settings_get, model_settings::model_settings_save,
             connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
             connector::computer_remove, connector::computers_open, connector::computer_folder_settings,
@@ -496,6 +511,10 @@ fn main() {
             }
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             if stable && stable_update::supported() {
+                stable_update::check(app.handle().clone(), false);
+            }
+            #[cfg(target_os = "macos")]
+            if stable && gray_update::check_at_startup(app.handle()) {
                 stable_update::check(app.handle().clone(), false);
             }
             Ok(())
@@ -658,13 +677,22 @@ mod tests {
     }
 
     #[test]
-    fn onboarding_model_command_only_accepts_the_managed_setup_page() {
+    fn model_settings_navigation_only_accepts_managed_setup_and_home_pages() {
         let managed = "http://127.0.0.1:4321";
         let page = format!("{managed}/onboarding").parse().unwrap();
         let command = format!("{managed}{SETUP_MODEL_PATH}").parse().unwrap();
         assert!(setup_model_navigation(&page, &command, managed, managed));
-        let wrong_page = format!("{managed}/settings").parse().unwrap();
-        assert!(!setup_model_navigation(&wrong_page, &command, managed, managed));
+        let home = format!("{managed}/org/123/home").parse().unwrap();
+        assert!(setup_model_navigation(&home, &command, managed, managed));
+        for wrong_page in [
+            format!("{managed}/settings"),
+            format!("{managed}/org//home"),
+            format!("{managed}/org/123/home/extra"),
+            format!("{managed}/org/123/dm/agent/456"),
+            "http://127.0.0.1:4322/org/123/home".to_string(),
+        ] {
+            assert!(!setup_model_navigation(&wrong_page.parse().unwrap(), &command, managed, managed));
+        }
         let remote = "https://example.test";
         assert!(!setup_model_navigation(&page, &command, remote, managed));
         for target in [

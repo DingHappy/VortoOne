@@ -4,17 +4,17 @@
  * arrival's stage has them (arrival.css).
  */
 .onb-stage {
-  flex: 0 0 272px;
+  flex: 0 0 var(--onb-preview-width);
   min-width: 0;
   position: sticky;
   top: 0;
-  padding-top: 40px;
+  padding-top: var(--onb-preview-top);
 }
 .onb-stage__frame {
-  height: min(600px, calc(100dvh - 120px));
+  height: var(--onb-preview-height);
   overflow: hidden;
-  border-radius: var(--radius-section);
-  box-shadow: var(--e2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
 }
 
 /* The AI connected, once every agent thinks: a card to read, not to press. */

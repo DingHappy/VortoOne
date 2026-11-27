@@ -18,11 +18,15 @@ export function ConnectChoices({
   dims,
   mayAddKey,
   perAgent,
+  plans = PLAN_CHOICES,
+  disabled = false,
 }: {
   onPick: (choice: AiChoice) => void;
   /** A plan that can't sign in now: its mark dims, and its steps say why. */
   dims: (choice: PlanChoice) => boolean;
   mayAddKey: boolean;
+  plans?: readonly PlanChoice[];
+  disabled?: boolean;
   /**
    * For several agents: a plan that will ask for one login per agent there ends its card saying so, quietly, before
    * it is picked (ADR 0160, addendum).
@@ -31,8 +35,9 @@ export function ConnectChoices({
 }) {
   const { t } = useTranslation();
   const [others, setOthers] = useState(false);
+  const more = OTHERS.filter((choice) => plans.includes(choice));
   const card = (choice: AiChoice, lead: ReactNode, title: string, text: string, end?: ReactNode) => (
-    <button key={choice} type="button" className="ac-option" onClick={() => onPick(choice)}>
+    <button key={choice} type="button" className="ac-option" disabled={disabled} onClick={() => onPick(choice)}>
       {lead}
       <span className="ac-option__text">
         <span className="ac-option__title">{title}</span>
@@ -53,13 +58,13 @@ export function ConnectChoices({
     );
   return (
     <div className="arrival-opts">
-      {FIRST.map(plan)}
+      {FIRST.filter((choice) => plans.includes(choice)).map(plan)}
       {others ? (
-        OTHERS.map(plan)
-      ) : (
-        <button type="button" className="ac-option" aria-expanded={false} onClick={() => setOthers(true)}>
+        more.map(plan)
+      ) : more.length > 0 ? (
+        <button type="button" className="ac-option" aria-expanded={false} disabled={disabled} onClick={() => setOthers(true)}>
           <span className="arrival-opts__tile arrival-opts__tile--four" aria-hidden="true">
-            {OTHERS.slice(0, 4).map((c) => (
+            {more.slice(0, 4).map((c) => (
               <ProviderLogo key={c} id={planMark(c)} size="xs" />
             ))}
           </span>
@@ -67,14 +72,14 @@ export function ConnectChoices({
             <span className="ac-option__title">{t("arrival.connect.others")}</span>
             <span className="ac-option__desc">
               {joinNames(
-                OTHERS.map((c) => planLabel(t, c)),
+                more.map((c) => planLabel(t, c)),
                 t,
               )}
             </span>
           </span>
           <Icon name="chevronDown" className="arrival-opts__end" />
         </button>
-      )}
+      ) : null}
       {mayAddKey &&
         card(
           "key",
@@ -84,7 +89,7 @@ export function ConnectChoices({
           t("connectAi.key.title"),
           t("connectAi.key.sub"),
         )}
-      {card(
+      {plans.includes(FREE) && card(
         FREE,
         <ProviderLogo id={planMark(FREE)} size="tile" off={dims(FREE)} />,
         t("arrival.connect.free"),

@@ -262,7 +262,10 @@ export const desktopPtBR = {
       "Contagens como pessoas, agentes, tamanho das máquinas, tokens de IA usados e o volume de dados que os navegadores dos agentes enviam e recebem. Nunca mensagens, arquivos, nomes ou sites.",
     start: "Começar",
     setting: "Preparando tudo",
+    ready: "Seu espaço de trabalho está pronto",
+    progress: "{{done}} de {{total}} etapas concluídas",
     rest: "Quando você fechar o app, seus agentes descansam. Eles voltam assim que você abrir de novo.",
+    restMac: "Ao fechar esta janela, o VortoOne fica no Dock e seus agentes continuam trabalhando. Pressione ⌘Q para sair.",
     step: {
       database: "Guardando um espaço para seus dados",
       databaseNote: "só da primeira vez",

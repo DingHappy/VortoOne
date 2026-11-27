@@ -953,6 +953,7 @@ export const en = {
   },
   onboarding: {
     desktopSetup: {
+      modelTestFailed: "The model did not respond to the test. Check the endpoint, model ID and API key, then try again.",
       businessHint: "Describe what your workspace will be used for.",
       agentsHint: "These agents are in your workspace. You can add more after setup.",
       modelTitle: "Set up a model",
@@ -1014,7 +1015,7 @@ export const en = {
       },
       stepOf: "Step {{n}} of {{total}}",
       lodi: {
-        name: "Hi, {{first}}. I'm {{name}}. I'll put the team together with you in about two minutes.",
+        name: "Hi, {{first}}. I'm {{name}}. I'll help you set up your workspace.",
         business: "With that I'll know who to bring onto the team.",
         team: "This is the team I'd put together. You can change anything later.",
         /** Back on the team step once the team is made: the list of who is in it. */
@@ -1041,7 +1042,7 @@ export const en = {
         foundPersonal: "Found your agents. Check that they're all here.",
         /** The AI step: picking an AI wakes the team (or, alone, Lodi). */
         ai: "Last step. Pick the AI you already use and the team wakes up.",
-        aiPersonal: "Last step. Pick the AI you already use and I wake up.",
+        aiPersonal: "Connect the AI you use so I can start helping.",
         /** The same where inviting people comes after it (a team's rail), for the team or the right hand alone. */
         aiThen: "Pick the AI you already use and the team wakes up. Then all that's left is inviting people.",
         aiThenAlone: "Pick the AI you already use and I wake up. Then all that's left is inviting people.",
@@ -1186,7 +1187,22 @@ export const en = {
         titlePersonal: "Connect an AI for your agents to think",
         /** A team's heading for it with no agents but its right hand: `{{name}}`, the right hand ("Lodi"). */
         titleAlone: "Connect an AI for {{name}} to think",
+        lead: "Use an API key or choose an available subscription.",
         later: "Connect later",
+        existing: "Your workspace already has an AI connection.",
+        statusUnavailable: "Account options could not be loaded.",
+        laterHint: "You can finish connecting AI from Home. Agents can reply after it is connected.",
+        model: {
+          title: "Connect a model provider",
+          description: "Use an OpenAI-compatible service with your own API key.",
+          provider: "Model provider",
+          custom: "Custom endpoint",
+          id: "Model ID",
+          connect: "Test and connect",
+          retry: "Retry activation",
+          unverified: "The model could not be verified. Check the model ID and try again.",
+          inactive: "The model passed its test, but the workspace has not confirmed activation.",
+        },
         /** `{{org}}`: the workspace's name. */
         doneTitle: "Done. The {{org}} team is thinking now.",
         /** `{{name}}`: the right hand, alone in a personal workspace. */
@@ -1210,6 +1226,11 @@ export const en = {
         wakePersonal: "Just one AI away from waking up.",
         awakePersonal: "Your agents woke up",
         awakeAlone: "{{name}} woke up",
+      },
+      presets: {
+        title: "Add agents to your workspace",
+        lead: "Pick as many as you need, or get started with your main assistant.",
+        say: "I'll add the agents you choose to your workspace.",
       },
       /** A team's last step (ADR 0162, amended 2026-11-11): inviting the people who work there. */
       people: {
@@ -1278,6 +1299,7 @@ export const en = {
     workspace: {
       title: "What's your workspace called?",
       lead: "It's where the team and the agents talk.",
+      contextOptional: "Team description (optional)",
       zone: "Time zone: {{zone}}",
       zoneChange: "change",
       logoHelp: "A PNG with a transparent background looks best. It shows in the sidebar for everyone.",
@@ -1596,6 +1618,15 @@ export const en = {
       title: "Who thinks",
       failed:
         "Some agents couldn't switch to the {{brand}} account on {{computer}}. You can switch each one on its page.",
+    },
+    presetPicker: {
+      label: "Optional preset agents",
+      present: "Already in this workspace",
+      addSelected: "Add selected agents",
+      create_one: "Create {{count}} agent and continue",
+      create_other: "Create {{count}} agents and continue",
+      retry: "Retry selected agents",
+      skip: "Skip for now",
     },
     presets: {
       theo: { name: "Theo", role: "PM", desc: "Organizes tasks and keeps the roadmap up to date." },
@@ -3332,6 +3363,8 @@ export const en = {
       org: "Your agents don't have an AI\u00a0yet.",
       orgHint: "You can also ask in the chat, like “use my Claude plan”.",
       orgAction: "Connect an AI",
+      resumeAction: "Continue setting up AI",
+      modelUntested: "Test the saved model to finish setting up AI.",
     },
     agent: "{{name}} won't reply because he has no AI\u00a0connected.",
     /** Its computer has no such CLI installed (`reason: cli_missing`). */

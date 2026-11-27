@@ -4560,6 +4560,8 @@ dependencies = [
  "dotenvy",
  "getrandom 0.3.4",
  "libc",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",
@@ -4568,6 +4570,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

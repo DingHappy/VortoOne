@@ -1,6 +1,10 @@
 //! Native stable updates. Installation always requires user confirmation.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use crate::gray_update::{Managed, Report};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -20,9 +24,25 @@ enum BackendResume {
 
 #[derive(Default)]
 pub struct UpdateGate {
-    checking: AtomicBool,
+    checking: Arc<AtomicBool>,
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     stopped_processes: std::sync::Mutex<Option<BackendResume>>,
+}
+
+pub struct UpdateOperation(Arc<AtomicBool>);
+
+impl Drop for UpdateOperation {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+pub fn begin(app: &AppHandle) -> Result<UpdateOperation, &'static str> {
+    let checking = &app.state::<UpdateGate>().inner().checking;
+    if checking.swap(true, Ordering::AcqRel) {
+        return Err("另一个版本操作正在进行，请稍后重试。");
+    }
+    Ok(UpdateOperation(checking.clone()))
 }
 
 pub fn supported() -> bool {
@@ -45,32 +65,48 @@ pub fn supported() -> bool {
 }
 
 pub fn check(app: AppHandle, manual: bool) {
-    if app
-        .state::<UpdateGate>()
-        .checking
-        .swap(true, Ordering::AcqRel)
-    {
-        return;
-    }
+    let Ok(guard) = begin(&app) else { return };
     tauri::async_runtime::spawn(async move {
-        let result = match find_update(&app).await {
-            Ok(Some(update)) => install_update(&app, update).await,
-            Ok(None) if manual => update_dialog(&app, "VortoOne 已经是最新版本。", false)
-                .await
-                .map(|_| ()),
-            Err(message) if manual => Err(message),
-            _ => Ok(()),
-        };
-        if let Err(message) = result {
-            let _ = update_dialog(&app, message, false).await;
-        }
-        app.state::<UpdateGate>()
-            .checking
-            .store(false, Ordering::Release);
+        check_with_guard(&app, manual, guard).await;
     });
 }
 
-async fn find_update(app: &AppHandle) -> Result<Option<Update>, &'static str> {
+pub async fn check_from_versions(app: &AppHandle) -> Result<(), &'static str> {
+    check_with_guard(app, true, begin(app)?).await;
+    Ok(())
+}
+
+async fn check_with_guard(app: &AppHandle, manual: bool, _guard: UpdateOperation) {
+    if let Err(message) = run_check(app, manual).await {
+        let _ = update_dialog(app, message, false).await;
+    }
+}
+
+async fn run_check(app: &AppHandle, manual: bool) -> Result<(), &'static str> {
+    let managed = match Managed::read(app) {
+        Ok(managed) => managed,
+        Err(message) if manual => return Err(message),
+        Err(_) => return Ok(()),
+    };
+    match find_update(app, managed.as_ref()).await {
+        Ok(Some(update)) => install_update(app, update, managed.as_ref()).await,
+        Ok(None) if manual => {
+            let message = if managed.is_some() {
+                "这台设备目前没有可用的灰度更新。"
+            } else {
+                "VortoOne 已经是最新版本。"
+            };
+            update_dialog(app, message, false).await.map(|_| ())
+        }
+        Err(message) if manual => Err(message),
+        _ => Ok(()),
+    }
+}
+
+async fn find_update(
+    app: &AppHandle,
+    managed: Option<&Managed>,
+) -> Result<Option<Update>, &'static str> {
     let builder = app.updater_builder().configure_client(|client| {
         client
             .https_only(true)
@@ -79,6 +115,11 @@ async fn find_update(app: &AppHandle) -> Result<Option<Update>, &'static str> {
     });
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     let builder = builder.target(PORTABLE_UPDATE.0);
+    #[cfg(target_os = "macos")]
+    let builder = match managed {
+        Some(_) => builder.target(crate::gray_update::TARGET.0),
+        None => builder,
+    };
     #[cfg(target_os = "windows")]
     let builder = builder.on_before_exit({
         let app = app.clone();
@@ -89,6 +130,15 @@ async fn find_update(app: &AppHandle) -> Result<Option<Update>, &'static str> {
     let updater = builder
         .build()
         .map_err(|_| "更新组件不可用，请打开下载页查看最新版本。")?;
+    if let Some(managed) = managed {
+        return match managed.manifest(app).await? {
+            Some(manifest) => updater
+                .restore_update(manifest)
+                .map_err(|_| "灰度更新元数据无效，请联系发布管理员。"),
+            None => Ok(None),
+        };
+    }
+
     let update = updater
         .check()
         .await
@@ -125,7 +175,11 @@ fn portable_asset_matches(
             == Some(format!("VortoOne_{version}_{suffix}").as_str())
 }
 
-async fn install_update(app: &AppHandle, update: Update) -> Result<(), &'static str> {
+async fn install_update(
+    app: &AppHandle,
+    update: Update,
+    managed: Option<&Managed>,
+) -> Result<(), &'static str> {
     #[cfg(target_os = "linux")]
     let instructions =
         "安装时需要系统管理员授权。本机正在进行的对话会中断，安装完成后 App 会自动重启。";
@@ -133,23 +187,61 @@ async fn install_update(app: &AppHandle, update: Update) -> Result<(), &'static 
     let instructions = "安装后 App 会自动重启，本机正在进行的对话会中断。";
     let message = format!("下载并安装 VortoOne {}？\n\n{instructions}", update.version);
     if !update_dialog(app, message, true).await? {
+        if let Some(managed) = managed {
+            let _ = managed.report(&update.version, Report::Declined).await;
+        }
         return Ok(());
     }
 
+    let version = update.version.clone();
     // The updater authenticates the bytes and version against the stable channel key.
-    let bytes = update
-        .download(|_, _| {}, || {})
-        .await
-        .map_err(|_| "无法下载或验签更新，请稍后重试或从下载页安装。")?;
+    let bytes = if let Some(managed) = managed {
+        let verified = managed
+            .download(&version, &update.download_url)
+            .await
+            .and_then(|bytes| {
+                update
+                    .verify(&bytes)
+                    .map_err(|_| "灰度更新验签失败，安装已停止。")?;
+                Ok(bytes)
+            });
+        match verified {
+            Ok(bytes) => {
+                managed.report(&version, Report::Installing).await?;
+                bytes
+            }
+            Err(error) => {
+                let _ = managed.report(&version, Report::Failed).await;
+                return Err(error);
+            }
+        }
+    } else {
+        update
+            .download(|_, _| {}, || {})
+            .await
+            .map_err(|_| "无法下载或验签更新，请稍后重试或从下载页安装。")?
+    };
 
     let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || apply_update(&handle, update, bytes))
+    let result = tauri::async_runtime::spawn_blocking(move || apply_update(&handle, update, bytes))
         .await
-        .map_err(|_| "无法完成安装，请稍后重试或从下载页安装。")?
+        .unwrap_or(Err("无法完成安装，请稍后重试。"));
+    if let Some(managed) = managed {
+        match result {
+            Err(_) => {
+                let _ = managed.report(&version, Report::Failed).await;
+            }
+            Ok(false) => {
+                let _ = managed.report(&version, Report::Declined).await;
+            }
+            Ok(true) => {}
+        }
+    }
+    result.map(|_| ())
 }
 
 #[cfg(target_os = "macos")]
-fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<(), &'static str> {
+fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool, &'static str> {
     update
         .install(bytes)
         .map_err(|_| "无法安装更新，请稍后重试或从下载页安装。")?;
@@ -157,7 +249,7 @@ fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<(), &
 }
 
 #[cfg(target_os = "linux")]
-fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<(), &'static str> {
+fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool, &'static str> {
     use crate::deb_update::InstallOutcome;
     let result = {
         let gate = app.state::<crate::ConnectionGate>();
@@ -171,7 +263,7 @@ fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<(), &
         outcome
     };
     restore_managed_processes(app);
-    result.map(|_| ())
+    result.map(|outcome| matches!(outcome, InstallOutcome::Installed))
 }
 
 #[cfg(target_os = "macos")]
@@ -217,7 +309,7 @@ fn restore_managed_processes(app: &AppHandle) {
 }
 
 #[cfg(target_os = "windows")]
-fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<(), &'static str> {
+fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool, &'static str> {
     if !bytes.starts_with(b"MZ") {
         return Err("更新包与已安装的 VortoOne 不匹配，请从下载页安装。");
     }
@@ -231,7 +323,9 @@ fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<(), &
     if result.is_err() {
         restore_managed_processes(app);
     }
-    result.map_err(|_| "无法启动更新安装程序。请稍后重试或从下载页安装。")
+    result
+        .map(|_| true)
+        .map_err(|_| "无法启动更新安装程序。请稍后重试或从下载页安装。")
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -265,7 +359,7 @@ async fn update_dialog(
             .message(message)
             .title("VortoOne 更新")
             .kind(MessageDialogKind::Info);
-        if let Some(window) = [crate::LIVE, "welcome", "main"]
+        if let Some(window) = ["versions", crate::LIVE, "welcome", "main"]
             .iter()
             .find_map(|label| app.get_webview_window(label))
         {

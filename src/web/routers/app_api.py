@@ -552,8 +552,11 @@ async def _local_setup(request: Request):
 
 
 def _setup_view(state: dict) -> dict:
-    fields = ("step", "mode", "name", "context", "workArea")
-    return {**{key: state[key] for key in fields if key in state}, "modelConfigured": views.model_connected()}
+    from src.workflow.desktop_setup import current_step
+    configured = views.model_connected()
+    fields = ("mode", "name", "context", "workArea")
+    return {**{key: state[key] for key in fields if key in state},
+            "step": current_step(state, configured), "modelConfigured": configured}
 
 
 @router.get("/api/app/me")
@@ -569,23 +572,29 @@ async def me(request: Request, response: Response):
             setup = await _local_setup(request)
         except (OSError, ValueError):
             return _error(409, "setup_unavailable", "本机引导进度无法读取")
-        if setup and setup["step"] != "done":
-            result["desktopSetup"] = _setup_view(setup)
+        if setup:
+            result["desktopManaged"] = True
+            if setup.get("modelDeferred") is True:
+                result["desktopModelDeferred"] = True
+            if setup["step"] != "done":
+                result["desktopSetup"] = _setup_view(setup)
     return result
 
 
 class _LocalSetupAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    step: Literal["purpose", "name", "business", "about", "team", "model", "invite"]
+    step: Literal["purpose", "name", "business", "about", "team", "model", "invite", "presets"]
     mode: Literal["personal", "team"] | None = None
     name: str | None = Field(default=None, max_length=80)
     context: str | None = Field(default=None, max_length=600)
     workArea: str | None = Field(default=None, max_length=200)
+    skipModel: bool = False
 
 
 @router.patch("/api/app/desktop-setup")
 async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
     from src.utils.home_maintenance import HomeMaintenanceError
+    from src.web import app_credentials
     from src.web.routers.computers import has_local_owner_browser_session
     from src.workflow import desktop_setup
 
@@ -595,24 +604,47 @@ async def save_desktop_setup(body: _LocalSetupAnswer, request: Request):
     if not member_auth.principal(request, root).is_owner or not has_local_owner_browser_session(request):
         return _error(403, "forbidden", "请在本机工作区完成引导")
 
-    def validate_answer(field: str, value: str) -> None:
-        if field == "workArea" and value not in app_prefs.WORK_AREAS:
-            raise ValueError("请选择工作领域或跳过")
-
     try:
-        answer = body.model_dump(exclude={"step"}, exclude_none=True)
-        result = await asyncio.to_thread(desktop_setup.advance, root, body.step, answer, validate_answer)
+        answer = body.model_dump(exclude={"step", "skipModel"}, exclude_none=True)
+        target = None
+        if body.step == "model" and not body.skipModel:
+            if answer:
+                raise ValueError("试连使用这台服务已保存的配置")
+            state = await _local_setup(request)
+            if state is None:
+                return _error(404, "not_found", "本机引导不可用")
+            if desktop_setup.current_step(state, views.model_connected()) != "model" and not state.get("modelDeferred"):
+                raise desktop_setup.SetupChanged
+            target = app_credentials.desktop_model_probe_target()
+            if target is None:
+                raise desktop_setup.ModelRequired
+            checked = await app_credentials.check_model(*target, trust_env=bool(target[1]))
+            if checked.get("check") not in {"ok", "no_tools"}:
+                return _error(502, "setup_model_probe_failed", "模型未通过连接测试，请检查地址、模型和 API Key 后重试")
+
+        def model_configured() -> bool:
+            if target is not None and app_credentials.desktop_model_probe_target() != target:
+                raise desktop_setup.SetupChanged
+            return views.model_connected()
+
+        result = await asyncio.to_thread(desktop_setup.advance, root, body.step, answer, model_configured,
+                                         skip_model=body.skipModel)
     except desktop_setup.SetupChanged:
         return _error(409, "setup_changed", "引导进度已更新，请重试")
     except HomeMaintenanceError:
         return _error(409, "setup_busy", "本机引导正在保存，请重试")
+    except desktop_setup.ModelRequired:
+        return _error(409, "setup_model_required", "先配置模型，或选择稍后设置并进入工作区")
     except ValueError:
         return _error(400, "invalid_setup_answer", "请检查当前步骤填写的信息")
     except OSError:
         return _error(503, "setup_unavailable", "本机引导进度无法保存")
     if result is None:
         return _error(404, "not_found", "本机引导不可用")
-    return JSONResponse(_setup_view(result), headers={"Cache-Control": "no-store"})
+    view = _setup_view(result)
+    if body.step == "presets" and result["mode"] == "personal" and view["modelConfigured"]:
+        view["rightHandId"] = views.main_agent_id(root)
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
 
 
 def _workspace_unread_counts(root: str, actor) -> list[dict[str, Any]]:

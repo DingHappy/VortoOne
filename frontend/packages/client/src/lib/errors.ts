@@ -48,6 +48,8 @@ const KNOWN = {
   "proposal.not_requester": "errors.agentProposal.notRequester",
   "agent_proposal.decided": "errors.agentProposal.decided",
   "approval.always_unavailable": "errors.approval.alwaysUnavailable",
+  setup_model_required: "onboarding.desktopSetup.modelMissing",
+  setup_model_probe_failed: "onboarding.desktopSetup.modelTestFailed",
   "agent_proposal.expired": "errors.agentProposal.expired",
   "team_proposal.decided": "errors.agentProposal.decided",
   "team_proposal.expired": "errors.agentProposal.expired",

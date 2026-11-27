@@ -1,13 +1,15 @@
-import { type Agent, type Me, type OrgSummary, useComputerSetup } from "@vortoone/client";
+import { type Agent, type Me, type OrgSummary, useAuthConfig, useComputerSetup } from "@vortoone/client";
+import { computerEdition } from "@vortoone/client/lib/computer";
 import { joinNames } from "@vortoone/client/lib/format";
 import { agentGrammar } from "@vortoone/client/lib/grammar";
-import { type AiChoice, gateDims, planLabel, planMark } from "@vortoone/client/lib/no-ai";
+import { type AiChoice, gateDims, PLAN_CHOICES, planLabel, planMark } from "@vortoone/client/lib/no-ai";
 import { can } from "@vortoone/client/lib/permissions";
 import { isRightHand } from "@vortoone/client/lib/right-hand";
-import { Button, Icon, ProviderLogo } from "@vortoone/ui";
-import type { ReactNode } from "react";
+import { Button, Icon, ProviderLogo, SettingNote } from "@vortoone/ui";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanGates } from "@/components/ai/ConnectAiSteps";
+import { OnboardingModelDialog } from "@/components/ai/OnboardingModelDialog";
 import { ConnectChoices } from "@/components/arrival/ConnectChoices";
 import { sceneTeam, TeamScene, useDawn } from "@/components/arrival/TeamScene";
 import { ConnectAiProvider, type ConnectAiRequest, useConnectAi } from "@/components/ConnectAi";
@@ -89,6 +91,8 @@ export function AiStep({
   const { t } = useTranslation();
   const { org } = useOrg();
   const connect = useConnectAi();
+  const authConfig = useAuthConfig();
+  const [modelOpen, setModelOpen] = useState(false);
   const ids = agents.map((a) => a.id);
   // A plan's tile dims while it can't sign in (no computer yet, or the Cloud's still being prepared after paying):
   // read again while the choices show, the computer's setup too (the dialog reads the same), so they light up alone.
@@ -97,9 +101,15 @@ export function AiStep({
   const reader = agents.find((a) => !isRightHand(a)) ?? agents[0];
   const poll = done ? false : GATES_POLL_MS;
   const gates = usePlanGates(orgId, reader?.id, poll);
-  useComputerSetup(orgId, true, poll);
-  if (done)
-    return (
+  const setup = useComputerSetup(orgId, true, poll);
+  const selfHosted = computerEdition(setup.data, authConfig.data?.workspaceComputer) === "selfhost";
+  const mayAddKey = can(org, "manage_credentials");
+  const availablePlans = selfHosted ? PLAN_CHOICES.filter((choice) => gates.gateOf(choice).state === "ready") : undefined;
+  // Keep a model dialog mounted while its save returns, even when a status poll sees the connection first.
+  const modelDialog = modelOpen && (
+    <OnboardingModelDialog orgId={orgId} onClose={() => setModelOpen(false)} onConnected={() => onConnected?.("key")} />
+  );
+  const connectedView = (
       <>
         {picked && (
           <div className="arrival-opts">
@@ -123,6 +133,7 @@ export function AiStep({
             </div>
           </div>
         )}
+        {!picked && <SettingNote icon="check" live>{t("onboarding.flow.ai.existing")}</SettingNote>}
         <div className="onb__actions">
           <Button
             variant="primary"
@@ -138,23 +149,48 @@ export function AiStep({
         </div>
       </>
     );
-  return (
+  const chooseView = (
     <>
       <div className="onb__answer">
-        <ConnectChoices
-          mayAddKey={can(org, "manage_credentials")}
-          dims={(c) => reader !== undefined && gateDims(gates.gateOf(c))}
-          onPick={(choice) =>
-            connect?.open({ ...connectRequest(choice, ids), ...(onConnected ? { onConnected } : {}) })
-          }
-        />
+        {selfHosted && mayAddKey && (
+          <div className="arrival-opts">
+            <button type="button" className="ac-option" disabled={leaving} onClick={() => setModelOpen(true)}>
+              <span className="arrival-opts__tile" aria-hidden="true"><Icon name="key" /></span>
+              <span className="ac-option__text">
+                <span className="ac-option__title">{t("onboarding.flow.ai.model.title")}</span>
+                <span className="ac-option__desc">{t("onboarding.flow.ai.model.description")}</span>
+              </span>
+              <Icon name="chevronRight" className="arrival-opts__end" />
+            </button>
+          </div>
+        )}
+        {(!availablePlans || availablePlans.length > 0) && (
+          <ConnectChoices
+            mayAddKey={!selfHosted && mayAddKey}
+            plans={availablePlans}
+            disabled={leaving}
+            dims={(c) => reader !== undefined && gateDims(gates.gateOf(c))}
+            onPick={(choice) => connect?.open({ ...connectRequest(choice, ids), ...(onConnected ? { onConnected } : {}) })}
+          />
+        )}
+        {gates.failed && (
+          <SettingNote icon="alert" live action={<Button disabled={leaving} onClick={gates.retry}>{t("common.retry")}</Button>}>
+            {t("onboarding.flow.ai.statusUnavailable")}
+          </SettingNote>
+        )}
       </div>
-      <p className="onb__skip">
-        <span className="muted">{t("arrival.connect.without")}</span>
-        <button type="button" className="ac-link" disabled={leaving} onClick={onLater}>
+      <div className="onb__actions">
+        <Button block disabled={leaving} loading={leaving} onClick={onLater}>
           {t("onboarding.flow.ai.later")}
-        </button>
-      </p>
+        </Button>
+        <p className="small muted">{t("onboarding.flow.ai.laterHint")}</p>
+      </div>
+    </>
+  );
+  return (
+    <>
+      {done ? connectedView : chooseView}
+      {modelDialog}
     </>
   );
 }

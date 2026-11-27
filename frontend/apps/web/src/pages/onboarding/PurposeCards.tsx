@@ -1,6 +1,6 @@
 import type { WorkspaceMode } from "@vortoone/client";
 import { type PurposeKind, SCENE_ACTIVITIES, SCENE_FACES } from "@vortoone/client/lib/purpose-scene";
-import { type AgentAppearance, cx, OptionList } from "@vortoone/ui";
+import { type AgentAppearance, cx, Icon, OptionList } from "@vortoone/ui";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";
@@ -40,7 +40,12 @@ export function PurposeCards({
       options={PURPOSES.map((mode) => ({
         value: mode,
         leading: <PurposeScene kind={mode} chosen={value === mode} you={you} life={lives[mode]} />,
-        title: t(`onboarding.purpose.${mode}`),
+        title: (
+          <>
+            {t(`onboarding.purpose.${mode}`)}
+            {value === mode && <Icon name="check" size={16} />}
+          </>
+        ),
         description: (
           <>
             <span>{t(`onboarding.purpose.${mode}Line`)}</span>

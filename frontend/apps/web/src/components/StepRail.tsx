@@ -43,17 +43,24 @@ export function StepRail({
   useLayoutEffect(() => {
     const ol = strip.current;
     if (!ol) return;
+    const rail = ol.closest<HTMLElement>(".onb--rail .onb__rail");
     const reveal = () => {
       const step = ol.children[current]?.getBoundingClientRect();
       const box = ol.getBoundingClientRect();
       if (!step) return;
       if (step.right > box.right) ol.scrollLeft += step.right - box.right;
       else if (step.left < box.left) ol.scrollLeft -= box.left - step.left;
+      if (rail && getComputedStyle(rail).overflowY === "auto") {
+        const edge = rail.getBoundingClientRect();
+        if (step.bottom > edge.bottom) rail.scrollTop += step.bottom - edge.bottom + 8;
+        else if (step.top < edge.top) rail.scrollTop -= edge.top - step.top + 8;
+      }
     };
     reveal();
     if (typeof ResizeObserver === "undefined") return;
     const resized = new ResizeObserver(reveal);
     resized.observe(ol);
+    if (rail) resized.observe(rail);
     return () => resized.disconnect();
   }, [current]);
   return (

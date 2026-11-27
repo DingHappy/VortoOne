@@ -268,7 +268,7 @@ def me(root: str) -> Dict[str, Any]:
             preferences["workArea"] = area
     return {
         "user": {"id": user_id, "name": card["name"], "email": card["email"], "image": avatar,
-                 **preferences},
+                 "canCreateWorkspace": False, **preferences},
         "organizations": [{"id": home_id(root), "name": name, "role": "owner",
                            **({"mode": mode} if mode else {}),
                            **display, "permissions": list(OWNER_PERMISSIONS),
