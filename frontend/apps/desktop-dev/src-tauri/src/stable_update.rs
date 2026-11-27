@@ -1,6 +1,6 @@
 //! Native stable updates. Installation always requires user confirmation.
 
-use crate::gray_update::{Managed, Report};
+use crate::gray_update::{CheckOutcome, Managed, Report, RolloutCheck, POLICY_ERROR};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -8,7 +8,7 @@ use std::sync::{
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 
 #[cfg(target_os = "windows")]
 const PORTABLE_UPDATE: (&str, &str) = ("windows-x86_64-nsis", "windows-x64.exe");
@@ -71,9 +71,22 @@ pub fn check(app: AppHandle, manual: bool) {
     });
 }
 
-pub async fn check_from_versions(app: &AppHandle) -> Result<(), &'static str> {
-    check_with_guard(app, true, begin(app)?).await;
-    Ok(())
+pub async fn check_from_versions(app: &AppHandle) -> Result<CheckOutcome, &'static str> {
+    let _guard = begin(app)?;
+    let Some(managed) = Managed::read(app)? else {
+        return Ok(CheckOutcome::EnrollmentInvalid);
+    };
+    match find_managed_update(app, &managed).await? {
+        RolloutCheck::NoOffer(outcome) => Ok(outcome),
+        RolloutCheck::Offer(update) => {
+            let installed = install_update(app, update, Some(&managed)).await?;
+            Ok(if installed {
+                CheckOutcome::Installing
+            } else {
+                CheckOutcome::Declined
+            })
+        }
+    }
 }
 
 async fn check_with_guard(app: &AppHandle, manual: bool, _guard: UpdateOperation) {
@@ -88,8 +101,19 @@ async fn run_check(app: &AppHandle, manual: bool) -> Result<(), &'static str> {
         Err(_) if manual => return Err("暂时无法检查更新，请稍后重试。"),
         Err(_) => return Ok(()),
     };
-    match find_update(app, managed.as_ref()).await {
-        Ok(Some(update)) => install_update(app, update, managed.as_ref()).await,
+    let update = match &managed {
+        Some(device) => match find_managed_update(app, device).await {
+            Ok(RolloutCheck::Offer(update)) => Ok(Some(update)),
+            Ok(RolloutCheck::NoOffer(CheckOutcome::EnrollmentInvalid)) => Err(POLICY_ERROR),
+            Ok(RolloutCheck::NoOffer(_)) => Ok(None),
+            Err(error) => Err(error),
+        },
+        None => find_public_update(app).await,
+    };
+    match update {
+        Ok(Some(update)) => install_update(app, update, managed.as_ref())
+            .await
+            .map(|_| ()),
         Ok(None) if manual => {
             let message = if managed.is_some() {
                 "这台设备目前没有可用的灰度更新。"
@@ -103,21 +127,15 @@ async fn run_check(app: &AppHandle, manual: bool) -> Result<(), &'static str> {
     }
 }
 
-async fn find_update(
-    app: &AppHandle,
-    managed: Option<&Managed>,
-) -> Result<Option<Update>, &'static str> {
+fn build_updater(app: &AppHandle, target: Option<&str>) -> Result<Updater, &'static str> {
     let builder = app.updater_builder().configure_client(|client| {
         client
             .https_only(true)
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(30))
     });
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    let builder = builder.target(PORTABLE_UPDATE.0);
-    #[cfg(target_os = "macos")]
-    let builder = match managed {
-        Some(_) => builder.target(crate::gray_update::TARGET.0),
+    let builder = match target {
+        Some(target) => builder.target(target),
         None => builder,
     };
     #[cfg(target_os = "windows")]
@@ -127,18 +145,35 @@ async fn find_update(
         move || stop_managed_processes(&app)
     });
 
-    let updater = builder
+    builder
         .build()
-        .map_err(|_| "更新组件不可用，请打开下载页查看最新版本。")?;
-    if let Some(managed) = managed {
-        return match managed.manifest(app).await? {
-            Some(manifest) => updater
-                .restore_update(manifest)
-                .map_err(|_| "灰度更新元数据无效，请联系发布管理员。"),
-            None => Ok(None),
-        };
-    }
+        .map_err(|_| "更新组件不可用，请打开下载页查看最新版本。")
+}
 
+async fn find_managed_update(
+    app: &AppHandle,
+    managed: &Managed,
+) -> Result<RolloutCheck<Update>, &'static str> {
+    let updater = build_updater(app, Some(crate::gray_update::TARGET.0))?;
+    let manifest = match managed.check(app).await? {
+        RolloutCheck::Offer(manifest) => manifest,
+        RolloutCheck::NoOffer(outcome) => return Ok(RolloutCheck::NoOffer(outcome)),
+    };
+    let update = updater
+        .restore_update(manifest)
+        .map_err(|_| "灰度更新元数据无效，请联系发布管理员。")?;
+    Ok(match update {
+        Some(update) => RolloutCheck::Offer(update),
+        None => RolloutCheck::NoOffer(CheckOutcome::NoUpdate),
+    })
+}
+
+async fn find_public_update(app: &AppHandle) -> Result<Option<Update>, &'static str> {
+    #[cfg(target_os = "macos")]
+    let target = None;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let target = Some(PORTABLE_UPDATE.0);
+    let updater = build_updater(app, target)?;
     let update = updater
         .check()
         .await
@@ -179,7 +214,7 @@ async fn install_update(
     app: &AppHandle,
     update: Update,
     managed: Option<&Managed>,
-) -> Result<(), &'static str> {
+) -> Result<bool, &'static str> {
     #[cfg(target_os = "linux")]
     let instructions =
         "安装时需要系统管理员授权。本机正在进行的对话会中断，安装完成后 App 会自动重启。";
@@ -190,7 +225,7 @@ async fn install_update(
         if let Some(managed) = managed {
             let _ = managed.report(&update.version, Report::Declined).await;
         }
-        return Ok(());
+        return Ok(false);
     }
 
     let version = update.version.clone();
@@ -237,7 +272,7 @@ async fn install_update(
             Ok(true) => {}
         }
     }
-    result.map(|_| ())
+    result
 }
 
 #[cfg(target_os = "macos")]

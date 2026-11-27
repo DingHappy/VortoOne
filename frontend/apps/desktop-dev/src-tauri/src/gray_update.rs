@@ -1,6 +1,6 @@
 //! Device enrollment and authenticated policy for the stable updater.
 
-use reqwest::{Client, RequestBuilder, Response, StatusCode};
+use reqwest::{header::HeaderMap, Client, RequestBuilder, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -15,11 +15,12 @@ const HOST: &str = "vortoone.com";
 const API: &str = "https://vortoone.com/api/desktop-rollout";
 const VERSIONS: (&str, &str) = ("versions", "versions.html");
 const ENROLLMENT: (&str, &str) = ("gray-enrollment", "gray-enrollment.html");
-const POLICY_ERROR: &str = "无法核对灰度更新资格，请稍后重试或打开版本管理。";
+pub const POLICY_ERROR: &str = "无法核对灰度更新资格，请稍后重试或打开版本管理。";
 const DOWNLOAD_ERROR: &str = "无法下载或验签灰度更新，请稍后重试。";
 const STORE_ERROR: &str = "无法访问本机灰度凭据，请在版本管理中检查设备登记。";
 const MAX_JSON: usize = 128 * 1024;
 const MAX_DOWNLOAD: usize = 512 * 1024 * 1024;
+const ROLLOUT_STATUS_HEADER: &str = "x-vortoone-rollout-status";
 
 #[cfg(target_os = "macos")]
 pub const TARGET: (&str, &str) = ("darwin-aarch64", "aarch64.app.tar.gz");
@@ -41,6 +42,24 @@ pub struct GrayStatus {
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     platform: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckOutcome {
+    AwaitingAssignment,
+    Paused,
+    UpToDate,
+    Unavailable,
+    NoUpdate,
+    EnrollmentInvalid,
+    Declined,
+    Installing,
+}
+
+pub enum RolloutCheck<T> {
+    Offer(T),
+    NoOffer(CheckOutcome),
 }
 
 #[derive(Deserialize)]
@@ -121,6 +140,20 @@ async fn response_bytes(
     Ok(bytes)
 }
 
+fn no_offer_status(headers: &HeaderMap) -> CheckOutcome {
+    let mut values = headers.get_all(ROLLOUT_STATUS_HEADER).iter();
+    match (
+        values.next().and_then(|value| value.to_str().ok()),
+        values.next(),
+    ) {
+        (Some("awaiting_assignment"), None) => CheckOutcome::AwaitingAssignment,
+        (Some("paused"), None) => CheckOutcome::Paused,
+        (Some("up_to_date"), None) => CheckOutcome::UpToDate,
+        (Some("unavailable"), None) => CheckOutcome::Unavailable,
+        _ => CheckOutcome::NoUpdate,
+    }
+}
+
 impl Managed {
     pub fn read(app: &AppHandle) -> Result<Option<Self>, &'static str> {
         if !supported(app) {
@@ -136,7 +169,7 @@ impl Managed {
             .transpose()
     }
 
-    pub async fn manifest(&self, app: &AppHandle) -> Result<Option<Value>, &'static str> {
+    pub async fn check(&self, app: &AppHandle) -> Result<RolloutCheck<Value>, &'static str> {
         let response = self
             .client
             .post(format!("{API}/check"))
@@ -147,12 +180,15 @@ impl Managed {
             .await
             .map_err(|_| POLICY_ERROR)?;
         match response.status() {
-            StatusCode::NO_CONTENT => Ok(None),
+            StatusCode::NO_CONTENT => {
+                Ok(RolloutCheck::NoOffer(no_offer_status(response.headers())))
+            }
+            StatusCode::UNAUTHORIZED => Ok(RolloutCheck::NoOffer(CheckOutcome::EnrollmentInvalid)),
             StatusCode::OK => {
                 let bytes = response_bytes(response, MAX_JSON, POLICY_ERROR).await?;
                 let manifest = serde_json::from_slice(&bytes).map_err(|_| POLICY_ERROR)?;
                 validate_manifest(&manifest, TARGET)?;
-                Ok(Some(manifest))
+                Ok(RolloutCheck::Offer(manifest))
             }
             _ => Err(POLICY_ERROR),
         }
@@ -462,12 +498,12 @@ pub async fn gray_update_leave(
 }
 
 #[tauri::command]
-pub async fn gray_update_check(window: WebviewWindow, app: AppHandle) -> Result<(), &'static str> {
+pub async fn gray_update_check(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<CheckOutcome, &'static str> {
     check_window(&window, VERSIONS)?;
     require_supported(&app)?;
-    if !status(&app)?.enrolled {
-        return Err("这台设备尚未登记。");
-    }
     crate::stable_update::check_from_versions(&app).await
 }
 
@@ -690,6 +726,54 @@ fn dpapi(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gray_no_offer_headers_only_accept_known_unambiguous_statuses() {
+        use reqwest::header::HeaderValue;
+
+        let mut headers = HeaderMap::new();
+        assert_eq!(no_offer_status(&headers), CheckOutcome::NoUpdate);
+        for (value, expected) in [
+            ("awaiting_assignment", CheckOutcome::AwaitingAssignment),
+            ("paused", CheckOutcome::Paused),
+            ("up_to_date", CheckOutcome::UpToDate),
+            ("unavailable", CheckOutcome::Unavailable),
+            ("unknown", CheckOutcome::NoUpdate),
+            ("declined", CheckOutcome::NoUpdate),
+            ("enrollment_invalid", CheckOutcome::NoUpdate),
+            ("paused, up_to_date", CheckOutcome::NoUpdate),
+        ] {
+            headers.insert(ROLLOUT_STATUS_HEADER, HeaderValue::from_static(value));
+            assert_eq!(no_offer_status(&headers), expected, "{value}");
+        }
+        headers.insert(ROLLOUT_STATUS_HEADER, HeaderValue::from_static("paused"));
+        headers.append(
+            ROLLOUT_STATUS_HEADER,
+            HeaderValue::from_static("up_to_date"),
+        );
+        assert_eq!(no_offer_status(&headers), CheckOutcome::NoUpdate);
+        headers.insert(
+            ROLLOUT_STATUS_HEADER,
+            HeaderValue::from_bytes(&[0x80]).unwrap(),
+        );
+        assert_eq!(no_offer_status(&headers), CheckOutcome::NoUpdate);
+    }
+
+    #[test]
+    fn gray_check_outcomes_have_fixed_ipc_values() {
+        for (outcome, code) in [
+            (CheckOutcome::AwaitingAssignment, "awaiting_assignment"),
+            (CheckOutcome::Paused, "paused"),
+            (CheckOutcome::UpToDate, "up_to_date"),
+            (CheckOutcome::Unavailable, "unavailable"),
+            (CheckOutcome::NoUpdate, "no_update"),
+            (CheckOutcome::EnrollmentInvalid, "enrollment_invalid"),
+            (CheckOutcome::Declined, "declined"),
+            (CheckOutcome::Installing, "installing"),
+        ] {
+            assert_eq!(serde_json::to_value(outcome).unwrap(), code);
+        }
+    }
 
     #[test]
     fn gray_enrollment_errors_have_fixed_safe_codes() {

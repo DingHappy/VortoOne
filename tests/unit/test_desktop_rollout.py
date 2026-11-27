@@ -23,6 +23,7 @@ API = "/api/desktop-rollout"
 ADMIN = API + "/admin"
 MANAGER = "/admin/releases"
 SIGN_IN = MANAGER + "/sign-in"
+CHECK_STATUS = "X-VortoOne-Rollout-Status"
 ORIGIN = "https://vortoone.com"
 SAME_ORIGIN = {"Origin": ORIGIN}
 PASSWORD = "synthetic rollout test passphrase"
@@ -92,6 +93,13 @@ def check(client, auth, platform=MAC, version="0.3.4"):
     return client.post(API + "/check", headers=auth, json={"platform": platform, "version": version})
 
 
+def no_offer(response, status):
+    assert response.status_code == 204
+    assert response.content == b""
+    assert response.headers[CHECK_STATUS] == status
+    assert response.headers["Cache-Control"] == "no-store"
+
+
 def report(client, auth, status="installing", release="0.3.6"):
     return client.post(API + "/report", headers=auth, json={"release": release, "status": status})
 
@@ -117,15 +125,22 @@ def test_assigned_version_is_delivered_only_to_the_device_and_installed_only_aft
     files = stage(root, platforms=(MAC, WINDOWS, LINUX))
     mac_id, mac = enroll(admin)
     _, other = enroll(admin)
-    assert check(admin, mac).status_code == 204
-    assert check(admin, mac, platform=WINDOWS).status_code == 409
-    assert check(admin, {}).status_code == 401  # An admin cookie cannot act as a device.
+    no_offer(check(admin, mac), "awaiting_assignment")
+    wrong_platform = check(admin, mac, platform=WINDOWS)
+    assert wrong_platform.status_code == 409 and CHECK_STATUS not in wrong_platform.headers
+    anonymous = check(admin, {})  # An admin cookie cannot act as a device.
+    assert anonymous.status_code == 401 and CHECK_STATUS not in anonymous.headers
+    forged = check(admin, {"Authorization": "Bearer " + "a" * 43})
+    assert forged.status_code == 401 and CHECK_STATUS not in forged.headers
     assert report(admin, mac).status_code == 409
     assert assign(admin, mac_id).status_code == 204
-    assert check(admin, other).status_code == 204
+    no_offer(check(admin, other), "awaiting_assignment")
+    with sqlite3.connect(root / "rollout.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0] == 0
 
     offered = check(admin, mac)
     assert offered.status_code == 200 and offered.headers["Cache-Control"] == "no-store"
+    assert CHECK_STATUS not in offered.headers
     manifest = offered.json()
     assert manifest["version"] == "0.3.6"
     assert manifest["notes"] == "Fixture changes"
@@ -151,11 +166,11 @@ def test_assigned_version_is_delivered_only_to_the_device_and_installed_only_aft
     record = next(row for row in state(admin)["devices"] if row["id"] == mac_id)
     assert (record["current_version"], record["status"]) == ("0.3.4", "failed")
     assert report(admin, mac).status_code == 204
-    assert check(admin, mac, version="0.3.6").status_code == 204
+    no_offer(check(admin, mac, version="0.3.6"), "up_to_date")
     record = next(row for row in state(admin)["devices"] if row["id"] == mac_id)
     assert (record["current_version"], record["status"]) == ("0.3.6", "up_to_date")
     assert admin.get(asset["url"], headers=mac).status_code == 404
-    assert check(admin, mac, version="0.3.10").status_code == 204  # Version order is numeric.
+    no_offer(check(admin, mac, version="0.3.10"), "up_to_date")  # Version order is numeric.
 
 
 @pytest.mark.parametrize(
@@ -200,7 +215,8 @@ def test_pausing_reassigning_disabling_and_leaving_remove_authority(sandbox, adm
 
     pause(admin)
     assert admin.get(first, headers=auth).status_code == 404
-    assert check(admin, auth).status_code == 204  # The paused assignment has no fallback.
+    no_offer(check(admin, auth, version="0.3.6"), "up_to_date")
+    no_offer(check(admin, auth), "paused")  # The paused assignment has no fallback.
     assert report(admin, auth).status_code == 409
     assert state(admin)["devices"][0]["status"] == "assigned"
     pause(admin, False)
@@ -216,7 +232,8 @@ def test_pausing_reassigning_disabling_and_leaving_remove_authority(sandbox, adm
     assert admin.post(API + "/leave", headers=auth, json={}).status_code == 422
     assert admin.post(API + "/leave", headers=auth).status_code == 204
     assert admin.post(API + "/leave", headers=auth).status_code == 401
-    assert check(admin, auth).status_code == 401
+    revoked = check(admin, auth)
+    assert revoked.status_code == 401 and CHECK_STATUS not in revoked.headers
     assert report(admin, auth, release="0.3.7").status_code == 409
     assert admin.get(third, headers=auth).status_code == 401
     record = state(admin)["devices"][0]
@@ -228,6 +245,34 @@ def test_pausing_reassigning_disabling_and_leaving_remove_authority(sandbox, adm
     assert admin.delete(f"{ADMIN}/devices/{replacement}").status_code == 204
     assert admin.get(url, headers=replacement_auth).status_code == 401
     assert report(admin, replacement_auth).status_code == 409
+
+
+@pytest.mark.parametrize("stale", ["missing_candidate", "platform_removed", "legacy_target"])
+def test_check_unavailable_preserves_assignment_and_issues_no_ticket(sandbox, admin, stale):
+    _, root, _ = sandbox
+    stage(root, platforms=(MAC, WINDOWS))
+    stage(root, "0.3.7")
+    device, auth = enroll(admin)
+    assert assign(admin, device).status_code == 204
+
+    database = root / "rollout.sqlite3"
+    manifest = root / "releases" / "0.3.6" / "release.json"
+    target = "0.3.6"
+    if stale == "missing_candidate":
+        manifest.unlink()
+    elif stale == "platform_removed":
+        doc = json.loads(manifest.read_bytes())
+        del doc["platforms"][MAC]
+        manifest.write_text(json.dumps(doc))
+    else:
+        target = "legacy-version"
+        with sqlite3.connect(database) as conn:
+            conn.execute("UPDATE devices SET target_version = ? WHERE id = ?", (target, device))
+    no_offer(check(admin, auth), "unavailable")
+    record = state(admin)["devices"][0]
+    assert (record["target_version"], record["status"]) == (target, "assigned")
+    with sqlite3.connect(database) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0] == 0
 
 
 def test_enrollment_expiration_ticket_expiration_and_restart(sandbox, admin, password_hash):

@@ -31,6 +31,7 @@ ADMIN_COOKIE_PATH = PREFIX + "/admin"
 ADMIN_PAGE = "/admin/releases"
 SIGN_IN = ADMIN_PAGE + "/sign-in"
 STATIC = Path(__file__).with_name("static")
+CHECK_STATUS_HEADER = "X-VortoOne-Rollout-Status"
 ENROLLMENT_SECONDS = 15 * 60
 TICKET_SECONDS = 10 * 60
 SESSION_SECONDS = 8 * 60 * 60
@@ -40,6 +41,7 @@ MANIFEST_LIMIT = 64 * 1024
 ARTIFACT_LIMIT = 512 * 1024 * 1024
 
 Platform = Literal["darwin-aarch64", "windows-x86_64-nsis", "linux-x86_64-deb"]
+OfferStatus = Literal["available", "awaiting_assignment", "up_to_date", "paused", "unavailable"]
 SUFFIXES = {
     "darwin-aarch64": "aarch64.app.tar.gz",
     "windows-x86_64-nsis": "windows-x64.exe",
@@ -343,18 +345,24 @@ class Store:
         if attempts["attempts"] > maximum:
             raise HTTPException(429, "rate_limited", headers={"Retry-After": str(attempts["expires_at"] - now)})
 
-    def eligible(
+    def resolve_offer(
         self, conn: sqlite3.Connection, device: sqlite3.Row, current: str
-    ) -> Candidate | None:
+    ) -> tuple[Candidate | None, OfferStatus]:
         target = device["target_version"]
-        if not device["active"] or target is None or _version_parts(current) >= _version_parts(target):
-            return None
+        if not device["active"]:
+            return None, "unavailable"
+        if target is None:
+            return None, "awaiting_assignment"
+        if not VERSION_RE.fullmatch(target) or not VERSION_RE.fullmatch(current):
+            return None, "unavailable"
+        if _version_parts(current) >= _version_parts(target):
+            return None, "up_to_date"
         if conn.execute("SELECT 1 FROM paused_releases WHERE version = ?", (target,)).fetchone():
-            return None
+            return None, "paused"
         candidate = self.candidate(target)
         if candidate is None or device["platform"] not in candidate.platforms:
-            return None
-        return candidate
+            return None, "unavailable"
+        return candidate, "available"
 
 
 def _version_parts(value: str) -> tuple[int, ...]:
@@ -441,15 +449,14 @@ def _admin_device(conn: sqlite3.Connection, device_id: str) -> sqlite3.Row:
     return row
 
 
-def _provided_status(device: sqlite3.Row, current: str, eligible: Candidate | None) -> str:
-    target = device["target_version"]
-    if target is None:
+def _provided_status(device: sqlite3.Row, current: str, offer_status: OfferStatus) -> str:
+    if offer_status == "awaiting_assignment":
         return "enrolled"
-    if _version_parts(current) >= _version_parts(target):
+    if offer_status == "up_to_date":
         return "up_to_date"
     if current == device["current_version"] and device["status"] in {"installing", "failed", "declined"}:
         return device["status"]
-    return "update_available" if eligible is not None else "assigned"
+    return "update_available" if offer_status == "available" else "assigned"
 
 
 def _assign_devices(store: Store, conn: sqlite3.Connection, device_ids: list[str], version: str | None) -> None:
@@ -582,14 +589,14 @@ def create_app(
             device = _device(conn, request)
             if device["platform"] != body.platform:
                 raise HTTPException(409, "device_platform_changed")
-            candidate = store.eligible(conn, device, body.version)
+            candidate, offer_status = store.resolve_offer(conn, device, body.version)
             conn.execute(
                 "UPDATE devices SET current_version = ?, last_seen_at = ?, status = ? WHERE id = ?",
-                (body.version, stamp, _provided_status(device, body.version, candidate), device["id"]),
+                (body.version, stamp, _provided_status(device, body.version, offer_status), device["id"]),
             )
             conn.execute("DELETE FROM tickets WHERE expires_at <= ?", (stamp,))
             if candidate is None:
-                return Response(status_code=204)
+                return Response(status_code=204, headers={CHECK_STATUS_HEADER: offer_status})
             asset = candidate.platforms[body.platform]
             ticket = secrets.token_urlsafe(16)
             conn.execute(
@@ -619,7 +626,7 @@ def create_app(
             ).fetchone()
             if grant is None or grant["release"] != device["target_version"]:
                 raise HTTPException(404, "download_unavailable")
-            candidate = store.eligible(conn, device, device["current_version"])
+            candidate, _ = store.resolve_offer(conn, device, device["current_version"])
             if candidate is None or candidate.platforms[device["platform"]].filename != filename:
                 raise HTTPException(404, "download_unavailable")
             file = store.releases / candidate.version / filename
@@ -639,8 +646,10 @@ def create_app(
                 raise HTTPException(409, "device_disabled")
             if body.release != device["target_version"]:
                 raise HTTPException(409, "release_not_assigned")
-            if body.status == "installing" and store.eligible(conn, device, device["current_version"]) is None:
-                raise HTTPException(409, "release_not_eligible")
+            if body.status == "installing":
+                candidate, _ = store.resolve_offer(conn, device, device["current_version"])
+                if candidate is None:
+                    raise HTTPException(409, "release_not_eligible")
             if _version_parts(device["current_version"]) >= _version_parts(body.release):
                 raise HTTPException(409, "release_already_running")
             conn.execute(
