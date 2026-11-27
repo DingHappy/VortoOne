@@ -1,6 +1,8 @@
 //! Device enrollment and authenticated policy for the stable updater.
 
-use reqwest::{Client, RequestBuilder, Response, StatusCode};
+mod machine;
+
+use reqwest::{header::HeaderMap, Client, RequestBuilder, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -15,11 +17,12 @@ const HOST: &str = "vortoone.com";
 const API: &str = "https://vortoone.com/api/desktop-rollout";
 const VERSIONS: (&str, &str) = ("versions", "versions.html");
 const ENROLLMENT: (&str, &str) = ("gray-enrollment", "gray-enrollment.html");
-const POLICY_ERROR: &str = "无法核对灰度更新资格，请稍后重试或打开版本管理。";
+pub const POLICY_ERROR: &str = "无法核对灰度更新资格，请稍后重试或打开版本管理。";
 const DOWNLOAD_ERROR: &str = "无法下载或验签灰度更新，请稍后重试。";
 const STORE_ERROR: &str = "无法访问本机灰度凭据，请在版本管理中检查设备登记。";
 const MAX_JSON: usize = 128 * 1024;
 const MAX_DOWNLOAD: usize = 512 * 1024 * 1024;
+const ROLLOUT_STATUS_HEADER: &str = "x-vortoone-rollout-status";
 
 #[cfg(target_os = "macos")]
 pub const TARGET: (&str, &str) = ("darwin-aarch64", "aarch64.app.tar.gz");
@@ -43,10 +46,40 @@ pub struct GrayStatus {
     platform: Option<&'static str>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckOutcome {
+    AwaitingAssignment,
+    Paused,
+    UpToDate,
+    Unavailable,
+    NoUpdate,
+    EnrollmentInvalid,
+    Declined,
+    Installing,
+}
+
+pub enum RolloutCheck<T> {
+    Offer(T),
+    NoOffer(CheckOutcome),
+}
+
 #[derive(Deserialize)]
 pub struct EnrollInput {
     code: String,
     name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnrollError {
+    AlreadyEnrolled,
+    InvalidInput,
+    CodeRejected,
+    Network,
+    LocalCredential,
+    Busy,
+    Unavailable,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +107,37 @@ impl Report {
 pub struct Managed {
     client: Client,
     token: String,
+}
+
+pub struct StandardManagedCheck {
+    pub device: Managed,
+    pub outcome: RolloutCheck<Value>,
+    pub legacy: bool,
+}
+
+pub async fn check_for_standard_update(
+    app: &AppHandle,
+) -> Result<Option<StandardManagedCheck>, &'static str> {
+    if let Some(legacy) = Managed::read(app).map_err(|_| "暂时无法检查更新，请稍后重试。")?
+    {
+        let outcome = legacy.check(app).await?;
+        return Ok(Some(StandardManagedCheck {
+            device: legacy,
+            outcome,
+            legacy: true,
+        }));
+    }
+    if supported(app) {
+        Ok(machine::check(app)
+            .await?
+            .map(|(device, outcome)| StandardManagedCheck {
+                device,
+                outcome,
+                legacy: false,
+            }))
+    } else {
+        Ok(None)
+    }
 }
 
 fn private_client() -> Result<Client, &'static str> {
@@ -109,6 +173,20 @@ async fn response_bytes(
     Ok(bytes)
 }
 
+fn no_offer_status(headers: &HeaderMap) -> CheckOutcome {
+    let mut values = headers.get_all(ROLLOUT_STATUS_HEADER).iter();
+    match (
+        values.next().and_then(|value| value.to_str().ok()),
+        values.next(),
+    ) {
+        (Some("awaiting_assignment"), None) => CheckOutcome::AwaitingAssignment,
+        (Some("paused"), None) => CheckOutcome::Paused,
+        (Some("up_to_date"), None) => CheckOutcome::UpToDate,
+        (Some("unavailable"), None) => CheckOutcome::Unavailable,
+        _ => CheckOutcome::NoUpdate,
+    }
+}
+
 impl Managed {
     pub fn read(app: &AppHandle) -> Result<Option<Self>, &'static str> {
         if !supported(app) {
@@ -124,7 +202,7 @@ impl Managed {
             .transpose()
     }
 
-    pub async fn manifest(&self, app: &AppHandle) -> Result<Option<Value>, &'static str> {
+    pub async fn check(&self, app: &AppHandle) -> Result<RolloutCheck<Value>, &'static str> {
         let response = self
             .client
             .post(format!("{API}/check"))
@@ -135,12 +213,15 @@ impl Managed {
             .await
             .map_err(|_| POLICY_ERROR)?;
         match response.status() {
-            StatusCode::NO_CONTENT => Ok(None),
+            StatusCode::NO_CONTENT => {
+                Ok(RolloutCheck::NoOffer(no_offer_status(response.headers())))
+            }
+            StatusCode::UNAUTHORIZED => Ok(RolloutCheck::NoOffer(CheckOutcome::EnrollmentInvalid)),
             StatusCode::OK => {
                 let bytes = response_bytes(response, MAX_JSON, POLICY_ERROR).await?;
                 let manifest = serde_json::from_slice(&bytes).map_err(|_| POLICY_ERROR)?;
                 validate_manifest(&manifest, TARGET)?;
-                Ok(Some(manifest))
+                Ok(RolloutCheck::Offer(manifest))
             }
             _ => Err(POLICY_ERROR),
         }
@@ -338,7 +419,25 @@ fn status(app: &AppHandle) -> Result<GrayStatus, &'static str> {
 #[cfg(target_os = "macos")]
 pub fn check_at_startup(app: &AppHandle) -> bool {
     // If enrollment storage is unavailable, let the managed check fail closed.
-    supported(app) && status(app).map(|status| status.enrolled).unwrap_or(true)
+    supported(app)
+        && (status(app).map(|status| status.enrolled).unwrap_or(true)
+            || machine::has_state(app).unwrap_or(true))
+}
+
+#[tauri::command]
+pub async fn gray_update_machine_code(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<String, &'static str> {
+    check_window(&window, VERSIONS)?;
+    require_supported(&app)?;
+    let _guard = crate::stable_update::begin(&app)?;
+    if record_exists(&record_path(&app)?)? {
+        return Err("请先退出当前灰度，再复制机器码。");
+    }
+    tauri::async_runtime::spawn_blocking(move || machine::code(&app))
+        .await
+        .map_err(|_| STORE_ERROR)?
 }
 
 #[tauri::command]
@@ -360,13 +459,13 @@ pub async fn gray_update_enroll(
     window: WebviewWindow,
     app: AppHandle,
     input: EnrollInput,
-) -> Result<GrayStatus, &'static str> {
-    check_window(&window, ENROLLMENT)?;
-    require_supported(&app)?;
-    let _guard = crate::stable_update::begin(&app)?;
-    let path = record_path(&app)?;
-    if record_exists(&path)? {
-        return Err("这台设备已登记，请先退出当前灰度。");
+) -> Result<GrayStatus, EnrollError> {
+    check_window(&window, ENROLLMENT).map_err(|_| EnrollError::Unavailable)?;
+    require_supported(&app).map_err(|_| EnrollError::Unavailable)?;
+    let _guard = crate::stable_update::begin(&app).map_err(|_| EnrollError::Busy)?;
+    let path = record_path(&app).map_err(|_| EnrollError::LocalCredential)?;
+    if record_exists(&path).map_err(|_| EnrollError::LocalCredential)? {
+        return Err(EnrollError::AlreadyEnrolled);
     }
     let code = input.code.trim();
     let name = input.name.trim();
@@ -375,9 +474,9 @@ pub async fn gray_update_enroll(
         || !(1..=64).contains(&name.chars().count())
         || name.chars().any(char::is_control)
     {
-        return Err("请填写有效的登记码和设备名称。");
+        return Err(EnrollError::InvalidInput);
     }
-    let client = private_client()?;
+    let client = private_client().map_err(|_| EnrollError::Network)?;
     let response = client
         .post(format!("{API}/enroll"))
         .timeout(Duration::from_secs(20))
@@ -387,25 +486,48 @@ pub async fn gray_update_enroll(
         }))
         .send()
         .await
-        .map_err(|_| POLICY_ERROR)?;
-    if !matches!(response.status(), StatusCode::OK | StatusCode::CREATED) {
-        return Err("无法登记设备，请核对登记码或联系发布管理员。");
+        .map_err(|_| EnrollError::Network)?;
+    match response.status() {
+        StatusCode::OK | StatusCode::CREATED => {}
+        StatusCode::UNAUTHORIZED => return Err(EnrollError::CodeRejected),
+        StatusCode::UNPROCESSABLE_ENTITY => return Err(EnrollError::InvalidInput),
+        StatusCode::TOO_MANY_REQUESTS => return Err(EnrollError::Busy),
+        _ => return Err(EnrollError::Unavailable),
     }
-    let bytes = response_bytes(response, MAX_JSON, POLICY_ERROR).await?;
-    let reply: EnrollReply = serde_json::from_slice(&bytes).map_err(|_| POLICY_ERROR)?;
+    let bytes = response_bytes(response, MAX_JSON, POLICY_ERROR)
+        .await
+        .map_err(|_| EnrollError::Unavailable)?;
+    let reply: EnrollReply =
+        serde_json::from_slice(&bytes).map_err(|_| EnrollError::Unavailable)?;
     if !url_safe(&reply.token, 32..=256) {
-        return Err(POLICY_ERROR);
+        return Err(EnrollError::Unavailable);
     }
-    if let Err(error) = save_token(&path, &reply.token) {
+    if save_token(&path, &reply.token).is_err() {
         let _ = Managed {
             client,
             token: reply.token,
         }
         .leave()
         .await;
-        return Err(error);
+        return Err(EnrollError::LocalCredential);
     }
-    status(&app)
+    status(&app).map_err(|_| EnrollError::LocalCredential)
+}
+
+#[tauri::command]
+pub async fn gray_update_open_versions(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<(), &'static str> {
+    check_window(&window, ENROLLMENT)?;
+    if !status(&app)?.enrolled {
+        return Err("这台设备尚未登记。");
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::show_versions(&app).map_err(|_| "无法打开版本管理。")
+    })
+    .await
+    .map_err(|_| "无法打开版本管理。")?
 }
 
 #[tauri::command]
@@ -427,12 +549,12 @@ pub async fn gray_update_leave(
 }
 
 #[tauri::command]
-pub async fn gray_update_check(window: WebviewWindow, app: AppHandle) -> Result<(), &'static str> {
+pub async fn gray_update_check(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<CheckOutcome, &'static str> {
     check_window(&window, VERSIONS)?;
     require_supported(&app)?;
-    if !status(&app)?.enrolled {
-        return Err("这台设备尚未登记。");
-    }
     crate::stable_update::check_from_versions(&app).await
 }
 
@@ -449,9 +571,13 @@ pub async fn gray_update_open_enrollment(
 }
 
 fn record_path(app: &AppHandle) -> Result<PathBuf, &'static str> {
+    rollout_path(app, "enrollment")
+}
+
+fn rollout_path(app: &AppHandle, filename: &str) -> Result<PathBuf, &'static str> {
     app.path()
         .app_local_data_dir()
-        .map(|dir| dir.join("desktop-rollout").join("enrollment"))
+        .map(|dir| dir.join("desktop-rollout").join(filename))
         .map_err(|_| STORE_ERROR)
 }
 
@@ -526,7 +652,11 @@ fn save_token(path: &Path, token: &str) -> Result<(), &'static str> {
     #[cfg(target_os = "macos")]
     {
         // The marker keeps managed policy in effect if the Keychain is locked.
+        let existing = record_exists(path)?;
         keychain::put(path, token)?;
+        if existing {
+            return Ok(());
+        }
         if atomic_private_write(path, b"keychain\n").is_err() {
             let _ = keychain::delete(path);
             return Err(STORE_ERROR);
@@ -544,13 +674,20 @@ mod keychain {
 
     fn store(path: &Path) -> Result<(SystemStore, SecretRef), &'static str> {
         let directory = path.parent().ok_or(STORE_ERROR)?.to_owned();
-        // Nil UUIDs are reserved. Computer credentials always use random v4 UUIDs.
+        // The nil namespace is reserved for rollout credentials. Preserve the
+        // original enrollment slot and separate proof keys from bearer tokens.
         let nil = "00000000000000000000000000000000";
+        let slot = match path.file_name().and_then(|name| name.to_str()) {
+            Some("enrollment") => nil,
+            Some(super::machine::SEED_FILE) => "00000000000000000000000000000001",
+            Some(super::machine::TOKEN_FILE) => "00000000000000000000000000000002",
+            _ => return Err(STORE_ERROR),
+        };
         Ok((
             SystemStore { directory },
             SecretRef {
                 home: nil.into(),
-                connector: nil.into(),
+                connector: slot.into(),
             },
         ))
     }
@@ -580,9 +717,7 @@ fn save_token(path: &Path, token: &str) -> Result<(), &'static str> {
     use std::io::Write;
     let directory = path.parent().ok_or(STORE_ERROR)?;
     fs::create_dir_all(directory).map_err(|_| STORE_ERROR)?;
-    if record_exists(path)? {
-        return Err(STORE_ERROR);
-    }
+    record_exists(path)?;
     let secret = dpapi(token.as_bytes(), true)?;
     let id = crate::connector_secrets::random_id().map_err(|_| STORE_ERROR)?;
     let temporary = directory.join(format!(".{id}.tmp"));
@@ -655,6 +790,69 @@ fn dpapi(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gray_no_offer_headers_only_accept_known_unambiguous_statuses() {
+        use reqwest::header::HeaderValue;
+
+        let mut headers = HeaderMap::new();
+        assert_eq!(no_offer_status(&headers), CheckOutcome::NoUpdate);
+        for (value, expected) in [
+            ("awaiting_assignment", CheckOutcome::AwaitingAssignment),
+            ("paused", CheckOutcome::Paused),
+            ("up_to_date", CheckOutcome::UpToDate),
+            ("unavailable", CheckOutcome::Unavailable),
+            ("unknown", CheckOutcome::NoUpdate),
+            ("declined", CheckOutcome::NoUpdate),
+            ("enrollment_invalid", CheckOutcome::NoUpdate),
+            ("paused, up_to_date", CheckOutcome::NoUpdate),
+        ] {
+            headers.insert(ROLLOUT_STATUS_HEADER, HeaderValue::from_static(value));
+            assert_eq!(no_offer_status(&headers), expected, "{value}");
+        }
+        headers.insert(ROLLOUT_STATUS_HEADER, HeaderValue::from_static("paused"));
+        headers.append(
+            ROLLOUT_STATUS_HEADER,
+            HeaderValue::from_static("up_to_date"),
+        );
+        assert_eq!(no_offer_status(&headers), CheckOutcome::NoUpdate);
+        headers.insert(
+            ROLLOUT_STATUS_HEADER,
+            HeaderValue::from_bytes(&[0x80]).unwrap(),
+        );
+        assert_eq!(no_offer_status(&headers), CheckOutcome::NoUpdate);
+    }
+
+    #[test]
+    fn gray_check_outcomes_have_fixed_ipc_values() {
+        for (outcome, code) in [
+            (CheckOutcome::AwaitingAssignment, "awaiting_assignment"),
+            (CheckOutcome::Paused, "paused"),
+            (CheckOutcome::UpToDate, "up_to_date"),
+            (CheckOutcome::Unavailable, "unavailable"),
+            (CheckOutcome::NoUpdate, "no_update"),
+            (CheckOutcome::EnrollmentInvalid, "enrollment_invalid"),
+            (CheckOutcome::Declined, "declined"),
+            (CheckOutcome::Installing, "installing"),
+        ] {
+            assert_eq!(serde_json::to_value(outcome).unwrap(), code);
+        }
+    }
+
+    #[test]
+    fn gray_enrollment_errors_have_fixed_safe_codes() {
+        for (error, code) in [
+            (EnrollError::AlreadyEnrolled, "already_enrolled"),
+            (EnrollError::InvalidInput, "invalid_input"),
+            (EnrollError::CodeRejected, "code_rejected"),
+            (EnrollError::Network, "network"),
+            (EnrollError::LocalCredential, "local_credential"),
+            (EnrollError::Busy, "busy"),
+            (EnrollError::Unavailable, "unavailable"),
+        ] {
+            assert_eq!(serde_json::to_value(error).unwrap(), code);
+        }
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

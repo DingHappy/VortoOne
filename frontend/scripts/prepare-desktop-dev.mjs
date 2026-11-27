@@ -82,7 +82,14 @@ await writeFile(
   `<!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${pageTitle}</title>
 <link rel="stylesheet" href="version-manager.css"><main><h1 id="version-title" tabindex="-1">版本管理</h1>${versionDetails}
 ${stableChannel ? '<div id="private-version-controls"></div>' : ""}
-<details><summary>构建信息</summary><p>提交：${escape(commit)}</p><p>应用标识：${escape(config.identifier)}</p></details></main>
+<details><summary>构建信息</summary><p>提交：${escape(commit)}</p><p>应用标识：${escape(config.identifier)}</p>
+${stableChannel ? `<div id="machine-code-controls" hidden>
+  <div class="row">
+    <button id="copy-machine-code" class="secondary" type="button">复制机器码</button>
+  </div>
+  <input id="machine-code-value" type="text" aria-label="机器码" class="machine-code-value" readonly spellcheck="false" hidden>
+  <p id="machine-code-status" class="status" role="status" aria-atomic="true"></p>
+</div>` : ""}</details></main>
 ${stableChannel ? '<script type="module" src="versions.js"></script>' : ""}</html>`,
 );
 console.log(`Prepared ${config.productName} ${config.version}: ${fileURLToPath(output)}`);

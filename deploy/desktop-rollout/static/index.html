@@ -26,22 +26,27 @@
           <h2 id="device-title">设备</h2>
           <div class="actions">
             <button id="refresh" class="secondary" type="button">刷新</button>
-            <button id="enrollment" class="secondary" type="button">生成登记码</button>
-            <button id="begin-assignment" type="button" aria-expanded="false" aria-controls="assignment">分配版本</button>
+            <button id="begin-assignment" class="secondary" type="button" aria-expanded="false" aria-controls="assignment">批量分配</button>
+            <button id="begin-machine" type="button" aria-expanded="false" aria-controls="machine-grant">授权机器码</button>
           </div>
         </div>
-        <div id="enrollment-details" class="enrollment" aria-labelledby="code-label" hidden>
-          <label id="code-label" for="enrollment-code">一次性登记码</label>
+        <dl id="device-progress" class="facts device-progress" aria-label="已分配设备的更新进度" hidden></dl>
+        <form id="machine-grant" class="enrollment machine-form" aria-labelledby="machine-title" hidden>
+          <h3 id="machine-title">给指定电脑分配版本</h3>
+          <label for="machine-code">机器码</label>
+          <input id="machine-code" type="text" placeholder="粘贴目标电脑的机器码" autocomplete="off"
+            spellcheck="false" autocapitalize="none" maxlength="76" aria-describedby="machine-source" required>
+          <p id="machine-source" class="muted">在目标电脑的「工作区 → 版本管理 → 构建信息」里复制。</p>
+          <label for="machine-version">目标版本</label>
+          <select id="machine-version" required></select>
+          <p id="machine-status" class="muted" role="status"></p>
           <div class="actions">
-            <input id="enrollment-code" readonly spellcheck="false">
-            <button id="copy-code" class="secondary" type="button">复制</button>
+            <button id="authorize-machine" type="submit" disabled>授权此版本</button>
+            <button id="cancel-machine" class="secondary" type="button">取消</button>
           </div>
-          <p id="expiry" class="muted"></p>
-          <p>请通过私密渠道分享登记码。<a href="vortoone-update://enroll" rel="noreferrer">在这台 Mac 打开登记窗口</a>，然后手动填写登记码。</p>
-          <p>使用 0.3.5 时，可在「版本管理」中手动登记。在支持私密登记的 Windows 或 Ubuntu 版中，请在「版本管理」窗口按 <kbd>Ctrl+Alt+Shift+U</kbd>。</p>
-        </div>
+        </form>
         <form id="assignment" class="enrollment" aria-labelledby="assignment-label" hidden>
-          <label id="assignment-label" for="target-version">选择要分配的版本</label>
+          <label id="assignment-label" for="target-version">为多台设备选择版本</label>
           <select id="target-version" required></select>
           <p id="selection-status" role="status">选择版本后勾选设备。</p>
           <div class="actions">
@@ -50,7 +55,36 @@
           </div>
         </form>
         <ul id="devices" class="list" aria-label="灰度设备"></ul>
-        <p id="no-devices" class="empty" hidden>还没有已登记的设备。</p>
+        <p id="no-devices" class="empty" hidden>还没有设备授权。可用机器码添加第一台电脑。</p>
+        <details class="legacy-enrollment">
+          <summary>旧版设备登记</summary>
+          <button id="enrollment" class="secondary" type="button">生成登记码</button>
+          <div id="enrollment-details" class="enrollment" aria-labelledby="invite-title" hidden>
+            <h3 id="invite-title">邀请设备</h3>
+            <label class="invite-code-label" for="enrollment-code">一次性登记码</label>
+            <div class="actions code-actions">
+              <input id="enrollment-code" aria-describedby="expiry" readonly spellcheck="false">
+              <button id="copy-code" type="button">复制登记码</button>
+            </div>
+            <p id="expiry" class="muted"></p>
+            <div class="invite-methods">
+              <div>
+                <h4>登记这台 Mac</h4>
+                <a id="open-mac-enrollment" href="vortoone-update://enroll" rel="noreferrer">打开本机登记窗口</a>
+              </div>
+              <div>
+                <h4>邀请其他设备</h4>
+                <button id="copy-invite-instructions" class="secondary" type="button">复制登记说明</button>
+                <p class="muted">请将登记码另行私发。</p>
+              </div>
+            </div>
+            <textarea id="invite-instructions" aria-label="登记说明" rows="5" readonly hidden></textarea>
+            <details class="invite-compatibility">
+              <summary>旧版本和其他系统</summary>
+              <p>0.3.5 可在「版本管理」里直接登记。支持私密登记的 Windows 或 Ubuntu 版可在「版本管理」里按 <kbd>Ctrl+Alt+Shift+U</kbd>。</p>
+            </details>
+          </div>
+        </details>
       </section>
 
       <section class="panel" aria-labelledby="release-title">

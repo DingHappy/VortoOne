@@ -110,6 +110,20 @@ fn show(
     Ok(())
 }
 
+fn show_versions(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("versions") {
+        let _ = window.unminimize();
+    }
+    show(
+        app,
+        "versions",
+        "versions.html",
+        &format!("{} · 版本管理", app.package_info().name),
+        900.0,
+        660.0,
+    )
+}
+
 const LIVE: &str = "live";
 const SETUP_MODEL_PATH: &str = "/onboarding/native-model-settings";
 
@@ -406,7 +420,11 @@ fn main() {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_status,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_machine_code,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_enroll,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_open_versions,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_leave,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -573,14 +591,7 @@ fn main() {
                     1100.0,
                     800.0,
                 ),
-                "versions" => show(
-                    app,
-                    "versions",
-                    "versions.html",
-                    &format!("{} · 版本管理", app.package_info().name),
-                    900.0,
-                    660.0,
-                ),
+                "versions" => show_versions(app),
                 "stable" | "releases" => {
                     let url = if event.id().as_ref() == "stable" {
                         STABLE
