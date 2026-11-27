@@ -1,5 +1,7 @@
 //! Device enrollment and authenticated policy for the stable updater.
 
+mod machine;
+
 use reqwest::{header::HeaderMap, Client, RequestBuilder, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -105,6 +107,37 @@ impl Report {
 pub struct Managed {
     client: Client,
     token: String,
+}
+
+pub struct StandardManagedCheck {
+    pub device: Managed,
+    pub outcome: RolloutCheck<Value>,
+    pub legacy: bool,
+}
+
+pub async fn check_for_standard_update(
+    app: &AppHandle,
+) -> Result<Option<StandardManagedCheck>, &'static str> {
+    if let Some(legacy) = Managed::read(app).map_err(|_| "暂时无法检查更新，请稍后重试。")?
+    {
+        let outcome = legacy.check(app).await?;
+        return Ok(Some(StandardManagedCheck {
+            device: legacy,
+            outcome,
+            legacy: true,
+        }));
+    }
+    if supported(app) {
+        Ok(machine::check(app)
+            .await?
+            .map(|(device, outcome)| StandardManagedCheck {
+                device,
+                outcome,
+                legacy: false,
+            }))
+    } else {
+        Ok(None)
+    }
 }
 
 fn private_client() -> Result<Client, &'static str> {
@@ -386,7 +419,25 @@ fn status(app: &AppHandle) -> Result<GrayStatus, &'static str> {
 #[cfg(target_os = "macos")]
 pub fn check_at_startup(app: &AppHandle) -> bool {
     // If enrollment storage is unavailable, let the managed check fail closed.
-    supported(app) && status(app).map(|status| status.enrolled).unwrap_or(true)
+    supported(app)
+        && (status(app).map(|status| status.enrolled).unwrap_or(true)
+            || machine::has_state(app).unwrap_or(true))
+}
+
+#[tauri::command]
+pub async fn gray_update_machine_code(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<String, &'static str> {
+    check_window(&window, VERSIONS)?;
+    require_supported(&app)?;
+    let _guard = crate::stable_update::begin(&app)?;
+    if record_exists(&record_path(&app)?)? {
+        return Err("请先退出当前灰度，再复制机器码。");
+    }
+    tauri::async_runtime::spawn_blocking(move || machine::code(&app))
+        .await
+        .map_err(|_| STORE_ERROR)?
 }
 
 #[tauri::command]
@@ -520,9 +571,13 @@ pub async fn gray_update_open_enrollment(
 }
 
 fn record_path(app: &AppHandle) -> Result<PathBuf, &'static str> {
+    rollout_path(app, "enrollment")
+}
+
+fn rollout_path(app: &AppHandle, filename: &str) -> Result<PathBuf, &'static str> {
     app.path()
         .app_local_data_dir()
-        .map(|dir| dir.join("desktop-rollout").join("enrollment"))
+        .map(|dir| dir.join("desktop-rollout").join(filename))
         .map_err(|_| STORE_ERROR)
 }
 
@@ -597,7 +652,11 @@ fn save_token(path: &Path, token: &str) -> Result<(), &'static str> {
     #[cfg(target_os = "macos")]
     {
         // The marker keeps managed policy in effect if the Keychain is locked.
+        let existing = record_exists(path)?;
         keychain::put(path, token)?;
+        if existing {
+            return Ok(());
+        }
         if atomic_private_write(path, b"keychain\n").is_err() {
             let _ = keychain::delete(path);
             return Err(STORE_ERROR);
@@ -615,13 +674,20 @@ mod keychain {
 
     fn store(path: &Path) -> Result<(SystemStore, SecretRef), &'static str> {
         let directory = path.parent().ok_or(STORE_ERROR)?.to_owned();
-        // Nil UUIDs are reserved. Computer credentials always use random v4 UUIDs.
+        // The nil namespace is reserved for rollout credentials. Preserve the
+        // original enrollment slot and separate proof keys from bearer tokens.
         let nil = "00000000000000000000000000000000";
+        let slot = match path.file_name().and_then(|name| name.to_str()) {
+            Some("enrollment") => nil,
+            Some(super::machine::SEED_FILE) => "00000000000000000000000000000001",
+            Some(super::machine::TOKEN_FILE) => "00000000000000000000000000000002",
+            _ => return Err(STORE_ERROR),
+        };
         Ok((
             SystemStore { directory },
             SecretRef {
                 home: nil.into(),
-                connector: nil.into(),
+                connector: slot.into(),
             },
         ))
     }
@@ -651,9 +717,7 @@ fn save_token(path: &Path, token: &str) -> Result<(), &'static str> {
     use std::io::Write;
     let directory = path.parent().ok_or(STORE_ERROR)?;
     fs::create_dir_all(directory).map_err(|_| STORE_ERROR)?;
-    if record_exists(path)? {
-        return Err(STORE_ERROR);
-    }
+    record_exists(path)?;
     let secret = dpapi(token.as_bytes(), true)?;
     let id = crate::connector_secrets::random_id().map_err(|_| STORE_ERROR)?;
     let temporary = directory.join(format!(".{id}.tmp"));

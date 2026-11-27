@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import parse_qs
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -32,6 +34,10 @@ ADMIN_PAGE = "/admin/releases"
 SIGN_IN = ADMIN_PAGE + "/sign-in"
 STATIC = Path(__file__).with_name("static")
 CHECK_STATUS_HEADER = "X-VortoOne-Rollout-Status"
+MACHINE_CLAIM = PREFIX + "/machines/claim"
+MACHINE_CLAIM_HEADER = "X-VortoOne-Machine-Claim"
+MACHINE_CLAIM_WINDOW = 120
+MACHINE_NONCE_SECONDS = 5 * 60
 ENROLLMENT_SECONDS = 15 * 60
 TICKET_SECONDS = 10 * 60
 SESSION_SECONDS = 8 * 60 * 60
@@ -42,6 +48,13 @@ ARTIFACT_LIMIT = 512 * 1024 * 1024
 
 Platform = Literal["darwin-aarch64", "windows-x86_64-nsis", "linux-x86_64-deb"]
 OfferStatus = Literal["available", "awaiting_assignment", "up_to_date", "paused", "unavailable"]
+MACHINE_PLATFORMS: dict[str, Platform] = {
+    "mac": "darwin-aarch64",
+    "win": "windows-x86_64-nsis",
+    "linux": "linux-x86_64-deb",
+}
+MACHINE_CODE_PATTERN = r"^(?:mac|win|linux)-[a-f0-9]{64}$"
+MACHINE_CODE_RE = re.compile(MACHINE_CODE_PATTERN)
 SUFFIXES = {
     "darwin-aarch64": "aarch64.app.tar.gz",
     "windows-x86_64-nsis": "windows-x64.exe",
@@ -81,6 +94,17 @@ CREATE TABLE IF NOT EXISTS devices (
     status TEXT NOT NULL,
     active INTEGER NOT NULL CHECK(active IN (0, 1))
 );
+CREATE TABLE IF NOT EXISTS machine_devices (
+    machine_code TEXT PRIMARY KEY NOT NULL,
+    device_id TEXT NOT NULL UNIQUE REFERENCES devices(id)
+);
+CREATE TABLE IF NOT EXISTS machine_nonces (
+    machine_code TEXT NOT NULL REFERENCES machine_devices(machine_code),
+    nonce TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY(machine_code, nonce)
+);
+CREATE INDEX IF NOT EXISTS machine_nonces_expiry ON machine_nonces(expires_at);
 CREATE TABLE IF NOT EXISTS paused_releases (
     version TEXT PRIMARY KEY
 );
@@ -153,6 +177,14 @@ class Check(StrictModel):
     version: Version
 
 
+class MachineClaim(StrictModel):
+    machine_code: str = Field(pattern=MACHINE_CODE_PATTERN)
+    version: Version
+    issued_at: int = Field(ge=0)
+    nonce: str = Field(pattern=r"^[a-f0-9]{32}$")
+    signature: str = Field(pattern=r"^[a-f0-9]{128}$")
+
+
 class Report(StrictModel):
     release: Version
     status: Literal["installing", "failed", "declined"]
@@ -174,6 +206,19 @@ class Empty(StrictModel):
 
 class Assignment(StrictModel):
     version: Version | None
+
+
+class MachineAssignment(StrictModel):
+    machine_code: str = Field(max_length=96)
+    version: Version
+
+    @field_validator("machine_code")
+    @classmethod
+    def normalize_code(cls, code: str) -> str:
+        normalized = code.strip().lower()
+        if not MACHINE_CODE_RE.fullmatch(normalized):
+            raise ValueError("invalid machine code")
+        return normalized
 
 
 class BatchAssignment(Assignment):
@@ -443,10 +488,49 @@ def _set_admin_cookies(response: Response, token: str) -> Response:
 
 
 def _admin_device(conn: sqlite3.Connection, device_id: str) -> sqlite3.Row:
-    row = conn.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone()
+    row = conn.execute(
+        "SELECT d.*, m.machine_code FROM devices d LEFT JOIN machine_devices m ON d.id = m.device_id WHERE d.id = ?",
+        (device_id,),
+    ).fetchone()
     if row is None:
         raise HTTPException(404, "device_not_found")
     return row
+
+
+def _machine_device(conn: sqlite3.Connection, code: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT d.* FROM machine_devices m JOIN devices d ON d.id = m.device_id WHERE m.machine_code = ?",
+        (code,),
+    ).fetchone()
+
+
+def _claim_access(conn: sqlite3.Connection, body: MachineClaim, stamp: int) -> sqlite3.Row | Response:
+    replayed = conn.execute(
+        "SELECT 1 FROM machine_nonces WHERE machine_code = ? AND nonce = ? AND expires_at > ?",
+        (body.machine_code, body.nonce, stamp),
+    ).fetchone()
+    if replayed:
+        return Response(status_code=204)
+
+    device = _machine_device(conn, body.machine_code)
+    if device is None or not device["active"] or device["target_version"] is None:
+        return Response(status_code=204, headers={MACHINE_CLAIM_HEADER: "verified-denial"})
+    return device
+
+
+def _valid_machine_claim(body: MachineClaim, stamp: int) -> bool:
+    if abs(stamp - body.issued_at) > MACHINE_CLAIM_WINDOW:
+        return False
+    key = bytes.fromhex(body.machine_code.split("-", 1)[1])
+    message = (
+        f"VortoOne desktop rollout machine claim v1\n{body.machine_code}\n{body.version}\n"
+        f"{body.issued_at}\n{body.nonce}"
+    ).encode("utf-8")
+    try:
+        Ed25519PublicKey.from_public_bytes(key).verify(bytes.fromhex(body.signature), message)
+    except (InvalidSignature, ValueError):
+        return False
+    return True
 
 
 def _provided_status(device: sqlite3.Row, current: str, offer_status: OfferStatus) -> str:
@@ -472,10 +556,18 @@ def _assign_devices(store: Store, conn: sqlite3.Connection, device_ids: list[str
     for device in devices:
         if version == device["target_version"]:
             continue
-        status = "enrolled" if version is None else (
-            "up_to_date" if _version_parts(device["current_version"]) >= _version_parts(version) else "assigned"
+        machine = device["machine_code"] is not None
+        if machine and device["last_seen_at"] == 0:
+            status = "awaiting_machine"
+        elif version is None:
+            status = "enrolled"
+        else:
+            status = "up_to_date" if _version_parts(device["current_version"]) >= _version_parts(version) else "assigned"
+        token_hash = secrets.token_bytes(32) if machine and version is None else device["token_hash"]
+        conn.execute(
+            "UPDATE devices SET target_version = ?, status = ?, token_hash = ? WHERE id = ?",
+            (version, status, token_hash, device["id"]),
         )
-        conn.execute("UPDATE devices SET target_version = ?, status = ? WHERE id = ?", (version, status, device["id"]))
         conn.execute("DELETE FROM tickets WHERE device_id = ?", (device["id"],))
 
 
@@ -504,7 +596,9 @@ def create_app(
         return int(clock())
 
     @app.exception_handler(RequestValidationError)
-    async def invalid_request(_request, _error):
+    async def invalid_request(request, _error):
+        if request.url.path == MACHINE_CLAIM:
+            return Response(status_code=204)
         # FastAPI's default validation errors may include the submitted password or code.
         return JSONResponse({"detail": "invalid_request"}, 422)
 
@@ -581,6 +675,43 @@ def create_app(
                 (device_id, _digest(token), body.name, body.platform, body.version, stamp),
             )
         return {"token": token, "device_id": device_id}
+
+    @app.post(MACHINE_CLAIM)
+    def claim_machine(body: MachineClaim):
+        stamp = now()
+        if not _valid_machine_claim(body, stamp):
+            return Response(status_code=204)
+
+        with store.connection() as conn:
+            preflight = _claim_access(conn, body, stamp)
+            if isinstance(preflight, Response):
+                return preflight
+
+        with store.connection(write=True) as conn:
+            stamp = now()
+            if abs(stamp - body.issued_at) > MACHINE_CLAIM_WINDOW:
+                return Response(status_code=204)
+
+            device = _claim_access(conn, body, stamp)
+            if isinstance(device, Response):
+                return device
+            # A proof can first be accepted 120 seconds before its timestamp and
+            # remains valid for 120 seconds after it. Keep nonces beyond both bounds.
+            conn.execute("DELETE FROM machine_nonces WHERE expires_at <= ?", (stamp,))
+            conn.execute(
+                "INSERT INTO machine_nonces(machine_code, nonce, expires_at) VALUES (?, ?, ?)",
+                (body.machine_code, body.nonce, stamp + MACHINE_NONCE_SECONDS),
+            )
+
+            token = secrets.token_urlsafe(32)
+            target = device["target_version"]
+            status = "up_to_date" if _version_parts(body.version) >= _version_parts(target) else "assigned"
+            conn.execute(
+                "UPDATE devices SET token_hash = ?, current_version = ?, last_seen_at = ?, status = ? WHERE id = ?",
+                (_digest(token), body.version, stamp, status, device["id"]),
+            )
+            conn.execute("DELETE FROM tickets WHERE device_id = ?", (device["id"],))
+        return {"token": token}
 
     @app.post(PREFIX + "/check")
     def check(body: Check, request: Request):
@@ -702,15 +833,20 @@ def create_app(
         with store.connection() as conn:
             _admin(conn, request, now())
             rows = conn.execute(
-                """SELECT id, name, platform, current_version, target_version, last_seen_at, status, active
-                   FROM devices ORDER BY last_seen_at DESC, id"""
+                """SELECT d.id, d.name, d.platform, d.current_version, d.target_version, d.last_seen_at,
+                          d.status, d.active, m.machine_code
+                   FROM devices d LEFT JOIN machine_devices m ON d.id = m.device_id
+                   ORDER BY d.last_seen_at DESC, d.id"""
             ).fetchall()
             paused = {row["version"] for row in conn.execute("SELECT version FROM paused_releases")}
+        devices = []
+        for row in rows:
+            device = {**dict(row), "last_seen_at": _at(row["last_seen_at"]), "active": bool(row["active"])}
+            if device["machine_code"] is None:
+                del device["machine_code"]
+            devices.append(device)
         return {
-            "devices": [
-                {**dict(row), "last_seen_at": _at(row["last_seen_at"]), "active": bool(row["active"])}
-                for row in rows
-            ],
+            "devices": devices,
             "releases": [
                 {
                     "version": release.version, "platforms": sorted(release.platforms),
@@ -730,6 +866,32 @@ def create_app(
             conn.execute("DELETE FROM enrollments WHERE expires_at <= ?", (stamp,))
             conn.execute("INSERT INTO enrollments(code_hash, expires_at) VALUES (?, ?)", (_digest(code), expires))
         return {"code": code, "expires_at": _at(expires)}
+
+    @app.put(ADMIN_COOKIE_PATH + "/machines", status_code=204)
+    def assign_machine(body: MachineAssignment, request: Request):
+        with store.connection(write=True) as conn:
+            _admin(conn, request, now())
+            device = _machine_device(conn, body.machine_code)
+            if device is None:
+                device_id = secrets.token_hex(16)
+                platform, public_key = body.machine_code.split("-", 1)
+                conn.execute(
+                    """INSERT INTO devices(id, token_hash, name, platform, current_version, last_seen_at, status, active)
+                       VALUES (?, ?, ?, ?, '0.0.0', 0, 'awaiting_machine', 1)""",
+                    (device_id, secrets.token_bytes(32), f"{platform}-{public_key[:8]}", MACHINE_PLATFORMS[platform]),
+                )
+                conn.execute("INSERT INTO machine_devices VALUES (?, ?)", (body.machine_code, device_id))
+            else:
+                device_id = device["id"]
+                if not device["active"]:
+                    conn.execute(
+                        """UPDATE devices SET token_hash = ?, current_version = '0.0.0', last_seen_at = 0,
+                                              status = 'awaiting_machine', active = 1
+                           WHERE id = ?""",
+                        (secrets.token_bytes(32), device_id),
+                    )
+            _assign_devices(store, conn, [device_id], body.version)
+        return Response(status_code=204)
 
     @app.put(ADMIN_COOKIE_PATH + "/devices/{device_id}/assignment", status_code=204)
     def assign(device_id: DeviceId, body: Assignment, request: Request):

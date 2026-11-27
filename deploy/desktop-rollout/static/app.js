@@ -9,6 +9,11 @@ const assignment = element("assignment");
 const targetVersion = element("target-version");
 const applyAssignment = element("apply-assignment");
 const beginAssignment = element("begin-assignment");
+const machineForm = element("machine-grant");
+const machineInput = element("machine-code");
+const machineTarget = element("machine-version");
+const authorizeMachine = element("authorize-machine");
+const beginMachine = element("begin-machine");
 const selectedDevices = new Set();
 const selectionLimit = 50;
 const cancelVersion = "clear";
@@ -18,15 +23,21 @@ const platformNames = {
   "windows-x86_64-nsis": "Windows · x64",
   "linux-x86_64-deb": "Ubuntu · amd64",
 };
+const machinePlatforms = new Map([
+  ["mac", "darwin-aarch64"],
+  ["win", "windows-x86_64-nsis"],
+  ["linux", "linux-x86_64-deb"],
+]);
 const stateNames = {
   enrolled: "已登记",
+  awaiting_machine: "等待设备首次检查",
   assigned: "等待设备检查",
   update_available: "已检测到更新",
   installing: "安装中",
   installed: "已安装",
   failed: "更新失败",
   declined: "已跳过",
-  up_to_date: "已是目标版本",
+  up_to_date: "已达到目标版本",
   disabled: "已撤销",
 };
 let busy = false;
@@ -73,6 +84,7 @@ function clearCode() {
 function leaveDashboard(destination) {
   clearCode();
   showAssignment(false);
+  showMachineForm(false);
   devices = [];
   releases = [];
   element("devices").replaceChildren();
@@ -129,14 +141,65 @@ function fact(label, value, className) {
   return entry;
 }
 
+function isNewerVersion(version, installed) {
+  const candidate = version.split(".").map(Number);
+  const current = installed.split(".").map(Number);
+  const firstDifference = candidate.findIndex((part, i) => part !== current[i]);
+  return firstDifference !== -1 && candidate[firstDifference] > current[firstDifference];
+}
+
 function releaseBlock(device, release) {
   if (release.paused) return "已暂停";
   if (!release.platforms.includes(device.platform)) return "没有适用的平台安装包";
-  const candidate = release.version.split(".").map(Number);
-  const current = device.current_version.split(".").map(Number);
-  const firstDifference = candidate.findIndex((part, i) => part !== current[i]);
-  if (firstDifference === -1 || candidate[firstDifference] < current[firstDifference]) return "不高于当前版本";
+  if (!isNewerVersion(release.version, device.current_version)) return "不高于当前版本";
   return device.target_version === release.version ? "已分配此版本" : "";
+}
+
+function waitingForReport(device) {
+  return Boolean(device.machine_code) && device.last_seen_at === "1970-01-01T00:00:00Z";
+}
+
+function assignmentProgress(version) {
+  const assigned = devices.filter((device) =>
+    device.active && device.target_version && (!version || device.target_version === version));
+  const unreported = assigned.filter(waitingForReport).length;
+  const ready = assigned.filter((device) => !waitingForReport(device) &&
+    !isNewerVersion(device.target_version, device.current_version)).length;
+  return { total: assigned.length, unreported, pending: assigned.length - unreported - ready, ready };
+}
+
+function machineCode() {
+  return machineInput.value.trim().toLowerCase();
+}
+
+function renderMachineChoices() {
+  const code = machineCode();
+  const match = /^(mac|win|linux)-[0-9a-f]{64}$/.exec(code);
+  const platform = match && machinePlatforms.get(match[1]);
+  const device = devices.find((row) => row.machine_code === code);
+  const previous = machineTarget.value;
+  const options = [new Option("请选择目标版本", "")];
+  if (platform) {
+    for (const release of releases) {
+      if (release.paused || !release.platforms.includes(platform)) continue;
+      if (device && releaseBlock(device, release)) continue;
+      options.push(new Option(release.version, release.version));
+    }
+  }
+  machineTarget.replaceChildren(...options);
+  machineTarget.value = options.some((option) => option.value === previous) ? previous : "";
+  machineTarget.disabled = options.length === 1;
+  authorizeMachine.disabled = !machineTarget.value;
+  element("machine-status").textContent = platform
+    ? options.length > 1 ? platformNames[platform] : platformNames[platform] + " 暂无可分配的版本。"
+    : code ? "请粘贴从目标电脑复制的完整机器码。" : "";
+}
+
+function showMachineForm(show) {
+  machineForm.hidden = !show;
+  beginMachine.setAttribute("aria-expanded", String(show));
+  if (!show) machineForm.reset();
+  renderMachineChoices();
 }
 
 function assignmentDevices() {
@@ -214,6 +277,7 @@ function syncSelection() {
 }
 
 function showAssignment(show, deviceId = null) {
+  if (show && !machineForm.hidden) showMachineForm(false);
   assignment.hidden = !show;
   assignmentDeviceId = show ? deviceId : null;
   targetVersion.value = "";
@@ -231,6 +295,7 @@ function makeDevice(device) {
   const row = node("li");
   const head = node("div", "", "device-header");
   const status = device.active ? device.status : "disabled";
+  const waitingForMachine = waitingForReport(device);
   const name = node("div", "", "device-name");
   if (device.active) {
     const check = document.createElement("input");
@@ -255,10 +320,15 @@ function makeDevice(device) {
   const facts = node("dl", "", "facts");
   facts.append(
     fact("平台", platformNames[device.platform] ?? device.platform),
-    fact("当前版本", device.current_version || "—", "version"),
+    fact("当前版本", waitingForMachine ? "待设备上报" : device.current_version || "—", waitingForMachine ? "" : "version"),
     fact("分配版本", device.target_version ?? "未分配灰度版本", device.target_version ? "version" : ""),
-    fact("最近检查", formattedDate(device.last_seen_at)),
+    fact("最近检查", waitingForMachine ? "尚未检查" : formattedDate(device.last_seen_at)),
   );
+  if (device.machine_code) {
+    const code = fact("机器码末尾", device.machine_code.slice(-10), "version");
+    code.querySelector("dd").title = device.machine_code;
+    facts.append(code);
+  }
   row.append(head, facts);
   if (device.active) {
     const reason = node("p", "", "muted");
@@ -293,6 +363,15 @@ function makeRelease(release) {
   heading.append(node("h3", release.version, "version"),
     node("p", release.platforms.map((platform) => platformNames[platform] ?? platform).join("、") +
       " · " + formattedDate(release.created_at), "muted"));
+  const progress = assignmentProgress(release.version);
+  if (progress.total) {
+    heading.append(node("p", [
+      "已分配 " + progress.total + " 台",
+      "尚未上报 " + progress.unreported + " 台",
+      "待升级 " + progress.pending + " 台",
+      "已达到目标 " + progress.ready + " 台",
+    ].join(" · "), "muted"));
+  }
   const controls = node("div", "", "actions");
   const toggle = action(release.paused ? "恢复" : "暂停", "secondary", () => {
     void run(toggle, async () => {
@@ -311,11 +390,21 @@ async function loadState() {
   const next = await request("/state");
   devices = next.devices;
   releases = next.releases;
+  renderMachineChoices();
   renderAssignmentChoices();
   beginAssignment.disabled = !devices.some((device) => device.active);
   const orderedDevices = [...devices].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "zh-CN"));
   element("devices").replaceChildren(...orderedDevices.map(makeDevice));
   element("releases").replaceChildren(...releases.map(makeRelease));
+  const progress = assignmentProgress();
+  const overview = element("device-progress");
+  overview.hidden = !progress.total;
+  overview.replaceChildren(
+    fact("已分配", progress.total + " 台"),
+    fact("尚未上报", progress.unreported + " 台"),
+    fact("待升级", progress.pending + " 台"),
+    fact("已达到目标版本", progress.ready + " 台"),
+  );
   element("no-devices").hidden = devices.length > 0;
   element("no-releases").hidden = releases.length > 0;
   dashboard.hidden = logout.hidden = false;
@@ -342,6 +431,40 @@ logout.addEventListener("click", () => {
 
 element("refresh").addEventListener("click", (event) => {
   void run(event.currentTarget, loadState, "无法刷新设备和版本，请稍后再试。");
+});
+
+beginMachine.addEventListener("click", () => {
+  if (busy) return;
+  const show = machineForm.hidden;
+  if (show) showAssignment(false);
+  showMachineForm(show);
+  if (show) machineInput.focus();
+});
+
+element("cancel-machine").addEventListener("click", () => {
+  if (busy) return;
+  showMachineForm(false);
+  beginMachine.focus();
+});
+
+machineInput.addEventListener("input", renderMachineChoices);
+machineTarget.addEventListener("change", () => {
+  authorizeMachine.disabled = !machineTarget.value;
+});
+
+machineForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (machineForm.hidden || authorizeMachine.disabled || !machineTarget.value) return;
+  const machine_code = machineCode();
+  const version = machineTarget.value;
+  await run(authorizeMachine, async () => {
+    await request("/machines", "PUT", { machine_code, version });
+    showMachineForm(false);
+    await refreshAfterChange("已授权机器码末尾 " + machine_code.slice(-10) + " 接收 " + version + "。",
+      beginMachine.id, beginMachine);
+    beginMachine.focus();
+  }, "无法授权这台电脑，请检查机器码和目标版本后重试。");
+  renderMachineChoices();
 });
 
 beginAssignment.addEventListener("click", () => {

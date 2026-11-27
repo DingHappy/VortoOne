@@ -1,5 +1,9 @@
 const container = document.getElementById("private-version-controls");
 const tauri = window.__TAURI_INTERNALS__;
+const machineCodeControls = document.getElementById("machine-code-controls");
+const copyMachineCode = document.getElementById("copy-machine-code");
+const machineCodeValue = document.getElementById("machine-code-value");
+const machineCodeStatus = document.getElementById("machine-code-status");
 const checkTimeFormat = new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" });
 const checkMessages = new Map([
   ["awaiting_assignment", "此电脑已登记，正在等待管理员分配版本。"],
@@ -14,11 +18,42 @@ const checkMessages = new Map([
 let busy = false;
 let refreshing = false;
 
+copyMachineCode?.addEventListener("click", async () => {
+  if (!tauri || machineCodeControls.hidden || copyMachineCode.disabled) return;
+  copyMachineCode.disabled = true;
+  machineCodeValue.hidden = true;
+  machineCodeValue.value = "";
+  machineCodeStatus.classList.remove("error");
+  machineCodeStatus.textContent = "";
+  try {
+    const code = await tauri.invoke("gray_update_machine_code");
+    if (typeof code !== "string" || !/^(mac|win|linux)-[0-9a-f]{64}$/.test(code)) {
+      throw new Error("Unrecognized device code");
+    }
+    machineCodeValue.value = code;
+    machineCodeValue.hidden = false;
+    try {
+      await navigator.clipboard.writeText(code);
+      machineCodeStatus.textContent = "已复制本机的机器码。";
+    } catch {
+      machineCodeValue.focus();
+      machineCodeValue.select();
+      machineCodeStatus.textContent = "请复制选中的机器码。";
+    }
+  } catch {
+    machineCodeStatus.classList.add("error");
+    machineCodeStatus.textContent = "暂时无法读取机器码，请稍后重试。";
+  } finally {
+    copyMachineCode.disabled = false;
+  }
+});
+
 function mountEnrolledControls() {
   container.innerHTML = `
     <section aria-labelledby="gray-title">
       <h2 id="gray-title">灰度更新</h2>
       <p>此电脑已登记。</p>
+      <p>要改用机器码，请先退出当前灰度登记。</p>
       <div class="row"><button id="gray-check" type="button">检查更新</button><button id="gray-leave" type="button" class="secondary">退出灰度</button></div>
       <p class="status" role="status" aria-atomic="true"></p>
       <p class="check-time" hidden>最近完成检查 <time></time></p>
@@ -74,6 +109,7 @@ function mountEnrolledControls() {
     await run("正在退出灰度更新…", "无法退出灰度更新，请稍后再试。", async () => {
       const result = await tauri.invoke("gray_update_leave");
       if (result.enrolled) throw new Error("The device is still enrolled");
+      if (machineCodeControls) machineCodeControls.hidden = !result.supported;
       container.replaceChildren();
       document.getElementById("version-title").focus();
     });
@@ -88,6 +124,7 @@ async function refresh() {
   try {
     const state = await tauri.invoke("gray_update_status");
     enrolled = state.supported === true && state.enrolled === true;
+    if (machineCodeControls) machineCodeControls.hidden = state.supported !== true || enrolled;
   } catch {
     // Public version information remains available if local status cannot be read.
   } finally {

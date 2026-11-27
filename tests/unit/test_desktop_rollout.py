@@ -3,12 +3,15 @@
 import hashlib
 import importlib.util
 import json
+import re
+import secrets
 import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 _MODULE_NAME = "vortoone_desktop_rollout_server"
@@ -21,6 +24,8 @@ _SPEC.loader.exec_module(rollout)
 
 API = "/api/desktop-rollout"
 ADMIN = API + "/admin"
+CLAIM = API + "/machines/claim"
+CLAIM_STATUS = "X-VortoOne-Machine-Claim"
 MANAGER = "/admin/releases"
 SIGN_IN = MANAGER + "/sign-in"
 CHECK_STATUS = "X-VortoOne-Rollout-Status"
@@ -113,6 +118,30 @@ def state(admin):
 
 def assign(admin, device, version="0.3.6"):
     return admin.put(f"{ADMIN}/devices/{device}/assignment", json={"version": version})
+
+
+def machine_code(key, platform="mac"):
+    return f"{platform}-{key.public_key().public_bytes_raw().hex()}"
+
+
+def machine_proof(key, code, stamp, version="0.3.5", nonce=None):
+    nonce = nonce or secrets.token_hex(16)
+    message = f"VortoOne desktop rollout machine claim v1\n{code}\n{version}\n{stamp}\n{nonce}".encode()
+    return {
+        "machine_code": code, "version": version, "issued_at": stamp, "nonce": nonce,
+        "signature": key.sign(message).hex(),
+    }
+
+
+def grant_machine(admin, code, version="0.3.6"):
+    return admin.put(ADMIN + "/machines", json={"machine_code": code, "version": version})
+
+
+def no_claim(response, *, verified=False):
+    assert response.status_code == 204 and response.content == b""
+    assert response.headers["Cache-Control"] == "no-store"
+    assert CHECK_STATUS not in response.headers
+    assert response.headers.get(CLAIM_STATUS) == ("verified-denial" if verified else None)
 
 
 def pause(admin, paused=True, version="0.3.6"):
@@ -313,6 +342,187 @@ def test_only_one_client_can_use_an_invitation_even_across_concurrent_requests(s
     with ThreadPoolExecutor(max_workers=2) as workers:
         assert sorted(workers.map(redeem, range(2))) == [200, 401]
     assert len(state(admin)["devices"]) == 1
+
+
+def test_machine_claim_denials_require_valid_proof_and_create_no_rows(sandbox, admin):
+    app, root, clock = sandbox
+    stage(root)
+    public = TestClient(app, base_url=ORIGIN)
+    key, stranger = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    code = machine_code(key)
+    unknown = machine_proof(key, code, clock[0])
+    with sqlite3.connect(root / "rollout.sqlite3") as db:
+        db.execute("BEGIN IMMEDIATE")
+        # Unapproved proofs only read, even when another connection holds the write lock.
+        no_claim(public.post(CLAIM, json=unknown), verified=True)
+        no_claim(public.post(CLAIM, json=machine_proof(stranger, code, clock[0])))
+        for table in ("devices", "machine_devices", "machine_nonces"):
+            assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+
+    assert public.put(ADMIN + "/machines", json={"machine_code": code, "version": "0.3.6"}).status_code == 403
+    assert public.put(
+        ADMIN + "/machines", headers=SAME_ORIGIN, json={"machine_code": code, "version": "0.3.6"},
+    ).status_code == 401
+    assert grant_machine(admin, code).status_code == 204
+    before = state(admin)["devices"]
+    bad_requests = [
+        machine_proof(stranger, code, clock[0]),
+        machine_proof(key, code, clock[0] - 121),
+        machine_proof(key, code, clock[0] + 121),
+        {**unknown, "version": "0.3.4"},
+        {**unknown, "nonce": "1" * 32},
+        {**unknown, "issued_at": str(clock[0])},
+        {**unknown, "signature": "abc"},
+        {**unknown, "machine_code": code.upper()},
+        {"machine_code": code},
+    ]
+    for bad in bad_requests:
+        no_claim(public.post(CLAIM, json=bad))
+    assert state(admin)["devices"] == before
+    with sqlite3.connect(root / "rollout.sqlite3") as db:
+        assert db.execute("SELECT COUNT(*) FROM machine_nonces").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(("prefix", "platform"), [("mac", MAC), ("win", WINDOWS), ("linux", LINUX)])
+def test_machine_grant_normalizes_and_requires_exact_platform(sandbox, admin, prefix, platform):
+    _, root, _ = sandbox
+    wrong_platform = WINDOWS if platform == MAC else MAC
+    stage(root, platforms=(platform,))
+    stage(root, "0.3.7", platforms=(wrong_platform,))
+    code = machine_code(Ed25519PrivateKey.generate(), prefix)
+
+    assert grant_machine(admin, code, "0.3.7").status_code == 409
+    assert grant_machine(admin, code, "0.3.9").status_code == 404
+    assert state(admin)["devices"] == []
+    assert grant_machine(admin, "  " + code.upper() + "  ").status_code == 204
+    recorded = state(admin)["devices"][0]
+    assert recorded == {
+        "id": recorded["id"], "name": code[:len(prefix) + 9], "machine_code": code, "platform": platform,
+        "current_version": "0.0.0", "target_version": "0.3.6", "last_seen_at": "1970-01-01T00:00:00Z",
+        "status": "awaiting_machine", "active": True,
+    }
+    assert grant_machine(admin, code).status_code == 204
+    assert state(admin)["devices"] == [recorded]
+    assert assign(admin, recorded["id"], None).status_code == 204
+    assert state(admin)["devices"] == [{**recorded, "target_version": None}]
+
+
+def test_machine_claim_exact_update_and_legacy_enrollment_compatibility(sandbox, admin):
+    app, root, clock = sandbox
+    stage(root, "0.3.7")
+    stage(root, "0.3.8")
+    public = TestClient(app, base_url=ORIGIN)
+    code = "mac-03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+    assert grant_machine(admin, code, "0.3.7").status_code == 204
+    pending = state(admin)["devices"][0]
+    claim = public.post(CLAIM, json={
+        "machine_code": code, "version": "0.3.6", "issued_at": 1800000000, "nonce": "ab" * 16,
+        "signature": (
+            "f7c3255dcfacf6b9efe012c2c3b18bdb01be16fa93aac013a790ab0b7d97beb714"
+            "7a28f7c058f05c6141603cf1c0c88a81dacc8dffe4c4ee2e3a125a2d82fe02"
+        ),
+    })
+    assert claim.status_code == 200 and claim.headers["Cache-Control"] == "no-store"
+    assert CLAIM_STATUS not in claim.headers
+    assert set(claim.json()) == {"token"} and re.fullmatch(r"[A-Za-z0-9_-]{43}", claim.json()["token"])
+    auth = {"Authorization": "Bearer " + claim.json()["token"]}
+    with sqlite3.connect(root / "rollout.sqlite3") as db:
+        assert db.execute("SELECT COUNT(*) FROM tickets").fetchone()[0] == 0
+        assert db.execute("SELECT token_hash FROM devices").fetchone()[0] == hashlib.sha256(
+            claim.json()["token"].encode()
+        ).digest()
+    record = state(admin)["devices"][0]
+    assert (record["id"], record["current_version"], record["status"]) == (pending["id"], "0.3.6", "assigned")
+    assert record["last_seen_at"] == rollout._at(clock[0])
+    assert grant_machine(admin, code, "0.3.7").status_code == 204  # An identical grant preserves the bearer.
+    offered = check(public, auth, version="0.3.6")
+    assert offered.status_code == 200 and offered.json()["version"] == "0.3.7"
+    assert set(offered.json()["platforms"]) == {MAC}
+    assert report(public, auth, release="0.3.8").status_code == 409
+
+    legacy, legacy_auth = enroll(admin)
+    assert "machine_code" not in next(row for row in state(admin)["devices"] if row["id"] == legacy)
+    assert assign(admin, legacy, "0.3.7").status_code == 204
+    assert assign(admin, legacy, None).status_code == 204
+    no_offer(check(public, legacy_auth), "awaiting_assignment")
+
+
+def test_machine_reclaim_rotates_tokens_and_revoke_cancel_require_new_grant(sandbox, admin, password_hash):
+    app, root, clock = sandbox
+    stage(root)
+    public = TestClient(app, base_url=ORIGIN)
+    key = Ed25519PrivateKey.generate()
+    code = machine_code(key)
+    assert grant_machine(admin, code).status_code == 204
+    device = state(admin)["devices"][0]["id"]
+    proof = machine_proof(key, code, clock[0])
+    first = public.post(CLAIM, json=proof)
+    assert first.status_code == 200
+    first_auth = {"Authorization": "Bearer " + first.json()["token"]}
+    first_ticket = check(public, first_auth, version="0.3.5").json()["platforms"][MAC]["url"]
+    no_claim(public.post(CLAIM, json=proof))
+    assert public.get(first_ticket, headers=first_auth).status_code == 200
+
+    restarted = TestClient(rollout.create_app(root, password_hash, clock=lambda: clock[0]), base_url=ORIGIN)
+    no_claim(restarted.post(CLAIM, json=proof))
+    fresh = machine_proof(key, code, clock[0])
+    recovered = restarted.post(CLAIM, json=fresh)
+    assert recovered.status_code == 200
+    recovered_auth = {"Authorization": "Bearer " + recovered.json()["token"]}
+    assert check(restarted, first_auth).status_code == 401
+    assert public.get(first_ticket, headers=recovered_auth).status_code == 404
+
+    assert assign(admin, device, None).status_code == 204
+    assert check(restarted, recovered_auth).status_code == 401
+    no_claim(restarted.post(CLAIM, json=fresh))
+    no_claim(restarted.post(CLAIM, json=machine_proof(key, code, clock[0])), verified=True)
+    assert grant_machine(admin, code).status_code == 204
+    assert check(restarted, recovered_auth).status_code == 401
+    latest_proof = machine_proof(key, code, clock[0])
+    latest = restarted.post(CLAIM, json=latest_proof)
+    assert latest.status_code == 200
+    latest_auth = {"Authorization": "Bearer " + latest.json()["token"]}
+
+    assert restarted.post(API + "/leave", headers=latest_auth).status_code == 204
+    assert state(admin)["devices"][0]["active"] is False
+    assert check(restarted, latest_auth).status_code == 401
+    no_claim(restarted.post(CLAIM, json=latest_proof))
+    no_claim(restarted.post(CLAIM, json=machine_proof(key, code, clock[0])), verified=True)
+    assert grant_machine(admin, code, "0.3.9").status_code == 404
+    assert state(admin)["devices"][0]["active"] is False
+    assert grant_machine(admin, code).status_code == 204
+    again = state(admin)["devices"][0]
+    assert (again["id"], again["status"], again["current_version"]) == (device, "awaiting_machine", "0.0.0")
+    no_claim(restarted.post(CLAIM, json=fresh))
+    assert check(restarted, latest_auth).status_code == 401
+    assert admin.delete(f"{ADMIN}/devices/{device}").status_code == 204
+    no_claim(restarted.post(CLAIM, json=machine_proof(key, code, clock[0])), verified=True)
+
+
+def test_machine_claim_replay_is_atomic_and_expires_after_clock_skew_window(sandbox, admin):
+    app, root, clock = sandbox
+    stage(root)
+    key = Ed25519PrivateKey.generate()
+    code = machine_code(key)
+    assert grant_machine(admin, code).status_code == 204
+    proof = machine_proof(key, code, clock[0] + 120)
+
+    def submit(_):
+        client = TestClient(app, base_url=ORIGIN)
+        return client.post(CLAIM, json=proof).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(submit, range(2))) == [200, 204]
+
+    public = TestClient(app, base_url=ORIGIN)
+    clock[0] += 240
+    no_claim(public.post(CLAIM, json=proof))
+    with sqlite3.connect(root / "rollout.sqlite3") as db:
+        assert db.execute("SELECT COUNT(*) FROM machine_nonces").fetchone()[0] == 1
+    clock[0] += rollout.MACHINE_NONCE_SECONDS - 240
+    assert public.post(CLAIM, json=machine_proof(key, code, clock[0])).status_code == 200
+    with sqlite3.connect(root / "rollout.sqlite3") as db:
+        assert db.execute("SELECT COUNT(*) FROM machine_nonces").fetchone()[0] == 1
 
 
 def test_batch_assignments_validate_every_device_and_do_not_partially_commit(sandbox, admin):

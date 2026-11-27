@@ -1,6 +1,8 @@
 //! Native stable updates. Installation always requires user confirmation.
 
-use crate::gray_update::{CheckOutcome, Managed, Report, RolloutCheck, POLICY_ERROR};
+use crate::gray_update::{
+    check_for_standard_update, CheckOutcome, Managed, Report, RolloutCheck, POLICY_ERROR,
+};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -96,26 +98,35 @@ async fn check_with_guard(app: &AppHandle, manual: bool, _guard: UpdateOperation
 }
 
 async fn run_check(app: &AppHandle, manual: bool) -> Result<(), &'static str> {
-    let managed = match Managed::read(app) {
+    let managed = match check_for_standard_update(app).await {
         Ok(managed) => managed,
-        Err(_) if manual => return Err("暂时无法检查更新，请稍后重试。"),
+        Err(error) if manual => return Err(error),
         Err(_) => return Ok(()),
     };
-    let update = match &managed {
-        Some(device) => match find_managed_update(app, device).await {
-            Ok(RolloutCheck::Offer(update)) => Ok(Some(update)),
-            Ok(RolloutCheck::NoOffer(CheckOutcome::EnrollmentInvalid)) => Err(POLICY_ERROR),
-            Ok(RolloutCheck::NoOffer(_)) => Ok(None),
-            Err(error) => Err(error),
-        },
-        None => find_public_update(app).await,
+    let (device, legacy, update) = match managed {
+        Some(managed) => {
+            let legacy = managed.legacy;
+            let update = match restore_managed_update(app, managed.outcome) {
+                Ok(RolloutCheck::Offer(update)) => Ok(Some(update)),
+                Ok(RolloutCheck::NoOffer(CheckOutcome::EnrollmentInvalid)) if legacy => {
+                    Err(POLICY_ERROR)
+                }
+                Ok(RolloutCheck::NoOffer(CheckOutcome::EnrollmentInvalid)) => {
+                    Err("暂时无法检查更新，请稍后重试。")
+                }
+                Ok(RolloutCheck::NoOffer(_)) => Ok(None),
+                Err(error) => Err(error),
+            };
+            (Some(managed.device), legacy, update)
+        }
+        None => (None, false, find_public_update(app).await),
     };
     match update {
-        Ok(Some(update)) => install_update(app, update, managed.as_ref())
+        Ok(Some(update)) => install_update(app, update, device.as_ref())
             .await
             .map(|_| ()),
         Ok(None) if manual => {
-            let message = if managed.is_some() {
+            let message = if legacy {
                 "这台设备目前没有可用的灰度更新。"
             } else {
                 "VortoOne 已经是最新版本。"
@@ -154,11 +165,18 @@ async fn find_managed_update(
     app: &AppHandle,
     managed: &Managed,
 ) -> Result<RolloutCheck<Update>, &'static str> {
-    let updater = build_updater(app, Some(crate::gray_update::TARGET.0))?;
-    let manifest = match managed.check(app).await? {
+    restore_managed_update(app, managed.check(app).await?)
+}
+
+fn restore_managed_update(
+    app: &AppHandle,
+    outcome: RolloutCheck<serde_json::Value>,
+) -> Result<RolloutCheck<Update>, &'static str> {
+    let manifest = match outcome {
         RolloutCheck::Offer(manifest) => manifest,
         RolloutCheck::NoOffer(outcome) => return Ok(RolloutCheck::NoOffer(outcome)),
     };
+    let updater = build_updater(app, Some(crate::gray_update::TARGET.0))?;
     let update = updater
         .restore_update(manifest)
         .map_err(|_| "灰度更新元数据无效，请联系发布管理员。")?;

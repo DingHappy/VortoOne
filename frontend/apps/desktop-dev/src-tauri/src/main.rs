@@ -420,6 +420,8 @@ fn main() {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_status,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_machine_code,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_enroll,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_open_versions,
