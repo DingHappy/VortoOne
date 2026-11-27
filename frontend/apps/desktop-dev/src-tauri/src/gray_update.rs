@@ -13,7 +13,8 @@ use tauri::{AppHandle, Manager, Url, WebviewWindow};
 
 const HOST: &str = "vortoone.com";
 const API: &str = "https://vortoone.com/api/desktop-rollout";
-const ADMIN: &str = "https://vortoone.com/admin/releases/";
+const VERSIONS: (&str, &str) = ("versions", "versions.html");
+const ENROLLMENT: (&str, &str) = ("gray-enrollment", "gray-enrollment.html");
 const POLICY_ERROR: &str = "无法核对灰度更新资格，请稍后重试或打开版本管理。";
 const DOWNLOAD_ERROR: &str = "无法下载或验签灰度更新，请稍后重试。";
 const STORE_ERROR: &str = "无法访问本机灰度凭据，请在版本管理中检查设备登记。";
@@ -272,31 +273,56 @@ fn download_url_valid(url: &Url, version: &str, suffix: &str) -> bool {
         && parts.next().is_none()
 }
 
-fn check_window(window: &WebviewWindow) -> Result<(), &'static str> {
-    if window.label() == "versions"
-        && window.url().ok().is_some_and(|url| {
-            crate::packaged_url(&url)
-                && url.path() == "/versions.html"
-                && url.query().is_none()
-                && url.fragment().is_none()
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.port().is_none()
-        })
+fn trusted_window(label: &str, url: &Url, expected: (&str, &str)) -> bool {
+    label == expected.0
+        && crate::packaged_url(url)
+        && url.path().strip_prefix('/') == Some(expected.1)
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port().is_none()
+}
+
+fn check_window(window: &WebviewWindow, expected: (&str, &str)) -> Result<(), &'static str> {
+    if window
+        .url()
+        .ok()
+        .is_some_and(|url| trusted_window(window.label(), &url, expected))
     {
         Ok(())
     } else {
-        Err("请从桌面版的版本管理操作。")
+        Err("此窗口无法执行该操作。")
     }
 }
 
-fn require_supported(window: &WebviewWindow, app: &AppHandle) -> Result<(), &'static str> {
-    check_window(window)?;
+fn require_supported(app: &AppHandle) -> Result<(), &'static str> {
     if supported(app) {
         Ok(())
     } else {
         Err("当前安装形式不支持灰度更新。")
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn accepted_enrollment_link(raw: &str) -> bool {
+    raw.eq_ignore_ascii_case("vortoone-update://enroll")
+}
+
+pub fn open_enrollment(app: &AppHandle) -> Result<(), &'static str> {
+    require_supported(app)?;
+    if let Some(window) = app.get_webview_window(ENROLLMENT.0) {
+        let _ = window.unminimize();
+    }
+    crate::show(
+        app,
+        ENROLLMENT.0,
+        ENROLLMENT.1,
+        "VortoOne · 设备登记",
+        520.0,
+        420.0,
+    )
+    .map_err(|_| "无法打开设备登记窗口。")
 }
 
 fn status(app: &AppHandle) -> Result<GrayStatus, &'static str> {
@@ -320,7 +346,12 @@ pub fn gray_update_status(
     window: WebviewWindow,
     app: AppHandle,
 ) -> Result<GrayStatus, &'static str> {
-    check_window(&window)?;
+    let expected = if window.label() == ENROLLMENT.0 {
+        ENROLLMENT
+    } else {
+        VERSIONS
+    };
+    check_window(&window, expected)?;
     status(&app)
 }
 
@@ -330,7 +361,8 @@ pub async fn gray_update_enroll(
     app: AppHandle,
     input: EnrollInput,
 ) -> Result<GrayStatus, &'static str> {
-    require_supported(&window, &app)?;
+    check_window(&window, ENROLLMENT)?;
+    require_supported(&app)?;
     let _guard = crate::stable_update::begin(&app)?;
     let path = record_path(&app)?;
     if record_exists(&path)? {
@@ -381,7 +413,8 @@ pub async fn gray_update_leave(
     window: WebviewWindow,
     app: AppHandle,
 ) -> Result<GrayStatus, &'static str> {
-    require_supported(&window, &app)?;
+    check_window(&window, VERSIONS)?;
+    require_supported(&app)?;
     let _guard = crate::stable_update::begin(&app)?;
     let path = record_path(&app)?;
     if let Some(managed) = Managed::read(&app)? {
@@ -395,14 +428,24 @@ pub async fn gray_update_leave(
 
 #[tauri::command]
 pub async fn gray_update_check(window: WebviewWindow, app: AppHandle) -> Result<(), &'static str> {
-    require_supported(&window, &app)?;
+    check_window(&window, VERSIONS)?;
+    require_supported(&app)?;
+    if !status(&app)?.enrolled {
+        return Err("这台设备尚未登记。");
+    }
     crate::stable_update::check_from_versions(&app).await
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 #[tauri::command]
-pub fn gray_update_open_admin(window: WebviewWindow, app: AppHandle) -> Result<(), &'static str> {
-    require_supported(&window, &app)?;
-    tauri_plugin_opener::open_url(ADMIN, None::<&str>).map_err(|_| "无法打开发布管理网页。")
+pub async fn gray_update_open_enrollment(
+    window: WebviewWindow,
+    app: AppHandle,
+) -> Result<(), &'static str> {
+    check_window(&window, VERSIONS)?;
+    tauri::async_runtime::spawn_blocking(move || open_enrollment(&app))
+        .await
+        .map_err(|_| "无法打开设备登记窗口。")?
 }
 
 fn record_path(app: &AppHandle) -> Result<PathBuf, &'static str> {
@@ -612,6 +655,46 @@ fn dpapi(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn gray_invitation_accepts_only_the_bare_stable_link() {
+        assert!(accepted_enrollment_link("vortoone-update://enroll"));
+        for other in [
+            "vortoone://enroll",
+            "vortoone://connect",
+            "vortoone://pair",
+            "vortoone-update://enroll?code=ignored",
+            "vortoone-update://enroll#code=ignored",
+            "vortoone-update://enroll?",
+            "vortoone-update://enroll/",
+            "vortoone-update://enroll/other",
+            "vortoone-update://user@enroll",
+            "vortoone-update://enroll:90",
+            "https://enroll",
+        ] {
+            assert!(!accepted_enrollment_link(other), "{other}");
+        }
+    }
+
+    #[test]
+    fn gray_commands_are_bound_to_their_exact_packaged_windows() {
+        for (label, page) in [VERSIONS, ENROLLMENT] {
+            for origin in ["tauri://localhost", "http://tauri.localhost"] {
+                let url = Url::parse(&format!("{origin}/{page}")).unwrap();
+                assert!(trusted_window(label, &url, (label, page)));
+                assert!(!trusted_window("live", &url, (label, page)));
+                for extra in ["?next", "#fragment", "/nested"] {
+                    let changed = Url::parse(&format!("{url}{extra}")).unwrap();
+                    assert!(!trusted_window(label, &changed, (label, page)));
+                }
+            }
+            let remote = Url::parse(&format!("https://vortoone.com/{page}")).unwrap();
+            assert!(!trusted_window(label, &remote, (label, page)));
+        }
+        let normal_page = Url::parse("tauri://localhost/versions.html").unwrap();
+        assert!(!trusted_window(ENROLLMENT.0, &normal_page, ENROLLMENT));
+    }
 
     fn offer(version: &str, target: (&str, &str)) -> Value {
         let url = format!(

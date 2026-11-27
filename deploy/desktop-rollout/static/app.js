@@ -1,8 +1,7 @@
 const apiRoot = "/api/desktop-rollout/admin";
+const signIn = "/admin/releases/sign-in";
 const element = (id) => document.getElementById(id);
 const notice = element("notice");
-const login = element("login");
-const password = element("password");
 const dashboard = element("dashboard");
 const logout = element("logout");
 const codeInput = element("enrollment-code");
@@ -68,16 +67,15 @@ function clearCode() {
   element("enrollment-details").hidden = true;
 }
 
-function showLogin() {
+function leaveDashboard(destination) {
   clearCode();
   showAssignment(false);
   devices = [];
   releases = [];
   element("devices").replaceChildren();
   element("releases").replaceChildren();
-  password.value = "";
-  dashboard.hidden = logout.hidden = true;
-  login.hidden = false;
+  document.querySelector("main").hidden = true;
+  window.location.replace(destination);
 }
 
 async function request(path, method = "GET", body) {
@@ -103,7 +101,7 @@ function failureMessage(error, fallback) {
   return fallback;
 }
 
-async function run(button, work, fallback, { signingIn = false } = {}) {
+async function run(button, work, fallback) {
   if (busy) return;
   busy = true;
   if (button) button.disabled = true;
@@ -112,9 +110,7 @@ async function run(button, work, fallback, { signingIn = false } = {}) {
     await work();
   } catch (error) {
     if (error.status === 401) {
-      showLogin();
-      showNotice(signingIn ? "登录失败，请核对管理密码。" : "登录已过期，请重新登录。", true);
-      password.focus();
+      leaveDashboard(signIn + "?expired=1");
     } else {
       showNotice(failureMessage(error, fallback), true);
     }
@@ -245,7 +241,6 @@ async function loadState() {
   element("releases").replaceChildren(...releases.map(makeRelease));
   element("no-devices").hidden = devices.length > 0;
   element("no-releases").hidden = releases.length > 0;
-  login.hidden = true;
   dashboard.hidden = logout.hidden = false;
   syncSelection();
 }
@@ -261,21 +256,10 @@ async function refreshAfterChange(message, focusId, focusFallback) {
   }
 }
 
-element("login-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  await run(event.submitter, async () => {
-    await request("/login", "POST", { password: password.value });
-    password.value = "";
-    await loadState();
-    element("enrollment").focus();
-  }, "无法登录或读取设备，请稍后再试。", { signingIn: true });
-});
-
 logout.addEventListener("click", () => {
   void run(logout, async () => {
     await request("/logout", "POST", {});
-    showLogin();
-    password.focus();
+    leaveDashboard(signIn);
   }, "无法退出登录，请稍后再试。");
 });
 
@@ -341,11 +325,16 @@ element("copy-code").addEventListener("click", async () => {
   }
 });
 
-showNotice("正在读取灰度更新管理状态…");
-try {
+const stateError = "暂时无法读取设备，请刷新后重试。";
+await run(null, async () => {
+  showNotice("正在读取灰度更新管理状态…");
   await loadState();
   showNotice("");
-} catch (error) {
-  showLogin();
-  showNotice(error.status === 401 ? "" : failureMessage(error, "暂时无法读取设备，请登录重试。"), true);
-}
+}, stateError);
+
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    dashboard.hidden = logout.hidden = true;
+    void run(null, loadState, stateError);
+  }
+});

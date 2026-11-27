@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VortoOne · 设备登记</title>
+  <link rel="stylesheet" href="version-manager.css">
+  <script type="module" src="gray-enrollment.js"></script>
+</head>
+<body>
+  <main>
+    <h1>登记灰度更新</h1>
+    <p id="enrollment-status" class="status" role="status" aria-atomic="true" tabindex="-1"></p>
+    <form id="enrollment-form" hidden>
+      <p>输入管理员提供的一次性登记码。登记后，管理员可以为此电脑分配版本。</p>
+      <div class="fields">
+        <div><label for="device-name">设备名称</label><input id="device-name" type="text" autocomplete="off" maxlength="64" required></div>
+        <div><label for="enrollment-code">一次性登记码</label><input id="enrollment-code" type="text" autocomplete="off" spellcheck="false" autocapitalize="none" minlength="20" maxlength="20" required></div>
+      </div>
+      <button type="submit">登记此电脑</button>
+    </form>
+  </main>
+</body>
+</html>

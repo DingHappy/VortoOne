@@ -85,7 +85,7 @@ async fn check_with_guard(app: &AppHandle, manual: bool, _guard: UpdateOperation
 async fn run_check(app: &AppHandle, manual: bool) -> Result<(), &'static str> {
     let managed = match Managed::read(app) {
         Ok(managed) => managed,
-        Err(message) if manual => return Err(message),
+        Err(_) if manual => return Err("暂时无法检查更新，请稍后重试。"),
         Err(_) => return Ok(()),
     };
     match find_update(app, managed.as_ref()).await {

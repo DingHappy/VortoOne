@@ -20,15 +20,6 @@
 
     <p id="notice" class="notice" role="status" aria-atomic="true" hidden></p>
 
-    <section id="login" class="panel login" aria-labelledby="login-title" hidden>
-      <h2 id="login-title">管理员登录</h2>
-      <form id="login-form">
-        <label for="password">管理密码</label>
-        <input id="password" type="password" autocomplete="current-password" required>
-        <button type="submit">登录</button>
-      </form>
-    </section>
-
     <div id="dashboard" hidden>
       <section class="panel" aria-labelledby="device-title">
         <div class="section-header">
@@ -46,7 +37,8 @@
             <button id="copy-code" class="secondary" type="button">复制</button>
           </div>
           <p id="expiry" class="muted"></p>
-          <p>在要登记的电脑上打开 VortoOne「版本管理 → 灰度更新」，填入登记码。</p>
+          <p>请通过私密渠道分享登记码。<a href="vortoone-update://enroll" rel="noreferrer">在这台 Mac 打开登记窗口</a>，然后手动填写登记码。</p>
+          <p>使用 0.3.5 时，可在「版本管理」中手动登记。在支持私密登记的 Windows 或 Ubuntu 版中，请在「版本管理」窗口按 <kbd>Ctrl+Alt+Shift+U</kbd>。</p>
         </div>
         <form id="assignment" class="enrollment" aria-labelledby="assignment-label" hidden>
           <label id="assignment-label" for="target-version">选择要分配的版本</label>

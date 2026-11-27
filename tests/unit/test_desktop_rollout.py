@@ -21,6 +21,8 @@ _SPEC.loader.exec_module(rollout)
 
 API = "/api/desktop-rollout"
 ADMIN = API + "/admin"
+MANAGER = "/admin/releases"
+SIGN_IN = MANAGER + "/sign-in"
 ORIGIN = "https://vortoone.com"
 SAME_ORIGIN = {"Origin": ORIGIN}
 PASSWORD = "synthetic rollout test passphrase"
@@ -319,6 +321,82 @@ def test_admin_actions_require_own_origin_secure_session_and_json(sandbox, admin
     assert unauthenticated.get(ADMIN + "/state").status_code == 401
     clock[0] += rollout.SESSION_SECONDS
     assert admin.get(ADMIN + "/state").status_code == 401
+
+
+def test_management_page_and_assets_require_a_live_admin_session(sandbox, admin, password_hash):
+    app, root, clock = sandbox
+    anonymous = TestClient(app, base_url=ORIGIN)
+    manager_paths = (MANAGER + "/", MANAGER + "/style.css", MANAGER + "/app.js")
+    for path in (*manager_paths, MANAGER, MANAGER + "/index.html"):
+        response = anonymous.get(path, follow_redirects=False)
+        assert response.status_code == 404 and response.json() == {"detail": "Not Found"}
+        assert response.headers["cache-control"] == "no-store"
+        assert "location" not in response.headers
+        assert anonymous.head(path).status_code == 404
+        forged = anonymous.get(path, headers={"Cookie": f"{rollout.ADMIN_COOKIE}={'a' * 43}"})
+        assert forged.status_code == 404
+
+    sign_in = anonymous.get(SIGN_IN)
+    assert sign_in.status_code == 200 and sign_in.headers["cache-control"] == "no-store"
+    assert sign_in.headers["referrer-policy"] == "same-origin"
+    assert '<title>登录</title>' in sign_in.text
+    assert 'method="post"' in sign_in.text and 'type="password"' in sign_in.text
+    assert all(word not in sign_in.text for word in ("灰度", "VortoOne", "app.js", API, "vortoone-update:"))
+    style = anonymous.get(SIGN_IN + ".css")
+    assert style.status_code == 200 and style.headers["cache-control"] == "no-store"
+    assert "text/css" in style.headers["content-type"]
+
+    login = anonymous.post(SIGN_IN, headers=SAME_ORIGIN, data={"password": PASSWORD}, follow_redirects=False)
+    assert login.status_code == 303 and login.headers["location"] == MANAGER + "/"
+    assert login.headers["cache-control"] == "no-store"
+    cookies = login.headers.get_list("set-cookie")
+    assert len(cookies) == 2
+    for cookie in cookies:
+        for attribute in ("Secure", "HttpOnly", "SameSite=strict"):
+            assert attribute in cookie
+        assert "Domain=" not in cookie
+    assert {cookie.split("Path=", 1)[1].split(";", 1)[0] for cookie in cookies} == {MANAGER, ADMIN}
+
+    # The page and the API can be reached through different proxies to the same state.
+    second = TestClient(rollout.create_app(root, password_hash, clock=lambda: clock[0]), base_url=ORIGIN)
+    second.cookies.update(anonymous.cookies)
+    for path in manager_paths:
+        response = second.get(path)
+        assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+        assert second.head(path).status_code == 200
+    assert "vortoone-update://enroll" in second.get(MANAGER + "/").text
+    assert second.get(ADMIN + "/state").status_code == 200
+    assert second.get(SIGN_IN, follow_redirects=False).headers["location"] == MANAGER + "/"
+    assert "会话已过期，请重新登录。" in second.get(SIGN_IN + "?expired=1").text
+
+    logout = second.post(ADMIN + "/logout", headers=SAME_ORIGIN, json={})
+    assert logout.status_code == 204 and len(logout.headers.get_list("set-cookie")) == 2
+    for path in manager_paths:
+        assert anonymous.get(path).status_code == 404  # Original cookies still exist on this client.
+    assert anonymous.get(ADMIN + "/state").status_code == 401
+
+    clock[0] += rollout.SESSION_SECONDS
+    for path in manager_paths:
+        assert admin.get(path).status_code == 404
+    assert admin.get(ADMIN + "/state").status_code == 401
+
+
+def test_sign_in_form_uses_the_existing_origin_guard_and_rate_limit(sandbox):
+    app, _, _ = sandbox
+    client = TestClient(app, base_url=ORIGIN)
+    credentials = {"password": PASSWORD}
+    assert client.post(SIGN_IN, data=credentials).status_code == 403
+    assert client.post(SIGN_IN, headers={"Origin": "https://other.example"}, data=credentials).status_code == 403
+    assert client.post(SIGN_IN, headers=SAME_ORIGIN, json=credentials).status_code == 415
+    assert client.post(SIGN_IN, headers=SAME_ORIGIN, data={"password": "x" * rollout.FORM_LIMIT}).status_code == 413
+    invalid = client.post(SIGN_IN, headers=SAME_ORIGIN, data={"wrong": "unused"})
+    assert invalid.status_code == 422 and "unused" not in invalid.text
+    secret = "incorrect synthetic password"
+    for _ in range(8):
+        rejected = client.post(SIGN_IN, headers=SAME_ORIGIN, data={"password": secret})
+        assert rejected.status_code == 401 and rejected.headers["cache-control"] == "no-store"
+        assert secret not in rejected.text and "灰度" not in rejected.text
+    assert client.post(ADMIN + "/login", headers=SAME_ORIGIN, json=credentials).status_code == 429
 
 
 def test_rate_limiting_uses_the_central_clock_and_does_not_echo_credentials(sandbox):
