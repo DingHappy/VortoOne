@@ -13,6 +13,14 @@
 				<string>vortoone</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.vorto.vortoone.update-enrollment</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vortoone-update</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

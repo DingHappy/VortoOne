@@ -15,22 +15,27 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 
 PREFIX = "/api/desktop-rollout"
 PUBLIC_ORIGIN = "https://vortoone.com"
 ADMIN_COOKIE = "__Secure-vortoone-rollout"
 ADMIN_COOKIE_PATH = PREFIX + "/admin"
+ADMIN_PAGE = "/admin/releases"
+SIGN_IN = ADMIN_PAGE + "/sign-in"
 STATIC = Path(__file__).with_name("static")
 ENROLLMENT_SECONDS = 15 * 60
 TICKET_SECONDS = 10 * 60
 SESSION_SECONDS = 8 * 60 * 60
 JSON_LIMIT = 4096
+FORM_LIMIT = 16 * 1024
 MANIFEST_LIMIT = 64 * 1024
 ARTIFACT_LIMIT = 512 * 1024 * 1024
 
@@ -200,6 +205,9 @@ class RequestPolicy:
                 headers = MutableHeaders(scope=message)
                 for key, value in PUBLIC_HEADERS.items():
                     headers[key] = value
+                if path == SIGN_IN and headers.get("content-type", "").startswith("text/html"):
+                    # Preserve Origin on the same-origin HTML form POST.
+                    headers["Referrer-Policy"] = "same-origin"
             await send(message)
 
         async def refuse(status, detail):
@@ -207,20 +215,23 @@ class RequestPolicy:
 
         headers = Headers(scope=scope)
         path, method = scope["path"], scope["method"]
+        form_login = path == SIGN_IN and method == "POST"
         if (
-            path.startswith(ADMIN_COOKIE_PATH + "/")
+            (form_login or path.startswith(ADMIN_COOKIE_PATH + "/"))
             and method not in {"GET", "HEAD", "OPTIONS"}
             and headers.getlist("origin") != [PUBLIC_ORIGIN]
         ):
             await refuse(403, "invalid_origin")
             return
-        if path.startswith(PREFIX + "/") and method in {"POST", "PUT", "PATCH"}:
+        if (path.startswith(PREFIX + "/") and method in {"POST", "PUT", "PATCH"}) or form_login:
             empty_body = path == PREFIX + "/leave" and method == "POST"
+            content_type = "application/x-www-form-urlencoded" if form_login else "application/json"
+            body_limit = FORM_LIMIT if form_login else JSON_LIMIT
             types = headers.getlist("content-type")
             if not empty_body and (
-                len(types) != 1 or types[0].split(";", 1)[0].strip().lower() != "application/json"
+                len(types) != 1 or types[0].split(";", 1)[0].strip().lower() != content_type
             ):
-                await refuse(415, "json_required")
+                await refuse(415, "invalid_request" if form_login else "json_required")
                 return
             body = bytearray()
             while True:
@@ -228,7 +239,7 @@ class RequestPolicy:
                 if message["type"] == "http.disconnect":
                     return
                 body.extend(message.get("body", b""))
-                if len(body) > JSON_LIMIT:
+                if len(body) > body_limit:
                     await refuse(413, "request_too_large")
                     return
                 if not message.get("more_body"):
@@ -400,13 +411,27 @@ def _session(request: Request) -> str:
     return token if TOKEN_RE.fullmatch(token) else ""
 
 
-def _admin(conn: sqlite3.Connection, request: Request, now: int) -> str:
+def _active_admin(conn: sqlite3.Connection, request: Request, now: int) -> str:
     token = _session(request)
     if token and conn.execute(
         "SELECT 1 FROM admin_sessions WHERE token_hash = ? AND expires_at > ?", (_digest(token), now)
     ).fetchone():
         return token
+    return ""
+
+
+def _admin(conn: sqlite3.Connection, request: Request, now: int) -> str:
+    if token := _active_admin(conn, request, now):
+        return token
     raise HTTPException(401, "admin_auth_required")
+
+
+def _set_admin_cookies(response: Response, token: str) -> Response:
+    for path in (ADMIN_COOKIE_PATH, ADMIN_PAGE):
+        response.set_cookie(
+            ADMIN_COOKIE, token, max_age=SESSION_SECONDS, path=path, secure=True, httponly=True, samesite="strict",
+        )
+    return response
 
 
 def _admin_device(conn: sqlite3.Connection, device_id: str) -> sqlite3.Row:
@@ -480,17 +505,56 @@ def create_app(
     async def unexpected_error(_request, _error):
         return JSONResponse({"detail": "server_error"}, 500, headers=PUBLIC_HEADERS)
 
-    @app.get("/admin/releases/")
-    def admin_page():
-        return FileResponse(STATIC / "index.html", media_type="text/html")
+    def manager_resource(request: Request, name: str, media_type: str):
+        with store.connection() as conn:
+            if not _active_admin(conn, request, now()):
+                raise HTTPException(404, "Not Found")
+        return FileResponse(STATIC / name, media_type=media_type)
 
-    @app.get("/admin/releases/style.css")
-    def admin_style():
-        return FileResponse(STATIC / "style.css", media_type="text/css")
+    @app.api_route(ADMIN_PAGE + "/", methods=["GET", "HEAD"])
+    def admin_page(request: Request):
+        return manager_resource(request, "index.html", "text/html")
 
-    @app.get("/admin/releases/app.js")
-    def admin_script():
-        return FileResponse(STATIC / "app.js", media_type="text/javascript")
+    @app.api_route(ADMIN_PAGE + "/style.css", methods=["GET", "HEAD"])
+    def admin_style(request: Request):
+        return manager_resource(request, "style.css", "text/css")
+
+    @app.api_route(ADMIN_PAGE + "/app.js", methods=["GET", "HEAD"])
+    def admin_script(request: Request):
+        return manager_resource(request, "app.js", "text/javascript")
+
+    def sign_in_page(message="", status_code=200, headers=None):
+        template = (STATIC / "sign-in.html").read_text(encoding="utf-8")
+        feedback = f'<p class="message" role="status">{message}</p>' if message else ""
+        return HTMLResponse(template.replace("<!-- feedback -->", feedback), status_code, headers)
+
+    @app.api_route(SIGN_IN, methods=["GET", "HEAD"])
+    def sign_in(request: Request):
+        if request.query_params.get("expired") == "1":
+            return sign_in_page("会话已过期，请重新登录。")
+        with store.connection() as conn:
+            if _active_admin(conn, request, now()):
+                return RedirectResponse(ADMIN_PAGE + "/", status_code=303)
+        return sign_in_page()
+
+    @app.api_route(SIGN_IN + ".css", methods=["GET", "HEAD"])
+    def sign_in_stylesheet():
+        return FileResponse(STATIC / "sign-in.css", media_type="text/css")
+
+    @app.post(SIGN_IN)
+    async def sign_in_submit(request: Request):
+        raw = await request.body()
+        try:
+            fields = parse_qs(raw.decode("utf-8"), strict_parsing=True, max_num_fields=1, errors="strict")
+            body = Login(password=fields["password"][0])
+        except (KeyError, ValueError):
+            return sign_in_page("请输入有效密码。", 422)
+        try:
+            token = await run_in_threadpool(create_admin_session, body.password, request)
+        except HTTPException as error:
+            message = "请求过于频繁，请稍后再试。" if error.status_code == 429 else "登录失败，请检查密码。"
+            return sign_in_page(message, error.status_code, error.headers)
+        return _set_admin_cookies(RedirectResponse(ADMIN_PAGE + "/", status_code=303), token)
 
     @app.post(PREFIX + "/enroll")
     def enroll(body: Enroll, request: Request):
@@ -592,11 +656,10 @@ def create_app(
             _retire(conn, device["id"])
         return Response(status_code=204)
 
-    @app.post(ADMIN_COOKIE_PATH + "/login", status_code=204)
-    def login(body: Login, request: Request):
+    def create_admin_session(password: str, request: Request) -> str:
         stamp = now()
         store.limit("login", _client(request), stamp, 8)
-        supplied = hashlib.pbkdf2_hmac("sha256", body.password.encode("utf-8"), salt, rounds)
+        supplied = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
         if not hmac.compare_digest(supplied, expected_password):
             raise HTTPException(401, "invalid_admin_password")
         token = secrets.token_urlsafe(32)
@@ -609,12 +672,11 @@ def create_app(
                 "INSERT INTO admin_sessions(token_hash, expires_at) VALUES (?, ?)",
                 (_digest(token), stamp + SESSION_SECONDS),
             )
-        response = Response(status_code=204)
-        response.set_cookie(
-            ADMIN_COOKIE, token, max_age=SESSION_SECONDS, path=ADMIN_COOKIE_PATH, secure=True,
-            httponly=True, samesite="strict",
-        )
-        return response
+        return token
+
+    @app.post(ADMIN_COOKIE_PATH + "/login", status_code=204)
+    def login(body: Login, request: Request):
+        return _set_admin_cookies(Response(status_code=204), create_admin_session(body.password, request))
 
     @app.post(ADMIN_COOKIE_PATH + "/logout", status_code=204)
     def logout(body: Empty, request: Request):
@@ -622,7 +684,8 @@ def create_app(
             token = _admin(conn, request, now())
             conn.execute("DELETE FROM admin_sessions WHERE token_hash = ?", (_digest(token),))
         response = Response(status_code=204)
-        response.delete_cookie(ADMIN_COOKIE, path=ADMIN_COOKIE_PATH, secure=True, httponly=True, samesite="strict")
+        for path in (ADMIN_COOKIE_PATH, ADMIN_PAGE):
+            response.delete_cookie(ADMIN_COOKIE, path=path, secure=True, httponly=True, samesite="strict")
         return response
 
     @app.get(ADMIN_COOKIE_PATH + "/state")

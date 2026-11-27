@@ -411,8 +411,8 @@ fn main() {
             gray_update::gray_update_leave,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_check,
-            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-            gray_update::gray_update_open_admin,
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            gray_update::gray_update_open_enrollment,
             model_settings::model_settings_get, model_settings::model_settings_save,
             connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
             connector::computer_remove, connector::computers_open, connector::computer_folder_settings,
@@ -615,10 +615,16 @@ fn main() {
                     let _ = window.set_focus();
                 }
             }
-            // 点了 vortoone:// 链接（Info.plist 登记了这个协议；冷启动时也走这里）
+            // Info.plist 登记的链接，冷启动时也走这里。
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Opened { urls } => {
                 for url in urls {
+                    if gray_update::accepted_enrollment_link(url.as_str()) {
+                        if let Err(error) = gray_update::open_enrollment(app) {
+                            eprintln!("无法打开设备登记窗口: {error}");
+                        }
+                        continue;
+                    }
                     shell::receive_link(app, url.as_str());
                 }
             }

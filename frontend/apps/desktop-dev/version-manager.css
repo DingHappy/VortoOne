@@ -26,7 +26,6 @@ details { margin-top: 22px; overflow-wrap: anywhere; }
 summary { cursor: pointer; }
 .row, .fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .row h2 { margin: 0; }
-#gray-updates > .row:first-child { justify-content: space-between; }
 .fields { align-items: end; margin: 12px 0; }
 .fields > div { flex: 1 1 190px; }
 label { display: block; margin-bottom: 6px; font-weight: 650; }
@@ -44,7 +43,7 @@ button { background: var(--accent); color: var(--on-accent); font-weight: 650; b
 button.secondary { background: var(--panel); color: var(--text); border-color: var(--line); }
 button:disabled, input:disabled { opacity: .55; cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-#gray-status:empty { display: none; }
+.status:empty { margin: 0; }
 .error { color: var(--red); }
 @media (max-width: 540px) {
   main { padding: 0 16px; }

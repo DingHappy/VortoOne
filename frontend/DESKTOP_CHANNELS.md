@@ -99,7 +99,7 @@ Windows 和 Ubuntu 的正式版会在启动时检查更新，也可从「工作�
 
 三平台使用 `com.vorto.vortoone` 和现有正式版更新公钥。每次发布按以下顺序操作。
 
-1. 版本号 PR 合入 main 后触发「VortoOne stable installer checks」。在同一个提交上构建正式 Mac 包。把 CI 的 `VortoOne-Stable-windows-x64` 和 `VortoOne-Stable-ubuntu-amd64` 产物解压到 `frontend/apps/desktop-dev/src-tauri/target/release/channel/stable/` 下对应的 `windows-x64/`、`ubuntu-amd64/` 目录。
+1. PR 构建并验证安装包。确认公开发布后，在已合入的 main 上手动运行「VortoOne stable installer checks」上传安装包。在同一个提交上构建正式 Mac 包。把 CI 的 `VortoOne-Stable-windows-x64` 和 `VortoOne-Stable-ubuntu-amd64` 产物解压到 `frontend/apps/desktop-dev/src-tauri/target/release/channel/stable/` 下对应的 `windows-x64/`、`ubuntu-amd64/` 目录。
 2. 在持有正式更新签名密钥的机器运行 `node desktop/scripts/oss-release.mjs --stable --sign-portable`，为已核对版本、构建提交和 SHA-256 的 EXE 与 DEB 生成签名。
 3. 运行 `node desktop/scripts/oss-release.mjs --stable --stage <空目录>`。脚本核对三平台的版本、提交和更新签名，生成 GitHub 发布的九个附件，其中包括三平台共用的 `latest.json` 和 `SHA256SUMS`。
 4. GitHub 发布成为最新公开稳定版后，运行 `node desktop/scripts/oss-release.mjs --stable`。脚本上传各平台的安装包、更新文件和校验和，逐个取回校验后再切换 OSS 的 `latest.json`。

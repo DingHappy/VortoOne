@@ -139,6 +139,8 @@ jobs:
           }
           Get-Content $stdout
       - uses: actions/upload-artifact@v4
+        # Pull requests can validate stable installers without distributing them from the public repository.
+        if: inputs.channel != 'stable' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         with:
           name: VortoOne-${{ inputs.channel == 'stable' && 'Stable' || 'Dev' }}-${{ matrix.platform }}
           path: ${{ env.INSTALLER_OUTPUT }}
