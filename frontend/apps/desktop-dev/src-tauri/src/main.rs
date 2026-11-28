@@ -13,6 +13,8 @@ mod deb_update;
 mod gray_update;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod stable_update;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+mod update_progress;
 
 use tauri::{
     menu::{Menu, SubmenuBuilder},

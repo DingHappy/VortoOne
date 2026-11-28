@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>VortoOne 更新</title>
+  <link rel="stylesheet" href="update-progress.css">
+  <script type="module" src="update-progress.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p id="update-version" class="target">VortoOne</p>
+      <h1 id="update-phase" aria-live="polite" aria-atomic="true">正在准备更新</h1>
+    </header>
+    <div id="update-meter" class="meter indeterminate" role="progressbar" aria-labelledby="update-phase">
+      <span id="update-fill" class="fill"></span>
+    </div>
+    <div class="progress-details">
+      <span id="update-detail">正在连接更新服务…</span>
+      <span id="update-percent" class="percent" aria-hidden="true" hidden></span>
+    </div>
+    <ol class="steps" aria-label="更新步骤">
+      <li data-phase="downloading" aria-current="step">下载</li>
+      <li data-phase="verifying">验证</li>
+      <li data-phase="installing">安装</li>
+      <li data-phase="restarting">重启</li>
+    </ol>
+  </main>
+</body>
+</html>
