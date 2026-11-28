@@ -194,26 +194,18 @@ function Settings({
   const refused = section && current !== section && !serverLacks ? section : null;
   const setup = useComputerSetup(org.id);
   const edition = computerEdition(setup.data);
-  // One short list of entries, each a page whose tabs are the sections it holds, every other section under Advanced
-  // (a personal workspace's own short list, ADR 0159 §3). A section's own address marks its entry.
+  // A workspace's short list holds the main pages and their tabs (ADR 0159 §3). A section's address marks its entry.
   const personal = isPersonal(org);
   const opens = (id: SettingsSection) => visible.some((s) => s.id === id);
   // People joins a personal workspace's short list once someone else is a member (a family).
   const { others } = usePersonalView();
   const short = settingsShort(org, server, others);
-  const nav = settingsNav(visible, short);
+  const about = visible.find((s) => s.id === "about");
+  const { main, advanced: management } = settingsNav(visible.filter((s) => s.id !== "about"), short);
   const open = visible.map((s) => s.id);
   const marked = settingsNavEntry(current, open, short);
   const tabs = settingsTabs(marked, open, short).filter(isSettingsSection);
   const waiting = useJoinRequests(org.id, tabs.includes("invites")).data?.length ?? 0;
-  const inAdvanced = nav.advanced.some((s) => s.id === marked);
-  const [opened, setOpened] = useState(inAdvanced);
-  // A section of Advanced opened by its address (⌘K, a card, a notice) shows in the list in that same render (the
-  // strip centres its key then), and the list stays open after leaving it.
-  const advanced = opened || inAdvanced;
-  useEffect(() => {
-    if (inAdvanced) setOpened(true);
-  }, [inAdvanced]);
   const strip = useRef<HTMLDivElement>(null);
   useCentreCurrent(strip, marked);
   const sectionName = (id: SettingsSection) => t(settingsSectionNameKey(org, id));
@@ -322,24 +314,19 @@ function Settings({
         </div>
         <div className="settings__groups" ref={strip}>
           <div className="settings__group">
-            <ul>{nav.main.map(link)}</ul>
+            <ul>{main.map(link)}</ul>
           </div>
-          {nav.advanced.length > 0 && (
+          {management.length > 0 && (
             <div className="settings__group">
-              <ul>
-                <li>
-                  <button
-                    type="button"
-                    className="settings__link"
-                    aria-expanded={advanced}
-                    onClick={() => setOpened(!advanced)}
-                  >
-                    <Icon name={advanced ? "chevronDown" : "chevronRight"} size={18} />
-                    {t("settings.advanced")}
-                  </button>
-                </li>
-                {advanced && nav.advanced.map(link)}
-              </ul>
+              <h2 className="settings__group-title" id="settings-management-title">
+                {t("settings.management")}
+              </h2>
+              <ul aria-labelledby="settings-management-title">{management.map(link)}</ul>
+            </div>
+          )}
+          {about && (
+            <div className="settings__group">
+              <ul>{link(about)}</ul>
             </div>
           )}
         </div>

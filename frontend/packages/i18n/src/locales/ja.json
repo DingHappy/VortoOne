@@ -15818,6 +15818,7 @@
       "membersPersonal": "メンバー"
     },
     "advanced": "詳細設定",
+    "management": "管理",
     "tab": {
       "account": "プロフィール"
     },
@@ -15853,6 +15854,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "バージョン",
+      "checkUpdates": "アップデートを確認",
       "source": "ソースコード",
       "copyright": ""
     },

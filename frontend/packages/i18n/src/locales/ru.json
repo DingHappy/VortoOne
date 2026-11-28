@@ -17367,6 +17367,7 @@
       "membersPersonal": "Люди"
     },
     "advanced": "Дополнительно",
+    "management": "Управление",
     "tab": {
       "account": "Профиль"
     },
@@ -17402,6 +17403,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "Версия",
+      "checkUpdates": "Проверить обновления",
       "source": "Исходный код",
       "copyright": ""
     },

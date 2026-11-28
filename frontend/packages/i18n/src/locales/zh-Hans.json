@@ -16054,6 +16054,7 @@
       "membersPersonal": "成员"
     },
     "advanced": "高级",
+    "management": "管理",
     "tab": {
       "account": "个人资料"
     },
@@ -16089,6 +16090,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "版本",
+      "checkUpdates": "检查更新",
       "source": "源代码",
       "copyright": ""
     },

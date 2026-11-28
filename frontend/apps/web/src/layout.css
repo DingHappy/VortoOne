@@ -4336,6 +4336,13 @@ html:not([data-pointer]) .sidebar__org-button:focus-visible {
   flex-direction: column;
   gap: var(--space-4);
 }
+.settings__group-title {
+  margin: 0 10px 4px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
 .settings__nav ul {
   list-style: none;
   margin: 0;
@@ -4374,8 +4381,7 @@ html:not([data-pointer]) .sidebar__org-button:focus-visible {
 .settings__link > .ac-icon {
   color: var(--ink-muted);
 }
-/* A personal workspace's Advanced row (ADR 0159) is a button that shows the other sections: a row like its links, none
-   of the browser's button look. */
+/* Channel settings use the same rows as buttons. */
 button.settings__link {
   width: 100%;
   margin: 0;
@@ -4628,6 +4634,14 @@ html:not([data-pointer]) .settings__link:focus-visible {
   }
   .settings__groups::-webkit-scrollbar {
     display: none;
+  }
+  .settings__group {
+    display: flex;
+    align-items: center;
+  }
+  .settings__group-title {
+    margin-bottom: 0;
+    white-space: nowrap;
   }
   .settings__nav ul {
     flex-direction: row;
