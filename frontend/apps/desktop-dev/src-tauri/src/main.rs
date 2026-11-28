@@ -73,12 +73,18 @@ impl LiveAddress {
     fn set_origin(&self, origin: &str, local_port: u16) {
         if let Ok(mut slot) = self.0.lock() { *slot = (origin.to_string(), local_port); }
     }
+    fn clear(&self) { self.set_origin("", 0); }
     fn port(&self) -> u16 { self.0.lock().map(|slot| slot.1).unwrap_or(0) }
     fn origin(&self) -> String { self.0.lock().map(|slot| slot.0.clone()).unwrap_or_default() }
     fn allows(&self, url: &tauri::Url) -> bool {
         let current = self.origin();
         !current.is_empty() && url.username().is_empty() && url.password().is_none()
             && places::origin(url.as_str()).is_some_and(|o| o == current)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn reopen_labels(&self) -> &'static [&'static str] {
+        if self.origin().is_empty() { &["welcome"] } else { &[LIVE, "welcome"] }
     }
 }
 
@@ -317,6 +323,10 @@ fn desktop_titlebar_script() -> String {
 fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
+        let address = handle.state::<LiveAddress>().inner().clone();
+        if !address.allows(&url) {
+            return;
+        }
         if let Some(window) = handle.get_webview_window(LIVE) {
             // 同名 WebView 销毁后的异步清理会影响刚重建的窗口；重连只导航现有窗口。
             // 导航闸读取当前端口，仍不允许旧服务或其它本机地址进入主窗口。
@@ -327,7 +337,6 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
             let _ = window.set_focus();
             return;
         }
-        let address = handle.state::<LiveAddress>().inner().clone();
         let download_address = address.clone();
         let setup_handle = handle.clone();
         let builder = desktop_window(&handle, LIVE, WebviewUrl::External(url))
@@ -694,10 +703,11 @@ fn main() {
                 app.state::<connector::ConnectorManager>().stop();
                 app.state::<backend::Backend>().stop();
             }
-            // 点 Dock 图标而没有窗口在显示：把藏起来的主窗口（还没有就欢迎窗口）拿回来
+            // 点 Dock 图标而没有窗口在显示：只恢复仍有连接地址的主窗口，清空后回欢迎页。
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { has_visible_windows: false, .. } => {
-                if let Some(window) = [LIVE, "welcome"].into_iter().find_map(|label| app.get_webview_window(label)) {
+                let address = app.state::<LiveAddress>();
+                if let Some(window) = address.reopen_labels().iter().find_map(|label| app.get_webview_window(label)) {
                     let _ = window.show();
                     let _ = window.unminimize();
                     let _ = window.set_focus();
@@ -768,6 +778,26 @@ mod tests {
         for rejected in ["http://127.0.0.1:4321/", "http://localhost:4322/", "https://example.test/"] {
             assert!(!nav.allows(&rejected.parse().unwrap()));
         }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn resetting_live_address_stops_old_navigation_and_reopens_welcome() {
+        let address = LiveAddress::default();
+        let watcher = address.clone();
+        address.set(4321);
+        let old_page = "http://127.0.0.1:4321/home".parse().unwrap();
+        assert!(watcher.allows(&old_page));
+        assert_eq!(watcher.reopen_labels(), [LIVE, "welcome"]);
+        address.clear();
+        assert_eq!(watcher.port(), 0);
+        assert!(!watcher.allows(&old_page));
+        assert_eq!(watcher.reopen_labels(), ["welcome"]);
+        address.set(4322);
+        assert!(watcher.allows(&"http://127.0.0.1:4322/home".parse().unwrap()));
+        assert_eq!(watcher.reopen_labels(), [LIVE, "welcome"]);
+        address.set_origin("https://example.test", 0);
+        assert_eq!(watcher.reopen_labels(), [LIVE, "welcome"]);
     }
 
     #[test]

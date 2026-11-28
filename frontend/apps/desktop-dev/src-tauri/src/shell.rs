@@ -181,6 +181,15 @@ pub fn open_window(app: &tauri::AppHandle, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn open_welcome_after_erase(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("welcome") else { return open_window(app, "welcome"); };
+    // The new document consumes the owner mode on mount. A shown event would let the old wizard take it first.
+    window.reload().map_err(|error| error.to_string())?;
+    let _ = window.unminimize();
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
+}
+
 /// 首次引导和偏好设置窗口能用的核心权限（收发事件、管自己的窗口）；只给随包页面。
 pub fn capability() -> tauri::ipc::CapabilityBuilder {
     tauri::ipc::CapabilityBuilder::new("dev-shell-windows").windows(WINDOWS).permission("core:default")
@@ -476,10 +485,16 @@ fn erase(app: &tauri::AppHandle) -> Result<String, String> {
     places::write_servers(&config, &list)?;
     local = places::LocalState { erased: Some(target.display().to_string()), ..places::LocalState::default() };
     places::write_local(&config, &local)?;
-    if let Some(window) = app.get_webview_window(crate::LIVE) { let _ = window.close(); }
+    app.state::<crate::LiveAddress>().clear();
+    if let Some(window) = app.get_webview_window(crate::LIVE) {
+        // This window belongs to the erased home. The normal close request only hides it on macOS.
+        if window.destroy().is_err() {
+            let _ = window.hide();
+        }
+    }
     set_phase(app, "off");
     if let Ok(mut mode) = app.state::<ShellState>().welcome_mode.lock() { *mode = Some("owner".into()); }
-    open_window(app, "welcome")?;
+    open_welcome_after_erase(app)?;
     Ok(target.display().to_string())
 }
 
