@@ -15,6 +15,7 @@ from typing import Any, Dict, List
 
 from src.web import app_channels
 from src.web import app_views as views
+from src.workflow.tasks.tasks import BackgroundTask, TaskLedger, is_private_channel_draft
 
 MAX_CALLS = 3
 CONTEXT_MESSAGES = 12
@@ -109,6 +110,63 @@ def _start(root: str, service, actor, channel_id: str, message: Dict[str, Any], 
                                    channel={"id": channel_id, "thread": thread, "message": message["id"]})
 
 
+def start_recommendation(root: str, service, actor, channel_id: str, *, agent_id: str,
+                         draft: str, work: str, task_id: str) -> BackgroundTask:
+    """Queue a confirmed draft in the staff pool, scoped to the original channel and actor."""
+    from src.gateway.audit import _clip_text, append_audit
+    from src.scheduling.staff_runner import get_staff_service
+    from src.utils.ids import typed_id
+    from src.web import app_members
+    from src.workflow.home_identity import HomeIdentityError, ensure_home_identity
+    from src.workflow.members.registry import Refused
+
+    if not typed_id(task_id, "task"):
+        raise ValueError("任务标识无效")
+    if not service.card(actor, channel_id)["can"]["post"] or not service.can_call_agents(actor, channel_id):
+        raise Refused("你在这个频道里没有叫智能体办事的权限")
+    here = service.agents_here(actor, channel_id)
+    staff = next((handle for handle, agent in app_channels.channel_agents(root).items()
+                  if agent["id"] == agent_id and agent["joinable"] and handle in here), None)
+    if staff is None or (actor.is_member and app_members.usable_level(root, staff, actor) == "none"):
+        raise Refused("你不能让这个频道的智能体处理草稿")
+    owner = f"private-channel-draft:{task_id}"
+    prompt = _clip_text(draft.strip(), 4000)[:4000]
+    acceptance = [_clip_text(work.strip(), 240)[:240]]
+    if not prompt or not acceptance[0]:
+        raise ValueError("草稿和智能体分工不能为空")
+    initiator = actor.id if actor.is_member else None
+    channel = {"id": channel_id, "privateDraft": True, "actorId": actor.id}
+    if actor.is_owner:
+        if actor.id != views.owner_id(root):
+            raise Refused("工作区所有者已变化")
+        try:
+            channel["ownerIdentity"] = ensure_home_identity(root)
+        except (HomeIdentityError, OSError):
+            raise ValueError("无法核对工作区所有者身份") from None
+    def audit() -> bool:
+        return append_audit(root, {"category": "decision", "decision": "allowed",
+                                   "decision_source": "member" if actor.is_member else "user",
+                                   "operation": "确认频道草稿由智能体处理", "operation_kind": "execute",
+                                   "agent": staff, "channel": channel_id, "task": task_id,
+                                   "initiator": actor.id}, durable=True)
+
+    return get_staff_service(root).assign_channel_draft(
+        owner, {"member": staff, "prompt": prompt, "acceptance": acceptance, "delivery": "review"},
+        task_id=task_id, initiator=initiator, channel=channel, audit=audit)
+
+
+def recommendation_task(root: str, channel_id: str, task_id: str) -> BackgroundTask | None:
+    """Read the worker result for an already-authorized confirmation receipt."""
+    from src.utils.ids import typed_id
+
+    if not typed_id(task_id, "task"):
+        return None
+    task = TaskLedger(root).load(task_id)
+    if task is None or task.kind != "delegation" or not is_private_channel_draft(task):
+        return None
+    return task if task.collaboration["dispatch"]["channel"].get("id") == channel_id else None
+
+
 def answered(root: str, service, actor, card: Dict[str, Any], message: Dict[str, Any]) -> None:
     """有人答了选择卡：答案那条消息交给发卡的 agent 接着做（不用再 @）。要在事件循环线程里调用。"""
     from src.workflow.members.registry import Damaged, Missing, Refused
@@ -178,7 +236,7 @@ def deliver(root: str, task: Any) -> None:
     """一件频道里的事结束了：在原来的话题里交回（同一件事只发一次）。"""
     dispatch = (task.collaboration or {}).get("dispatch") or {}
     where = dispatch.get("channel")
-    if not where or task.status not in _TERMINAL:
+    if not where or is_private_channel_draft(task) or task.status not in _TERMINAL:
         return
     if task.status == "done":
         text = str(task.result or "").strip() or "（没有交回内容）"
@@ -201,7 +259,14 @@ def on_update(root: str, task: Any) -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return                                  # 没有事件循环（离线脚本）：重启时 sweep 会补上
-    loop.create_task(asyncio.to_thread(deliver, root, task))
+    complete = _complete_recommendation if is_private_channel_draft(task) else deliver
+    loop.create_task(asyncio.to_thread(complete, root, task))
+
+
+def _complete_recommendation(root: str, task: BackgroundTask) -> None:
+    from src.web import app_channel_dispatch
+
+    app_channel_dispatch.deliver(root, task)
 
 
 def sweep(root: str) -> None:
@@ -209,6 +274,9 @@ def sweep(root: str) -> None:
     for task in _channel_tasks(root):
         if task.status in _TERMINAL and not task.collaboration["dispatch"].get("mission"):
             deliver(root, task)
+    for task in TaskLedger(root).list():
+        if is_private_channel_draft(task) and task.status in _TERMINAL:
+            _complete_recommendation(root, task)
 
 
 def runs(root: str, channel_id: str) -> List[Dict[str, Any]]:
@@ -216,7 +284,7 @@ def runs(root: str, channel_id: str) -> List[Dict[str, Any]]:
     rows = []
     for task in _channel_tasks(root):
         where = task.collaboration["dispatch"]["channel"]
-        if where["id"] != channel_id or task.status not in views.ACTIVE_TASK:
+        if is_private_channel_draft(task) or where["id"] != channel_id or task.status not in views.ACTIVE_TASK:
             continue
         created = views._iso(task.created)
         rows.append({"runId": task.id, "agentId": views.member_agent_id(root, str(task.collaboration["dispatch"]["member"])),

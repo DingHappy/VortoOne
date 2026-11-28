@@ -2688,6 +2688,72 @@ async def channel_messages(org_id: str, channel_id: str, request: Request, befor
     return {"messages": messages}
 
 
+class _ChannelRecommendationDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=4000)
+
+
+@router.post(_ORG + "/channels/{channel_id}/recommendation")
+async def preview_channel_recommendation(org_id: str, channel_id: str, body: _ChannelRecommendationDraft, request: Request):
+    from src.web import app_channel_dispatch, app_channel_recommendations, app_credentials
+
+    text = body.text.strip()
+    if not text or "\0" in text or "@" in text or "＠" in text or text.startswith("/"):
+        return _error(400, "invalid", "请使用未提及成员或智能体的普通文字草稿")
+    root = _root(org_id)
+    inputs = _team_response(await _team_call(request, org_id, lambda service, actor:
+        (actor, app_channel_recommendations.candidates_in_channel(root, service, actor, channel_id, text)),
+        channel_id=channel_id))
+    if isinstance(inputs, Response):
+        return inputs
+    actor, (candidates, owner_id) = inputs
+    try:
+        backup_key = await asyncio.to_thread(app_credentials.decisions_backup_key, root)
+    except app_credentials.CredentialError:
+        backup_key = None
+    try:
+        recommendation = await app_channel_recommendations.recommend_channel_assignee(
+            text, candidates, authoritative_owner_id=owner_id, decisions_api_key=backup_key)
+    except app_channel_recommendations.RecommendationUnavailable:
+        return _error(503, "unavailable", "暂时无法生成接手建议")
+    token = app_channel_dispatch.preview_token(org_id, channel_id, actor, text, owner_id, recommendation)
+    if token is not None:
+        recommendation["confirmationToken"] = token
+    return JSONResponse(recommendation, headers={"Cache-Control": "no-store"})
+
+
+class _ChannelRecommendationConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    confirmationToken: str = Field(min_length=1, max_length=32000)
+
+
+@router.post(_ORG + "/channels/{channel_id}/recommendation/confirm")
+async def confirm_channel_recommendation(org_id: str, channel_id: str, body: _ChannelRecommendationConfirm, request: Request):
+    from src.web import app_channel_dispatch
+
+    def resolve(service, actor):
+        service.roster(actor, channel_id)
+        return service, actor
+
+    root = _root(org_id)
+    access = _team_response(await _team_call(request, org_id, resolve, channel_id=channel_id))
+    if isinstance(access, Response):
+        return access
+    service, actor = access
+    try:
+        plan = app_channel_dispatch.open_confirmation(body.confirmationToken, org_id, channel_id, actor)
+        receipt = await app_channel_dispatch.confirm(root, service, actor, plan)
+    except app_channel_dispatch.DispatchError as error:
+        return _error(error.status, error.code, str(error))
+    except (Refused, PermissionError) as error:
+        return _error(403, "forbidden", str(error))
+    except LookupError:
+        return _error(404, "not_found", "没有这条接手建议")
+    except (Damaged, OSError, sqlite3.Error, ValueError):
+        return _error(503, "unavailable", "暂时无法派发，请重试同一条建议")
+    return JSONResponse(receipt, headers={"Cache-Control": "no-store"})
+
+
 class _Post(BaseModel):
     model_config = ConfigDict(extra="allow")
     body: str = ""
@@ -3905,6 +3971,22 @@ async def credential_endpoint_models(org_id: str, request: Request):
     from src.web import app_credentials
     body = await _body(request)
     return await _credential_call(request, org_id, lambda _root: app_credentials.endpoint_models(body or {}))
+
+
+@router.get(_ORG + "/credentials/decisions-backup")
+async def get_decisions_backup(org_id: str, request: Request):
+    from src.web import app_credentials
+    return await _credential_call(request, org_id, lambda root: {
+        "configured": app_credentials.decisions_backup_key(root) is not None,
+    }, sync=True)
+
+
+@router.put(_ORG + "/credentials/decisions-backup")
+async def set_decisions_backup(org_id: str, request: Request):
+    from src.web import app_credentials
+    body = await _body(request)
+    return await _credential_call(request, org_id, lambda root: app_credentials.set_decisions_backup(root, body),
+                                  sync=True)
 
 
 @router.put(_ORG + "/credentials/{credential_id}/models")

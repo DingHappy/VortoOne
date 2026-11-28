@@ -75,6 +75,8 @@ import type {
   ChannelCategory,
   ChannelMember,
   ChannelOverride,
+  ChannelRecommendation,
+  ChannelRecommendationDispatch,
   Choices,
   CliInstall,
   CodeSent,
@@ -922,6 +924,10 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
       models: () => request<{ models: Model[]; defaultModel: string }>("/api/app/models"),
       credentials: async (orgId) =>
         (await request<{ credentials: Credential[] }>(`${org(orgId)}/credentials`)).credentials,
+      decisionsBackup: (orgId) =>
+        request<{ configured: boolean }>(`${org(orgId)}/credentials/decisions-backup`),
+      setDecisionsBackup: (orgId, input) =>
+        request<{ configured: boolean }>(`${org(orgId)}/credentials/decisions-backup`, { method: "PUT", json: input }),
       addCredential: (orgId, input) =>
         request<Credential & { checks?: EndpointCheck[] }>(`${org(orgId)}/credentials`, { json: input }),
       endpointModels: (orgId, input) =>
@@ -1128,6 +1134,13 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         request<void>(`${org(orgId)}/channels/${enc(channelId)}/delete`, { json: { name } }),
       roster: async (orgId, channelId) =>
         (await request<{ members: RosterMember[] }>(`${org(orgId)}/channels/${enc(channelId)}/roster`)).members,
+      recommendation: (orgId, channelId, text) =>
+        request<ChannelRecommendation>(`${org(orgId)}/channels/${enc(channelId)}/recommendation`, { json: { text } }),
+      confirmRecommendation: (orgId, channelId, confirmationToken) =>
+        request<ChannelRecommendationDispatch>(`${org(orgId)}/channels/${enc(channelId)}/recommendation/confirm`, {
+          method: "POST",
+          json: { confirmationToken },
+        }),
       members: async (orgId, channelId) =>
         (await request<{ members: ChannelMember[] }>(`${org(orgId)}/channels/${enc(channelId)}/members`)).members,
       addMember: (orgId, channelId, member) =>

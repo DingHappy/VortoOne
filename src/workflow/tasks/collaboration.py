@@ -15,7 +15,7 @@ from src.workflow.tasks.task_dependencies import (
     dependency_state, has_dependencies, invalidate, resolve, validate_consumed,
 )
 from src.workflow.tasks.task_questions import answer, ask, cancel_open_questions, validate_answer
-from src.workflow.tasks.tasks import BackgroundTask, TaskLedger, TASK_STATE_LOCK, _now
+from src.workflow.tasks.tasks import BackgroundTask, TaskLedger, TASK_STATE_LOCK, _now, is_private_channel_draft
 from src.utils.ids import typed_id
 
 _LOCK = TASK_STATE_LOCK
@@ -161,7 +161,8 @@ class CollaborationService:
         with _LOCK:
             owner = self.owner_identity()
             return [task for task in self.ledger.list()
-                    if task.kind == "delegation" and task.owner_session == owner][:100]
+                    if task.kind == "delegation" and task.owner_session == owner
+                    and not is_private_channel_draft(task)][:100]
 
     def start(self, task_id: str, expected_round: int) -> BackgroundTask:
         self._round(expected_round)

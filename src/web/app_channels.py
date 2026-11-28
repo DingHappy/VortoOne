@@ -40,6 +40,7 @@ def channel_agents(root: str) -> dict:
     joinable：能不能放进频道。第一期只要自有框架、不连登记项目的（和成员能用的 agent 同一条判据）：
     本机 CLI 没有确认门，开发 agent 要在项目副本里跑。主助理连着主要聊天，不进频道。"""
     return {row["handle"]: {"id": row["id"], "name": row["name"], "handle": row["handle"],
+                            "duties": row.get("instructions") or row.get("role") or "",
                             "joinable": bool(row.get("supportsMemberPolicy")) and bool(row.get("canTalk"))}
             for row in views.agents(root) if row["id"] != views.main_agent_id(root)}
 

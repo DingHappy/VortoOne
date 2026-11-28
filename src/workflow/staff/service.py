@@ -9,7 +9,7 @@ from copy import deepcopy
 
 from src.workflow.staff.registry import StaffRegistry
 from src.workflow.tasks.collaboration import CollaborationService
-from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger
+from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger, is_private_channel_draft
 
 _BUDGET: ContextVar[object | None] = ContextVar('staff_active_budget', default=None)
 
@@ -242,6 +242,31 @@ class StaffService:
             raise ValueError('专员或岗位已变化，请重新读取并批准派活')
         self.executable(current)
         self._check_department(latest, current)
+        if is_private_channel_draft(task):
+            self._check_channel_draft(task, latest)
+
+    def _check_channel_draft(self, task, member):
+        from src.agents.principal import OWNER, Principal
+        from src.workflow.home_identity import ensure_home_identity
+        from src.workflow.members.channels import TeamChannels
+        from src.workflow.members.registry import Refused
+        from src.workflow.staff.initiators import initiator_of, level_on
+
+        source = task.collaboration['dispatch']['channel']
+        actor = initiator_of(task)
+        if actor is None:
+            if source.get('ownerIdentity') != ensure_home_identity(self.root):
+                raise Refused('工作区所有者已变化')
+            actor = Principal(OWNER, source['actorId'])
+        elif actor.id != source.get('actorId'):
+            raise Refused('频道草稿的发起人不匹配')
+        channel_id = source['id']
+        channels = TeamChannels(self.root, actor.id)
+        card = channels.card(actor, channel_id)
+        if (not card['can']['post'] or not channels.can_call_agents(actor, channel_id)
+                or member['id'] not in channels.agents_here(actor, channel_id)
+                or level_on(self.root, member['id'], actor) == 'none'):
+            raise Refused('频道或智能体的办事权限已变化')
 
     def execution_identity(self, task):
         if task.collaboration['dispatch'].get('routine'):
@@ -285,6 +310,22 @@ class StaffService:
                     count[0] -= 1
                     condition.notify_all()
 
+    def assign_channel_draft(self, owner, args, *, task_id, initiator, channel, audit):
+        """Register a confirmed private draft once, after the authorization audit is durable."""
+        with TASK_STATE_LOCK:
+            existing = TaskLedger(self.root).load(task_id)
+            if existing is not None:
+                dispatch = (existing.collaboration or {}).get('dispatch') or {}
+                if (existing.kind != 'delegation' or existing.owner_session != owner
+                        or dispatch.get('channel') != channel or dispatch.get('member') != args['member']
+                        or (dispatch.get('initiator') or {}).get('id') != initiator
+                        or existing.prompt != args['prompt'] or existing.collaboration.get('acceptance') != args['acceptance']):
+                    raise ValueError('已存在的任务与草稿确认不匹配')
+                return existing
+            if not audit():
+                raise OSError('审计未能保存，没有派出')
+            return self.assign(owner, args, initiator=initiator, channel=channel, task_id=task_id)
+
     def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
                via=None, channel=None, mission=None, owner_chat=False):
         """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。
@@ -294,9 +335,14 @@ class StaffService:
         if via is not None and (not isinstance(via, dict) or via.get('kind') != 'ai_app'
                                 or not isinstance(via.get('name'), str)):
             raise ValueError('来源标记无效')
-        # channel：团队频道里被 @ 的那条（web 层填 {"id", "thread", "message"}）。频道里谁都能写，按外部内容处理。
-        if channel is not None and (not isinstance(channel, dict) or set(channel) != {'id', 'thread', 'message'}
-                                    or not all(isinstance(channel[key], str) and channel[key] for key in channel)):
+        # 普通频道任务绑定消息/话题；确认的草稿只绑定频道，交付给自己的确认记录。
+        private_draft = isinstance(channel, dict) and channel.get('privateDraft') is True
+        channel_fields = {'id', 'actorId', 'privateDraft'} if private_draft else {'id', 'thread', 'message'}
+        if private_draft and initiator is None:
+            channel_fields.add('ownerIdentity')
+        if channel is not None and (not isinstance(channel, dict) or set(channel) != channel_fields
+                                    or not all(isinstance(channel[key], str) and channel[key]
+                                               for key in channel_fields - {'privateDraft', 'ownerIdentity'})):
             raise ValueError('频道来源标记无效')
         if channel is not None and routine:
             raise ValueError('例行工作不从频道发起')
@@ -304,6 +350,11 @@ class StaffService:
         if mission is not None and (channel is None or not isinstance(mission, str)
                                     or not mission.startswith('mission-') or len(mission) > 80):
             raise ValueError('Mission 来源标记无效')
+        if private_draft and (not task_id or mission is not None or via is not None or owner_chat):
+            raise ValueError('频道草稿需要独立的确认记录')
+        if private_draft and (channel['actorId'] != initiator if initiator is not None
+                              else not isinstance(channel['ownerIdentity'], dict)):
+            raise ValueError('频道草稿的发起人不匹配')
         if initiator is not None and not routine:
             # 成员这个月的用量到了所有者设的上限（且是「拒绝」）：不再替他派活（主人 2026-11-23 定）
             from src.workflow.usage_month import check_member
@@ -311,6 +362,12 @@ class StaffService:
         with TASK_STATE_LOCK:
             member, role = self.assignment(args)
             self.executable(role)
+            if private_draft:
+                from src.workflow.staff.initiators import member_policy_supported
+                if member['engine'] != 'vortocode' or not member_policy_supported(role, member):
+                    raise ValueError('这个智能体不能处理私有频道草稿')
+                if args.get('delivery') != 'review' or len(args.get('acceptance') or []) != 1:
+                    raise ValueError('私有频道草稿须有一项待审核的分工')
             codex_owner = None
             if member['engine'] == 'codex':
                 from src.gateway.main_conversation import main_chat_key
@@ -332,7 +389,7 @@ class StaffService:
             if expected is not None and (member, role) != expected:
                 raise ValueError('确认期间专员或岗位已变化，未创建任务')
             notes = None
-            if member['department'] and started_by is None and codex_owner is None:
+            if member['department'] and started_by is None and codex_owner is None and not private_draft:
                 # 部门笔记是内部资料，不带进成员的任务或个人 Codex 私聊。
                 from src.workflow.staff.notes import StaffNotes
                 notes = StaffNotes(self.root).snapshot(member['department'])
@@ -368,6 +425,7 @@ class StaffService:
             pass  # Unit adapters may only collect jobs; a real pool requires its running loop.
         number = task.collaboration['round']
         work = self.collaboration(task.owner_session)
+        private_draft = is_private_channel_draft(task)
         # A slot is local scheduling state; durable work remains the existing task record.
         condition, running = self._slots.setdefault(member['id'], (asyncio.Condition(), [0]))
         def check_assignment():
@@ -399,7 +457,7 @@ class StaffService:
                 if member['engine'] != 'vortocode':
                     self.record_usage(task, {'total_tokens': 0, 'calls': 0}, complete=False)
             else:
-                text, suggestions = split_staff_result(result)
+                text, suggestions = (str(result or ''), []) if private_draft else split_staff_result(result)
                 work.finish(task.id, number, text, tainted=True)
             if suggestions and member['department']:
                 try:

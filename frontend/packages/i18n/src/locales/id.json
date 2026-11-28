@@ -2282,6 +2282,40 @@
     "working_other": "{{count}} agen bekerja"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Konfirmasi penugasan",
+        "pending": "Sedang menugaskan…",
+        "viewResult": "Lihat status penugasan",
+        "stale": "Saran ini kedaluwarsa atau berubah. Minta saran baru untuk dikonfirmasi.",
+        "uncertain": "Hasil penugasan belum dikonfirmasi. Percobaan ulang memakai konfirmasi yang sama.",
+        "refresh": "Segarkan status",
+        "openTask": "Buka tugas #{{number}}",
+        "result": "Hasil agen",
+        "status": {
+          "assigned": "Tugas telah diberikan.",
+          "agent_started": "Tugas telah diserahkan kepada agen.",
+          "agent_completed": "Agen telah menyelesaikan pekerjaannya.",
+          "awaiting_draft": "Menunggu draf dari agen.",
+          "ready_for_review": "Draf siap ditinjau oleh penanggung jawab.",
+          "agent_failed": "Agen tidak dapat menyelesaikan pekerjaannya."
+        }
+      },
+      "action": "Sarankan penanggung jawab",
+      "title": "Saran penugasan",
+      "pending": "Meninjau draf…",
+      "unavailable": "Saran tidak dapat diperoleh. Periksa koneksi model ruang kerja lalu coba lagi.",
+      "removeKey": "Hapus kunci API dari draf untuk meminta saran.",
+      "humanReview": "Penanggung jawab manusia meninjau dan mengonfirmasi hasilnya.",
+      "draft": "Lihat draf",
+      "kind": {
+        "none": "Tidak ada penugasan yang disarankan",
+        "clarify": "Perlu informasi tambahan",
+        "person": "Anggota tim disarankan",
+        "agent": "Agen disarankan",
+        "collaboration": "Anggota tim dan agen disarankan"
+      }
+    },
     "settingsNav": {
       "label": "Pengaturan kanal",
       "overview": "Ringkasan",
@@ -15837,6 +15871,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "Cadangan OpenAI Decisions",
+      "description": "Opsional untuk rekomendasi penanggung jawab di kanal. Jika model utama tidak tersedia, draf dan informasi kandidat yang relevan dikirim ke OpenAI.",
+      "enabled": "Cadangan aktif",
+      "disabled": "Cadangan nonaktif",
+      "disable": "Nonaktifkan cadangan",
+      "disableDescription": "Kunci cadangan akan dihapus. Rekomendasi di kanal akan menggunakan model utama.",
+      "projectKey": "Kunci API khusus proyek OpenAI",
+      "invalidKey": "Gunakan 1–400 karakter ASCII yang terlihat, tanpa spasi."
+    },
     "notOpen": "Peranmu di ruang kerja ini tidak membuka {{section}}. Orang yang mengelola peran bisa membukanya untukmu.",
     "nav": "Bagian pengaturan",
     "group": {

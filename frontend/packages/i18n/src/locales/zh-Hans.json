@@ -2341,6 +2341,40 @@
     "working_other": "{{count}} 个智能体正在工作"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "确认派发",
+        "pending": "正在派发…",
+        "viewResult": "查看派发状态",
+        "stale": "这条建议已失效。请重新获取建议后再确认。",
+        "uncertain": "暂未确认派发结果。重试会沿用本次确认。",
+        "refresh": "刷新状态",
+        "openTask": "打开任务 #{{number}}",
+        "result": "智能体输出",
+        "status": {
+          "assigned": "任务已分派。",
+          "agent_started": "任务已交给智能体。",
+          "agent_completed": "智能体已完成工作。",
+          "awaiting_draft": "等待智能体提交草稿。",
+          "ready_for_review": "草稿已就绪，等待真人负责人审核。",
+          "agent_failed": "智能体未能完成工作。"
+        }
+      },
+      "action": "推荐接手人",
+      "title": "接手建议",
+      "pending": "正在分析草稿…",
+      "unavailable": "暂时无法获取接手建议。请检查工作区的模型连接后重试。",
+      "removeKey": "请从草稿中移除 API 密钥后再获取接手建议。",
+      "humanReview": "由真人负责人审核并确认结果。",
+      "draft": "查看原草稿",
+      "kind": {
+        "none": "建议暂不分派",
+        "clarify": "需要补充信息",
+        "person": "建议交给成员",
+        "agent": "建议交给智能体",
+        "collaboration": "建议由成员和智能体协作"
+      }
+    },
     "settingsNav": {
       "label": "频道设置",
       "overview": "概览",
@@ -16019,6 +16053,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions 备用",
+      "description": "频道「推荐接手人」的可选备用。仅在主模型不可用时，将当前草稿和推荐所需的候选信息发给 OpenAI。",
+      "enabled": "备用已启用",
+      "disabled": "备用未启用",
+      "disable": "停用备用",
+      "disableDescription": "停用会移除备用密钥。频道接手建议将使用主模型。",
+      "projectKey": "专用 OpenAI 项目 API 密钥",
+      "invalidKey": "请输入 1–400 个可见 ASCII 字符，不含空格。"
+    },
     "notOpen": "你在这个工作区的角色打不开 {{section}}。管理角色的人可以为你开放。",
     "nav": "设置分区",
     "group": {

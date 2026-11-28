@@ -40,6 +40,10 @@ _TEAM_LABELS = {"waiting": "需要你决定", "review": "交付了，等你验�
 
 def _key(task: Any) -> Optional[str]:
     from src.workflow.tasks.team import KIND as TEAM_KIND, is_team_child
+    from src.workflow.tasks.tasks import is_private_channel_draft
+
+    if is_private_channel_draft(task):
+        return None
     if getattr(task, "kind", "") == TEAM_KIND:
         team = getattr(task, "team", None)
         if not isinstance(team, dict) or task.status not in _TEAM_LABELS:

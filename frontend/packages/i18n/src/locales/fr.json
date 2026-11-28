@@ -2433,6 +2433,40 @@
     "working_other": "{{count}} agents au travail"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Confirmer l’attribution",
+        "pending": "Attribution en cours…",
+        "viewResult": "Voir l’état de l’attribution",
+        "stale": "La recommandation a expiré ou changé. Demandez-en une nouvelle pour la confirmer.",
+        "uncertain": "Le résultat reste à confirmer. Une nouvelle tentative utilise la même confirmation.",
+        "refresh": "Actualiser l’état",
+        "openTask": "Ouvrir la tâche #{{number}}",
+        "result": "Résultat de l’agent",
+        "status": {
+          "assigned": "La tâche a été attribuée.",
+          "agent_started": "La tâche a été confiée à l’agent.",
+          "agent_completed": "L’agent a terminé son travail.",
+          "awaiting_draft": "En attente du brouillon de l’agent.",
+          "ready_for_review": "Le brouillon est prêt à être relu par la personne responsable.",
+          "agent_failed": "L’agent n’a pas pu terminer son travail."
+        }
+      },
+      "action": "Recommander un responsable",
+      "title": "Recommandation d’attribution",
+      "pending": "Analyse du brouillon…",
+      "unavailable": "Impossible d’obtenir une recommandation. Vérifiez la connexion du modèle de l’espace de travail et réessayez.",
+      "removeKey": "Retirez la clé API du brouillon pour demander une recommandation.",
+      "humanReview": "La personne responsable examine et valide le résultat.",
+      "draft": "Consulter le brouillon",
+      "kind": {
+        "none": "Aucune attribution proposée",
+        "clarify": "Détails supplémentaires nécessaires",
+        "person": "Membre de l’équipe recommandé",
+        "agent": "Agent recommandé",
+        "collaboration": "Membre et agent recommandés"
+      }
+    },
     "settingsNav": {
       "label": "Paramètres du canal",
       "overview": "Vue d’ensemble",
@@ -16856,6 +16890,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions en secours",
+      "description": "Facultatif pour recommander un responsable dans les canaux. Si le modèle principal est indisponible, le brouillon et les informations utiles sur les candidats sont envoyés à OpenAI.",
+      "enabled": "Secours activé",
+      "disabled": "Secours désactivé",
+      "disable": "Désactiver le secours",
+      "disableDescription": "La clé de secours sera supprimée. Les recommandations des canaux utiliseront le modèle principal.",
+      "projectKey": "Clé API dédiée à un projet OpenAI",
+      "invalidKey": "Utilisez 1 à 400 caractères ASCII visibles, sans espaces."
+    },
     "notOpen": "Votre rôle dans cet espace de travail n'ouvre pas {{section}}. Les personnes qui gèrent les rôles peuvent vous l'ouvrir.",
     "nav": "Sections des paramètres",
     "group": {

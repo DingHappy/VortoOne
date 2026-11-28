@@ -106,6 +106,8 @@ import type {
   ChannelInput,
   ChannelMember,
   ChannelOverride,
+  ChannelRecommendation,
+  ChannelRecommendationDispatch,
   Choices,
   CliInstall,
   CodeSent,
@@ -812,6 +814,8 @@ export interface ApiClient {
       planModels?: Partial<Record<string, readonly PlanModel[]>>;
     }>;
     credentials(orgId: string): Promise<Credential[]>;
+    decisionsBackup(orgId: string): Promise<{ configured: boolean }>;
+    setDecisionsBackup(orgId: string, input: { apiKey: string | null }): Promise<{ configured: boolean }>;
     addCredential(
       orgId: string,
       input: {
@@ -978,6 +982,10 @@ export interface ApiClient {
     deleteChannel(orgId: string, channelId: string, name: string): Promise<void>;
     /** Members with names; agents carry `autoReply`. */
     roster(orgId: string, channelId: string): Promise<RosterMember[]>;
+    /** Privately preview a draft's suggested assignee. Does not post or create a task. */
+    recommendation(orgId: string, channelId: string, text: string): Promise<ChannelRecommendation>;
+    /** Apply the reviewed recommendation. Reusing its token returns the same dispatch. */
+    confirmRecommendation(orgId: string, channelId: string, confirmationToken: string): Promise<ChannelRecommendationDispatch>;
     members(orgId: string, channelId: string): Promise<ChannelMember[]>;
     addMember(orgId: string, channelId: string, member: { userId: string } | { agentId: string }): Promise<void>;
     removeMember(orgId: string, channelId: string, member: { userId: string } | { agentId: string }): Promise<void>;

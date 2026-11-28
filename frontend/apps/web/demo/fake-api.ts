@@ -26,6 +26,8 @@ import type {
   ChannelCategory,
   ChannelMember,
   ChannelOverride,
+  ChannelRecommendation,
+  ChannelRecommendationDispatch,
   ComposioUsage,
   Connection,
   ConnectorCatalog,
@@ -198,6 +200,9 @@ function fakePlanAccount(money: boolean): PlanAccountUsage {
 
 export interface FakeState {
   me: Me | null;
+  /** Draft text to an isolated assignee preview response. */
+  channelRecommendations?: Record<string, ChannelRecommendation>;
+  channelRecommendationDispatches?: Record<string, ChannelRecommendationDispatch>;
   /** "Ver modelos de time" (`agents.teamTemplates`; default none). */
   teamTemplates?: TeamTemplate[];
   /** What a one-click proposed agent thinks with (default: what its draft suggested). */
@@ -241,6 +246,7 @@ export interface FakeState {
   messages: Message[];
   invitations: InvitationWithStatus[];
   credentials: Credential[];
+  decisionsBackupConfigured?: boolean;
   /** Models after the fake's catalog ones (OpenRouter's list), as `GET /models` sends them. */
   extraModels?: Model[];
   /** The code a new key is refused with, as a provider's own check refuses it (`provider_key_invalid`). */
@@ -2693,6 +2699,11 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         ],
       }),
       credentials: async () => [...state.credentials],
+      decisionsBackup: async () => ({ configured: state.decisionsBackupConfigured ?? false }),
+      setDecisionsBackup: async (_orgId, input) => {
+        state.decisionsBackupConfigured = input.apiKey !== null;
+        return { configured: state.decisionsBackupConfigured };
+      },
       addCredential: async (orgId, input) => {
         log("agents.addCredential", orgId, { ...input, apiKey: "[redacted]" });
         if (state.keyRefusal)
@@ -3336,6 +3347,18 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
                 joinedAt: NOW.toISOString(),
               },
         ),
+      recommendation: async (orgId, channelId, text) => {
+        log("chat.recommendation", orgId, channelId, text);
+        const result = state.channelRecommendations?.[text];
+        if (!result) throw new ApiError(503, "unavailable", "No recommendation fixture");
+        return structuredClone(result);
+      },
+      confirmRecommendation: async (orgId, channelId, confirmationToken) => {
+        log("chat.confirmRecommendation", orgId, channelId);
+        const result = state.channelRecommendationDispatches?.[confirmationToken];
+        if (!result) throw new ApiError(409, "recommendation.expired", "No confirmation fixture");
+        return structuredClone(result);
+      },
       removeMember: async (orgId, channelId, member) => {
         log("chat.removeMember", orgId, channelId, member);
         const id = "agentId" in member ? member.agentId : member.userId;

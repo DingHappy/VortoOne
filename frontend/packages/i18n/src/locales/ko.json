@@ -2282,6 +2282,40 @@
     "working_other": "에이전트 {{count}}명 작업 중"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "배정 확인",
+        "pending": "배정 중…",
+        "viewResult": "배정 상태 보기",
+        "stale": "추천이 만료되었거나 변경되었습니다. 새 추천을 받아 확인하세요.",
+        "uncertain": "배정 결과가 아직 확인되지 않았습니다. 다시 시도하면 같은 확인 요청을 사용합니다.",
+        "refresh": "상태 새로 고침",
+        "openTask": "작업 #{{number}} 열기",
+        "result": "에이전트 결과",
+        "status": {
+          "assigned": "작업이 배정되었습니다.",
+          "agent_started": "작업이 에이전트에게 전달되었습니다.",
+          "agent_completed": "에이전트가 작업을 완료했습니다.",
+          "awaiting_draft": "에이전트의 초안을 기다리는 중입니다.",
+          "ready_for_review": "초안이 준비되었으며 담당자의 검토를 기다리고 있습니다.",
+          "agent_failed": "에이전트가 작업을 완료하지 못했습니다."
+        }
+      },
+      "action": "담당자 추천",
+      "title": "담당자 추천 결과",
+      "pending": "초안을 검토하는 중…",
+      "unavailable": "추천을 가져올 수 없습니다. 워크스페이스의 모델 연결을 확인하고 다시 시도하세요.",
+      "removeKey": "추천을 받으려면 초안에서 API 키를 삭제하세요.",
+      "humanReview": "사람 담당자가 결과를 검토하고 승인합니다.",
+      "draft": "초안 보기",
+      "kind": {
+        "none": "배정 추천 없음",
+        "clarify": "추가 정보 필요",
+        "person": "팀원 추천",
+        "agent": "에이전트 추천",
+        "collaboration": "팀원과 에이전트 협업 추천"
+      }
+    },
     "settingsNav": {
       "label": "채널 설정",
       "overview": "개요",
@@ -15775,6 +15809,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions 예비 설정",
+      "description": "채널 담당자 추천에 사용하는 선택 설정입니다. 기본 모델을 사용할 수 없으면 초안과 관련 후보 정보가 OpenAI로 전송됩니다.",
+      "enabled": "예비 설정 켜짐",
+      "disabled": "예비 설정 꺼짐",
+      "disable": "예비 설정 끄기",
+      "disableDescription": "예비 키가 삭제됩니다. 채널 추천에는 기본 모델이 사용됩니다.",
+      "projectKey": "OpenAI 프로젝트 전용 API 키",
+      "invalidKey": "공백 없이 표시 가능한 ASCII 문자 1~400자를 사용하세요."
+    },
     "notOpen": "이 워크스페이스에서 내 역할로는 {{section}}을(를) 열 수 없어요. 역할을 관리하는 사람이 열어 줄 수 있어요.",
     "nav": "설정 섹션",
     "group": {

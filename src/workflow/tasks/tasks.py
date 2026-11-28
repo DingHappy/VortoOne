@@ -42,6 +42,13 @@ TASK_STATE_LOCK = threading.RLock()  # Single-process domain read/modify/write t
 _LOGGER = logging.getLogger(__name__)
 
 
+def is_private_channel_draft(task) -> bool:
+    collaboration = task.get("collaboration") if isinstance(task, dict) else getattr(task, "collaboration", None)
+    dispatch = collaboration.get("dispatch") if isinstance(collaboration, dict) else None
+    channel = dispatch.get("channel") if isinstance(dispatch, dict) else None
+    return isinstance(channel, dict) and channel.get("privateDraft") is True
+
+
 class TaskBlocked(Exception):
     """An injected worker has cleaned up and durably staged its input request."""
 
@@ -434,6 +441,8 @@ class TaskRunner:
         return lambda: self._subs.discard(cb)
 
     def _notify(self, task: BackgroundTask) -> None:
+        if is_private_channel_draft(task):
+            return
         for cb in list(self._subs):
             try:
                 cb(task)
@@ -628,7 +637,7 @@ class TaskRunner:
 
     def cancel(self, tid: str) -> bool:
         t = self._running.get(tid)
-        if t is not None and not t.done():
+        if t is not None and not t.done() and not is_private_channel_draft(self.ledger.load(tid)):
             if not cancel_requested(t):
                 request_cancel(t)
             return True
@@ -658,10 +667,11 @@ class TaskRunner:
                 self._running.pop(tid, None)
 
     def get(self, tid: str) -> Optional[BackgroundTask]:
-        return self.ledger.load(tid)
+        task = self.ledger.load(tid)
+        return None if is_private_channel_draft(task) else task
 
     def list(self) -> List[BackgroundTask]:
-        return self.ledger.list()
+        return [task for task in self.ledger.list() if not is_private_channel_draft(task)]
 
     def is_active(self, tid: str) -> bool:
         t = self._running.get(tid)

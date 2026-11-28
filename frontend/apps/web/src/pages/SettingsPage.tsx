@@ -82,6 +82,7 @@ import { ApprovalsSection } from "@/components/ApprovalCover";
 import { AuditSection } from "@/components/Audit";
 import { AutoModelsRow } from "@/components/AutoModels";
 import { usePlanHold } from "@/components/ai/ConnectAiSteps";
+import { DecisionsBackupCard } from "@/components/ai/DecisionsBackupCard";
 import { EndpointForm } from "@/components/ai/EndpointForm";
 import { WhoPicksSection } from "@/components/ai/Jev";
 import { BillingLinkButton } from "@/components/BillingLinkButton";
@@ -1226,6 +1227,7 @@ function UsageSection() {
         </Card>
       )}
       <KeysSection />
+      {org.role === "owner" && <DecisionsBackupCard key={org.id} orgId={org.id} />}
       {usesApi && <ApiCard />}
       {allowed && (
         <Card aria-labelledby="sec-usage">
