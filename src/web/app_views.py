@@ -1487,10 +1487,11 @@ _RUN_STATUS = {"queued": "queued", "running": "running", "blocked": "running", "
 
 def _staff_tasks(root: str) -> List[Any]:
     """专员名下的任务，新的在前。台账读不全时照样返回读到的部分——这里只做展示，不据此下结论。"""
-    from src.workflow.tasks.tasks import TaskLedger
+    from src.workflow.tasks.tasks import TaskLedger, is_private_channel_draft
     tasks = [task for task in TaskLedger(root).list(limit=500)
              if (task.collaboration or {}).get("dispatch", {}).get("source") == "staff"
-             and (task.collaboration or {}).get("dispatch", {}).get("member")]
+             and (task.collaboration or {}).get("dispatch", {}).get("member")
+             and not is_private_channel_draft(task)]
     return sorted(tasks, key=lambda task: (task.created, task.id), reverse=True)
 
 

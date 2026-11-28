@@ -2571,6 +2571,40 @@ export const en = {
     working_other: "{{count}} agents working",
   },
   channel: {
+    recommendation: {
+      dispatch: {
+        confirm: "Confirm dispatch",
+        pending: "Dispatching…",
+        viewResult: "View dispatch status",
+        stale: "This recommendation has expired or changed. Request a new one to confirm.",
+        uncertain: "The dispatch result is unconfirmed. Retrying uses the same confirmation.",
+        refresh: "Refresh status",
+        openTask: "Open task #{{number}}",
+        result: "Agent result",
+        status: {
+          assigned: "The task has been assigned.",
+          agent_started: "The task has been handed to the agent.",
+          agent_completed: "The agent completed its work.",
+          awaiting_draft: "Waiting for the agent’s draft.",
+          ready_for_review: "The draft is ready for the designated person to review.",
+          agent_failed: "The agent couldn’t complete its work.",
+        },
+      },
+      action: "Recommend an assignee",
+      title: "Assignment recommendation",
+      pending: "Reviewing the draft…",
+      unavailable: "Couldn’t get a recommendation. Check the workspace’s model connection and try again.",
+      removeKey: "Remove the API key from the draft to request a recommendation.",
+      humanReview: "The designated person reviews and approves the result.",
+      draft: "View draft",
+      kind: {
+        none: "No assignment suggested",
+        clarify: "More detail needed",
+        person: "Teammate recommended",
+        agent: "Agent recommended",
+        collaboration: "Teammate and agent recommended",
+      },
+    },
     /** Channel settings' sections, for who manages it (ADR 0134). */
     settingsNav: {
       label: "Channel settings",
@@ -16792,6 +16826,17 @@ export const en = {
     },
   },
   settings: {
+    decisionsBackup: {
+      title: "OpenAI Decisions backup",
+      description:
+        "Optional for channel assignee recommendations. VortoOne sends the draft and relevant candidate information to OpenAI only if the primary model is unavailable.",
+      enabled: "Backup enabled",
+      disabled: "Backup disabled",
+      disable: "Disable backup",
+      disableDescription: "This removes the backup key. Channel recommendations will use the primary model.",
+      projectKey: "Dedicated OpenAI project API key",
+      invalidKey: "Use 1–400 visible ASCII characters without spaces.",
+    },
     notOpen: "Your role in this workspace doesn't open {{section}}. Whoever manages roles can open it for you.",
     nav: "Settings sections",
     group: {

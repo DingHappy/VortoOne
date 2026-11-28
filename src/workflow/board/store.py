@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS projects (
     archived INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS channel_recommendation_dispatches (
+    id TEXT PRIMARY KEY,
+    plan TEXT NOT NULL,
+    receipt TEXT
+);
 """
 
 
@@ -136,19 +141,20 @@ class Board:
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
         path = Path(self.path)
-        if path.is_symlink():
-            raise BoardError("看板记录不能是符号链接")
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
-            os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600))
-        with _LOCK, closing(sqlite3.connect(path)) as conn, conn:
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.executescript("BEGIN;" + _SCHEMA + "COMMIT;")
-            if conn.execute("SELECT count(*) FROM columns").fetchone()[0] == 0:
-                conn.executemany("INSERT INTO columns(id, stage, name, position) VALUES(?, ?, NULL, ?)",
-                                 [(f"col-{stage}", stage, index) for index, stage in enumerate(STAGES)])
-            yield conn
+        with _LOCK:
+            if path.is_symlink():
+                raise BoardError("看板记录不能是符号链接")
+            if not path.exists():
+                os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600))
+            with closing(sqlite3.connect(path)) as conn, conn:
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.executescript("BEGIN;" + _SCHEMA + "COMMIT;")
+                if conn.execute("SELECT count(*) FROM columns").fetchone()[0] == 0:
+                    conn.executemany("INSERT INTO columns(id, stage, name, position) VALUES(?, ?, NULL, ?)",
+                                     [(f"col-{stage}", stage, index) for index, stage in enumerate(STAGES)])
+                yield conn
 
     # ── 读 ────────────────────────────────────────────────────────────────────
     @staticmethod
@@ -272,28 +278,66 @@ class Board:
                           if old else {"id": uuid.uuid4().hex[:12], "text": text, "done": False, "doneBy": None})
         return result
 
-    def create(self, author: Dict[str, str], body: Dict[str, Any], *, audience: Dict[str, Any]) -> Dict[str, Any]:
+    def _insert_issue(self, conn, author: Dict[str, str], body: Dict[str, Any], audience: Dict[str, Any],
+                      stage: str = "todo") -> Dict[str, Any]:
         title = _text(body.get("title"), MAX_TITLE, "标题", required=True)
         description = _text(body.get("description") or "", MAX_DESCRIPTION, "说明")
         priority = body.get("priority") or "normal"
         if priority not in PRIORITIES:
             raise BoardError("优先级只能是 low、normal 或 high")
         assignee = _actor(body["assignee"]) if body.get("assignee") else None
+        number = conn.execute("SELECT coalesce(max(number), 0) + 1 FROM issues").fetchone()[0]
+        issue_id, now = uuid.uuid4().hex, _now()
+        rank = conn.execute("SELECT coalesce(max(board_rank), 0) + 1 FROM issues").fetchone()[0]
+        conn.execute(
+            "INSERT INTO issues(id, number, title, description, status, column_id, board_rank, priority, project_id,"
+            " assignee, labels, due_date, criteria, created_by, audience, github_url, parent_id, created, updated)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (issue_id, number, title, description, stage, self._column_for(conn, stage), rank, priority,
+             self._check_project(conn, body.get("projectId")), json.dumps(assignee) if assignee else None,
+             json.dumps(_labels(body.get("labels") or [])), _due(body.get("dueDate")),
+             json.dumps(self._criteria(body.get("criteria") or [])), json.dumps(author), json.dumps(audience),
+             _url(body.get("githubUrl")), body.get("parentIssueId"), now, now))
+        self._event(conn, issue_id, author, "created", "created this task")
+        return self._row(conn.execute("SELECT * FROM issues WHERE id = ?", (issue_id,)).fetchone())
+
+    def create(self, author: Dict[str, str], body: Dict[str, Any], *, audience: Dict[str, Any]) -> Dict[str, Any]:
         with self._db() as conn:
-            number = conn.execute("SELECT coalesce(max(number), 0) + 1 FROM issues").fetchone()[0]
-            issue_id, now = uuid.uuid4().hex, _now()
-            rank = conn.execute("SELECT coalesce(max(board_rank), 0) + 1 FROM issues").fetchone()[0]
-            conn.execute(
-                "INSERT INTO issues(id, number, title, description, status, column_id, board_rank, priority, project_id,"
-                " assignee, labels, due_date, criteria, created_by, audience, github_url, parent_id, created, updated)"
-                " VALUES(?, ?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (issue_id, number, title, description, self._column_for(conn, "todo"), rank, priority,
-                 self._check_project(conn, body.get("projectId")), json.dumps(assignee) if assignee else None,
-                 json.dumps(_labels(body.get("labels") or [])), _due(body.get("dueDate")),
-                 json.dumps(self._criteria(body.get("criteria") or [])), json.dumps(author), json.dumps(audience),
-                 _url(body.get("githubUrl")), body.get("parentIssueId"), now, now))
-            self._event(conn, issue_id, author, "created", "created this task")
-        return self.issue(issue_id)
+            return self._insert_issue(conn, author, body, audience)
+
+    def channel_dispatch(self, dispatch_id: str) -> tuple[dict, dict | None] | None:
+        if not self.path.is_file():
+            return None
+        with self._db() as conn:
+            row = conn.execute("SELECT plan, receipt FROM channel_recommendation_dispatches WHERE id = ?",
+                               (dispatch_id,)).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["plan"]), json.loads(row["receipt"]) if row["receipt"] else None
+
+    def reserve_channel_dispatch(self, dispatch_id: str, plan: dict) -> None:
+        with self._db() as conn:
+            conn.execute("INSERT OR IGNORE INTO channel_recommendation_dispatches(id, plan) VALUES(?, ?)",
+                         (dispatch_id, json.dumps(plan, ensure_ascii=False)))
+
+    def finish_channel_dispatch(self, dispatch_id: str, receipt: dict, *,
+                                issue: tuple[dict, dict, dict, str] | None = None) -> dict:
+        """Store terminal state and its review card in the same transaction."""
+        with self._db() as conn:
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT receipt FROM channel_recommendation_dispatches WHERE id = ?",
+                               (dispatch_id,)).fetchone()
+            if row is None:
+                raise NotFound("没有这次派发")
+            if row["receipt"]:
+                return json.loads(row["receipt"])
+            if issue is not None:
+                card = self._insert_issue(conn, *issue)
+                receipt = {**receipt, "issueId": card["id"], "issueNumber": card["number"]}
+            conn.execute("UPDATE channel_recommendation_dispatches SET receipt = ? WHERE id = ?",
+                         (json.dumps(receipt, ensure_ascii=False), dispatch_id))
+            return receipt
 
     def update(self, issue_id: str, author: Dict[str, str], patch: Dict[str, Any]) -> Dict[str, Any]:
         allowed = {"title", "description", "status", "priority", "assignee", "dueDate", "labels", "boardRank",

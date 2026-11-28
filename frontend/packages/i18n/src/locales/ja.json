@@ -2282,6 +2282,40 @@
     "working_other": "{{count}}体のエージェントが作業中"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "割り当てを確定",
+        "pending": "割り当てています…",
+        "viewResult": "割り当て状況を表示",
+        "stale": "この提案は期限切れか、内容が変わりました。新しい提案を取得してください。",
+        "uncertain": "割り当て結果はまだ確認できていません。再試行では同じ確定内容を使います。",
+        "refresh": "状況を更新",
+        "openTask": "タスク #{{number}} を開く",
+        "result": "エージェントの結果",
+        "status": {
+          "assigned": "タスクを割り当てました。",
+          "agent_started": "タスクをエージェントに渡しました。",
+          "agent_completed": "エージェントの作業が完了しました。",
+          "awaiting_draft": "エージェントの下書きを待っています。",
+          "ready_for_review": "下書きが完成しました。担当者の確認を待っています。",
+          "agent_failed": "エージェントは作業を完了できませんでした。"
+        }
+      },
+      "action": "担当候補を提案",
+      "title": "担当の提案",
+      "pending": "下書きを確認しています…",
+      "unavailable": "提案を取得できませんでした。ワークスペースのモデル接続を確認して、もう一度お試しください。",
+      "removeKey": "提案をリクエストするには、下書きから API キーを削除してください。",
+      "humanReview": "担当者が結果を確認し、承認します。",
+      "draft": "下書きを表示",
+      "kind": {
+        "none": "割り当ての提案なし",
+        "clarify": "追加情報が必要",
+        "person": "メンバーを推奨",
+        "agent": "エージェントを推奨",
+        "collaboration": "メンバーとエージェントの協力を推奨"
+      }
+    },
     "settingsNav": {
       "label": "チャンネル設定",
       "overview": "概要",
@@ -15783,6 +15817,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions の予備設定",
+      "description": "チャンネルでの担当候補の提案に使う任意の設定です。メインモデルが利用できない場合は、下書きと候補者に関する必要な情報が OpenAI に送信されます。",
+      "enabled": "予備設定は有効",
+      "disabled": "予備設定は無効",
+      "disable": "予備設定を無効にする",
+      "disableDescription": "予備キーが削除されます。チャンネルでの担当候補の提案にはメインモデルが使われます。",
+      "projectKey": "OpenAI プロジェクト専用の API キー",
+      "invalidKey": "空白を含まない、表示可能な ASCII 文字を 1～400 文字入力してください。"
+    },
     "notOpen": "このワークスペースでのあなたのロールでは{{section}}を開けません。ロールを管理している人が開けるようにできます。",
     "nav": "設定のセクション",
     "group": {

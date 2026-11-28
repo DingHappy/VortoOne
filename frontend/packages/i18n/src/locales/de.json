@@ -2356,6 +2356,40 @@
     "working_other": "{{count}} Agenten arbeiten"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Zuweisung bestätigen",
+        "pending": "Wird zugewiesen…",
+        "viewResult": "Zuweisungsstatus ansehen",
+        "stale": "Der Vorschlag ist abgelaufen oder hat sich geändert. Fordere einen neuen Vorschlag an.",
+        "uncertain": "Das Ergebnis der Zuweisung ist noch nicht bestätigt. Beim erneuten Versuch wird dieselbe Bestätigung verwendet.",
+        "refresh": "Status aktualisieren",
+        "openTask": "Aufgabe #{{number}} öffnen",
+        "result": "Ergebnis des Agenten",
+        "status": {
+          "assigned": "Die Aufgabe wurde zugewiesen.",
+          "agent_started": "Die Aufgabe wurde an den Agenten übergeben.",
+          "agent_completed": "Der Agent hat seine Arbeit abgeschlossen.",
+          "awaiting_draft": "Der Entwurf des Agenten steht noch aus.",
+          "ready_for_review": "Der Entwurf ist bereit für die Prüfung durch die zuständige Person.",
+          "agent_failed": "Der Agent konnte seine Arbeit nicht abschließen."
+        }
+      },
+      "action": "Zuständigkeit vorschlagen",
+      "title": "Vorschlag zur Zuweisung",
+      "pending": "Entwurf wird geprüft…",
+      "unavailable": "Der Vorschlag konnte nicht abgerufen werden. Prüfe die Modellverbindung des Arbeitsbereichs und versuche es erneut.",
+      "removeKey": "Entferne den API-Schlüssel aus dem Entwurf, um einen Vorschlag anzufordern.",
+      "humanReview": "Die zuständige Person prüft und bestätigt das Ergebnis.",
+      "draft": "Entwurf ansehen",
+      "kind": {
+        "none": "Keine Zuweisung vorgeschlagen",
+        "clarify": "Weitere Angaben erforderlich",
+        "person": "Teammitglied empfohlen",
+        "agent": "Agent empfohlen",
+        "collaboration": "Teammitglied und Agent empfohlen"
+      }
+    },
     "settingsNav": {
       "label": "Kanaleinstellungen",
       "overview": "Übersicht",
@@ -16337,6 +16371,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions als Ersatz",
+      "description": "Optional für Empfehlungen zur Zuständigkeit im Kanal. Ist das Hauptmodell nicht verfügbar, werden der Entwurf und relevante Angaben zu den Kandidaten an OpenAI gesendet.",
+      "enabled": "Ersatz aktiviert",
+      "disabled": "Ersatz deaktiviert",
+      "disable": "Ersatz deaktivieren",
+      "disableDescription": "Der Ersatzschlüssel wird entfernt. Empfehlungen im Kanal verwenden das Hauptmodell.",
+      "projectKey": "Dedizierter API-Schlüssel eines OpenAI-Projekts",
+      "invalidKey": "Verwende 1–400 sichtbare ASCII-Zeichen ohne Leerzeichen."
+    },
     "notOpen": "Deine Rolle in diesem Workspace öffnet {{section}} nicht. Wer die Rollen verwaltet, kann es für dich freigeben.",
     "nav": "Bereiche der Einstellungen",
     "group": {

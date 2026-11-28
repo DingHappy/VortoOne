@@ -2431,6 +2431,40 @@
     "working_other": "{{count}} agentes trabajando"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Confirmar asignación",
+        "pending": "Asignando…",
+        "viewResult": "Ver estado de la asignación",
+        "stale": "La recomendación caducó o cambió. Solicita una nueva para confirmarla.",
+        "uncertain": "El resultado aún no está confirmado. Al reintentar se usa la misma confirmación.",
+        "refresh": "Actualizar estado",
+        "openTask": "Abrir tarea #{{number}}",
+        "result": "Resultado del agente",
+        "status": {
+          "assigned": "La tarea se ha asignado.",
+          "agent_started": "La tarea se ha encargado al agente.",
+          "agent_completed": "El agente terminó su trabajo.",
+          "awaiting_draft": "Esperando el borrador del agente.",
+          "ready_for_review": "El borrador está listo para que lo revise la persona responsable.",
+          "agent_failed": "El agente no pudo terminar su trabajo."
+        }
+      },
+      "action": "Recomendar responsable",
+      "title": "Recomendación de asignación",
+      "pending": "Analizando el borrador…",
+      "unavailable": "No se pudo obtener una recomendación. Comprueba la conexión del modelo del espacio de trabajo e inténtalo de nuevo.",
+      "removeKey": "Elimina la clave de API del borrador para solicitar una recomendación.",
+      "humanReview": "La persona responsable revisa y confirma el resultado.",
+      "draft": "Ver borrador",
+      "kind": {
+        "none": "No se sugiere asignar",
+        "clarify": "Se necesitan más detalles",
+        "person": "Se recomienda una persona del equipo",
+        "agent": "Se recomienda un agente",
+        "collaboration": "Se recomiendan una persona y un agente"
+      }
+    },
     "settingsNav": {
       "label": "Configuración del canal",
       "overview": "General",
@@ -16785,6 +16819,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions de respaldo",
+      "description": "Opcional para recomendar responsables en los canales. Si el modelo principal no está disponible, se envían a OpenAI el borrador y la información relevante de los candidatos.",
+      "enabled": "Respaldo activado",
+      "disabled": "Respaldo desactivado",
+      "disable": "Desactivar respaldo",
+      "disableDescription": "Esto elimina la clave de respaldo. Las recomendaciones de los canales usarán el modelo principal.",
+      "projectKey": "Clave de API dedicada de un proyecto de OpenAI",
+      "invalidKey": "Usa de 1 a 400 caracteres ASCII visibles, sin espacios."
+    },
     "notOpen": "Tu rol en este espacio de trabajo no abre {{section}}. Quien administra los roles puede habilitarlo para ti.",
     "nav": "Secciones de la configuración",
     "group": {

@@ -2978,6 +2978,24 @@ export interface RosterMember {
   joinedAt: string;
 }
 
+export interface ChannelRecommendation {
+  kind: "none" | "clarify" | "person" | "agent" | "collaboration";
+  reason: string;
+  primary?: { type: "person" | "agent"; id: string; name: string; work: string };
+  assistant?: { type: "agent"; id: string; name: string; work: string };
+  humanReview: boolean;
+  /** Present when the server can apply this exact recommendation after explicit confirmation. */
+  confirmationToken?: string;
+}
+
+export interface ChannelRecommendationDispatch {
+  status: "assigned" | "agent_started" | "agent_completed" | "awaiting_draft" | "ready_for_review" | "agent_failed";
+  taskId?: string;
+  issueId?: string;
+  issueNumber?: number;
+  result?: string;
+}
+
 /** `budget.warning` (80%) / `budget.exhausted` (100%), sent to the agent's owner. */
 export interface BudgetEvent {
   type: "budget.warning" | "budget.exhausted";

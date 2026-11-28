@@ -1,0 +1,41 @@
+.channel-recommendation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.channel-recommendation p,
+.channel-recommendation__body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.channel-recommendation__assignees {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+
+.channel-recommendation__assignee {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.channel-recommendation__draft summary {
+  cursor: pointer;
+}
+
+.channel-recommendation__draft p {
+  margin-top: var(--space-2);
+  white-space: pre-wrap;
+}
+
+.channel-recommendation__result p {
+  margin-top: var(--space-1);
+  white-space: pre-wrap;
+}

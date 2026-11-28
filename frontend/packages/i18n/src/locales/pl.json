@@ -2509,6 +2509,40 @@
     "working_other": "{{count}} agentów pracuje"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Potwierdź przydział",
+        "pending": "Przydzielanie…",
+        "viewResult": "Zobacz stan przydziału",
+        "stale": "Propozycja wygasła lub uległa zmianie. Poproś o nową i ją potwierdź.",
+        "uncertain": "Wynik przydziału nie został potwierdzony. Ponowna próba wykorzysta to samo potwierdzenie.",
+        "refresh": "Odśwież stan",
+        "openTask": "Otwórz zadanie #{{number}}",
+        "result": "Wynik agenta",
+        "status": {
+          "assigned": "Zadanie zostało przydzielone.",
+          "agent_started": "Zadanie zostało przekazane agentowi.",
+          "agent_completed": "Agent zakończył pracę.",
+          "awaiting_draft": "Oczekiwanie na szkic agenta.",
+          "ready_for_review": "Szkic jest gotowy do sprawdzenia przez odpowiedzialną osobę.",
+          "agent_failed": "Agent nie zdołał zakończyć pracy."
+        }
+      },
+      "action": "Zaproponuj wykonawcę",
+      "title": "Propozycja przydziału",
+      "pending": "Analizowanie szkicu…",
+      "unavailable": "Nie udało się uzyskać propozycji. Sprawdź połączenie modelu obszaru roboczego i spróbuj ponownie.",
+      "removeKey": "Usuń klucz API ze szkicu, aby poprosić o propozycję.",
+      "humanReview": "Wyznaczona osoba sprawdza i zatwierdza wynik.",
+      "draft": "Pokaż szkic",
+      "kind": {
+        "none": "Brak propozycji przydziału",
+        "clarify": "Potrzeba więcej informacji",
+        "person": "Zalecany członek zespołu",
+        "agent": "Zalecany agent",
+        "collaboration": "Zalecani członek zespołu i agent"
+      }
+    },
     "settingsNav": {
       "label": "Ustawienia kanału",
       "overview": "Przegląd",
@@ -17383,6 +17417,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "Zapasowy OpenAI Decisions",
+      "description": "Opcjonalnie do rekomendowania wykonawców w kanałach. Gdy główny model jest niedostępny, szkic i potrzebne informacje o kandydatach są wysyłane do OpenAI.",
+      "enabled": "Opcja zapasowa włączona",
+      "disabled": "Opcja zapasowa wyłączona",
+      "disable": "Wyłącz opcję zapasową",
+      "disableDescription": "To usunie klucz zapasowy. Rekomendacje na kanałach będą korzystać z głównego modelu.",
+      "projectKey": "Dedykowany klucz API projektu OpenAI",
+      "invalidKey": "Użyj od 1 do 400 widocznych znaków ASCII bez spacji."
+    },
     "notOpen": "Twoja rola w tej przestrzeni roboczej nie otwiera sekcji {{section}}. Osoba zarządzająca rolami może ją dla ciebie otworzyć.",
     "nav": "Sekcje ustawień",
     "group": {

@@ -2356,6 +2356,40 @@
     "working_other": "{{count}} ajan çalışıyor"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Atamayı onayla",
+        "pending": "Atanıyor…",
+        "viewResult": "Atama durumunu gör",
+        "stale": "Önerinin süresi doldu veya öneri değişti. Onaylamak için yeni bir öneri iste.",
+        "uncertain": "Atama sonucu henüz doğrulanmadı. Yeniden denemede aynı onay kullanılır.",
+        "refresh": "Durumu yenile",
+        "openTask": "#{{number}} numaralı görevi aç",
+        "result": "Ajan sonucu",
+        "status": {
+          "assigned": "Görev atandı.",
+          "agent_started": "Görev ajana iletildi.",
+          "agent_completed": "Ajan çalışmasını tamamladı.",
+          "awaiting_draft": "Ajanın taslağı bekleniyor.",
+          "ready_for_review": "Taslak sorumlu kişinin incelemesine hazır.",
+          "agent_failed": "Ajan çalışmasını tamamlayamadı."
+        }
+      },
+      "action": "Sorumlu öner",
+      "title": "Atama önerisi",
+      "pending": "Taslak inceleniyor…",
+      "unavailable": "Öneri alınamadı. Çalışma alanının model bağlantısını kontrol edip tekrar deneyin.",
+      "removeKey": "Öneri almak için taslaktaki API anahtarını kaldırın.",
+      "humanReview": "Sorumlu kişi sonucu inceler ve onaylar.",
+      "draft": "Taslağı görüntüle",
+      "kind": {
+        "none": "Atama önerilmedi",
+        "clarify": "Daha fazla ayrıntı gerekli",
+        "person": "Ekip üyesi önerildi",
+        "agent": "Ajan önerildi",
+        "collaboration": "Ekip üyesi ve ajan önerildi"
+      }
+    },
     "settingsNav": {
       "label": "Kanal ayarları",
       "overview": "Genel bakış",
@@ -16274,6 +16308,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions yedeği",
+      "description": "Kanallardaki sorumlu önerileri için isteğe bağlıdır. Birincil model kullanılamadığında taslak ve ilgili aday bilgileri OpenAI’ye gönderilir.",
+      "enabled": "Yedek açık",
+      "disabled": "Yedek kapalı",
+      "disable": "Yedeği kapat",
+      "disableDescription": "Yedek anahtar kaldırılır. Kanal önerileri birincil modeli kullanır.",
+      "projectKey": "OpenAI projesine özel API anahtarı",
+      "invalidKey": "Boşluk içermeyen 1–400 görünür ASCII karakteri kullanın."
+    },
     "notOpen": "Bu çalışma alanındaki rolünüz {{section}} bölümünü açmıyor. Rolleri yöneten kişi sizin için açabilir.",
     "nav": "Ayarlar bölümleri",
     "group": {

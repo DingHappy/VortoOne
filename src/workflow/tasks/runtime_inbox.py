@@ -153,7 +153,8 @@ def build_runtime_inbox(
     session_views = [view for item in list(sessions)[:100] if (view := _session_view(item))]
     decision_views = [view for item in list(decisions)[:100] if (view := _decision_view(item))]
     goal_views = [view for item in list(goals)[:200] if (view := _goal_view(item))]
-    tasks = list(tasks)[:200]
+    from src.workflow.tasks.tasks import is_private_channel_draft
+    tasks = [task for task in tasks if not is_private_channel_draft(task)][:200]
     from src.workflow.tasks.task_recovery import recovery_links
     resumed_sources = recovery_links(tasks)
     from src.workflow.tasks.task_summary import SnapshotSources, task_summary

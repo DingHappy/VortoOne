@@ -2455,6 +2455,40 @@ export const ptBR = {
     working_other: "{{count}} agentes trabalhando",
   },
   channel: {
+    recommendation: {
+      dispatch: {
+        confirm: "Confirmar encaminhamento",
+        pending: "Encaminhando…",
+        viewResult: "Ver status do encaminhamento",
+        stale: "A sugestão expirou ou mudou. Peça uma nova para confirmar.",
+        uncertain: "O resultado ainda não foi confirmado. Uma nova tentativa usa a mesma confirmação.",
+        refresh: "Atualizar status",
+        openTask: "Abrir tarefa #{{number}}",
+        result: "Resultado do agente",
+        status: {
+          assigned: "A tarefa foi atribuída.",
+          agent_started: "A tarefa foi encaminhada ao agente.",
+          agent_completed: "O agente concluiu seu trabalho.",
+          awaiting_draft: "Aguardando o rascunho do agente.",
+          ready_for_review: "O rascunho está pronto para a revisão da pessoa responsável.",
+          agent_failed: "O agente não conseguiu concluir seu trabalho.",
+        },
+      },
+      action: "Sugerir responsável",
+      title: "Sugestão de responsável",
+      pending: "Analisando o rascunho…",
+      unavailable: "Não foi possível obter uma sugestão. Confira a conexão do modelo do workspace e tente novamente.",
+      removeKey: "Remova a chave de API do rascunho para pedir uma sugestão.",
+      humanReview: "A pessoa responsável revisa e confirma o resultado.",
+      draft: "Ver rascunho",
+      kind: {
+        none: "Nenhuma atribuição sugerida",
+        clarify: "Mais detalhes necessários",
+        person: "Pessoa recomendada",
+        agent: "Agente recomendado",
+        collaboration: "Pessoa e agente recomendados",
+      },
+    },
     /** Channel settings' sections, for who manages it (ADR 0134). */
     settingsNav: {
       label: "Configurações do canal",
@@ -16635,6 +16669,16 @@ export const ptBR = {
     },
   },
   settings: {
+    decisionsBackup: {
+      title: "OpenAI Decisions como alternativa",
+      description: "Opcional para sugerir responsáveis no canal. Se o modelo principal estiver indisponível, o rascunho e as informações relevantes sobre os candidatos serão enviados à OpenAI.",
+      enabled: "Alternativa ativada",
+      disabled: "Alternativa desativada",
+      disable: "Desativar alternativa",
+      disableDescription: "Isso remove a chave da alternativa. As sugestões nos canais usarão o modelo principal.",
+      projectKey: "Chave de API dedicada de um projeto OpenAI",
+      invalidKey: "Use de 1 a 400 caracteres ASCII visíveis, sem espaços.",
+    },
     notOpen: "{{section}} não abre com o seu cargo neste workspace. Quem gerencia os cargos pode liberar para você.",
     nav: "Seções das configurações",
     group: {

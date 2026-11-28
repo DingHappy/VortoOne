@@ -278,6 +278,7 @@ import { HeldBrowserCard, RunBrowserCard, useHeldTakeover } from "@/components/b
 import { BrowserHandoffCard } from "@/components/browser/BrowserHandoffCard";
 import { BrowserTrailCard } from "@/components/browser/BrowserTrailCard";
 import { requestBrowserCard } from "@/components/browser/open";
+import { ChannelAssigneeRecommendation } from "@/components/ChannelAssigneeRecommendation";
 import { CategorySelect } from "@/components/ChannelCategoryDialogs";
 import { ChannelHeader } from "@/components/ChannelHeader";
 import { ChannelPermissions } from "@/components/ChannelPermissions";
@@ -2072,6 +2073,16 @@ function ChannelView({
   };
   const attached = files.flatMap((f) => (f.status === "done" && f.ref ? [f.ref] : []));
   const uploading = files.some((f) => f.status === "uploading");
+  const showsAssignmentRecommendation =
+    teamChannel &&
+    !thread &&
+    !chrome?.dmAgentId &&
+    !chrome?.dmPersonId &&
+    !chrome?.task &&
+    !chrome?.locked &&
+    !quote &&
+    !missionReply &&
+    files.length === 0;
 
   // A key pasted in the message: nothing goes out until the person chooses (`KeyGuardDialog`).
   const [keyAsk, setKeyAsk] = useState<{ text: string; key: string; interrupt?: boolean } | null>(null);
@@ -2795,6 +2806,12 @@ function ChannelView({
                                       <Icon name="edit" size={16} />
                                       <span className="composer-quote__who">{t("teamPlan.firstTask.finish")}</span>
                                     </div>
+                                  ) : showsAssignmentRecommendation ? (
+                                    <ChannelAssigneeRecommendation
+                                      orgId={org.id}
+                                      channelId={channel.id}
+                                      text={draft.trim()}
+                                    />
                                   ) : undefined
                                 }
                                 attachments={

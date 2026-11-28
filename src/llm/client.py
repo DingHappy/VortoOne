@@ -43,6 +43,14 @@ MODELS: Dict[str, Dict[str, str]] = {
 _TRANSIENT_STATUS = {408, 409, 429, 500, 502, 503, 504}
 
 
+class ProviderHTTPError(Exception):
+    """Keep the upstream status available on the SDK-free chat path."""
+
+    def __init__(self, status: int, detail: str):
+        super().__init__(f"LLM request failed: {status} - {detail}")
+        self.status_code = status
+
+
 class ProviderContentFiltered(RuntimeError):
     """A provider blocked a completion; its text must not become an answer/tool call."""
 
@@ -1069,7 +1077,7 @@ class LLMClient:
                                 "usage": data.get("usage", {}),
                             }
                         error = await response.text()
-                        err = Exception(f"LLM request failed: {response.status} - {error}")
+                        err = ProviderHTTPError(response.status, error)
                         if response.status in _TRANSIENT_STATUS:
                             last_err = err                # 暂时性 → 记下、重试
                             continue

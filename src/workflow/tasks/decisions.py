@@ -105,7 +105,8 @@ def build_decision_queue(
     """Normalize local state into stable, actionable queue items."""
     hidden = dismissed or set()
     output: list[dict[str, Any]] = []
-    tasks = list(tasks)
+    from src.workflow.tasks.tasks import is_private_channel_draft
+    tasks = [task for task in tasks if not is_private_channel_draft(task)]
     from src.workflow.tasks.task_recovery import recovery_links
     resumed_sources = recovery_links(tasks)
     for confirmation in confirmations:

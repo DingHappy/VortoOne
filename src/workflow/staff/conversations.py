@@ -18,7 +18,7 @@ from src.workflow.staff.owner_confirmation import owner_instance, require_owner_
 from src.workflow.staff.recovery import task_digest
 from src.workflow.staff.registry import StaffRegistry
 from src.workflow.staff.executions import execution_projection
-from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger
+from src.workflow.tasks.tasks import TASK_STATE_LOCK, TaskLedger, is_private_channel_draft
 
 _REQUEST = re.compile(r'[a-f0-9]{32}')
 ANYONE = object()      # read() 不按发起人筛（原有调用方的默认）
@@ -65,7 +65,8 @@ class StaffConversations:
     def _matches(task, member_id):
         return (task.kind == 'delegation'
                 and task.collaboration.get('dispatch', {}).get('source') == 'staff'
-                and task.collaboration['dispatch'].get('member') == member_id)
+                and task.collaboration['dispatch'].get('member') == member_id
+                and not is_private_channel_draft(task))
 
     def _task(self, member_id, task_id):
         if not typed_id(task_id, 'task'):
@@ -209,7 +210,8 @@ class StaffConversations:
         with TASK_STATE_LOCK:
             task = self.ledger.load(task_id)
             dispatch = (task.collaboration or {}).get('dispatch', {}) if task is not None else {}
-            if task is None or not dispatch.get('channel') or not dispatch.get('member'):
+            if (task is None or not dispatch.get('channel') or not dispatch.get('member')
+                    or is_private_channel_draft(task)):
                 raise LookupError('没有这件事')
             if task.status not in {'queued', 'running', 'blocked'}:
                 return False
@@ -226,7 +228,7 @@ class StaffConversations:
         with TASK_STATE_LOCK:
             task = self.ledger.load(task_id)
             dispatch = (task.collaboration or {}).get('dispatch', {}) if task is not None else {}
-            if task is None or dispatch.get('source') != 'staff':
+            if task is None or dispatch.get('source') != 'staff' or is_private_channel_draft(task):
                 raise LookupError('没有这件事')
             if task.status != 'cancelled':
                 raise ValueError('只有停下的事能说原因')

@@ -2356,6 +2356,40 @@
     "working_other": "{{count}} agents aan het werk"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Toewijzing bevestigen",
+        "pending": "Bezig met toewijzen…",
+        "viewResult": "Toewijzingsstatus bekijken",
+        "stale": "Het voorstel is verlopen of gewijzigd. Vraag een nieuw voorstel aan.",
+        "uncertain": "Het resultaat is nog niet bevestigd. Opnieuw proberen gebruikt dezelfde bevestiging.",
+        "refresh": "Status vernieuwen",
+        "openTask": "Taak #{{number}} openen",
+        "result": "Resultaat van de agent",
+        "status": {
+          "assigned": "De taak is toegewezen.",
+          "agent_started": "De taak is aan de agent doorgegeven.",
+          "agent_completed": "De agent heeft het werk afgerond.",
+          "awaiting_draft": "Wachten op het concept van de agent.",
+          "ready_for_review": "Het concept is klaar voor de verantwoordelijke persoon om te beoordelen.",
+          "agent_failed": "De agent kon het werk niet afronden."
+        }
+      },
+      "action": "Verantwoordelijke voorstellen",
+      "title": "Toewijzingsvoorstel",
+      "pending": "Concept wordt beoordeeld…",
+      "unavailable": "Het voorstel kon niet worden opgehaald. Controleer de modelverbinding van de werkruimte en probeer het opnieuw.",
+      "removeKey": "Verwijder de API-sleutel uit het concept om een voorstel aan te vragen.",
+      "humanReview": "De verantwoordelijke persoon beoordeelt en bevestigt het resultaat.",
+      "draft": "Concept bekijken",
+      "kind": {
+        "none": "Geen toewijzing voorgesteld",
+        "clarify": "Meer informatie nodig",
+        "person": "Teamlid aanbevolen",
+        "agent": "Agent aanbevolen",
+        "collaboration": "Teamlid en agent aanbevolen"
+      }
+    },
     "settingsNav": {
       "label": "Kanaalinstellingen",
       "overview": "Overzicht",
@@ -16401,6 +16435,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "OpenAI Decisions als reserve",
+      "description": "Optioneel voor het aanbevelen van verantwoordelijken in kanalen. Als het hoofdmodel niet beschikbaar is, gaan het concept en relevante kandidaat-informatie naar OpenAI.",
+      "enabled": "Reserve ingeschakeld",
+      "disabled": "Reserve uitgeschakeld",
+      "disable": "Reserve uitschakelen",
+      "disableDescription": "Dit verwijdert de reservesleutel. Kanaalaanbevelingen gebruiken het hoofdmodel.",
+      "projectKey": "Aparte API-sleutel voor een OpenAI-project",
+      "invalidKey": "Gebruik 1–400 zichtbare ASCII-tekens zonder spaties."
+    },
     "notOpen": "Je rol in deze werkruimte opent {{section}} niet. Wie de rollen beheert, kan het voor je openzetten.",
     "nav": "Onderdelen van de instellingen",
     "group": {

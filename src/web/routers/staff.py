@@ -318,13 +318,14 @@ def _wake_limits():
 def department_detail(department_id: str):
     from src.workflow.staff.notes import StaffNotes
     from src.workflow.staff.budgets import StaffBudgets
-    from src.workflow.tasks.tasks import TaskLedger
+    from src.workflow.tasks.tasks import TaskLedger, is_private_channel_draft
     def read():
         registry = StaffRegistry(os.getcwd())
         department = registry.department(department_id)
         records = TaskLedger(os.getcwd()).list(limit=501)
         tasks = [t for t in records[:500]
-                 if t.collaboration.get('dispatch', {}).get('department') == department_id]
+                 if t.collaboration.get('dispatch', {}).get('department') == department_id
+                 and not is_private_channel_draft(t)]
         budgets = StaffBudgets(os.getcwd())
         notes = StaffNotes(os.getcwd()).inspect(department_id)
         department['notes_revision'] = notes['current']['revision']

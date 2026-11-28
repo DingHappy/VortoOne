@@ -2432,6 +2432,40 @@
     "working_other": "{{count}} agenti al lavoro"
   },
   "channel": {
+    "recommendation": {
+      "dispatch": {
+        "confirm": "Conferma assegnazione",
+        "pending": "Assegnazione in corso…",
+        "viewResult": "Vedi stato dell’assegnazione",
+        "stale": "Il suggerimento è scaduto o è cambiato. Richiedine uno nuovo da confermare.",
+        "uncertain": "L’esito dell’assegnazione è ancora da confermare. Il nuovo tentativo usa la stessa conferma.",
+        "refresh": "Aggiorna stato",
+        "openTask": "Apri attività #{{number}}",
+        "result": "Risultato dell’agente",
+        "status": {
+          "assigned": "L’attività è stata assegnata.",
+          "agent_started": "L’attività è stata affidata all’agente.",
+          "agent_completed": "L’agente ha concluso il proprio lavoro.",
+          "awaiting_draft": "In attesa della bozza dell’agente.",
+          "ready_for_review": "La bozza è pronta per la verifica della persona responsabile.",
+          "agent_failed": "L’agente non è riuscito a completare il proprio lavoro."
+        }
+      },
+      "action": "Suggerisci un responsabile",
+      "title": "Suggerimento di assegnazione",
+      "pending": "Analisi della bozza…",
+      "unavailable": "Impossibile ottenere un suggerimento. Controlla la connessione del modello dello spazio di lavoro e riprova.",
+      "removeKey": "Rimuovi la chiave API dalla bozza per richiedere un suggerimento.",
+      "humanReview": "La persona responsabile verifica e conferma il risultato.",
+      "draft": "Vedi bozza",
+      "kind": {
+        "none": "Nessuna assegnazione suggerita",
+        "clarify": "Servono altre informazioni",
+        "person": "Membro del team consigliato",
+        "agent": "Agente consigliato",
+        "collaboration": "Membro del team e agente consigliati"
+      }
+    },
     "settingsNav": {
       "label": "Impostazioni del canale",
       "overview": "Panoramica",
@@ -16868,6 +16902,16 @@
     }
   },
   "settings": {
+    "decisionsBackup": {
+      "title": "Riserva OpenAI Decisions",
+      "description": "Facoltativa per suggerire un responsabile nei canali. Se il modello principale non è disponibile, la bozza e le informazioni rilevanti sui candidati vengono inviate a OpenAI.",
+      "enabled": "Riserva attiva",
+      "disabled": "Riserva disattivata",
+      "disable": "Disattiva la riserva",
+      "disableDescription": "La chiave di riserva verrà rimossa. Per i suggerimenti nei canali verrà usato il modello principale.",
+      "projectKey": "Chiave API dedicata a un progetto OpenAI",
+      "invalidKey": "Usa da 1 a 400 caratteri ASCII visibili, senza spazi."
+    },
     "notOpen": "Il tuo ruolo in questo spazio di lavoro non apre {{section}}. Chi gestisce i ruoli può aprirlo per te.",
     "nav": "Sezioni delle impostazioni",
     "group": {

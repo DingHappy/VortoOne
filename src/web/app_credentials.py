@@ -274,6 +274,33 @@ def listing(root: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def decisions_backup_key(root: str) -> str | None:
+    with _LOCK:
+        key = _read(root).get("decisionsBackupKey")
+    return key if isinstance(key, str) and key else None
+
+
+def set_decisions_backup(root: str, body: Dict[str, Any]) -> Dict[str, bool]:
+    if set(body) != {"apiKey"}:
+        raise CredentialError("invalid", "请提供 OpenAI Decisions API 密钥，或清除现有密钥")
+    key = None if body["apiKey"] is None else _text(body["apiKey"], "API 密钥", MAX_KEY)
+    if key is not None and any(not 33 <= ord(char) <= 126 for char in key):
+        raise CredentialError("invalid", "API 密钥不能包含空格或不可见字符")
+    with _LOCK:
+        data = _read(root)
+        if data.get("decisionsBackupKey") == key:
+            return {"configured": key is not None}
+        if key is None:
+            data.pop("decisionsBackupKey", None)
+        else:
+            data["decisionsBackupKey"] = key
+        try:
+            _write(root, data)
+        except OSError as error:
+            raise CredentialError("unavailable", "暂时无法保存备用模型配置", 503) from error
+    return {"configured": key is not None}
+
+
 def _find(data: Dict[str, Any], credential_id: str) -> Dict[str, Any]:
     if credential_id == SERVER_ID:
         raise CredentialError("credential.server", "这是服务配置里的模型，要在服务的配置（.env）里改", 409)
