@@ -3,14 +3,17 @@
 use crate::gray_update::{
     check_for_standard_update, CheckOutcome, Managed, Report, RolloutCheck, POLICY_ERROR,
 };
+use crate::update_progress::{Phase, UpdateProgress};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
+
+const MIN_PHASE_VISIBILITY: Duration = Duration::from_millis(350);
 
 #[cfg(target_os = "windows")]
 const PORTABLE_UPDATE: (&str, &str) = ("windows-x86_64-nsis", "windows-x64.exe");
@@ -247,38 +250,66 @@ async fn install_update(
     }
 
     let version = update.version.clone();
+    let progress = UpdateProgress::open(app, &version);
+    let mut verification_started = Instant::now();
+    let mut show_verifying = || {
+        progress.show_phase(Phase::Verifying);
+        verification_started = Instant::now();
+    };
     // The updater authenticates the bytes and version against the stable channel key.
     let bytes = if let Some(managed) = managed {
         let verified = managed
-            .download(&version, &update.download_url)
+            .download(&version, &update.download_url, |received, total| {
+                progress.downloaded(received, total);
+            })
             .await
             .and_then(|bytes| {
+                show_verifying();
                 update
                     .verify(&bytes)
                     .map_err(|_| "灰度更新验签失败，安装已停止。")?;
                 Ok(bytes)
             });
         match verified {
-            Ok(bytes) => {
-                managed.report(&version, Report::Installing).await?;
-                bytes
-            }
+            Ok(bytes) => bytes,
             Err(error) => {
                 let _ = managed.report(&version, Report::Failed).await;
                 return Err(error);
             }
         }
     } else {
+        let mut received = 0_u64;
         update
-            .download(|_, _| {}, || {})
+            .download(
+                |chunk, total| {
+                    received = received.saturating_add(chunk as u64);
+                    progress.downloaded(
+                        received,
+                        total.filter(|size| *size > 0 && *size >= received),
+                    );
+                },
+                show_verifying,
+            )
             .await
             .map_err(|_| "无法下载或验签更新，请稍后重试或从下载页安装。")?
     };
 
+    // The signature check may finish before the progress view's next frame.
+    let wait = phase_time_left(verification_started);
+    if !wait.is_zero() {
+        let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(wait)).await;
+    }
+    if let Some(managed) = managed {
+        managed.report(&version, Report::Installing).await?;
+    }
+    progress.show_phase(Phase::Installing);
     let handle = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || apply_update(&handle, update, bytes))
-        .await
-        .unwrap_or(Err("无法完成安装，请稍后重试。"));
+    let install_progress = progress.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        apply_update(&handle, update, bytes, &install_progress)
+    })
+    .await
+    .unwrap_or(Err("无法完成安装，请稍后重试。"));
     if let Some(managed) = managed {
         match result {
             Err(_) => {
@@ -293,17 +324,33 @@ async fn install_update(
     result
 }
 
+fn phase_time_left(since: Instant) -> Duration {
+    MIN_PHASE_VISIBILITY.saturating_sub(since.elapsed())
+}
+
 #[cfg(target_os = "macos")]
-fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool, &'static str> {
+fn apply_update(
+    app: &AppHandle,
+    update: Update,
+    bytes: Vec<u8>,
+    progress: &UpdateProgress,
+) -> Result<bool, &'static str> {
+    let installing_since = Instant::now();
     update
         .install(bytes)
         .map_err(|_| "无法安装更新，请稍后重试或从下载页安装。")?;
-    restart_after_install(app);
+    restart_after_install(app, progress, installing_since);
 }
 
 #[cfg(target_os = "linux")]
-fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool, &'static str> {
+fn apply_update(
+    app: &AppHandle,
+    update: Update,
+    bytes: Vec<u8>,
+    progress: &UpdateProgress,
+) -> Result<bool, &'static str> {
     use crate::deb_update::InstallOutcome;
+    let installing_since = Instant::now();
     let result = {
         let gate = app.state::<crate::ConnectionGate>();
         let _guard = lock_for_portable_install(app, &gate)?;
@@ -311,7 +358,7 @@ fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool,
             stop_managed_processes(app)
         });
         if matches!(outcome, Ok(InstallOutcome::Installed)) {
-            app.restart();
+            restart_after_install(app, progress, installing_since);
         }
         outcome
     };
@@ -319,10 +366,21 @@ fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool,
     result.map(|outcome| matches!(outcome, InstallOutcome::Installed))
 }
 
-#[cfg(target_os = "macos")]
-fn restart_after_install(app: &AppHandle) -> ! {
-    app.state::<crate::connector::ConnectorManager>().stop();
-    app.state::<crate::backend::Backend>().stop();
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn restart_after_install(
+    app: &AppHandle,
+    progress: &UpdateProgress,
+    installing_since: Instant,
+) -> ! {
+    std::thread::sleep(phase_time_left(installing_since));
+    progress.show_phase(Phase::Restarting);
+    let restarting_since = Instant::now();
+    #[cfg(target_os = "macos")]
+    {
+        app.state::<crate::connector::ConnectorManager>().stop();
+        app.state::<crate::backend::Backend>().stop();
+    }
+    std::thread::sleep(phase_time_left(restarting_since));
     app.restart();
 }
 
@@ -362,7 +420,12 @@ fn restore_managed_processes(app: &AppHandle) {
 }
 
 #[cfg(target_os = "windows")]
-fn apply_update(app: &AppHandle, update: Update, bytes: Vec<u8>) -> Result<bool, &'static str> {
+fn apply_update(
+    app: &AppHandle,
+    update: Update,
+    bytes: Vec<u8>,
+    _progress: &UpdateProgress,
+) -> Result<bool, &'static str> {
     if !bytes.starts_with(b"MZ") {
         return Err("更新包与已安装的 VortoOne 不匹配，请从下载页安装。");
     }

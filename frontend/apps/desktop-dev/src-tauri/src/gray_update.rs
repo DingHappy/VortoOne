@@ -153,22 +153,32 @@ fn private_client() -> Result<Client, &'static str> {
 }
 
 async fn response_bytes(
-    mut response: Response,
+    response: Response,
     max: usize,
     error: &'static str,
 ) -> Result<Vec<u8>, &'static str> {
-    if response
-        .content_length()
-        .is_some_and(|size| size > max as u64)
-    {
+    response_bytes_with_progress(response, max, error, |_, _| {}).await
+}
+
+async fn response_bytes_with_progress(
+    mut response: Response,
+    max: usize,
+    error: &'static str,
+    mut on_progress: impl FnMut(u64, Option<u64>),
+) -> Result<Vec<u8>, &'static str> {
+    let total = response.content_length();
+    if total.is_some_and(|size| size > max as u64) {
         return Err(error);
     }
+    let total = total.filter(|size| *size > 0);
     let mut bytes = Vec::new();
+    on_progress(0, total);
     while let Some(chunk) = response.chunk().await.map_err(|_| error)? {
         if chunk.len() > max - bytes.len() {
             return Err(error);
         }
         bytes.extend_from_slice(&chunk);
+        on_progress(bytes.len() as u64, total);
     }
     Ok(bytes)
 }
@@ -239,7 +249,12 @@ impl Managed {
             .timeout(Duration::from_secs(15 * 60)))
     }
 
-    pub async fn download(&self, version: &str, url: &Url) -> Result<Vec<u8>, &'static str> {
+    pub async fn download(
+        &self,
+        version: &str,
+        url: &Url,
+        on_progress: impl FnMut(u64, Option<u64>),
+    ) -> Result<Vec<u8>, &'static str> {
         let response = self
             .download_request(version, url)?
             .send()
@@ -248,7 +263,7 @@ impl Managed {
         if response.status() != StatusCode::OK {
             return Err(DOWNLOAD_ERROR);
         }
-        response_bytes(response, MAX_DOWNLOAD, DOWNLOAD_ERROR).await
+        response_bytes_with_progress(response, MAX_DOWNLOAD, DOWNLOAD_ERROR, on_progress).await
     }
 
     pub async fn report(&self, release: &str, status: Report) -> Result<(), &'static str> {
@@ -790,6 +805,31 @@ fn dpapi(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gray_download_reports_cumulative_body_bytes_and_respects_size_limit() {
+        let body = b"fake update";
+        let response = || Response::from(tauri::http::Response::new(body.to_vec()));
+        let mut progress = Vec::new();
+        let received = tauri::async_runtime::block_on(response_bytes_with_progress(
+            response(),
+            body.len(),
+            DOWNLOAD_ERROR,
+            |received, total| progress.push((received, total)),
+        ))
+        .unwrap();
+        let total = body.len() as u64;
+        assert_eq!(received, body);
+        assert_eq!(progress, [(0, Some(total)), (total, Some(total))]);
+
+        let too_large = tauri::async_runtime::block_on(response_bytes_with_progress(
+            response(),
+            body.len() - 1,
+            DOWNLOAD_ERROR,
+            |_, _| panic!("an oversized response must be rejected before reporting progress"),
+        ));
+        assert_eq!(too_large, Err(DOWNLOAD_ERROR));
+    }
 
     #[test]
     fn gray_no_offer_headers_only_accept_known_unambiguous_statuses() {

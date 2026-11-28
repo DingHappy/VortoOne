@@ -72,7 +72,10 @@ const versionDetails = stableChannel
 <section><h2>当前开发版</h2><strong>VortoOne Dev ${escape(config.version)}</strong><p>内置 Python 后端 · 本机持久数据 · 安装后即可配置模型</p><p>通过独立开发安装包更新；发布草稿由你管理。</p></section>
 <p>在菜单「开发版」中打开公开稳定版下载或 GitHub 发布管理。</p>`;
 if (stableChannel) {
-  for (const asset of ["versions.js", "gray-enrollment.html", "gray-enrollment.js"]) {
+  for (const asset of [
+    "versions.js", "gray-enrollment.html", "gray-enrollment.js",
+    "update-progress.html", "update-progress.css", "update-progress.js",
+  ]) {
     await cp(new URL(`../${asset}`, native), new URL(asset, output));
   }
 }
