@@ -136,6 +136,10 @@ const LIVE: &str = "live";
 const SETUP_MODEL_PATH: &str = "/onboarding/native-model-settings";
 const NATIVE_UPDATE_CHECK_PATH: &str = "/settings/native-check-update";
 
+fn show_model_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
+    show(app, "model-settings", "model-settings.html", "配置模型", 620.0, 690.0)
+}
+
 fn setup_model_navigation(source: &tauri::Url, target: &tauri::Url, live_origin: &str, managed_origin: &str) -> bool {
     let workspace_home = source.path().strip_prefix("/org/")
         .and_then(|path| path.split_once('/'))
@@ -155,7 +159,7 @@ fn open_setup_model_settings(app: &tauri::AppHandle, target: &tauri::Url) {
     let Ok(data) = app.path().app_data_dir() else { return; };
     if setup_model_navigation(&source, target, &app.state::<LiveAddress>().origin(), &managed)
         && (source.path() != "/onboarding" || places::desktop_setup_at_model(&data.join("home"))) {
-        if let Err(error) = show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0) {
+        if let Err(error) = show_model_settings(app) {
             eprintln!("无法打开模型配置窗口: {error}");
         }
     }
@@ -266,7 +270,11 @@ fn start_backend_now(app: &tauri::AppHandle, open_workspace: bool) -> Result<(),
     let env_file = model_settings::env_file(&config_dir, &data);
     let config = if runtime.is_file() { None } else {
         let Ok(text) = std::fs::read_to_string(config_dir.join(backend::CONFIG_FILE)) else { return Ok(()); };
-        Some(backend::parse_config(&text)?)
+        let mut config = backend::parse_config(&text)?;
+        if let Some(path) = &env_file {
+            config.env_file = Some(path.clone());
+        }
+        Some(config)
     };
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     app.state::<backend::Backend>().stop();
@@ -553,7 +561,7 @@ fn main() {
             let menu = Menu::default(app.handle())?;
             let mut product_menu = SubmenuBuilder::new(app, desktop_menu_name(app.config()))
                 .text("connect", "连接本机后端")
-                .text("models", "模型连接…")
+                .text("models", "模型配置…")
                 .text("computers", "连接的电脑…")
                 .separator();
             if !stable {
@@ -634,7 +642,7 @@ fn main() {
                     connect(app.clone());
                     return;
                 }
-                "models" => show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0),
+                "models" => show_model_settings(app),
                 "computers" => {
                     if let Err(error) = connector::open(app) { eprintln!("{error}"); }
                     return;
