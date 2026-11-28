@@ -16891,6 +16891,7 @@
       "membersPersonal": "Personnes"
     },
     "advanced": "Avancé",
+    "management": "Gestion",
     "tab": {
       "account": "Profil"
     },
@@ -16926,6 +16927,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "Version",
+      "checkUpdates": "Rechercher des mises à jour",
       "source": "Code source",
       "copyright": ""
     },

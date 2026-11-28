@@ -16436,6 +16436,7 @@
       "membersPersonal": "Mensen"
     },
     "advanced": "Geavanceerd",
+    "management": "Beheer",
     "tab": {
       "account": "Profiel"
     },
@@ -16471,6 +16472,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "Versie",
+      "checkUpdates": "Controleren op updates",
       "source": "Broncode",
       "copyright": ""
     },

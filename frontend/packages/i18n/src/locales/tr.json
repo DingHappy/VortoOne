@@ -16309,6 +16309,7 @@
       "membersPersonal": "Kişiler"
     },
     "advanced": "Gelişmiş",
+    "management": "Yönetim",
     "tab": {
       "account": "Profil"
     },
@@ -16344,6 +16345,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "Sürüm",
+      "checkUpdates": "Güncellemeleri kontrol et",
       "source": "Kaynak kodu",
       "copyright": ""
     },

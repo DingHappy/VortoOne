@@ -128,6 +128,7 @@ fn show_versions(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 const LIVE: &str = "live";
 const SETUP_MODEL_PATH: &str = "/onboarding/native-model-settings";
+const NATIVE_UPDATE_CHECK_PATH: &str = "/settings/native-check-update";
 
 fn setup_model_navigation(source: &tauri::Url, target: &tauri::Url, live_origin: &str, managed_origin: &str) -> bool {
     let workspace_home = source.path().strip_prefix("/org/")
@@ -151,6 +152,64 @@ fn open_setup_model_settings(app: &tauri::AppHandle, target: &tauri::Url) {
         if let Err(error) = show(app, "model-settings", "model-settings.html", "连接模型", 600.0, 650.0) {
             eprintln!("无法打开模型配置窗口: {error}");
         }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn native_update_origin(url: &tauri::Url, live_origin: &str, managed_origin: &str) -> bool {
+    places::is_loopback(managed_origin)
+        && live_origin == managed_origin
+        && places::origin(url.as_str()).as_deref() == Some(managed_origin)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn native_update_navigation(
+    source: &tauri::Url,
+    target: &tauri::Url,
+    live_origin: &str,
+    managed_origin: &str,
+) -> bool {
+    let workspace_about = source.path().strip_prefix("/org/")
+        .and_then(|path| path.split_once('/'))
+        .is_some_and(|(org, page)| !org.is_empty() && page == "settings/about");
+    workspace_about
+        && target.path() == NATIVE_UPDATE_CHECK_PATH
+        && target.query().is_none()
+        && target.fragment().is_none()
+        && native_update_origin(source, live_origin, managed_origin)
+        && places::origin(target.as_str()).as_deref() == Some(managed_origin)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn native_update_origin_for(app: &tauri::AppHandle) -> Option<String> {
+    if !is_stable_channel(app.config()) || !stable_update::supported() {
+        return None;
+    }
+    app.state::<backend::Backend>().local_origin()
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn advertise_native_update(window: &tauri::WebviewWindow, page: &tauri::Url) {
+    let app = window.app_handle();
+    let Some(managed) = native_update_origin_for(app) else { return; };
+    if native_update_origin(page, &app.state::<LiveAddress>().origin(), &managed) {
+        // The WebView may navigate again before evaluation reaches the document.
+        let _ = window.eval(format!(
+            "if (window.location.origin === {managed:?}) {{
+                window.__vortooneNativeUpdateCheck = true;
+                window.dispatchEvent(new Event('vortoone:native-update-check-availability'));
+            }}"
+        ));
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn check_update_from_about(app: &tauri::AppHandle, target: &tauri::Url) {
+    let Some(managed) = native_update_origin_for(app) else { return; };
+    let Some(live) = app.get_webview_window(LIVE) else { return; };
+    let Ok(source) = live.url() else { return; };
+    if native_update_navigation(&source, target, &app.state::<LiveAddress>().origin(), &managed) {
+        stable_update::check(app.clone(), true);
     }
 }
 
@@ -279,6 +338,16 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
             .center()
             // 窗口只在后端自己的地址里走；外部链接交给系统浏览器
             .on_navigation(move |target| {
+                if target.path() == NATIVE_UPDATE_CHECK_PATH {
+                    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+                    if address.allows(target) {
+                        // WebView2 must finish the navigation callback before querying the window.
+                        let app = setup_handle.clone();
+                        let target = target.clone();
+                        tauri::async_runtime::spawn_blocking(move || check_update_from_about(&app, &target));
+                    }
+                    return false;
+                }
                 if target.path() == SETUP_MODEL_PATH && address.allows(target) {
                     // WebView2 must finish this navigation callback before opening another window.
                     let app = setup_handle.clone();
@@ -304,6 +373,12 @@ fn show_live(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), String> {
                 }
                 _ => true,
             });
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        let builder = builder.on_page_load(|window, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                advertise_native_update(&window, payload.url());
+            }
+        });
         #[cfg(target_os = "macos")]
         let builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
@@ -722,6 +797,56 @@ mod tests {
             "https://example.test/onboarding/native-model-settings",
         ] {
             assert!(!setup_model_navigation(&page, &target.parse().unwrap(), managed, managed));
+        }
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    fn native_update_navigation_requires_the_current_local_workspace_about_page() {
+        let managed = "http://127.0.0.1:4321";
+        let page = format!("{managed}/org/123/settings/about").parse().unwrap();
+        let command = format!("{managed}{NATIVE_UPDATE_CHECK_PATH}").parse().unwrap();
+        assert!(native_update_navigation(&page, &command, managed, managed));
+        assert!(!native_update_navigation(&page, &command, "http://127.0.0.1:4322", managed));
+
+        for source in [
+            "http://127.0.0.1:4321/settings/about",
+            "http://127.0.0.1:4321/org//settings/about",
+            "http://127.0.0.1:4321/org/123/456/settings/about",
+            "http://127.0.0.1:4321/org/123/settings/about/",
+            "http://127.0.0.1:4321/org/123/settings/models",
+            "http://127.0.0.1:4322/org/123/settings/about",
+            "http://localhost:4321/org/123/settings/about",
+            "http://user:pass@127.0.0.1:4321/org/123/settings/about",
+            "https://example.test/org/123/settings/about",
+        ] {
+            assert!(!native_update_navigation(&source.parse().unwrap(), &command, managed, managed), "{source}");
+        }
+        for target in [
+            "http://127.0.0.1:4321/settings/native-check-update/extra",
+            "http://127.0.0.1:4321/settings/native-check-update?",
+            "http://127.0.0.1:4321/settings/native-check-update#",
+            "http://user:pass@127.0.0.1:4321/settings/native-check-update",
+            "http://127.0.0.1:4322/settings/native-check-update",
+            "https://example.test/settings/native-check-update",
+        ] {
+            assert!(!native_update_navigation(&page, &target.parse().unwrap(), managed, managed), "{target}");
+        }
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    fn native_update_availability_follows_only_the_managed_origin() {
+        let managed = "http://127.0.0.1:4321";
+        let local = format!("{managed}/org/123/home").parse().unwrap();
+        let old = "http://127.0.0.1:4320";
+        assert!(native_update_origin(&local, managed, managed));
+        assert!(!native_update_origin(&local, managed, old));
+        assert!(!native_update_origin(&local, old, managed));
+        for origin in ["https://example.test", "https://192.168.10.1:4321"] {
+            let page = format!("{origin}/org/123/home").parse().unwrap();
+            assert!(!native_update_origin(&page, origin, managed), "{origin}");
+            assert!(!native_update_origin(&page, origin, origin), "{origin}");
         }
     }
 

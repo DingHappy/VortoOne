@@ -15872,6 +15872,7 @@
       "membersPersonal": "Orang"
     },
     "advanced": "Lanjutan",
+    "management": "Pengelolaan",
     "tab": {
       "account": "Profil"
     },
@@ -15907,6 +15908,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "Versi",
+      "checkUpdates": "Periksa pembaruan",
       "source": "Kode sumber",
       "copyright": ""
     },

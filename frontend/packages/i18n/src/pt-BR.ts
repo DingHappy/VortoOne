@@ -16670,6 +16670,7 @@ export const ptBR = {
       membersPersonal: "Pessoas",
     },
     advanced: "Avançado",
+    management: "Gerenciamento",
     tab: { account: "Perfil" },
     sectionText: {
       account: "Seu perfil e como o app fica para você.",
@@ -16703,6 +16704,7 @@ export const ptBR = {
     about: {
       basedOn: "VortoOne",
       version: "Versão",
+      checkUpdates: "Verificar atualizações",
       source: "Código-fonte",
       copyright: "",
     },

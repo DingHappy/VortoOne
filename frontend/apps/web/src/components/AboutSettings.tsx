@@ -1,13 +1,14 @@
 import { instanceQuery } from "@vortoone/client";
 import { PUBLIC_SOURCE_URL } from "@vortoone/client/lib/about";
 import { shownAddress } from "@vortoone/client/lib/sites";
-import { Card, CardHeader, Icon } from "@vortoone/ui";
+import { Button, Card, CardHeader, Icon } from "@vortoone/ui";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";
 import { LoadingLine } from "@/components/Loading";
 import { PrefRow } from "@/components/NoticePrefs";
+import { NATIVE_UPDATE_CHECK_PATH, nativeUpdateCheckAvailable, subscribeNativeUpdateCheck } from "@/lib/desktop-metadata";
 
 /** An outside page in a new tab, in the house link style. */
 function Out({ href, children }: { href: string; children?: ReactNode }) {
@@ -23,6 +24,8 @@ export function AboutSection() {
   const { t } = useTranslation();
   const instance = useQuery(instanceQuery(useApi()));
   const source = instance.data?.sourceUrl ?? PUBLIC_SOURCE_URL;
+  const canCheckUpdates = useSyncExternalStore(subscribeNativeUpdateCheck, nativeUpdateCheckAvailable, () => false);
+  const version = instance.data ? <span className="ac-num">{instance.data.version}</span> : <LoadingLine width={80} />;
   return (
     <Card aria-labelledby="about-made">
       <CardHeader
@@ -40,7 +43,17 @@ export function AboutSection() {
           id="about-version"
           icon="download"
           label={t("settings.about.version")}
-          control={instance.data ? <span className="ac-num">{instance.data.version}</span> : <LoadingLine width={80} />}
+          control={canCheckUpdates ? undefined : version}
+          actions={
+            canCheckUpdates ? (
+              <span className="ac-acts">
+                {version}
+                <Button type="button" size="sm" onClick={() => window.location.assign(NATIVE_UPDATE_CHECK_PATH)}>
+                  {t("settings.about.checkUpdates")}
+                </Button>
+              </span>
+            ) : undefined
+          }
         />
         {source && (
           <PrefRow

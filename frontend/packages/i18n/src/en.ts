@@ -16830,8 +16830,8 @@ export const en = {
       /** Members and invitations, in the short list once someone else is a member. */
       membersPersonal: "People",
     },
-    /** A personal workspace's settings list ends with this row, which shows or hides every other section. */
     advanced: "Advanced",
+    management: "Management",
     /** An entry's own tab, beside the sections its page holds. */
     tab: { account: "Profile" },
     sectionText: {
@@ -16866,6 +16866,7 @@ export const en = {
     about: {
       basedOn: "VortoOne",
       version: "Version",
+      checkUpdates: "Check for updates",
       source: "Source code",
       copyright: "",
     },

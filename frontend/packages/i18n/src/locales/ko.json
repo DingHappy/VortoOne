@@ -15810,6 +15810,7 @@
       "membersPersonal": "사람"
     },
     "advanced": "고급",
+    "management": "관리",
     "tab": {
       "account": "프로필"
     },
@@ -15845,6 +15846,7 @@
     "about": {
       "basedOn": "VortoOne",
       "version": "버전",
+      "checkUpdates": "업데이트 확인",
       "source": "소스 코드",
       "copyright": ""
     },
