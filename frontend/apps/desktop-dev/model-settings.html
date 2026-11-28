@@ -22,20 +22,42 @@
         <ul id="profiles" class="profiles"></ul>
       </section>
 
-      <fieldset id="providers">
-        <legend>选择服务</legend>
-        <div id="presets" class="presets"></div>
+      <fieldset id="providers" aria-describedby="provider-hint">
+        <legend>选择模型服务</legend>
+        <p id="provider-hint" class="hint provider-hint">选择预设会自动填写服务地址。</p>
+        <input id="provider-search" type="search" aria-label="搜索服务名称或网址" placeholder="搜索服务名称或网址" autocomplete="off" spellcheck="false">
+        <div class="catalog-controls">
+          <div class="service-filters" role="group" aria-label="服务类型">
+            <button type="button" data-service-filter="all" aria-pressed="true">全部</button>
+            <button type="button" data-service-filter="cloud" aria-pressed="false">云端</button>
+            <button type="button" data-service-filter="local" aria-pressed="false">本机</button>
+          </div>
+          <button id="back-to-service" class="text-action" type="button" hidden>返回配置</button>
+        </div>
+        <div id="custom-presets" class="custom-preset"></div>
+        <p id="provider-empty" role="status" hidden>没有匹配的预设。试试其他关键词，或使用自定义服务。</p>
+        <div id="presets" class="presets">
+          <div id="cloud-group" class="preset-group" role="group" aria-labelledby="cloud-title" aria-describedby="cloud-hint">
+            <h3 id="cloud-title">云端服务</h3>
+            <p id="cloud-hint" class="hint">使用服务商的 API Key</p>
+            <div id="cloud-presets" class="preset-options"></div>
+          </div>
+          <div id="local-group" class="preset-group" role="group" aria-labelledby="local-title" aria-describedby="local-hint">
+            <h3 id="local-title">本机服务</h3>
+            <p id="local-hint" class="hint">先启动电脑上的模型服务</p>
+            <div id="local-presets" class="preset-options"></div>
+          </div>
+        </div>
       </fieldset>
 
       <fieldset id="model-fields" aria-label="模型连接信息" hidden>
+        <div class="selected-service">
+          <h2 id="selected-service-title" tabindex="-1"></h2>
+          <button id="change-service" class="text-action" type="button">更换服务</button>
+        </div>
         <div class="field">
           <label for="base-url">服务地址</label>
           <input id="base-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off" spellcheck="false" maxlength="2048">
-        </div>
-        <div class="field">
-          <label for="model">模型 ID</label>
-          <input id="model" placeholder="填写服务提供的模型 ID" required autocomplete="off" spellcheck="false" maxlength="256">
-          <p class="hint">请使用模型服务显示的完整 ID。</p>
         </div>
         <div class="field">
           <label for="api-key">API Key</label>
@@ -45,6 +67,23 @@
             <input id="clear-key" type="checkbox">
             清除已保存的 API Key
           </label>
+        </div>
+        <div id="model-picker" class="model-picker">
+          <div id="manual-model-field" class="field">
+            <label for="model">模型 ID</label>
+            <input id="model" placeholder="填写服务提供的模型 ID" autocomplete="off" spellcheck="false" maxlength="256">
+          </div>
+          <div id="model-select-field" class="field" hidden>
+            <label for="model-select">模型</label>
+            <select id="model-select" aria-describedby="model-list-status">
+              <option value="">请选择模型</option>
+            </select>
+          </div>
+          <div class="model-picker-actions">
+            <button id="fetch-models" class="secondary" type="button" aria-controls="model-picker">获取模型</button>
+            <button id="model-entry-mode" class="text-action" type="button" aria-controls="manual-model-field model-select-field" hidden>手动填写模型 ID</button>
+          </div>
+          <p id="model-list-status" role="status" aria-live="polite">可以获取服务的模型列表，也可以直接填写模型 ID。</p>
         </div>
       </fieldset>
 

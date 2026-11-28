@@ -957,7 +957,7 @@ export const en = {
       businessHint: "Describe what your workspace will be used for.",
       agentsHint: "These agents are in your workspace. You can add more after setup.",
       modelTitle: "Set up a model",
-      modelSettingsLead: "Choose a preset for OpenAI, DeepSeek or a local service, or enter your own endpoint. You can save multiple models and choose a default.",
+      modelSettingsLead: "Find a model service or enter your own endpoint. Set up one model to continue. You can save more models and change the default anytime.",
       modelSaved: "Default model saved. Test the connection before adding agents.",
       modelMissing: "Set up a model so your agents can respond.",
       modelInApp: "Open VortoOne Desktop to change the model settings on this computer.",

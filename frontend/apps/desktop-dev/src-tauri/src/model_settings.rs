@@ -184,6 +184,10 @@ fn legacy_profile(found: &HashMap<String, String>) -> Option<Profile> {
 // The URL parser also accepts some malformed spellings. Those may be saved with an
 // explicit key as before, but never cause a stored credential to be reused.
 fn model_key_origin(base: &str) -> Option<String> {
+    strict_model_url(base).map(|url| url.origin().ascii_serialization())
+}
+
+fn strict_model_url(base: &str) -> Option<tauri::Url> {
     let (_, rest) = base.split_once("://")?;
     let authority = rest.split('/').next()?;
     let malformed_escape = base.as_bytes().iter().enumerate().any(|(index, byte)| {
@@ -213,7 +217,7 @@ fn model_key_origin(base: &str) -> Option<String> {
     {
         return None;
     }
-    Some(url.origin().ascii_serialization())
+    Some(url)
 }
 
 fn keyless_loopback(base: &str) -> bool {
@@ -240,17 +244,18 @@ fn keyless_loopback(base: &str) -> bool {
         })
 }
 
+fn valid_profile_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
 fn validate_ids<'a>(ids: impl Iterator<Item = &'a str>, default_id: &str) -> Result<(), String> {
     let mut seen = HashSet::new();
     for id in ids {
-        if id.is_empty()
-            || id.len() > 64
-            || !id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-            || !seen.insert(id)
-            || seen.len() > PROFILE_LIMIT
-        {
+        if !valid_profile_id(id) || !seen.insert(id) || seen.len() > PROFILE_LIMIT {
             return Err("模型列表无效，请重新打开设置。".into());
         }
     }
@@ -258,6 +263,35 @@ fn validate_ids<'a>(ids: impl Iterator<Item = &'a str>, default_id: &str) -> Res
         return Err("请选择一个默认模型。".into());
     }
     Ok(())
+}
+
+fn profile_at_origin<'a>(id: &str, base: &str, profiles: &'a [Profile]) -> Option<&'a Profile> {
+    let origin = model_key_origin(base)?;
+    profiles.iter().find(|profile| {
+        profile.id == id && model_key_origin(&profile.base_url).as_ref() == Some(&origin)
+    })
+}
+
+fn profile_api_key<'a>(
+    base: &str,
+    supplied: &'a str,
+    clear: bool,
+    previous: Option<&'a Profile>,
+) -> Result<&'a str, String> {
+    let key = if clear {
+        ""
+    } else if supplied.trim().is_empty() {
+        previous.map_or("", |profile| profile.api_key.as_str())
+    } else {
+        supplied
+    };
+    if !key.trim().is_empty() {
+        return Ok(key);
+    }
+    if !keyless_loopback(base) {
+        return Err("请填写 API Key。只有本机回环地址（localhost 或 127.0.0.1）允许留空。".into());
+    }
+    Ok("")
 }
 
 fn validated_profile(input: ProfileInput, previous: &[Profile]) -> Result<Profile, String> {
@@ -283,32 +317,8 @@ fn validated_profile(input: ProfileInput, previous: &[Profile]) -> Result<Profil
     {
         return Err("模型地址应使用 http 或 https，并且不包含账号、密码或查询参数。".into());
     }
-    let previous = previous
-        .iter()
-        .find(|profile| profile.id == input.id)
-        .filter(|profile| {
-            let previous_origin = model_key_origin(&profile.base_url);
-            previous_origin.is_some() && previous_origin == model_key_origin(base)
-        });
-    let key = if input.clear_key {
-        String::new()
-    } else if input.api_key.trim().is_empty() {
-        previous
-            .map(|profile| profile.api_key.clone())
-            .unwrap_or_default()
-    } else {
-        input.api_key
-    };
-    let key = if key.trim().is_empty() {
-        if !keyless_loopback(base) {
-            return Err(
-                "请填写 API Key。只有本机回环地址（localhost 或 127.0.0.1）允许留空。".into(),
-            );
-        }
-        String::new()
-    } else {
-        key
-    };
+    let previous = profile_at_origin(&input.id, base, previous);
+    let key = profile_api_key(base, &input.api_key, input.clear_key, previous)?.to_owned();
     Ok(Profile {
         id: input.id,
         base_url: base.into(),
@@ -316,6 +326,241 @@ fn validated_profile(input: ProfileInput, previous: &[Profile]) -> Result<Profil
         api_key: key,
         custom_headers: previous.and_then(|profile| profile.custom_headers.clone()),
     })
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+mod model_list {
+    use super::{profile_api_key, profile_at_origin, strict_model_url, valid_profile_id, Profile};
+    use reqwest::{Client, StatusCode};
+    use serde::{Deserialize, Serialize};
+    use std::{collections::HashSet, net::SocketAddr, time::Duration};
+    use tauri::Url;
+
+    const MAX_LIST_BYTES: usize = 1024 * 1024;
+    const MAX_MODELS: usize = 500;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Input {
+        id: String,
+        base_url: String,
+        api_key: String,
+        clear_key: bool,
+    }
+
+    #[derive(Serialize)]
+    pub struct Output {
+        models: Vec<String>,
+    }
+
+    impl Input {
+        fn request<'a>(&'a self, profiles: &'a [Profile]) -> Result<(Url, &'a str), String> {
+            let base = self.base_url.trim();
+            if !valid_profile_id(&self.id)
+                || self.api_key.len() > 16384
+                || self.api_key.contains(['\r', '\n', '\0'])
+            {
+                return Err("模型配置或 API Key 无效。".into());
+            }
+            let mut endpoint = strict_model_url(base)
+                .filter(|_| self.base_url.len() <= 2048)
+                .ok_or("请填写有效的 HTTP 或 HTTPS 模型服务地址。")?;
+            let path = format!("{}/models", endpoint.path().trim_end_matches('/'));
+            endpoint.set_path(&path);
+            let previous = profile_at_origin(&self.id, base, profiles);
+            // The returned reference may point to the saved profile as well as this input.
+            let key = profile_api_key(base, &self.api_key, self.clear_key, previous)?;
+            Ok((endpoint, key))
+        }
+    }
+
+    fn model_client(endpoint: &Url) -> Result<Client, String> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let mut client = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(12));
+        if matches!(endpoint.host_str(), Some("localhost" | "127.0.0.1")) {
+            // Keep the URL hostname for TLS certificate validation and the HTTP Host header.
+            client = client
+                .no_proxy()
+                .resolve("localhost", SocketAddr::from(([127, 0, 0, 1], 0)));
+        }
+        client.build().map_err(|_| "无法建立模型服务连接。".into())
+    }
+
+    fn parse_models(body: &[u8]) -> Result<Output, String> {
+        let invalid = "服务未返回可用的模型列表。你可以手动填写模型 ID。";
+        let value: serde_json::Value = serde_json::from_slice(body).map_err(|_| invalid)?;
+        let rows = value
+            .get("data")
+            .and_then(serde_json::Value::as_array)
+            .ok_or(invalid)?;
+        let mut seen = HashSet::new();
+        let models = rows
+            .iter()
+            .filter_map(|row| row.get("id").and_then(serde_json::Value::as_str))
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control))
+            .filter(|id| seen.insert(*id))
+            .take(MAX_MODELS)
+            .map(str::to_owned)
+            .collect();
+        Ok(Output { models })
+    }
+
+    pub async fn fetch(input: Input, profiles: &[Profile]) -> Result<Output, String> {
+        let (endpoint, key) = input.request(profiles)?;
+        let client = model_client(&endpoint)?;
+        let mut request = client
+            .get(endpoint)
+            .header(reqwest::header::ACCEPT, "application/json");
+        if !key.is_empty() {
+            request = request.bearer_auth(key);
+        }
+        let request_error = |error: reqwest::Error| -> String {
+            if error.is_timeout() {
+                "获取模型列表超时，请稍后重试。".into()
+            } else {
+                "无法获取模型列表，请检查服务地址或手动填写模型 ID。".into()
+            }
+        };
+        let mut response = request.send().await.map_err(request_error)?;
+        let status = response.status();
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            return Err("服务拒绝访问模型列表，请确认 API Key 有效。".into());
+        }
+        if status.is_redirection() {
+            return Err("服务返回了重定向，请填写实际的服务地址。".into());
+        }
+        if !status.is_success() {
+            return Err(format!(
+                "服务未返回模型列表（HTTP {}）。你可以手动填写模型 ID。",
+                status.as_u16()
+            ));
+        }
+        let too_large = "模型列表过大。你可以手动填写模型 ID。";
+        if response
+            .content_length()
+            .is_some_and(|size| size > MAX_LIST_BYTES as u64)
+        {
+            return Err(too_large.into());
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(request_error)? {
+            if chunk.len() > MAX_LIST_BYTES - body.len() {
+                return Err(too_large.into());
+            }
+            body.extend_from_slice(&chunk);
+        }
+        parse_models(&body)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use serde_json::json;
+        use std::{
+            io::{BufRead, BufReader, Write},
+            net::TcpListener,
+            thread,
+        };
+
+        fn input(id: &str, base: &str, key: &str) -> Input {
+            Input {
+                id: id.into(),
+                base_url: base.into(),
+                api_key: key.into(),
+                clear_key: false,
+            }
+        }
+
+        #[test]
+        fn list_endpoint_only_reuses_the_key_for_the_same_profile_and_origin() {
+            let profiles = [Profile {
+                id: "saved".into(),
+                base_url: "https://api.example.test/v1".into(),
+                model: "model".into(),
+                api_key: "test-saved-key".into(),
+                custom_headers: None,
+            }];
+            let same = input("saved", "https://API.EXAMPLE.TEST:443/gateway/v1///", "");
+            let (url, key) = same.request(&profiles).unwrap();
+            assert_eq!(url.as_str(), "https://api.example.test/gateway/v1/models");
+            assert_eq!(key, "test-saved-key");
+            let encoded = input("saved", "https://api.example.test/gateway%2Fname", "");
+            assert_eq!(
+                encoded.request(&profiles).unwrap().0.path(),
+                "/gateway%2Fname/models"
+            );
+            for rejected in [
+                input("other", "https://api.example.test/v1", ""),
+                input("saved", "https://other.example.test/v1", ""),
+                input("saved", "http://api.example.test/v1", ""),
+                input("saved", "https://api.example.test:8443/v1", ""),
+                input(
+                    "saved",
+                    "https://api.example.test/v1?key=test",
+                    "explicit-key",
+                ),
+                input("saved", "https:///api.example.test/v1", "explicit-key"),
+                input("new", "http://127.1/v1", ""),
+            ] {
+                assert!(rejected.request(&profiles).is_err());
+            }
+            let local = input("new", "http://localhost:11434/v1", "");
+            assert_eq!(local.request(&profiles).unwrap().1, "");
+            let mut clear = same;
+            clear.clear_key = true;
+            assert!(clear.request(&profiles).is_err());
+        }
+
+        #[test]
+        fn model_list_uses_unique_bounded_valid_ids_in_service_order() {
+            let mut rows = vec![
+                json!({"id": " first "}),
+                json!({"id": "first"}),
+                json!({"id": ""}),
+                json!({"id": "with\nnewline"}),
+                json!({"id": "o".repeat(257)}),
+                json!({"id": 1}),
+            ];
+            rows.extend((0..MAX_MODELS).map(|index| json!({"id": format!("model-{index}")})));
+            let body = serde_json::to_vec(&json!({"data": rows})).unwrap();
+            let models = parse_models(&body).unwrap().models;
+            assert_eq!(models.len(), MAX_MODELS);
+            assert_eq!(&models[..2], ["first", "model-0"]);
+            assert_eq!(models.last().unwrap(), &format!("model-{}", MAX_MODELS - 2));
+            assert!(parse_models(br#"{"data":[]}"#).unwrap().models.is_empty());
+            assert!(parse_models(br#"{"models":["other-shape"]}"#).is_err());
+        }
+
+        #[test]
+        fn requests_model_list_over_loopback_without_following_redirects() {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = thread::spawn(move || {
+                for (expected_auth, response) in [
+                    (true, "HTTP/1.1 200 OK\r\nContent-Length: 33\r\nConnection: close\r\n\r\n{\"data\":[{\"id\":\"fixture-model\"}]}"),
+                    (false, "HTTP/1.1 302 Found\r\nLocation: /elsewhere\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"),
+                ] {
+                    let (mut connection, _) = listener.accept().unwrap();
+                    connection.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                    let reader = BufReader::new(&connection);
+                    let request: Vec<_> = reader.lines().map(Result::unwrap).take_while(|line| !line.is_empty()).collect();
+                    assert_eq!(request.first().unwrap(), "GET /v1/models HTTP/1.1");
+                    assert_eq!(request.iter().any(|line| line.eq_ignore_ascii_case("authorization: Bearer test-key")), expected_auth);
+                    connection.write_all(response.as_bytes()).unwrap();
+                }
+            });
+            let base = format!("http://localhost:{port}/v1");
+            let first = tauri::async_runtime::block_on(fetch(input("new", &base, "test-key"), &[]));
+            let second = tauri::async_runtime::block_on(fetch(input("new", &base, ""), &[]));
+            server.join().unwrap();
+            assert_eq!(first.unwrap().models, ["fixture-model"]);
+            assert!(second.err().unwrap().contains("重定向"));
+        }
+    }
 }
 
 fn save(target: &Path, previous: Option<&Path>, input: ModelInput) -> Result<bool, String> {
@@ -434,6 +679,26 @@ pub fn model_settings_get(
     let config = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     Ok(ModelSettings::read(env_file(&config, &data).as_deref())?.view())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+#[tauri::command]
+pub async fn model_settings_list_models(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    input: model_list::Input,
+) -> Result<model_list::Output, String> {
+    check(&window)?;
+    let config = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| "无法访问模型配置。")?;
+    let data = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "无法访问模型配置。")?;
+    let settings = ModelSettings::read(env_file(&config, &data).as_deref())?;
+    model_list::fetch(input, &settings.profiles).await
 }
 
 #[tauri::command]
