@@ -1,6 +1,6 @@
 {
   "productName": "VortoOne",
-  "version": "0.3.7",
+  "version": "0.3.10",
   "identifier": "com.vorto.vortoone",
   "mainBinaryName": "vortoone",
   "build": {
