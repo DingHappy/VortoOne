@@ -182,15 +182,16 @@ function DesktopSetupForm({
     input.context = context.trim();
   }
   const blocked = (step === "purpose" && !mode) || (step === "name" && !input.name);
-  const action = t(step === "model" ? "onboarding.flow.ai.model.connect" : "onboarding.actions.continue");
+  const action = t(step === "model" ? "onboarding.desktopSetup.verifyModelAndContinue" : "onboarding.actions.continue");
   const openModel = canOpenModel && (
     <Button
+      type="button"
       variant={setup.modelConfigured ? "default" : "primary"}
       block
       disabled={busy}
       onClick={() => window.location.assign(NATIVE_MODEL_SETTINGS_PATH)}
     >
-      {t("onboarding.desktopSetup.openModelSettings")}
+      {t(setup.modelConfigured ? "onboarding.desktopSetup.manageModels" : "onboarding.desktopSetup.openModelSettings")}
     </Button>
   );
   const problem = error && (
@@ -261,9 +262,12 @@ function DesktopSetupForm({
         )}
         {step === "model" && (
           <>
-            <SettingNote icon={setup.modelConfigured ? "check" : "key"} live>
-              {t(setup.modelConfigured ? "onboarding.desktopSetup.modelSaved" : "onboarding.desktopSetup.modelMissing")}
-            </SettingNote>
+            {canOpenModel && <p className="onb__lead">{t("onboarding.desktopSetup.modelSettingsLead")}</p>}
+            {(setup.modelConfigured || !canOpenModel) && (
+              <SettingNote icon={setup.modelConfigured ? "check" : "key"} live>
+                {t(setup.modelConfigured ? "onboarding.desktopSetup.modelSaved" : "onboarding.desktopSetup.modelMissing")}
+              </SettingNote>
+            )}
             {needsModel && !canOpenModel && <p className="onb__help">{t("onboarding.desktopSetup.modelInApp")}</p>}
           </>
         )}
@@ -281,9 +285,11 @@ function DesktopSetupForm({
           </>
         )}
         {step === "model" && (
-          <Button block disabled={busy} onClick={() => onSubmit({ step: "model", skipModel: true })}>
-            {t("onboarding.desktopSetup.configureLater")}
-          </Button>
+          <div className="onb__skip">
+            <Button variant="link" disabled={busy} onClick={() => onSubmit({ step: "model", skipModel: true })}>
+              {t(setup.modelConfigured ? "onboarding.desktopSetup.verifyModelLater" : "onboarding.desktopSetup.configureLater")}
+            </Button>
+          </div>
         )}
       </div>
     </form>

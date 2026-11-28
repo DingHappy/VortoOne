@@ -1,11 +1,65 @@
 <!doctype html>
-<html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>连接模型</title><link rel="stylesheet" href="model-settings.css"></head>
-<body><main><h1>连接模型</h1><p>连接兼容 OpenAI 的模型服务，或这台电脑上的本地模型。</p>
-<form id="model-form">
-<label for="base-url">服务地址</label><input id="base-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off">
-<label for="model">模型名</label><input id="model" required placeholder="服务提供的模型名称" autocomplete="off">
-<label for="api-key">API Key</label><input id="api-key" type="password" placeholder="本机回环服务可留空" autocomplete="off">
-<p id="key-state" class="hint"></p><label class="clear"><input id="clear-key" type="checkbox">清除已保存的 API Key</label>
-<p class="hint">配置保存在这台电脑上。保存后会重新连接，聊天记录会保留。</p>
-<p id="status" role="status" aria-live="polite"></p><button id="save" type="submit" disabled>保存并连接</button>
-</form></main><script type="module" src="model-settings.js"></script></body></html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>配置模型</title>
+  <link rel="stylesheet" href="model-settings.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>配置模型</h1>
+      <p class="intro">可以保存多个模型，并选一个作为本机默认。</p>
+    </header>
+
+    <p id="loading" role="status">正在读取模型配置…</p>
+    <button id="retry" class="secondary" type="button" hidden>重新读取</button>
+
+    <form id="model-form" novalidate hidden>
+      <section id="saved-models" aria-labelledby="saved-models-title" hidden>
+        <h2 id="saved-models-title">你的模型</h2>
+        <ul id="profiles" class="profiles"></ul>
+      </section>
+
+      <fieldset id="providers">
+        <legend>选择服务</legend>
+        <div id="presets" class="presets"></div>
+      </fieldset>
+
+      <fieldset id="model-fields" aria-label="模型连接信息" hidden>
+        <div class="field">
+          <label for="base-url">服务地址</label>
+          <input id="base-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off" spellcheck="false" maxlength="2048">
+        </div>
+        <div class="field">
+          <label for="model">模型 ID</label>
+          <input id="model" placeholder="填写服务提供的模型 ID" required autocomplete="off" spellcheck="false" maxlength="256">
+          <p class="hint">请使用模型服务显示的完整 ID。</p>
+        </div>
+        <div class="field">
+          <label for="api-key">API Key</label>
+          <input id="api-key" type="password" autocomplete="off" spellcheck="false" maxlength="16384" aria-describedby="key-state">
+          <p id="key-state" class="hint"></p>
+          <label id="clear-key-label" class="clear" hidden>
+            <input id="clear-key" type="checkbox">
+            清除已保存的 API Key
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="model-actions" id="model-actions" hidden>
+        <button id="set-default" class="secondary" type="button">设为默认</button>
+        <button id="remove" class="secondary remove" type="button">移除模型</button>
+      </div>
+
+      <p id="status" role="status" aria-live="polite"></p>
+      <footer>
+        <button id="add" class="secondary" type="button" disabled>添加另一个模型</button>
+        <button id="save" type="submit" disabled>保存配置</button>
+      </footer>
+    </form>
+  </main>
+  <script type="module" src="model-settings.js"></script>
+</body>
+</html>
