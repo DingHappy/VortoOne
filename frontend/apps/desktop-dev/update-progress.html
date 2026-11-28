@@ -14,7 +14,7 @@
       <p id="update-version" class="target">VortoOne</p>
       <h1 id="update-phase" aria-live="polite" aria-atomic="true">正在准备更新</h1>
     </header>
-    <div id="update-meter" class="meter indeterminate" role="progressbar" aria-labelledby="update-phase">
+    <div id="update-meter" class="meter indeterminate" role="progressbar" aria-labelledby="update-phase" aria-hidden="true">
       <span id="update-fill" class="fill"></span>
     </div>
     <div class="progress-details">
@@ -23,7 +23,7 @@
     </div>
     <ol class="steps" aria-label="更新步骤">
       <li data-phase="downloading" aria-current="step">下载</li>
-      <li data-phase="verifying">验证</li>
+      <li data-phase="verifying">验签</li>
       <li data-phase="installing">安装</li>
       <li data-phase="restarting">重启</li>
     </ol>

@@ -79,12 +79,15 @@ export function mountProgress(document, source) {
     meter.classList.toggle("indeterminate", !determinate);
     percent.hidden = !determinate;
     if (determinate) {
+      meter.removeAttribute("aria-hidden");
       meter.setAttribute("aria-valuemin", "0");
       meter.setAttribute("aria-valuemax", "100");
       meter.setAttribute("aria-valuenow", String(next.percent));
       percent.textContent = `${next.percent}%`;
       fill.style.width = `${next.received / next.total * 100}%`;
     } else {
+      // WebKit otherwise exposes a numeric default for an indeterminate ARIA meter.
+      meter.setAttribute("aria-hidden", "true");
       for (const property of ["aria-valuemin", "aria-valuemax", "aria-valuenow"]) meter.removeAttribute(property);
       fill.style.removeProperty("width");
     }
