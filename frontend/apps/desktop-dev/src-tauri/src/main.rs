@@ -526,6 +526,8 @@ fn main() {
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             gray_update::gray_update_open_enrollment,
             model_settings::model_settings_get, model_settings::model_settings_save,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            model_settings::model_settings_list_models,
             connector::computers_get, connector::computer_pair_preview, connector::computer_pair_confirm,
             connector::computer_remove, connector::computers_open, connector::computer_folder_settings,
             connector::pair_link_take,
