@@ -310,6 +310,22 @@ class StaffService:
                     count[0] -= 1
                     condition.notify_all()
 
+    def assign_channel_draft(self, owner, args, *, task_id, initiator, channel, audit):
+        """Register a confirmed private draft once, after the authorization audit is durable."""
+        with TASK_STATE_LOCK:
+            existing = TaskLedger(self.root).load(task_id)
+            if existing is not None:
+                dispatch = (existing.collaboration or {}).get('dispatch') or {}
+                if (existing.kind != 'delegation' or existing.owner_session != owner
+                        or dispatch.get('channel') != channel or dispatch.get('member') != args['member']
+                        or (dispatch.get('initiator') or {}).get('id') != initiator
+                        or existing.prompt != args['prompt'] or existing.collaboration.get('acceptance') != args['acceptance']):
+                    raise ValueError('已存在的任务与草稿确认不匹配')
+                return existing
+            if not audit():
+                raise OSError('审计未能保存，没有派出')
+            return self.assign(owner, args, initiator=initiator, channel=channel, task_id=task_id)
+
     def assign(self, owner, args, *, expected=None, task_id=None, routine=None, after=None, initiator=None,
                via=None, channel=None, mission=None, owner_chat=False):
         """initiator：发起这件事的成员 id（例行工作沿用登记的发起人）。执行时据此收窄权限。

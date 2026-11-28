@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 
 from src.web import app_channels
 from src.web import app_views as views
-from src.workflow.tasks.tasks import BackgroundTask, TASK_STATE_LOCK, TaskLedger, is_private_channel_draft
+from src.workflow.tasks.tasks import BackgroundTask, TaskLedger, is_private_channel_draft
 
 MAX_CALLS = 3
 CONTEXT_MESSAGES = 12
@@ -143,25 +143,16 @@ def start_recommendation(root: str, service, actor, channel_id: str, *, agent_id
             channel["ownerIdentity"] = ensure_home_identity(root)
         except (HomeIdentityError, OSError):
             raise ValueError("无法核对工作区所有者身份") from None
-    with TASK_STATE_LOCK:
-        existing = TaskLedger(root).load(task_id)
-        if existing is not None:
-            dispatch = (existing.collaboration or {}).get("dispatch") or {}
-            if (existing.kind != "delegation" or existing.owner_session != owner
-                    or dispatch.get("channel") != channel or dispatch.get("member") != staff
-                    or (dispatch.get("initiator") or {}).get("id") != initiator
-                    or existing.prompt != prompt or existing.collaboration.get("acceptance") != acceptance):
-                raise ValueError("已存在的任务与草稿确认不匹配")
-            return existing
-        runner = get_staff_service(root)
-        if not append_audit(root, {"category": "decision", "decision": "allowed",
+    def audit() -> bool:
+        return append_audit(root, {"category": "decision", "decision": "allowed",
                                    "decision_source": "member" if actor.is_member else "user",
                                    "operation": "确认频道草稿由智能体处理", "operation_kind": "execute",
                                    "agent": staff, "channel": channel_id, "task": task_id,
-                                   "initiator": actor.id}, durable=True):
-            raise OSError("审计未能保存，没有派出")
-        return runner.assign(owner, {"member": staff, "prompt": prompt, "acceptance": acceptance, "delivery": "review"},
-                             initiator=initiator, channel=channel, task_id=task_id)
+                                   "initiator": actor.id}, durable=True)
+
+    return get_staff_service(root).assign_channel_draft(
+        owner, {"member": staff, "prompt": prompt, "acceptance": acceptance, "delivery": "review"},
+        task_id=task_id, initiator=initiator, channel=channel, audit=audit)
 
 
 def recommendation_task(root: str, channel_id: str, task_id: str) -> BackgroundTask | None:
